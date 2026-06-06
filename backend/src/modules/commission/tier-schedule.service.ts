@@ -6,6 +6,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { DomainError } from '../../common/errors/domain-error';
 import { deriveStatus, planSupersession, toUtcDateOnly } from '../../common/effective-dating';
 import { validateTierBrackets } from './tier-schedule.logic';
 import { parseEffectiveWindow } from './effective-dates.util';
@@ -30,13 +31,19 @@ export class TierScheduleService {
 
   async create(dto: CreateTierScheduleDto, actorId: string) {
     // Normalize optional max_count → null, then validate (contiguous, one open top bracket; else 422).
-    validateTierBrackets(
-      dto.tiers.map((t) => ({
-        tier_number: t.tier_number,
-        min_count: t.min_count,
-        max_count: t.max_count ?? null,
-      })),
-    );
+    // validateTierBrackets is a PURE/mirrored module that throws a bare Error — wrap it here (the service
+    // boundary) as a DomainError so the global filter maps it to 422; the pure module stays framework-free.
+    try {
+      validateTierBrackets(
+        dto.tiers.map((t) => ({
+          tier_number: t.tier_number,
+          min_count: t.min_count,
+          max_count: t.max_count ?? null,
+        })),
+      );
+    } catch (e) {
+      throw new DomainError('TIER_SCHEDULE_INVALID', (e as Error).message);
+    }
     const { from, to, today } = parseEffectiveWindow(dto.effective_from, dto.effective_to);
 
     const existing = await this.prisma.commissionTierConfig.findMany({

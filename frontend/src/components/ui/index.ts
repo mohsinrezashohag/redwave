@@ -23,6 +23,8 @@ export { StatCard } from './StatCard';
 export type { StatCardProps } from './StatCard';
 export { Avatar } from './Avatar';
 export type { AvatarProps } from './Avatar';
+export { Logo } from './Logo';
+export type { LogoProps } from './Logo';
 export { Tabs } from './Tabs';
 export type { TabItem } from './Tabs';
 export { Modal, ModalClose } from './Modal';

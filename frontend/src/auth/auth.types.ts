@@ -1,38 +1,14 @@
 /**
- * Auth response types — HAND-WRITTEN to match the backend contract.
- *
- * NOTE: the backend's OpenAPI declares request bodies but NOT response schemas, so the generated
- * `api/generated/schema.d.ts` types every success body as `never`. Until the backend adds
- * `@ApiResponse` DTOs (a flagged follow-up), these mirror the real shapes from
- * `backend/src/modules/auth/auth.service.ts`. Keep in sync with the contract.
+ * Auth response types — ALIASED to the generated OpenAPI schema (the backend ships `@ApiResponse` DTOs as
+ * of Batch A #2). Mirrors `backend/src/modules/auth/dto/auth.response.ts`. The type names are kept so the
+ * session/provider call sites compile unchanged.
  */
-import type { ThemePreference } from '../theme/theme.types';
+import type { components } from '../api/generated/schema';
 
-export interface PublicUser {
-  id: string;
-  email: string;
-  full_name: string;
-  phone: string | null;
-  avatar_url: string | null;
-  theme_preference: ThemePreference;
-  status: string;
-  created_at: string;
-  updated_at: string;
-}
+export type PublicUser = components['schemas']['MeUserResponse'];
 
-export interface LoginResponse {
-  access_token: string;
-  refresh_token: string;
-}
+export type LoginResponse = components['schemas']['LoginResponse'];
 
-export interface RefreshResponse {
-  access_token: string;
-}
+export type RefreshResponse = components['schemas']['RefreshResponse'];
 
-export interface MeResponse {
-  user: PublicUser;
-  roles: string[];
-  is_super_admin: boolean;
-  rep_id: string | null;
-  effective_permissions: string[];
-}
+export type MeResponse = components['schemas']['MeResponse'];

@@ -1,0 +1,24 @@
+/* Logo — tokens only. The ink inherits the placement's text colour (currentColor inside the SVG);
+   the orange is var(--brand-orange) inside the SVG. We only size here (by height; width keeps ratio). */
+.logo {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+}
+
+.svg {
+  display: block;
+  width: auto;
+}
+
+.sm .svg {
+  height: 20px;
+}
+
+.md .svg {
+  height: 28px;
+}
+
+.lg .svg {
+  height: 40px;
+}

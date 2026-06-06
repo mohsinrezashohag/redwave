@@ -1,82 +1,30 @@
 /**
- * Expenses types — RESPONSE shapes hand-written (the backend declares no response schema, so generated
- * types are `never`). Mirrors `backend/src/modules/expenses/`. REQUEST bodies are typed from the generated
- * schema (re-exported). Money/km amounts are decimal STRINGS; the km amount is computed SERVER-SIDE. Keep
- * in sync with the backend.
+ * Expenses types — RESPONSE shapes ALIASED to the generated OpenAPI schema (the backend ships `@ApiResponse`
+ * DTOs as of Batch A #2). Mirrors `backend/src/modules/expenses/dto/expense.response.ts`. Money/km amounts
+ * are decimal STRINGS; the km amount is computed SERVER-SIDE. REQUEST bodies are typed from the schema.
  */
 import type { components } from '../../api/generated/schema';
 
-export type ExpenseStatus = 'draft' | 'submitted' | 'approved' | 'rejected' | 'sent_back';
-export type TripType = 'single' | 'round';
+// Enums derived from the contract.
+export type ExpenseStatus = components['schemas']['ExpenseReportResponse']['status'];
+export type TripType = components['schemas']['KmLogResponse']['trip_type'];
+export type ExportFormat = components['schemas']['ExpenseExportResponse']['format'];
+/** The review decision (request enum). */
 export type ReviewDecision = 'approve' | 'reject' | 'send_back';
-export type ExportFormat = 'pdf' | 'excel';
 
-export interface KmStop {
-  id: string;
-  stop_order: number;
-  address: string;
-  lat: string;
-  lng: string;
-}
+export type KmStop = components['schemas']['KmStopResponse'];
 
 /** A km log — only trip_type / total_km / stops come from the client; the rest are SERVER-computed. */
-export interface KmLog {
-  id: string;
-  trip_type: TripType;
-  total_km: string;
-  deduction_km: string;
-  billable_km: string;
-  rate_per_km: string;
-  computed_amount: string;
-  stops: KmStop[];
-}
+export type KmLog = components['schemas']['KmLogResponse'];
 
-export interface ExpenseItem {
-  id: string;
-  expense_report_id: string;
-  category: string; // one of the field-config keys (km/meals/hotel/flight/rental/gas/other)
-  client_id: string | null;
-  expense_date: string;
-  amount: string;
-  description: string;
-  receipt_url: string | null;
-  km_log: KmLog | null;
-}
+export type ExpenseItem = components['schemas']['ExpenseItemResponse'];
 
-export interface ExpenseReport {
-  id: string;
-  submitted_by: string;
-  rep_id: string | null;
-  week_start: string;
-  week_end: string;
-  status: ExpenseStatus;
-  approved_by: string | null;
-  approved_at: string | null;
-  pay_period_id: string | null;
-  created_at: string;
-  expense_items: ExpenseItem[];
-}
+export type ExpenseReport = components['schemas']['ExpenseReportResponse'];
 
 /** A category config row — drives the dynamic category list + the receipt rule. */
-export interface FieldConfig {
-  id: string;
-  category_key: string;
-  label: string;
-  requires_receipt: boolean;
-  is_active: boolean;
-  created_by: string;
-}
+export type FieldConfig = components['schemas']['FieldConfigResponse'];
 
-export interface ExpenseExport {
-  id: string;
-  generated_by: string;
-  client_id: string | null;
-  pay_period_id: string | null;
-  scope_filters: unknown;
-  format: ExportFormat;
-  file_url: string;
-  generated_at: string;
-}
+export type ExpenseExport = components['schemas']['ExpenseExportResponse'];
 
 export interface ExpenseFilters {
   status?: ExpenseStatus;

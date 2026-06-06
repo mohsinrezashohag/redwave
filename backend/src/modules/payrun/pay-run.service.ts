@@ -138,6 +138,8 @@ export class PayRunService {
     const updated = await this.prisma.payRunLine.update({
       where: { id: lineId },
       data: { bonus_amount: money(bonus), bonus_note: dto.note ?? null, net_payout: money(net) },
+      // Include rep so the bonus response is a full PayRunLine (uniform with getLines). — Batch A #2
+      include: { rep: { select: { id: true, rep_code: true, full_name: true } } },
     });
     await this.audit.log({
       actorId: user.id,

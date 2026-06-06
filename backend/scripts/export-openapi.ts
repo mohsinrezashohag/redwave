@@ -12,12 +12,15 @@ import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { AppModule } from '../src/app.module';
 import { buildOpenApiConfig } from '../src/openapi';
+import { ErrorEnvelopeDto } from '../src/common/errors/error-envelope.dto';
 
 async function main(): Promise<void> {
   const app = await NestFactory.create(AppModule, { logger: false });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
-  const document = SwaggerModule.createDocument(app, buildOpenApiConfig());
+  const document = SwaggerModule.createDocument(app, buildOpenApiConfig(), {
+    extraModels: [ErrorEnvelopeDto], // document the uniform error envelope in components.schemas (arch §5.1)
+  });
   const target = join(__dirname, '..', '..', 'contract', 'openapi.yaml');
   writeFileSync(target, stringify(document), 'utf8');
 

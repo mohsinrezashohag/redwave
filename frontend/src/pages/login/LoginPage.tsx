@@ -6,7 +6,7 @@
  */
 import { useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Banner, Button, FormField, Input, useToast } from '../../components/ui';
+import { Banner, Button, FormField, Input, Logo, useToast } from '../../components/ui';
 import { useAuth } from '../../auth/useAuth';
 import { SessionLoading } from '../../auth/SessionLoading';
 import styles from './LoginPage.module.css';
@@ -44,10 +44,7 @@ export default function LoginPage() {
     <div className={styles.page}>
       <main className={styles.card}>
         <div className={styles.brand}>
-          <span className={styles.mark} aria-hidden>
-            R
-          </span>
-          <span className={styles.word}>Redwave</span>
+          <Logo variant="full" size="lg" />
         </div>
         <h1 className={styles.title}>Sign in</h1>
         <p className={styles.subtitle}>Welcome back — enter your credentials to continue.</p>

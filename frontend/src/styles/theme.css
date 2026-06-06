@@ -67,6 +67,11 @@
   /* Static colour — white text on the accent fill, identical in both themes. */
   --on-accent: #ffffff;
 
+  /* Brand mark — the Redwave logo orange. Constant across themes (like --on-accent): vivid and legible
+     on white, on the navy chrome, and on the dark surface. The logo's "ink" is currentColor (it inherits
+     each placement's text token); only this accent is fixed. See components/ui/Logo. */
+  --brand-orange: #ff6600;
+
   /* ── Z-index scale ─────────────────────────────────────────────────────── */
   --z-sticky: 100;
   --z-dropdown: 1000;

@@ -9,9 +9,11 @@
  * The remaining 11 domain modules are registered here as they are built (CLAUDE §6 build order).
  */
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { AuditModule } from './common/audit/audit.module';
 import { ScopeModule } from './common/scope/scope.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -53,5 +55,7 @@ import { ReportingModule } from './modules/reporting/reporting.module';
     ImportModule,
     ReportingModule,
   ],
+  // Global exception filter — normalises every error to the contract envelope (arch §5.1) and masks 500s.
+  providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })
 export class AppModule {}

@@ -1,25 +1,13 @@
 /**
- * Notification types — HAND-WRITTEN (the backend declares no response schema; generated types are
- * `never`). Mirrors `backend/src/modules/reporting/notifications.service.ts` row shape. The list is
- * own-only (scoped server-side by user_id). Keep in sync with the backend.
+ * Notification types — RESPONSE shapes ALIASED to the generated OpenAPI schema (the backend ships
+ * `@ApiResponse` DTOs as of Batch A #2). Mirrors `backend/src/modules/reporting/dto/reporting.response.ts`.
+ * The list is own-only (scoped server-side by user_id). REQUEST body typed from the schema.
  */
 import type { components } from '../../api/generated/schema';
 
-export type NotificationChannel = 'in_app' | 'email';
+export type NotificationChannel = components['schemas']['AppNotificationResponse']['channel'];
 
-export interface AppNotification {
-  id: string;
-  user_id: string;
-  type: string;
-  channel: NotificationChannel;
-  title: string;
-  body: string;
-  related_entity_type: string | null;
-  related_entity_id: string | null;
-  is_read: boolean;
-  sent_at: string | null;
-  created_at: string;
-}
+export type AppNotification = components['schemas']['AppNotificationResponse'];
 
 export interface NotificationFilter {
   is_read?: boolean;
@@ -29,14 +17,7 @@ export interface NotificationFilter {
  * A global per-event channel setting (GET /v1/notification-settings, settings:view / Super Admin). There
  * is NO per-user override — the Super Admin configures channels per event for everyone (SRS AUTH-013).
  */
-export interface NotificationSetting {
-  id: string;
-  event_type: string;
-  in_app_enabled: boolean;
-  email_enabled: boolean;
-  updated_by: string;
-  updated_at: string;
-}
+export type NotificationSetting = components['schemas']['NotificationSettingResponse'];
 
 // Request body for the settings editor (PATCH /v1/notification-settings, settings:edit). Typed from schema.
 export type UpdateNotificationSettingsBody = components['schemas']['UpdateNotificationSettingsDto'];

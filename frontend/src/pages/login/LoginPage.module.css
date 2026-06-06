@@ -22,29 +22,11 @@
   box-shadow: var(--shadow-2);
 }
 
+/* The logo ink is currentColor → inherits .brand's colour; flips with the theme (near-black ↔ near-white). */
 .brand {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-}
-
-.mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  background-color: var(--accent-600);
-  color: var(--on-accent);
-  border-radius: var(--radius-md);
-  font-size: var(--text-md);
-  font-weight: var(--weight-bold);
-}
-
-.word {
-  font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-  letter-spacing: -0.01em;
   color: var(--text-primary);
 }
 

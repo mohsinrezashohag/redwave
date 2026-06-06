@@ -16,6 +16,7 @@ import {
   FormField,
   IconButton,
   Input,
+  Logo,
   MoneyInput,
   ProposedChip,
   RadioGroup,
@@ -51,6 +52,17 @@ export function StaticGallery() {
 
   return (
     <>
+      {/* Brand / Logo — full + icon-mark; ink follows the theme text token, orange is var(--brand-orange). */}
+      <div>
+        <p className={styles.label}>Brand / Logo</p>
+        <div className={styles.row} style={{ alignItems: 'center' }}>
+          <Logo variant="full" size="lg" />
+          <Logo variant="full" size="md" />
+          <Logo variant="mark" size="lg" />
+          <Logo variant="mark" size="md" />
+        </div>
+      </div>
+
       {/* Typography & KPI */}
       <div>
         <p className={styles.label}>Typography &amp; KPI</p>

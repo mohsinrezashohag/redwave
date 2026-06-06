@@ -2,13 +2,13 @@
  * Commission Config mutations — add a (future-dated) tier schedule / flat rate / holdback split (each
  * supersedes pending + bounds current server-side; back-date → 422), set the sticky holdback-release rule,
  * and create/update incentives. All invalidate the commission cache. The server validates (contiguity / no
- * internet flat / 100% holdback / target_count) → 422 surfaced by the caller. Responses `never`-typed → cast.
+ * internet flat / 100% holdback / target_count) → 422 surfaced by the caller. Responses are typed via the
+ * generated schema (Batch A #2).
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
 import { commissionKeys } from './keys';
-import type { components } from '../../../api/generated/schema';
 import type {
   CreateFlatRateBody,
   CreateIncentiveBody,
@@ -26,10 +26,9 @@ import type {
 export function useCreateTierSchedule() {
   const qc = useQueryClient();
   return useMutation({
-    // The generated CreateTierScheduleDto types max_count as `Record<string,never>` (a swagger nullable
-    // quirk); our hand body uses `number | null`, so cast at the boundary.
+    // The max_count swagger quirk is fixed (Batch A #2), so the generated request type is used directly.
     mutationFn: (body: CreateTierScheduleBody) =>
-      unwrap<TierConfig>(api.POST('/v1/commission/tiers', { body: body as unknown as components['schemas']['CreateTierScheduleDto'] })),
+      unwrap<TierConfig>(api.POST('/v1/commission/tiers', { body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
   });
 }

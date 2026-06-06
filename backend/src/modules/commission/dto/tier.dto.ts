@@ -24,7 +24,11 @@ export class TierBracketDto {
   @Min(0)
   min_count!: number;
 
+  // Explicit type + nullable so swagger does NOT degrade the `number | null` union to `Record<string,never>`
+  // (the documented quirk) — lets the frontend use the generated request DTO directly. — Batch A #2
   @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
     example: 6,
     description: 'Inclusive upper bound; null = open-ended (36+).',
   })

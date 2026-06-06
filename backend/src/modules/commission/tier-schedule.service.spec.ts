@@ -1,5 +1,6 @@
 import { UnprocessableEntityException } from '@nestjs/common';
 import { TierScheduleService } from './tier-schedule.service';
+import { DomainError } from '../../common/errors/domain-error';
 import { SCHEDULE_C_V2 } from './schedule-c-v2';
 
 function make() {
@@ -36,15 +37,17 @@ describe('TierScheduleService.create (COMM-001 / COMM-006)', () => {
     ).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
 
-  it('rejects an invalid (non-contiguous) schedule', async () => {
+  it('rejects an invalid (non-contiguous) schedule as a DomainError (→ 422 via the global filter)', async () => {
     const { service } = make();
     const bad = [
       { tier_number: 1, min_count: 0, max_count: 5, rate_per_activation: '110.00' },
       { tier_number: 0, min_count: 8, max_count: null, rate_per_activation: '160.00' }, // gap at 6-7
     ];
-    await expect(
-      service.create({ effective_from: iso(monthsFromToday(1)), tiers: bad }, 'actor'),
-    ).rejects.toThrow();
+    const err = await service
+      .create({ effective_from: iso(monthsFromToday(1)), tiers: bad }, 'actor')
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DomainError);
+    expect((err as DomainError).code).toBe('TIER_SCHEDULE_INVALID');
   });
 
   it('supersedes the pending schedule (incl. child tiers), bounds current, and passes rate as a decimal string', async () => {

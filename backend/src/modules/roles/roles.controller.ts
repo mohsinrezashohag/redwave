@@ -14,14 +14,29 @@ import {
   Post,
   Put,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiErrorResponses } from '../../common/errors/api-error-responses.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RolesService } from './roles.service';
 import { CreateRoleDto, SetRolePermissionsDto, UpdateRoleDto } from './dto/role.dto';
+import {
+  ModuleResponse,
+  PermissionResponse,
+  RoleDetailResponse,
+  RoleSummaryResponse,
+} from './dto/role.response';
 
 @ApiTags('Roles')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('roles')
 export class RolesController {
   constructor(private readonly roles: RolesService) {}
@@ -29,6 +44,7 @@ export class RolesController {
   @Get()
   @RequirePermission('roles', 'view')
   @ApiOperation({ summary: 'List roles', description: 'Requires roles:view.' })
+  @ApiOkResponse({ type: RoleSummaryResponse, isArray: true })
   findAll() {
     return this.roles.findAll();
   }
@@ -36,6 +52,7 @@ export class RolesController {
   @Post()
   @RequirePermission('roles', 'create')
   @ApiOperation({ summary: 'Create a custom role', description: 'Requires roles:create.' })
+  @ApiCreatedResponse({ type: RoleDetailResponse })
   create(@Body() dto: CreateRoleDto, @CurrentUser('id') actorId: string) {
     return this.roles.create(dto, actorId);
   }
@@ -46,6 +63,7 @@ export class RolesController {
     summary: 'Get a role + its granted permissions',
     description: 'Requires roles:view.',
   })
+  @ApiOkResponse({ type: RoleDetailResponse })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.roles.findOne(id);
   }
@@ -56,6 +74,7 @@ export class RolesController {
     summary: 'Rename / edit a role',
     description: 'Requires roles:edit. Built-in roles cannot be renamed.',
   })
+  @ApiOkResponse({ type: RoleDetailResponse })
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRoleDto,
@@ -70,6 +89,7 @@ export class RolesController {
     summary: 'Set a role’s module×action grants',
     description: 'Requires roles:edit.',
   })
+  @ApiOkResponse({ type: RoleDetailResponse })
   setPermissions(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetRolePermissionsDto,
@@ -85,6 +105,7 @@ export class RolesController {
     summary: 'Delete a custom role',
     description: 'Requires roles:delete. Built-in roles → 409.',
   })
+  @ApiNoContentResponse({ description: 'Role deleted.' })
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') actorId: string) {
     return this.roles.remove(id, actorId);
   }
@@ -93,6 +114,7 @@ export class RolesController {
 /** Catalogue endpoints for the Role Builder matrix — /v1/modules and /v1/permissions. */
 @ApiTags('Roles')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller()
 export class RbacCatalogueController {
   constructor(private readonly roles: RolesService) {}
@@ -100,6 +122,7 @@ export class RbacCatalogueController {
   @Get('modules')
   @RequirePermission('roles', 'view')
   @ApiOperation({ summary: 'List system modules', description: 'Requires roles:view.' })
+  @ApiOkResponse({ type: ModuleResponse, isArray: true })
   listModules() {
     return this.roles.listModules();
   }
@@ -110,6 +133,7 @@ export class RbacCatalogueController {
     summary: 'List all (module, action) permissions',
     description: 'Requires roles:view.',
   })
+  @ApiOkResponse({ type: PermissionResponse, isArray: true })
   listPermissions() {
     return this.roles.listPermissions();
   }

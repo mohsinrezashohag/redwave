@@ -37,8 +37,11 @@ export class CreateImportDto {
   @Matches(MONEY, { message: 'reconcile_total must be a decimal string with up to 2 decimal places' })
   reconcile_total?: string;
 
+  // Explicit array-of-free-form-object schema so swagger does NOT degrade `rows` to `Record<string,never>`
+  // (the documented quirk) — lets the frontend use the generated request DTO directly. — Batch A #2
   @ApiProperty({
-    type: [Object],
+    type: 'array',
+    items: { type: 'object', additionalProperties: true },
     description: 'Raw source rows (file upload stubbed). Each is an arbitrary key→value object.',
   })
   @IsArray()

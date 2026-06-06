@@ -1,49 +1,22 @@
 /**
- * Account types — RESPONSE shapes are hand-written (the backend Reporting/account endpoints declare no
- * response schema, so generated types are `never`). Mirrors `backend/src/modules/account/`. REQUEST bodies
- * ARE typed from the generated schema (re-exported below). Keep in sync with the backend.
+ * Account types — RESPONSE shapes ALIASED to the generated OpenAPI schema (the backend ships `@ApiResponse`
+ * DTOs as of Batch A #2). Mirrors `backend/src/modules/account/dto/account.response.ts`. REQUEST bodies are
+ * likewise typed from the generated schema.
  */
 import type { components } from '../../api/generated/schema';
-import type { ThemePreference } from '../../theme/theme.types';
 
 /** The HR fields that can be changed via a profile-change request. */
-export interface ProfileChangeFields {
-  full_name?: string;
-  phone?: string;
-  avatar_url?: string;
-}
+export type ProfileChangeFields = components['schemas']['ProfileChangeFieldsResponse'];
 
-export interface PendingRequestSummary {
-  id: string;
-  proposed_changes: ProfileChangeFields;
-  created_at: string;
-}
+export type PendingRequestSummary = components['schemas']['PendingRequestResponse'];
 
 /** GET /v1/account/profile — the user's profile + whether a change is pending review. */
-export interface AccountProfile {
-  id: string;
-  email: string;
-  full_name: string;
-  phone: string | null;
-  avatar_url: string | null;
-  theme_preference: ThemePreference;
-  status: string;
-  created_at: string;
-  updated_at: string;
-  change_pending: boolean;
-  pending_request: PendingRequestSummary | null;
-}
+export type AccountProfile = components['schemas']['AccountProfileResponse'];
 
-export type ProfileChangeStatus = 'pending' | 'approved' | 'rejected';
+export type ProfileChangeStatus = components['schemas']['MyProfileRequestResponse']['status'];
 
 /** A row from GET /v1/account/profile-change-requests (the user's own request history). */
-export interface MyProfileRequest {
-  id: string;
-  status: ProfileChangeStatus;
-  proposed_changes: ProfileChangeFields;
-  reviewed_at: string | null;
-  created_at: string;
-}
+export type MyProfileRequest = components['schemas']['MyProfileRequestResponse'];
 
 // Request bodies — typed from the generated schema (the backend DID emit request DTOs).
 export type ProfileChangeRequestBody = components['schemas']['ProfileChangeRequestDto'];

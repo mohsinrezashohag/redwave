@@ -1,70 +1,28 @@
 /**
- * Sales types — RESPONSE shapes are hand-written (the backend OpenAPI declares no response schemas, so
- * the generated types are `never`). Kept in sync with `backend/src/modules/sales/`. REQUEST bodies ARE
- * typed from the generated schema (re-exported below) — openapi-fetch enforces them at the call site.
- * Remove the hand-written responses once the backend ships `@ApiResponse` DTOs (flagged follow-up).
+ * Sales types — RESPONSE shapes are now ALIASED to the generated OpenAPI schema (the backend ships
+ * `@ApiResponse` DTOs as of Batch A #2), so the type names below are the single source of truth and stay
+ * in lockstep with `backend/src/modules/sales/dto/sale.response.ts`. REQUEST bodies are likewise typed from
+ * the generated schema. `Client`/`Product`/`Rep` stay hand-written minimal shapes — their owning modules
+ * (Clients/HRM) aren't annotated yet; re-point them when those chunks land. — CLAUDE §13
  */
 import type { components } from '../../api/generated/schema';
 
-export type SaleStatus =
-  | 'entered'
-  | 'validated'
-  | 'in_pay_run'
-  | 'paid'
-  | 'clawed_back'
-  | 'deleted';
+// Enums derived from the contract (dashboards imports `ProductType` from here — keep it exported).
+export type SaleStatus = components['schemas']['SaleResponse']['status'];
+export type ProductType = components['schemas']['SaleItemResponse']['product_type'];
 
-export type ProductType = 'internet' | 'tv' | 'home_phone' | 'greenfield_internet';
+// Frozen-snapshot fields (`rate_applied`/`commission_paid`/`incentive_amount`, nullable until paid — #2)
+// are carried by SaleItemResponse; the clawback feature reads them off this type.
+export type SaleItem = components['schemas']['SaleItemResponse'];
 
-export interface SaleItem {
-  id: string;
-  product_id: string;
-  product_type: ProductType;
-  counts_toward_tally: boolean;
-  item_status: string; // 'active' | 'cancelled' | 'clawed_back'
-  // ── Frozen snapshot (set ONCE at pay-run finalize; non-null only on PAID items — #2). Read-only here.
-  tier_at_payment: number | null;
-  rate_applied: string | null; // decimal string — the tier/flat rate frozen at payment
-  commission_paid: string | null; // decimal string — non-null = PAID (the clawable signal)
-  incentive_id: string | null;
-  incentive_amount: string | null; // decimal string — spiff frozen at payment
-}
+/** The 4-field pay period DERIVED onto a sale by list/findOne (≠ Pay Run's fuller PayPeriod). */
+export type PayPeriod = components['schemas']['SalePayPeriodResponse'];
 
-export interface PayPeriod {
-  id: string;
-  period_number: number;
-  start_date: string;
-  end_date: string;
-}
+export type Sale = components['schemas']['SaleResponse'];
 
-export interface Sale {
-  id: string;
-  sale_code: string;
-  sale_date: string;
-  activation_date: string | null;
-  rep_id: string;
-  client_id: string;
-  customer_name: string;
-  street: string;
-  city: string;
-  province_state: string;
-  postal_code: string;
-  mpu_id: string | null;
-  is_greenfield: boolean;
-  status: SaleStatus;
-  validated_by: string | null;
-  validated_at: string | null;
-  pay_run_id: string | null;
-  created_at: string;
-  sale_items: SaleItem[];
-  pay_period: PayPeriod | null;
-}
+export type BulkValidateResult = components['schemas']['BulkValidateResultResponse'];
 
-export interface BulkValidateResult {
-  validated: number;
-  failed: number;
-  results: { id: string; ok: boolean; error?: string }[];
-}
+export type DeletedSale = components['schemas']['DeletedSaleResponse'];
 
 export interface Client {
   id: string;

@@ -1,48 +1,25 @@
 /**
- * Documents & E-Signature types — RESPONSE shapes hand-written (the backend declares no response schema, so
- * generated types are `never`). Mirrors `backend/src/modules/documents/`. The overall status + each request/
- * signature status are SERVER-DERIVED — the UI only DISPLAYS them, never recomputes. The detail returns raw
- * user IDs (no names) — names come from the users list (`useUsers`). REQUEST bodies typed from the schema.
+ * Documents & E-Signature types — RESPONSE shapes ALIASED to the generated OpenAPI schema (the backend ships
+ * `@ApiResponse` DTOs as of Batch A #2). Mirrors `backend/src/modules/documents/dto/document.response.ts`.
+ * The overall status + each request/signature status are SERVER-DERIVED — the UI only DISPLAYS them. The
+ * detail returns raw user IDs (names come from `useUsers`). REQUEST bodies typed from the schema.
  */
 import type { components } from '../../api/generated/schema';
 
-export type DocType = 'compensation_agreement' | 'rate_notice' | 'equipment' | 'other';
-export type DocumentStatus = 'draft' | 'shared' | 'partially_signed' | 'completed' | 'declined';
-export type SignatureRequestStatus = 'pending' | 'completed' | 'declined' | 'cancelled';
-export type SignatureStatus = 'pending' | 'signed' | 'declined';
+// Enums derived from the contract.
+export type DocType = components['schemas']['DocumentResponse']['doc_type'];
+export type DocumentStatus = components['schemas']['DocumentResponse']['status'];
+export type SignatureRequestStatus = components['schemas']['SignatureRequestResponse']['status'];
+export type SignatureStatus = components['schemas']['DocumentSignatureResponse']['status'];
+/** The sign/decline decision (request enum). */
 export type SignDecision = 'sign' | 'decline';
 
 /** One signer's row within a request. Per-signer signed copy; the original is never mutated (DOC-004). */
-export interface DocumentSignature {
-  id: string;
-  recipient_user_id: string;
-  status: SignatureStatus;
-  signed_file_url: string | null;
-  signed_at: string | null;
-  method: string | null;
-}
+export type DocumentSignature = components['schemas']['DocumentSignatureResponse'];
 
-export interface SignatureRequest {
-  id: string;
-  document_id: string;
-  requested_by: string;
-  message: string | null;
-  due_date: string | null;
-  status: SignatureRequestStatus;
-  created_at: string;
-  document_signatures: DocumentSignature[];
-}
+export type SignatureRequest = components['schemas']['SignatureRequestResponse'];
 
-export interface Document {
-  id: string;
-  title: string;
-  doc_type: DocType;
-  owner_user_id: string;
-  original_file_url: string;
-  status: DocumentStatus;
-  created_at: string;
-  signature_requests?: SignatureRequest[]; // present on detail; absent on the list
-}
+export type Document = components['schemas']['DocumentResponse'];
 
 export interface DocumentFilters {
   status?: DocumentStatus;

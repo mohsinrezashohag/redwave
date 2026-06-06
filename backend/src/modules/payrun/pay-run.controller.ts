@@ -4,7 +4,15 @@
  * the global guard enforces it and the service scopes data per caller.
  */
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiHeader,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiErrorResponses } from '../../common/errors/api-error-responses.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../../common/rbac/auth-user.type';
@@ -14,9 +22,18 @@ import { CreatePayRunDto } from './dto/create-pay-run.dto';
 import { SetBonusDto } from './dto/bonus.dto';
 import { ExportPayRunDto } from './dto/export.dto';
 import { ListHoldbackQuery } from './dto/list-holdback.query';
+import {
+  ExportResultResponse,
+  HoldbackLedgerResponse,
+  PayPeriodResponse,
+  PayRunLineResponse,
+  PayRunResponse,
+  PayRunSummaryResponse,
+} from './dto/pay-run.response';
 
 @ApiTags('Pay Run & Holdback')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('pay-periods')
 export class PayPeriodController {
   constructor(private readonly periods: PayPeriodService) {}
@@ -27,6 +44,7 @@ export class PayPeriodController {
     summary: 'List pay periods',
     description: 'Requires payrun:view. Pre-loaded 2026 schedule.',
   })
+  @ApiOkResponse({ type: PayPeriodResponse, isArray: true })
   list() {
     return this.periods.list();
   }
@@ -34,6 +52,7 @@ export class PayPeriodController {
 
 @ApiTags('Pay Run & Holdback')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('pay-runs')
 export class PayRunController {
   constructor(private readonly payRuns: PayRunService) {}
@@ -41,6 +60,7 @@ export class PayRunController {
   @Get()
   @RequirePermission('payrun', 'view')
   @ApiOperation({ summary: 'List pay runs', description: 'Requires payrun:view.' })
+  @ApiOkResponse({ type: PayRunSummaryResponse, isArray: true })
   list() {
     return this.payRuns.listRuns();
   }
@@ -51,6 +71,7 @@ export class PayRunController {
     summary: 'Create / refresh a DRAFT pay run',
     description: 'Requires payrun:create. Computes preview lines via the engine; nothing frozen.',
   })
+  @ApiCreatedResponse({ type: PayRunResponse })
   create(@Body() dto: CreatePayRunDto, @CurrentUser() user: AuthUser) {
     return this.payRuns.createDraft(dto, user);
   }
@@ -61,6 +82,7 @@ export class PayRunController {
     summary: 'Get a pay run + lines',
     description: 'Requires payrun:view (scoped lines).',
   })
+  @ApiOkResponse({ type: PayRunResponse })
   findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.payRuns.getRun(id, user);
   }
@@ -71,6 +93,7 @@ export class PayRunController {
     summary: 'Per-rep computed lines',
     description: 'Requires payrun:view (scoped).',
   })
+  @ApiOkResponse({ type: PayRunLineResponse, isArray: true })
   lines(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.payRuns.getLines(id, user);
   }
@@ -82,6 +105,7 @@ export class PayRunController {
     summary: 'Set an ad-hoc bonus on a draft line',
     description: 'Requires payrun:approve. Draft only.',
   })
+  @ApiOkResponse({ type: PayRunLineResponse })
   setBonus(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('lineId', ParseUUIDPipe) lineId: string,
@@ -105,6 +129,7 @@ export class PayRunController {
       'Requires payrun:approve. ATOMIC + IDEMPOTENT: freezes snapshots, pays sales, records/releases ' +
       'holdback (release timing PROPOSED — SRS §17), applies bonuses, composes net. Retry is a no-op.',
   })
+  @ApiOkResponse({ type: PayRunResponse })
   finalize(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.payRuns.finalize(id, user);
   }
@@ -117,6 +142,7 @@ export class PayRunController {
     description:
       'Requires payrun:export. Configurable format; marks the run exported; recorded via audit.',
   })
+  @ApiOkResponse({ type: ExportResultResponse })
   export(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ExportPayRunDto,
@@ -128,6 +154,7 @@ export class PayRunController {
 
 @ApiTags('Pay Run & Holdback')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('holdback-ledger')
 export class HoldbackLedgerController {
   constructor(private readonly payRuns: PayRunService) {}
@@ -138,6 +165,7 @@ export class HoldbackLedgerController {
     summary: 'Holdback ledger',
     description: 'Requires payrun:view. Holds, schedule, release status.',
   })
+  @ApiOkResponse({ type: HoldbackLedgerResponse, isArray: true })
   list(@Query() query: ListHoldbackQuery, @CurrentUser() user: AuthUser) {
     return this.payRuns.listHoldbackLedger(query, user);
   }

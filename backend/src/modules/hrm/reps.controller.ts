@@ -4,7 +4,14 @@
  * Read endpoints pass the AuthUser so the service can redact sensitive PII (hrm:edit gate).
  */
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiErrorResponses } from '../../common/errors/api-error-responses.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../../common/rbac/auth-user.type';
@@ -14,9 +21,11 @@ import { RepEquipmentService } from './rep-equipment.service';
 import { CreateRepDto, ListRepsQuery, UpdateRepDto } from './dto/rep.dto';
 import { CreateRepDocumentDto } from './dto/rep-document.dto';
 import { CreateRepEquipmentDto } from './dto/rep-equipment.dto';
+import { RepDocumentResponse, RepEquipmentResponse, RepResponse } from './dto/hrm.response';
 
 @ApiTags('HRM / Reps')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('reps')
 export class RepsController {
   constructor(
@@ -32,6 +41,7 @@ export class RepsController {
     description:
       'Requires hrm:view. Filters: status, fieldManagerId, search. payment_details redacted unless hrm:edit.',
   })
+  @ApiOkResponse({ type: RepResponse, isArray: true })
   list(@Query() query: ListRepsQuery, @CurrentUser() user: AuthUser) {
     return this.reps.findAll(query, user);
   }
@@ -42,6 +52,7 @@ export class RepsController {
     summary: 'Create a rep',
     description: 'Requires hrm:create. rep_code never reused → 409.',
   })
+  @ApiCreatedResponse({ type: RepResponse })
   create(@Body() dto: CreateRepDto, @CurrentUser('id') actorId: string) {
     return this.reps.create(dto, actorId);
   }
@@ -52,6 +63,7 @@ export class RepsController {
     summary: 'Get a rep',
     description: 'Requires hrm:view. payment_details redacted unless hrm:edit.',
   })
+  @ApiOkResponse({ type: RepResponse })
   findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.reps.findOne(id, user);
   }
@@ -63,6 +75,7 @@ export class RepsController {
     description:
       'Requires hrm:edit. status=terminated requires termination_date. rep_code immutable.',
   })
+  @ApiOkResponse({ type: RepResponse })
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRepDto,
@@ -79,6 +92,7 @@ export class RepsController {
     summary: "List a rep's documents",
     description: 'Requires hrm:view. file_url shown only with hrm:edit.',
   })
+  @ApiOkResponse({ type: RepDocumentResponse, isArray: true })
   listDocuments(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.documents.list(id, user);
   }
@@ -89,6 +103,7 @@ export class RepsController {
     summary: 'Attach a document to a rep',
     description: 'Requires hrm:edit. Stores a storage reference.',
   })
+  @ApiCreatedResponse({ type: RepDocumentResponse })
   createDocument(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateRepDocumentDto,
@@ -102,6 +117,7 @@ export class RepsController {
   @Get(':id/equipment')
   @RequirePermission('hrm', 'view')
   @ApiOperation({ summary: "List a rep's equipment", description: 'Requires hrm:view.' })
+  @ApiOkResponse({ type: RepEquipmentResponse, isArray: true })
   listEquipment(@Param('id', ParseUUIDPipe) id: string) {
     return this.equipment.list(id);
   }
@@ -112,6 +128,7 @@ export class RepsController {
     summary: 'Assign equipment to a rep',
     description: 'Requires hrm:edit. Deposit is exact Decimal.',
   })
+  @ApiCreatedResponse({ type: RepEquipmentResponse })
   assignEquipment(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateRepEquipmentDto,

@@ -15,7 +15,14 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiErrorResponses } from '../../common/errors/api-error-responses.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../../common/rbac/auth-user.type';
@@ -26,9 +33,15 @@ import { ValidateSaleDto } from './dto/validate-sale.dto';
 import { SetGreenfieldDto } from './dto/greenfield.dto';
 import { BulkValidateDto } from './dto/bulk-validate.dto';
 import { ListSalesQuery } from './dto/list-sales.query';
+import {
+  BulkValidateResultResponse,
+  DeletedSaleResponse,
+  SaleResponse,
+} from './dto/sale.response';
 
 @ApiTags('Sales & Validation')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('sales')
 export class SalesController {
   constructor(private readonly sales: SalesService) {}
@@ -39,6 +52,7 @@ export class SalesController {
     summary: 'Enter a sale',
     description: 'Requires sales:create. Server generates the Sale ID; item snapshots stay NULL.',
   })
+  @ApiCreatedResponse({ type: SaleResponse })
   create(@Body() dto: CreateSaleDto, @CurrentUser() user: AuthUser) {
     return this.sales.create(dto, user);
   }
@@ -50,6 +64,7 @@ export class SalesController {
     description:
       'Requires sales:view. Filters status/rep_id/client_id/date. Scoped per caller in the query.',
   })
+  @ApiOkResponse({ type: SaleResponse, isArray: true })
   list(@Query() query: ListSalesQuery, @CurrentUser() user: AuthUser) {
     return this.sales.list(query, user);
   }
@@ -62,6 +77,7 @@ export class SalesController {
     description:
       'Requires sales:approve. NOT a file upload — client-report ingestion is the Import module.',
   })
+  @ApiOkResponse({ type: BulkValidateResultResponse })
   bulkValidate(@Body() dto: BulkValidateDto, @CurrentUser() user: AuthUser) {
     return this.sales.bulkValidate(dto, user);
   }
@@ -72,6 +88,7 @@ export class SalesController {
     summary: 'Get a sale',
     description: 'Requires sales:view. Includes items + derived pay period.',
   })
+  @ApiOkResponse({ type: SaleResponse })
   findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.sales.findOne(id, user);
   }
@@ -82,6 +99,7 @@ export class SalesController {
     summary: 'Edit an entered sale',
     description: 'Requires sales:edit. Only Entered sales; client/sale_date/mpu_id are immutable.',
   })
+  @ApiOkResponse({ type: SaleResponse })
   edit(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateSaleDto,
@@ -98,6 +116,7 @@ export class SalesController {
     description:
       'Requires sales:approve. Approval gate; never changes the pay period. Optional greenfield confirm.',
   })
+  @ApiOkResponse({ type: SaleResponse })
   validate(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ValidateSaleDto,
@@ -114,6 +133,7 @@ export class SalesController {
     description:
       'Requires sales:approve. PROPOSED two-step; recomputes counts_toward_tally. Pay Run consumes at close.',
   })
+  @ApiOkResponse({ type: SaleResponse })
   setGreenfield(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetGreenfieldDto,
@@ -129,6 +149,7 @@ export class SalesController {
     description:
       'Requires sales:delete. entered|validated → status=deleted (row preserved); rejected once paid.',
   })
+  @ApiOkResponse({ type: DeletedSaleResponse })
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.sales.remove(id, user);
   }

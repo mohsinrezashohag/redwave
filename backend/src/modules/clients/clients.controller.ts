@@ -3,7 +3,14 @@
  * Every route declares its (clients, action) permission; the global guard enforces it server-side.
  */
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiErrorResponses } from '../../common/errors/api-error-responses.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ClientsService } from './clients.service';
@@ -12,9 +19,11 @@ import { BillingRatesService } from './billing-rates.service';
 import { CreateClientDto, ListClientsQuery, UpdateClientDto } from './dto/client.dto';
 import { CreateProductDto, ListProductsQuery } from './dto/product.dto';
 import { CreateBillingRateDto, ListBillingRatesQuery } from './dto/billing-rate.dto';
+import { BillingRateResponse, ClientResponse, ProductResponse } from './dto/client.response';
 
 @ApiTags('Clients & Products')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('clients')
 export class ClientsController {
   constructor(
@@ -26,6 +35,7 @@ export class ClientsController {
   @Get()
   @RequirePermission('clients', 'view')
   @ApiOperation({ summary: 'List clients', description: 'Requires clients:view. ?status filter.' })
+  @ApiOkResponse({ type: ClientResponse, isArray: true })
   list(@Query() query: ListClientsQuery) {
     return this.clients.findAll(query);
   }
@@ -36,6 +46,7 @@ export class ClientsController {
     summary: 'Create a client',
     description: 'Requires clients:create. Unique code → 409.',
   })
+  @ApiCreatedResponse({ type: ClientResponse })
   create(@Body() dto: CreateClientDto, @CurrentUser('id') actorId: string) {
     return this.clients.create(dto, actorId);
   }
@@ -43,6 +54,7 @@ export class ClientsController {
   @Get(':id')
   @RequirePermission('clients', 'view')
   @ApiOperation({ summary: 'Get a client', description: 'Requires clients:view.' })
+  @ApiOkResponse({ type: ClientResponse })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.clients.findOne(id);
   }
@@ -53,6 +65,7 @@ export class ClientsController {
     summary: 'Edit / deactivate a client',
     description: 'Requires clients:edit. is_active=false soft-deactivates.',
   })
+  @ApiOkResponse({ type: ClientResponse })
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateClientDto,
@@ -66,6 +79,7 @@ export class ClientsController {
   @Get(':id/products')
   @RequirePermission('clients', 'view')
   @ApiOperation({ summary: "List a client's products", description: 'Requires clients:view.' })
+  @ApiOkResponse({ type: ProductResponse, isArray: true })
   listProducts(@Param('id', ParseUUIDPipe) id: string, @Query() query: ListProductsQuery) {
     return this.products.findAllForClient(id, query);
   }
@@ -73,6 +87,7 @@ export class ClientsController {
   @Post(':id/products')
   @RequirePermission('clients', 'edit')
   @ApiOperation({ summary: 'Create a per-client product', description: 'Requires clients:edit.' })
+  @ApiCreatedResponse({ type: ProductResponse })
   createProduct(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateProductDto,
@@ -90,6 +105,7 @@ export class ClientsController {
     description:
       'Requires clients:view. ?effectiveOn returns the rate in force per scope on a date.',
   })
+  @ApiOkResponse({ type: BillingRateResponse, isArray: true })
   listBillingRates(@Param('id', ParseUUIDPipe) id: string, @Query() query: ListBillingRatesQuery) {
     return this.billingRates.list(id, query);
   }
@@ -100,6 +116,7 @@ export class ClientsController {
     summary: 'Add an effective-dated billing rate',
     description: 'Requires clients:edit. Supersedes the scope’s pending rate; back-dating → 422.',
   })
+  @ApiCreatedResponse({ type: BillingRateResponse })
   createBillingRate(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateBillingRateDto,

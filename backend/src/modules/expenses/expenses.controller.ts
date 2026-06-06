@@ -4,7 +4,14 @@
  * services scope data per caller.
  */
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiErrorResponses } from '../../common/errors/api-error-responses.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../../common/rbac/auth-user.type';
@@ -17,9 +24,15 @@ import { ReviewDto } from './dto/review.dto';
 import { ListReportsQuery } from './dto/list-reports.query';
 import { CreateFieldConfigDto } from './dto/field-config.dto';
 import { CreateExportDto } from './dto/export.dto';
+import {
+  ExpenseExportResponse,
+  ExpenseReportResponse,
+  FieldConfigResponse,
+} from './dto/expense.response';
 
 @ApiTags('Expenses')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('expense-reports')
 export class ExpenseReportsController {
   constructor(private readonly expenses: ExpensesService) {}
@@ -32,6 +45,7 @@ export class ExpenseReportsController {
       'Requires expenses:create. Any user may submit (own by default). km items compute their amount; ' +
       'non-km items require a receipt per the category config. The pay period is derived from week_start.',
   })
+  @ApiCreatedResponse({ type: ExpenseReportResponse })
   create(@Body() dto: CreateReportDto, @CurrentUser() user: AuthUser) {
     return this.expenses.submit(dto, user);
   }
@@ -42,6 +56,7 @@ export class ExpenseReportsController {
     summary: 'List expense reports',
     description: 'Requires expenses:view. Scoped (own/roster/all); filters status/rep/client/period/date.',
   })
+  @ApiOkResponse({ type: ExpenseReportResponse, isArray: true })
   list(@Query() query: ListReportsQuery, @CurrentUser() user: AuthUser) {
     return this.expenses.list(query, user);
   }
@@ -49,6 +64,7 @@ export class ExpenseReportsController {
   @Get(':id')
   @RequirePermission('expenses', 'view')
   @ApiOperation({ summary: 'Get an expense report', description: 'Requires expenses:view (scoped).' })
+  @ApiOkResponse({ type: ExpenseReportResponse })
   findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.expenses.findOne(id, user);
   }
@@ -61,6 +77,7 @@ export class ExpenseReportsController {
       'Requires expenses:edit. Editable pre-approval; once approved, only a Super Admin may edit. ' +
       'Supplying items replaces the report lines wholesale.',
   })
+  @ApiOkResponse({ type: ExpenseReportResponse })
   edit(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateReportDto,
@@ -75,6 +92,7 @@ export class ExpenseReportsController {
     summary: 'Review an expense report',
     description: 'Requires expenses:approve. decision = approve | reject | send_back.',
   })
+  @ApiCreatedResponse({ type: ExpenseReportResponse })
   review(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ReviewDto,
@@ -86,6 +104,7 @@ export class ExpenseReportsController {
 
 @ApiTags('Expenses')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('expense-field-configs')
 export class ExpenseFieldConfigsController {
   constructor(private readonly configs: FieldConfigService) {}
@@ -93,6 +112,7 @@ export class ExpenseFieldConfigsController {
   @Get()
   @RequirePermission('expenses', 'view')
   @ApiOperation({ summary: 'List expense category configs', description: 'Requires expenses:view.' })
+  @ApiOkResponse({ type: FieldConfigResponse, isArray: true })
   list() {
     return this.configs.list();
   }
@@ -103,6 +123,7 @@ export class ExpenseFieldConfigsController {
     summary: 'Add / configure an expense category',
     description: 'Requires expenses:edit. Sets label, requires_receipt, is_active for a category key.',
   })
+  @ApiCreatedResponse({ type: FieldConfigResponse })
   create(@Body() dto: CreateFieldConfigDto, @CurrentUser() user: AuthUser) {
     return this.configs.create(dto, user);
   }
@@ -110,6 +131,7 @@ export class ExpenseFieldConfigsController {
 
 @ApiTags('Expenses')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('expense-exports')
 export class ExpenseExportsController {
   constructor(private readonly exports: ExpenseExportService) {}
@@ -117,6 +139,7 @@ export class ExpenseExportsController {
   @Get()
   @RequirePermission('expenses', 'view')
   @ApiOperation({ summary: 'List expense exports', description: 'Requires expenses:view.' })
+  @ApiOkResponse({ type: ExpenseExportResponse, isArray: true })
   list() {
     return this.exports.list();
   }
@@ -127,6 +150,7 @@ export class ExpenseExportsController {
     summary: 'Generate an expense export',
     description: 'Requires expenses:export. Records the request with a stubbed file_url (generation deferred).',
   })
+  @ApiCreatedResponse({ type: ExpenseExportResponse })
   create(@Body() dto: CreateExportDto, @CurrentUser() user: AuthUser) {
     return this.exports.generate(dto, user);
   }

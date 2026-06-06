@@ -31,7 +31,12 @@ export class RowResolution {
   @IsUUID()
   matched_entity_id?: string;
 
-  @ApiPropertyOptional({ description: "For 'edit': corrected mapped data (re-classified)." })
+  // Explicit free-form-object schema so swagger does NOT degrade `mapped_data` to `Record<string,never>`. — Batch A #2
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: "For 'edit': corrected mapped data (re-classified).",
+  })
   @IsOptional()
   @IsObject()
   mapped_data?: Record<string, unknown>;

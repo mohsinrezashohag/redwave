@@ -4,7 +4,14 @@
  * per-CLIENT partner data, gated by the billing:* permissions (no rep scoping applies).
  */
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiErrorResponses } from '../../common/errors/api-error-responses.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { StatementService } from './statement.service';
@@ -12,9 +19,15 @@ import { InvoiceService } from './invoice.service';
 import { BillingExportService } from './billing-export.service';
 import { ListBillingQuery } from './dto/list.query';
 import { BillingExportDto } from './dto/export.dto';
+import {
+  BillingExportResultResponse,
+  ClientInvoiceResponse,
+  ClientStatementResponse,
+} from './dto/billing.response';
 
 @ApiTags('Billing & Statements')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('statements')
 export class StatementsController {
   constructor(
@@ -25,6 +38,7 @@ export class StatementsController {
   @Get()
   @RequirePermission('billing', 'view')
   @ApiOperation({ summary: 'List generated statements', description: 'Requires billing:view.' })
+  @ApiOkResponse({ type: ClientStatementResponse, isArray: true })
   list(@Query() query: ListBillingQuery) {
     return this.statements.list(query);
   }
@@ -32,6 +46,7 @@ export class StatementsController {
   @Get(':id')
   @RequirePermission('billing', 'view')
   @ApiOperation({ summary: 'Get a statement with its lines', description: 'Requires billing:view.' })
+  @ApiOkResponse({ type: ClientStatementResponse })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.statements.findOne(id);
   }
@@ -42,6 +57,7 @@ export class StatementsController {
     summary: 'Export a statement (stub file)',
     description: 'Requires billing:export. Updates the file_url reference; real render deferred.',
   })
+  @ApiCreatedResponse({ type: BillingExportResultResponse })
   export(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: BillingExportDto,
@@ -53,6 +69,7 @@ export class StatementsController {
 
 @ApiTags('Billing & Statements')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('invoices')
 export class InvoicesController {
   constructor(
@@ -63,6 +80,7 @@ export class InvoicesController {
   @Get()
   @RequirePermission('billing', 'view')
   @ApiOperation({ summary: 'List generated invoices', description: 'Requires billing:view.' })
+  @ApiOkResponse({ type: ClientInvoiceResponse, isArray: true })
   list(@Query() query: ListBillingQuery) {
     return this.invoices.list(query);
   }
@@ -70,6 +88,7 @@ export class InvoicesController {
   @Get(':id')
   @RequirePermission('billing', 'view')
   @ApiOperation({ summary: 'Get an invoice', description: 'Requires billing:view.' })
+  @ApiOkResponse({ type: ClientInvoiceResponse })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.invoices.findOne(id);
   }
@@ -80,6 +99,7 @@ export class InvoicesController {
     summary: 'Export an invoice (stub file)',
     description: 'Requires billing:export. Updates the file_url reference; real render deferred.',
   })
+  @ApiCreatedResponse({ type: BillingExportResultResponse })
   export(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: BillingExportDto,

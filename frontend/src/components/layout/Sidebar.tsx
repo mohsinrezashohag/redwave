@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { NavLink, useLocation, type Location } from 'react-router-dom';
 import { useAuth } from '../../auth/useAuth';
+import { Logo } from '../ui/Logo';
 import { Tooltip } from '../ui/Tooltip';
 import { cx } from '../ui/cx';
 import styles from './Sidebar.module.css';
@@ -215,10 +216,9 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   return (
     <aside className={cx(styles.sidebar, collapsed && styles.collapsed)}>
       <div className={styles.brand}>
-        <span className={styles.mark} aria-hidden>
-          R
-        </span>
-        {!collapsed && <span className={styles.wordmark}>Redwave</span>}
+        {/* Decorative: the sidebar already identifies the app; collapsed shows the icon-only mark.
+            Ink = currentColor → inherits the sidebar's --on-brand (light) in both themes. */}
+        <Logo variant={collapsed ? 'mark' : 'full'} size="md" decorative />
       </div>
       <nav className={styles.nav}>
         {groups.map((group) => (

@@ -10,6 +10,7 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { buildOpenApiConfig } from './openapi';
+import { ErrorEnvelopeDto } from './common/errors/error-envelope.dto';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -26,7 +27,9 @@ async function bootstrap(): Promise<void> {
   app.enableCors();
 
   // Live API docs from the same config the contract export uses.
-  const document = SwaggerModule.createDocument(app, buildOpenApiConfig());
+  const document = SwaggerModule.createDocument(app, buildOpenApiConfig(), {
+    extraModels: [ErrorEnvelopeDto], // document the uniform error envelope in components.schemas (arch §5.1)
+  });
   SwaggerModule.setup('docs', app, document);
 
   const port = Number(process.env.PORT ?? 3000);

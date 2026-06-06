@@ -4,7 +4,14 @@
  * REP commission stream only — no path to client_billing_rates (#3).
  */
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiErrorResponses } from '../../common/errors/api-error-responses.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TierScheduleService } from './tier-schedule.service';
@@ -15,9 +22,17 @@ import { CreateTierScheduleDto } from './dto/tier.dto';
 import { CreateFlatRateDto, ListFlatRatesQuery } from './dto/flat-rate.dto';
 import { SetHoldbackConfigDto, SetHoldbackReleaseSettingDto } from './dto/holdback.dto';
 import { CreateIncentiveDto, ListIncentivesQuery, UpdateIncentiveDto } from './dto/incentive.dto';
+import {
+  FlatRateResponse,
+  HoldbackConfigResponse,
+  HoldbackReleaseSettingResponse,
+  IncentiveResponse,
+  TierConfigResponse,
+} from './dto/commission.response';
 
 @ApiTags('Commission Config')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('commission')
 export class CommissionController {
   constructor(
@@ -34,6 +49,7 @@ export class CommissionController {
     summary: 'Tier schedules (current + pending)',
     description: 'Requires commission:view.',
   })
+  @ApiOkResponse({ type: TierConfigResponse, isArray: true })
   listTiers() {
     return this.tiers.list();
   }
@@ -44,6 +60,7 @@ export class CommissionController {
     summary: 'Create a new effective-dated tier schedule',
     description: 'Requires commission:edit. Supersedes the pending schedule; back-dating → 422.',
   })
+  @ApiCreatedResponse({ type: TierConfigResponse })
   createTiers(@Body() dto: CreateTierScheduleDto, @CurrentUser('id') actorId: string) {
     return this.tiers.create(dto, actorId);
   }
@@ -56,6 +73,7 @@ export class CommissionController {
     summary: 'Flat rates per product type (current + pending)',
     description: 'Requires commission:view.',
   })
+  @ApiOkResponse({ type: FlatRateResponse, isArray: true })
   listFlatRates(@Query() query: ListFlatRatesQuery) {
     return this.flatRates.list(query);
   }
@@ -67,6 +85,7 @@ export class CommissionController {
     description:
       'Requires commission:edit. greenfield_internet / tv / home_phone only (internet is tiered).',
   })
+  @ApiCreatedResponse({ type: FlatRateResponse })
   createFlatRate(@Body() dto: CreateFlatRateDto, @CurrentUser('id') actorId: string) {
     return this.flatRates.create(dto, actorId);
   }
@@ -79,6 +98,7 @@ export class CommissionController {
     summary: 'Advance/holdback split (current + pending)',
     description: 'Requires commission:view.',
   })
+  @ApiOkResponse({ type: HoldbackConfigResponse, isArray: true })
   listHoldbackConfig() {
     return this.holdback.listConfig();
   }
@@ -90,6 +110,7 @@ export class CommissionController {
     description:
       'Requires commission:edit. advance_pct + holdback_pct must equal 1; back-dating → 422.',
   })
+  @ApiOkResponse({ type: HoldbackConfigResponse })
   setHoldbackConfig(@Body() dto: SetHoldbackConfigDto, @CurrentUser('id') actorId: string) {
     return this.holdback.setConfig(dto, actorId);
   }
@@ -101,6 +122,10 @@ export class CommissionController {
   @ApiOperation({
     summary: 'Holdback-release setting (current sticky) — PROPOSED (SRS §17)',
     description: 'Requires commission:view. PROPOSED/pending Redwave confirmation; stored only.',
+  })
+  @ApiOkResponse({
+    type: HoldbackReleaseSettingResponse,
+    description: 'The current sticky setting, or null if none has been set.',
   })
   getReleaseSetting() {
     return this.holdback.getReleaseSetting();
@@ -114,6 +139,7 @@ export class CommissionController {
       'Requires commission:edit. PROPOSED/pending Redwave confirmation: release_rule is stored only; ' +
       'its interpretation (which cycle the 30% releases into) is deferred to the Pay Run module.',
   })
+  @ApiOkResponse({ type: HoldbackReleaseSettingResponse })
   setReleaseSetting(@Body() dto: SetHoldbackReleaseSettingDto, @CurrentUser('id') actorId: string) {
     return this.holdback.setReleaseSetting(dto, actorId);
   }
@@ -121,6 +147,7 @@ export class CommissionController {
 
 @ApiTags('Commission Config')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('incentives')
 export class IncentivesController {
   constructor(private readonly incentives: IncentiveService) {}
@@ -131,6 +158,7 @@ export class IncentivesController {
     summary: 'List incentives',
     description: 'Requires commission:view. ?status filter.',
   })
+  @ApiOkResponse({ type: IncentiveResponse, isArray: true })
   list(@Query() query: ListIncentivesQuery) {
     return this.incentives.list(query);
   }
@@ -143,6 +171,7 @@ export class IncentivesController {
       'Requires commission:edit. per_activation is applied by the engine; target_based is MODELED but ' +
       'DEFERRED (not yet applied — pending Redwave confirmation).',
   })
+  @ApiCreatedResponse({ type: IncentiveResponse })
   create(@Body() dto: CreateIncentiveDto, @CurrentUser('id') actorId: string) {
     return this.incentives.create(dto, actorId);
   }
@@ -150,6 +179,7 @@ export class IncentivesController {
   @Patch(':id')
   @RequirePermission('commission', 'edit')
   @ApiOperation({ summary: 'Edit / end an incentive', description: 'Requires commission:edit.' })
+  @ApiOkResponse({ type: IncentiveResponse })
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateIncentiveDto,

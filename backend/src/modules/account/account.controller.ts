@@ -4,15 +4,31 @@
  *  • ProfileChangeReviewController (/v1/profile-change-requests) — reviewers; gated by profile:approve. — AUTH-012
  */
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ApiErrorResponses } from '../../common/errors/api-error-responses.decorator';
+import { SuccessResponse } from '../../common/dto/success.response';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { AccountService } from './account.service';
 import { ChangePasswordDto, ProfileChangeRequestDto, SetThemeDto } from './dto/account.dto';
+import {
+  AccountProfileResponse,
+  MyProfileRequestResponse,
+  ProfileChangeRequestResponse,
+  ReviewRequestResponse,
+  ThemeResponse,
+} from './dto/account.response';
 
 @ApiTags('Account')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('account')
 export class AccountController {
   constructor(private readonly account: AccountService) {}
@@ -22,6 +38,7 @@ export class AccountController {
     summary: 'View my profile',
     description: 'Authenticated. Flags any change pending review.',
   })
+  @ApiOkResponse({ type: AccountProfileResponse })
   getProfile(@CurrentUser() user: AuthUser) {
     return this.account.getProfile(user);
   }
@@ -32,6 +49,7 @@ export class AccountController {
     summary: 'Change my password',
     description: 'Authenticated. Verifies the current password.',
   })
+  @ApiOkResponse({ type: SuccessResponse })
   changePassword(@CurrentUser() user: AuthUser, @Body() dto: ChangePasswordDto) {
     return this.account.changePassword(user, dto);
   }
@@ -41,6 +59,7 @@ export class AccountController {
     summary: 'Set my theme preference',
     description: 'Authenticated. Applies immediately, no review.',
   })
+  @ApiOkResponse({ type: ThemeResponse })
   setTheme(@CurrentUser() user: AuthUser, @Body() dto: SetThemeDto) {
     return this.account.setTheme(user, dto);
   }
@@ -51,12 +70,14 @@ export class AccountController {
     description:
       'Authenticated. Creates a PENDING request; the live profile is not changed until approved.',
   })
+  @ApiCreatedResponse({ type: MyProfileRequestResponse })
   requestProfileChange(@CurrentUser() user: AuthUser, @Body() dto: ProfileChangeRequestDto) {
     return this.account.requestProfileChange(user, dto);
   }
 
   @Get('profile-change-requests')
   @ApiOperation({ summary: 'List my profile-change requests', description: 'Authenticated.' })
+  @ApiOkResponse({ type: MyProfileRequestResponse, isArray: true })
   listMyRequests(@CurrentUser() user: AuthUser) {
     return this.account.listMyRequests(user);
   }
@@ -64,6 +85,7 @@ export class AccountController {
 
 @ApiTags('Account')
 @ApiBearerAuth()
+@ApiErrorResponses()
 @Controller('profile-change-requests')
 export class ProfileChangeReviewController {
   constructor(private readonly account: AccountService) {}
@@ -75,6 +97,7 @@ export class ProfileChangeReviewController {
     description:
       'Requires profile:approve. Scoped by routing (Field Manager / Admin / Super Admin).',
   })
+  @ApiOkResponse({ type: ReviewRequestResponse, isArray: true })
   listQueue(@CurrentUser() user: AuthUser) {
     return this.account.listReviewQueue(user);
   }
@@ -86,6 +109,7 @@ export class ProfileChangeReviewController {
     summary: 'Approve a profile change',
     description: 'Requires profile:approve + routing authorization.',
   })
+  @ApiOkResponse({ type: ProfileChangeRequestResponse })
   approve(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.account.approve(user, id);
   }
@@ -97,6 +121,7 @@ export class ProfileChangeReviewController {
     summary: 'Reject a profile change',
     description: 'Requires profile:approve + routing authorization.',
   })
+  @ApiOkResponse({ type: ProfileChangeRequestResponse })
   reject(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.account.reject(user, id);
   }

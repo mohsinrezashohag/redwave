@@ -24,23 +24,9 @@
   border-bottom: 1px solid var(--on-brand-border);
 }
 
-.mark {
-  display: inline-flex;
-  align-items: center;
+.collapsed .brand {
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
-  background-color: var(--accent-600);
-  color: var(--on-accent);
-  border-radius: var(--radius-md);
-  font-weight: var(--weight-bold);
-}
-
-.wordmark {
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-  letter-spacing: -0.01em;
+  padding: 0;
 }
 
 .nav {

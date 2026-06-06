@@ -1,30 +1,15 @@
 /**
- * User-management types — RESPONSE shapes hand-written (the backend declares no response schema, so
- * generated types are `never`). Mirrors `backend/src/modules/users/`. REQUEST bodies are typed from the
- * generated schema (re-exported). Keep in sync with the backend.
+ * User-management types — RESPONSE shapes ALIASED to the generated OpenAPI schema (Batch A #2). Mirrors
+ * `backend/src/modules/users/dto/user.response.ts`. REQUEST bodies are likewise typed from the schema.
  */
 import type { components } from '../../api/generated/schema';
-import type { ThemePreference } from '../../theme/theme.types';
 
-export type UserStatus = 'active' | 'inactive';
+export type UserStatus = components['schemas']['AdminUserResponse']['status'];
 
 /** A user's role membership as returned in the user list (effective perms = union of these roles). */
-export interface UserRoleRef {
-  role: { id: string; name: string };
-}
+export type UserRoleRef = components['schemas']['UserRoleRefResponse'];
 
-export interface AdminUser {
-  id: string;
-  email: string;
-  full_name: string;
-  phone: string | null;
-  avatar_url: string | null;
-  theme_preference: ThemePreference;
-  status: UserStatus;
-  created_at: string;
-  updated_at: string;
-  user_roles: UserRoleRef[];
-}
+export type AdminUser = components['schemas']['AdminUserResponse'];
 
 // Request bodies — typed from the generated schema.
 export type CreateUserBody = components['schemas']['CreateUserDto'];

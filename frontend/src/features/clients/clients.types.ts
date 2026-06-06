@@ -1,49 +1,26 @@
 /**
- * Clients & Products types — RESPONSE shapes hand-written (the backend declares no response schema, so
- * generated types are `never`). Mirrors `backend/src/modules/clients/`. REQUEST bodies are typed from the
- * generated schema (re-exported). Money/amounts are decimal STRINGS. This feature touches ONLY /v1/clients*
- * — it NEVER reads `commission_*` (CLAUDE #3: the two rate streams never mix). Keep in sync with the backend.
+ * Clients & Products types — RESPONSE shapes ALIASED to the generated OpenAPI schema (the backend ships
+ * `@ApiResponse` DTOs as of Batch A #2). Mirrors `backend/src/modules/clients/dto/client.response.ts`.
+ * Money/amounts are decimal STRINGS. This feature touches ONLY /v1/clients* — it NEVER reads `commission_*`
+ * (CLAUDE #3: the two rate streams never mix). REQUEST bodies are likewise typed from the generated schema.
  */
 import type { components } from '../../api/generated/schema';
 // Effective-dating status comes from the shared foundation component (used by Clients + Commission).
 import type { RateStatus } from '../../components/ui';
 
 export type { RateStatus };
-export type Market = 'CA' | 'US';
-export type ProductType = 'internet' | 'greenfield_internet' | 'tv' | 'home_phone';
-export type RateKind = 'product' | 'tv_addon' | 'hp_addon' | 'bundle_bonus' | 'spiff';
+// Enums derived from the contract.
+export type Market = components['schemas']['ClientResponse']['market'];
+export type ProductType = components['schemas']['ProductResponse']['product_type'];
+export type RateKind = components['schemas']['BillingRateResponse']['rate_kind'];
 export type StatusFilter = 'active' | 'inactive' | 'all';
 
-export interface Client {
-  id: string;
-  client_code: string;
-  name: string;
-  market: Market;
-  supplies_mpu_id: boolean;
-  is_active: boolean;
-  created_at: string;
-}
+export type Client = components['schemas']['ClientResponse'];
 
-export interface Product {
-  id: string;
-  client_id: string;
-  name: string;
-  product_type: ProductType;
-  is_active: boolean;
-  created_at: string;
-}
+export type Product = components['schemas']['ProductResponse'];
 
 /** A client billing rate (what we charge the partner). The server annotates each row with `status`. */
-export interface BillingRate {
-  id: string;
-  client_id: string;
-  product_id: string | null;
-  rate_kind: RateKind;
-  amount: string;
-  effective_from: string;
-  effective_to: string | null;
-  status: RateStatus;
-}
+export type BillingRate = components['schemas']['BillingRateResponse'];
 
 export interface BillingRateFilters {
   effectiveOn?: string;

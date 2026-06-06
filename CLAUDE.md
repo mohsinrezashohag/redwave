@@ -111,6 +111,7 @@ One module = one NestJS module owning its tables and endpoints. A module calls a
 - **HR-field profile edits** (name/phone/avatar) go through `ProfileChangeRequest` review (`account` module) — never a direct write; **theme applies instantly**. (SRS §4.4)
 - **RBAC catalogue:** 15 module keys + 6 actions seeded as 90 permissions; 4 built-in (`is_system`) roles (`prisma/seed.ts`, idempotent). Built-in roles can't be deleted/renamed (RBAC keys off names like `Super Admin`). Module keys live in `common/rbac/rbac.constants.ts`. The `permissions` table carries `@@unique([module_id, action])`.
 - **API surface:** all routes under **`/v1`** (URI versioning; `/health` is version-neutral); Swagger UI at **`/docs`**; `npm run contract:export` writes the spec to `contract/openapi.yaml`.
+- **Global error envelope (built — `common/filters/all-exceptions.filter.ts`, Batch A #1).** One `APP_FILTER` (`@Catch()`, registered in `app.module.ts` like the global guards) normalizes **every** error to the contract envelope **`{ error: { code, message, details } }`** (arch §5.1), statuses preserved. Three classes: **`HttpException`** → `CODE_BY_STATUS[status]` (400→`BAD_REQUEST`, 401→`UNAUTHORIZED`, 403→`FORBIDDEN`, 404→`NOT_FOUND`, 409→`CONFLICT`, 422→`UNPROCESSABLE_ENTITY`), message from the response (array joined → `details.messages`), structured payloads (billing's **`unpriced`**, the import gate) preserved into `details`; **`DomainError`** (the **framework-free** marker `common/errors/domain-error.ts` — extends `Error`, **no `@nestjs/common` import**, carries `code`/`message`/`details?`) → **422**; **anything else** (bare `Error`, Prisma, the engine's internal-invariant throws) → **masked 500** generic message + `details.correlationId` (`randomUUID()`) + a server-side `Logger.error` (no internal leak, arch §11). **Map a client-fault domain error at the service boundary**, never inside pure/mirrored logic: e.g. `tier-schedule.service` wraps the pure `validateTierBrackets` bare-`Error` in `DomainError('TIER_SCHEDULE_INVALID', …)`; the engine throws are **left bare → stay 500** (real server faults, NOT 422). Contract: `ErrorEnvelopeDto` is registered via `extraModels` (in `main.ts` + `scripts/export-openapi.ts`) so the envelope is documented in `components.schemas` (per-endpoint `@ApiResponse` wiring still deferred — responses are `never`-typed). FE companion: `frontend/src/lib/query/unwrap.ts` reads `body.error.message`/`body.error.details`. **Reuse `DomainError` for any new client-fault domain rule** instead of returning a bare `Error` (→ 500) or coupling pure logic to Nest.
 - **Sensitive-PII gating (built, HRM):** sensitive fields are **redacted in the query/response server-side**, gated on a permission — e.g. rep `payment_details` and document `file_url`s require **`hrm:edit`** (a plain `hrm:view` caller gets them nulled), computed from `user.permissions.has(permissionKey(...))`. Sensitive values are also kept **out of audit payloads**. Reuse this redaction pattern for other PII.
 - **Sale lifecycle + Sale ID (built, Sales):** the **§16 state machine** is the authoritative pure model in `modules/sales/sale-status.logic.ts` (`assertTransition` → 409 on any invalid move); Sales owns create→entered, validate (entered→validated), delete (entered|validated→**soft** `status=deleted`); in_pay_run/paid/clawed_back are triggered by Pay Run/Clawback. The composite **Sale ID** is pure (`sale-id.logic.ts`: `sale_date[-mpu]-client`, duplicate → `-1/-2`, never blocked). Sales **produces activations only** — `sale_items` snapshot fields stay **NULL** until Pay Run (#5/#2). Reads/mutations are **scoped via `ScopeService`** in the query (rep=own/manager=roster/admin=all).
 - **Pay Run composes, never reimplements (built, `modules/payrun/`):** finalize gathers a rep's validated sales → `mapToEngineProductType` (greenfield internet → `greenfield_internet` flat $100 at close, #9) → **`CommissionConfigProvider.getEngineConfig`** → **`CommissionEngineService`** — it never re-derives tiers/commission (#5). Engine result (decimal.js) → Prisma `Decimal` via `.toFixed(2)` at the write boundary. Net = 70% advance + released 30% + expenses + incentives (full) + bonus − clawbacks; the 30% held goes to `holdback_ledger`. **Expenses & Clawbacks are injected seams** (`EXPENSE_TOTAL_PROVIDER`/`CLAWBACK_TOTAL_PROVIDER`, default zero) — those modules re-bind the token later without touching Pay Run.
@@ -281,6 +282,28 @@ The design-system FOUNDATION is built (tokens, theming, component library, app s
 - **Typed API client**: `openapi-fetch` over types generated from the contract — **`npm -w frontend run gen:api`** writes `src/api/generated/schema.d.ts` (never hand-edit; regenerate when the contract changes). **NO `baseUrl`** (the generated path keys already include `/v1`, e.g. `"/v1/auth/login"`; a `/v1` baseUrl would double it); the Vite dev proxy forwards `/v1` (+ `/api`,`/health`) → backend :3000. Bearer injected via the `onRequest` middleware from the session.
 - **Deferred (next sessions):** feature screens; **Combobox/autocomplete** + full **date-range picker** (placeholders shipped); chart components (chart TOKENS exist); real file upload + receipt camera. Feature routes are added with their screens (code-split via `React.lazy`).
 
+### Brand assets & the `Logo` component (built — real Redwave mark, tokenized + themed)
+The real two-tone logo (orange wave + "Red" / black "wave marketing") replaced the placeholder "R" marks.
+- **`Logo`** (`components/ui/Logo.tsx`, barrel-exported): inlines the SVG via **`svgr`** (`import … from
+  '…svg?react'`; added `vite-plugin-svgr` with `svgrOptions:{svgo:false}` + the `vite-plugin-svgr/client`
+  type ref in `vite-env.d.ts`). Props: `variant 'full'|'mark'`, `size 'sm'|'md'|'lg'` (heights 20/28/40px),
+  `title`, `decorative`. Used in the **Sidebar** (`full`, `mark` when collapsed, `decorative`) and **Login**
+  (`full`); **TopBar/AppShell carry no logo** (brand lives in the always-visible sidebar). In the showcase.
+- **The dark-theme treatment (the design decision):** the logo "ink" (wordmark + lower wave) is
+  **`currentColor`**, so it inherits each placement's text token — light on the navy sidebar (which is navy in
+  BOTH themes via `--on-brand`), near-black/near-white on the theme-flipping login card (its `.brand` sets
+  `color: var(--text-primary)`). The orange is the **constant** token **`--brand-orange: #ff6600`** (added to
+  theme.css `:root`, like `--on-accent`; legible on white, navy, and dark). Two SVGs in
+  `assets/brand/` (`redwave-logo.svg` full, `redwave-mark.svg` icon-only) are edited to be themeable: root
+  `fill="currentColor"` (ink inherits) + orange paths `style="fill:var(--brand-orange)"` (no `<style>`/`<defs>`;
+  svgo off keeps them). **No hard-coded hex anywhere but the brand SVGs + theme.css** (stylelint-clean).
+- **Convention:** **`src/assets/brand/`** = themeable in-app brand assets (logo + mark variants; future client
+  logos — VF/RF/CTI), consumed via `?react` + `Logo`. **`public/`** = static, fixed-colour browser/OS artifacts:
+  `favicon.svg` (square, orange-only mark — reads on any tab bar) + the raster set (`favicon.ico`,
+  `apple-touch-icon.png`, `icon-192/512.png`, `site.webmanifest`) **generated by `npm run gen:icons`**
+  (`scripts/gen-icons.mjs`, via `@resvg/resvg-js` + `to-ico`; navy tile bg). `index.html` links them + sets
+  `theme-color`. Re-run `gen:icons` if the mark changes. **Verified:** stylelint + build (svgr/tsc) + lint green.
+
 ### Auth / session (built — login flow)
 Login, the session, protected routes, the convenience-only permission gate, and the server theme-sync
 are wired (`frontend/src/auth/`, `pages/login/`). Verify: backend up + seeded, `npm -w frontend run dev`,
@@ -308,16 +331,16 @@ sign in as `superadmin@redwave.local` / `DevSuperAdmin!123`.
   locally; changing the theme while authed PATCHes `/v1/account/theme` (`useAuth().setTheme`, used by
   `ThemeToggle`); logged-out = local/System. No-flash boot preserved.
 - **Deferred / proposals (NOT built):** **httpOnly secure refresh cookie** (more XSS-resistant; needs a
-  backend change — it currently returns/accepts the refresh token in the JSON body); **`@ApiResponse`
-  response DTOs** so `gen:api` emits typed responses (the auth response shapes are currently HAND-WRITTEN
-  in `auth/auth.types.ts`); password-reset flow (AUTH-002, the login forgot-password link is a placeholder).
+  backend change — it currently returns/accepts the refresh token in the JSON body); password-reset flow
+  (AUTH-002, the login forgot-password link is a placeholder). *(`@ApiResponse` typed responses — incl.
+  `auth/auth.types.ts` — are DONE, Batch A #2.)*
 
 ### Screen patterns (built — Sales cluster is the reference; COPY these for every later screen)
 The Sales cluster (`frontend/src/features/sales/`) is the FIRST feature screen and sets the conventions.
 Build new screens by copying its shape — don't invent a second pattern.
 
-- **Feature-module folder shape:** `features/<name>/` = `sales.types.ts` (hand-written response types +
-  request DTOs re-exported from the generated schema) · `api/keys.ts` (query-key factory) · `api/use*.ts`
+- **Feature-module folder shape:** `features/<name>/` = `sales.types.ts` (response types **aliased to the
+  generated schema** + request DTOs re-exported from it — Batch A #2) · `api/keys.ts` (query-key factory) · `api/use*.ts`
   (queries + mutations + the list hook) · `components/` · `pages/` (one default-export per route). Keep a
   module's code under its folder; cross-module reads go through the typed client, not shared internals.
 - **Server-state = TanStack Query** over the existing `openapi-fetch` `api`, via a thin
@@ -354,9 +377,45 @@ Build new screens by copying its shape — don't invent a second pattern.
   own-scoped. A rep create requires a Manager-role `field_manager_id`; the seed ships only a Super Admin
   (which has **no linked rep**, so it must create sales **on-behalf** with `rep_id`).
 - **Backend follow-ups this surfaced:** (1) **`@ApiResponse` response DTOs** across modules so `gen:api`
-  emits typed responses (every feature currently hand-writes response types — `sales.types.ts`, etc.);
+  emits typed responses — **DONE (Batch A #2)**; every feature's `*.types.ts` now ALIASES the generated
+  schema instead of hand-writing response shapes (see "Typed responses & the error envelope" below);
   (2) **server-side list pagination** for `/v1/sales` (returns a plain array today — hence the client-side
-  seam). Both are noted, not blocking.
+  seam) — still open, not blocking.
+
+### Typed responses & the error envelope (built — Batch A #2; the contract now carries response schemas)
+The OpenAPI contract used to declare request bodies but **no response schemas**, so `gen:api` emitted
+`content?: never` and every feature **hand-wrote** its response types. Batch A #2 added `@ApiResponse`
+response DTOs across **all ~22 controllers / ~65 endpoints**, regenerated the client, and re-pointed every
+feature onto the generated types. Reuse these conventions for any new endpoint/feature.
+
+- **Backend: one `*.response.ts` per module** (`modules/<m>/dto/*.response.ts`, ~50 DTO classes) — each
+  field an explicit `@ApiProperty`. **Money/Decimal → `string` ALWAYS** (`@ApiProperty({ type: String })`;
+  #1) — incl. non-money decimals (pct, km). Nullable/enum/nested fields carry an **explicit** `type`/`enum`/
+  `type: () => Child` so swagger reflection never degrades them to `Record<string,never>`. **Free-form JSON
+  blobs** (`payment_details`, import `raw_data`/`mapped_data`, `error_summary`, expense `scope_filters`) use
+  `@ApiProperty({ type: 'object', additionalProperties: true })` (counts map →
+  `additionalProperties: { type: 'number' }`); a KNOWN object shape (e.g. `proposed_changes`) is modeled as a
+  real nested DTO, NOT a blob. Naming: `<Entity>Response` → `components['schemas']['<Entity>Response']`.
+- **Error envelope is now per-endpoint.** `@ApiErrorResponses()` (`common/errors/api-error-responses.decorator.ts`,
+  `applyDecorators`) attaches `ErrorEnvelopeDto` to 400/401/403/404/409/422 at the **controller-class level**
+  (one line, cascades to every route) — closing the Batch A #1 gap. Success stays per-method
+  (`@ApiOkResponse`/`@ApiCreatedResponse`, `isArray: true` for lists; `@ApiNoContentResponse` for 204).
+- **Frontend: ALIAS, don't hand-write.** Every `features/*/*.types.ts` now does
+  `export type Sale = components['schemas']['SaleResponse']` (type NAME kept → zero call-site churn). Enums
+  derive from the contract (`SaleStatus = …['SaleResponse']['status']`). `unwrap<T>` keeps its cast signature
+  (responses are now typed at the call site via the alias). **HRM has no frontend feature** → backend DTOs +
+  annotations only, no re-point.
+- **Request-quirk fixes (also Batch A #2):** `TierBracketDto.max_count` + import `rows`/`mapped_data` no longer
+  regenerate as `Record<string,never>`, so the last hand-written request bodies + boundary casts were dropped.
+  (Pre-existing `CreateRepDto`/`UpdateRepDto.payment_details` still regenerate as `Record<string,never>` — a
+  REQUEST DTO with no frontend consumer; harmless, left as-is.)
+- **Verified:** backend 61 suites/305 tests + lint green; `contract:export` (82 paths, +~50 schemas) →
+  `gen:api` emits real response types (no field `Record<string,never>` regression); frontend build (tsc, the
+  coupling guard) + lint green; live spot-checks across every module = **exact key parity** (money = string,
+  nested shapes, JSON blobs, PII redaction, leaderboard money-free). **Deliberately NOT done:** per-endpoint
+  `@ApiResponse` already covers success+errors, but a few action endpoints over-declare a field the runtime
+  omits (e.g. Pay Run `setBonus` types the line WITH `rep`; the service returns it without — the UI only
+  invalidates, never reads it) — acceptable, documented.
 
 ### Dashboards, charting & notifications (built — reporting read-layer; reuses the Sales playbook)
 The four role-scoped dashboards, the counts-only leaderboard, and the notifications bell compose the
@@ -400,9 +459,8 @@ existing leak-proof Reporting endpoints. They REUSE the Sales playbook exactly; 
   leaderboard JSON carries **no money key**. **Not done (needs a browser):** the light/dark visual pass of
   the charts.
 - **Backend follow-up this surfaced:** a **period-aggregation/trend endpoint** for the business dashboard
-  (so trend-over-time charts can be built) — in addition to the standing `@ApiResponse` response-DTO
-  follow-up (all dashboard/leaderboard/notification responses are hand-typed because the contract is
-  `never`-typed).
+  (so trend-over-time charts can be built). *(The `@ApiResponse` response-DTO follow-up is DONE — Batch A #2;
+  all dashboard/leaderboard/notification responses now alias the generated schema.)*
 
 ### Account & Settings (built — Session 1: My Account + Administration hub + profile-change-review)
 The personal "My Account" area + the profile-change-review workflow. Reuses the playbook exactly.
@@ -584,9 +642,9 @@ AccessDenied) of stacked Card sections; every Add/Set action gated `commission:e
   max+1**). It runs live on `useWatch` and **blocks submit** (disabled button) while invalid, showing a
   Banner; a valid set renders a read-only range preview. **It never determines which tier a count falls in
   — the engine does that at runtime (#5).** Shared form types/mappers live in `tierForm.ts` (avoids a
-  circular import between the editor + modal). The generated `TierBracketDto.max_count` is a broken
-  `Record<string,never>` (swagger nullable quirk), so the tier body is **hand-written** (`CreateTierScheduleBody`
-  with `max_count: number|null`) and cast at the API boundary in `useCreateTierSchedule`.
+  circular import between the editor + modal). **Batch A #2 fixed** the `TierBracketDto.max_count` swagger
+  nullable quirk (explicit `type: Number, nullable: true`), so the generated `CreateTierScheduleDto` is now
+  used directly — the hand-written `CreateTierScheduleBody` + boundary cast were **dropped**.
 - **Effective-dating = APPEND-NEW-FUTURE-ROW (#10), reusing the shared table.** Tier schedules / flat rates /
   holdback split each render in `EffectiveDatedTable` (server `status`; a future-dated row supersedes the
   scope's pending + bounds the current; **back-date → 422**; closed rows never edited). `TierScheduleModal`,
@@ -617,12 +675,12 @@ AccessDenied) of stacked Card sections; every Add/Set action gated `commission:e
   set→read-back→restore; **per_activation → 201**; **target_based without target_count → 422**; **back-dated
   tier schedule → 422**. **Two backend findings (NOT this session's code; flagged):** (1) the API serializes
   Prisma `Decimal` as a **canonical string without trailing zeros** (`"160"`, `"0.7"`) — still a string (#1
-  holds) and `money()` pads to 2dp, so display is correct; (2) **tier contiguity violations (gap/overlap/
-  no-open-top/two-opens) return 500, not 422** — `tier-schedule.service` calls `validateTierBrackets` (which
-  throws a plain `Error`) without wrapping it in `UnprocessableEntityException`, and there's no global
-  exception filter. The **frontend mirror blocks this path in the UI** (button disabled), so it's not
-  user-facing, but the backend should wrap the throw. **Not done (needs a browser):** the light/dark visual
-  pass (esp. the bracket editor + the effective-dated tables).
+  holds) and `money()` pads to 2dp, so display is correct; (2) **tier contiguity violations returned 500, not
+  422 — FIXED (Batch A #1, global exception filter).** See "Global exception filter & error envelope" below:
+  a global `AllExceptionsFilter` now normalizes every error to the contract envelope `{ error: { code, message,
+  details } }`, and `tier-schedule.service` wraps the pure `validateTierBrackets` throw in a framework-free
+  `DomainError` → **422 + code `TIER_SCHEDULE_INVALID`** (verified by smoke). **Not done (needs a browser):** the
+  light/dark visual pass (esp. the bracket editor + the effective-dated tables).
 
 ### Pay Run UI (built — the money orchestrator's review-and-commit surface)
 The UI for the Pay Run pipeline (SRS §9). `features/payrun/`. The backend does ALL money logic (engine,
@@ -823,8 +881,9 @@ pages under the Administration nav group.
 - **Rows entry = JSON editor + per-type template (confirmed UX; parse stubbed §12).** `RowsEditor` = a
   Textarea pre-fillable with the kind's **template** + a **stub `FileUpload`** that reads a selected `.json`
   file into the editor (the real Excel/CSV parse is deferred). `parseRows` validates a non-empty array of
-  objects client-side before staging. The generated `rows`/`mapped_data` are a broken `Record<string,never>`
-  (swagger quirk) → the request bodies are **hand-written** and cast at the boundary.
+  objects client-side before staging. **Batch A #2 fixed** the `rows`/`mapped_data` swagger quirk
+  (`additionalProperties:true`), so the generated `CreateImportDto`/`ReconcileDto` are used directly — the
+  hand-written request bodies + boundary casts were **dropped**.
 - **The 3 kinds** (`KINDS` in `import.types.ts`; the UI offers only these, so an unsupported pairing can't be
   staged): **Bulk sales validation** (`client_report+sales`, needs `client_id`; commit drives the Sales seam),
   **Historical billing rates** (`master_migration+clients`, back-dated — the sanctioned #10 path), **Opening

@@ -8,14 +8,10 @@
 import type { components } from '../../api/generated/schema';
 
 /** The intents the stubbed keyword router recognises (echoed back on every answer). */
-export type ChatTool = 'my_sales_count' | 'my_commission' | 'my_holdback' | 'roster_summary' | 'business_summary' | 'unknown';
+export type ChatTool = components['schemas']['ChatResponse']['intent'];
 
 /** The server's response — text only (no structured data). Refusals/unknown come back as a normal 200. */
-export interface ChatResponse {
-  conversation_id: string;
-  intent: ChatTool;
-  answer: string;
-}
+export type ChatResponse = components['schemas']['ChatResponse'];
 
 /** A message in the SESSION-ONLY conversation (component state — there is no history endpoint). */
 export interface ChatMessage {
