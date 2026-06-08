@@ -38,6 +38,7 @@ The client-facing `.docx`/`.drawio` originals may also be kept in `docs/`; the `
 - **Auth:** JWT bearer tokens. **RBAC enforced server-side** on every endpoint.
 - **Files:** S3-compatible object storage; references stored in Postgres.
 - **Background jobs:** in-stack job queue (exports, email, heavy aggregation).
+- **Dates & timezone (canonical — America/Winnipeg).** Every date-boundary decision (which pay period a `sale_date` falls in, period start/end, "today"/"now" defaults) is made in **America/Winnipeg**, via `backend/src/common/timezone.ts` (`todayInWinnipeg()` → `'YYYY-MM-DD'`, `winnipegDateOnly()` → UTC-midnight `Date`; built on `Intl.DateTimeFormat('en-CA', { timeZone })` — DST-correct, no date lib). Dates are **stored + compared as `'YYYY-MM-DD'` parsed at UTC-midnight on both sides**, so the pure date logic (`resolvePayPeriod`, `selectEffectiveRate`) stays timezone-agnostic; **only** the `now`/`today` derivations are Winnipeg-zoned. This is what keeps a late-night sale (e.g. 23:30 Winnipeg = next-day UTC) in the correct period (#7). Never reintroduce a bare `new Date()` / `toISOString().slice(0,10)` for a date boundary — use the helper. (`timezone.spec.ts` covers DST + a boundary sale.)
 
 Do not introduce a second language/runtime. The data-import module is **in-stack TypeScript**, isolated by boundary (it writes to staging tables), not by language. A separate analytics/ML service is a possible Phase-3+ decision only — not now.
 
@@ -92,6 +93,11 @@ RedWave/
 
 One module = one NestJS module owning its tables and endpoints. A module calls another's **defined interface**, never reaches into its internals.
 
+**Seeding & clean-wipe (`backend/prisma/`).** Two operator scripts share one bootstrap:
+- `seed/bootstrap.ts` — the **genesis catalogue** the system needs day-one (RBAC 15 modules/90 perms, 4 built-in roles, Super Admin, Schedule C v2 commission config, 2026 pay periods, expense/notification/chatbot configs). Idempotent upserts; **an existing Super Admin password is never overwritten**.
+- `seed/demo.ts` — a rich, **idempotent** demo (re-running wipes + regenerates transactional data — never duplicates) anchored to the **run-time current pay period** so the leaderboard/dashboards are live whenever it runs: 3 clients (VF/RF/CTI) + own products + billing rates, a manager + 8 reps (`RW-D-*`), sales across three cycles spread by `sale_date`, a **finalized** prior cycle (70/30 + holdback), clawbacks, a statement, expenses (incl. a KM log), notifications, a pending signature. It drives the **real services** so every invariant holds (#8/#2/#5/#6/#3).
+- `seed/wipe.ts` — FK-safe child→parent delete of **transactional tables only** (schema has no cascades; the DB RESTRICTs hard deletes). `seed.ts` (entry, `npm run prisma:seed`) = Nest context → bootstrap → demo. `reset.ts` (`npm run seed:reset`) = the **handover clean-wipe**: guarded by `RESET_CONFIRM=yes`, it wipes transactional data and re-seeds the bootstrap, **keeping the master catalogue** (login, roles, clients, products, reps, commission config, pay periods, chatbot config). Demo logins use `DEMO_PASSWORD` in `seed/demo.ts` (rotate via the UI).
+
 ---
 
 ## 5. RBAC (enforce server-side, every endpoint)
@@ -107,7 +113,7 @@ One module = one NestJS module owning its tables and endpoints. A module calls a
 - **Permission identity is the string `moduleKey:action`** (e.g. `users:view`); effective permissions = the union of the user's roles, built by `buildEffectivePermissions` (`common/rbac/permissions.util.ts`). Denial → `403` **and** an `access_denied` audit row.
 - **Query-level scoping** lives in `ScopeService` (`common/scope/`): `all` / `roster` / `self` rep-id scope, plus profile-review routing. Apply `where: { rep_id: { in: … } }`; never filter after fetch.
 - **Auditing is explicit** at the service layer via `AuditService` (`common/audit/`, `@Global`) — accurate before/after — not a magic interceptor; the guard logs denials.
-- **Auth stack:** `@nestjs/jwt` with **custom guards (no passport)**; **access + refresh** tokens (separate secrets, env `JWT_*`); password hashing with **bcryptjs** (`password_hash` never selected/returned).
+- **Auth stack:** `@nestjs/jwt` with **custom guards (no passport)**; **access + refresh** tokens (separate secrets, env `JWT_*`); password hashing with **bcryptjs** (`password_hash` never selected/returned). **TTLs are ms-strings (not coerced):** `JWT_ACCESS_TTL` (`'15m'`) / `JWT_REFRESH_TTL` (`'7d'`) are passed **verbatim** to `signAsync({ expiresIn })` — jsonwebtoken parses the string natively. Do **not** wrap them in `parseInt`/`Number` (that yields `15`/`NaN` ms → tokens expire instantly, the classic "logged out within a minute"). `token.service.spec.ts` locks the access call to `expiresIn: '15m'` (string). The premature-logout bug was **not** here — it was the frontend refresh clearing the session on transient failures; see the §13 auth note.
 - **HR-field profile edits** (name/phone/avatar) go through `ProfileChangeRequest` review (`account` module) — never a direct write; **theme applies instantly**. (SRS §4.4)
 - **RBAC catalogue:** 15 module keys + 6 actions seeded as 90 permissions; 4 built-in (`is_system`) roles (`prisma/seed.ts`, idempotent). Built-in roles can't be deleted/renamed (RBAC keys off names like `Super Admin`). Module keys live in `common/rbac/rbac.constants.ts`. The `permissions` table carries `@@unique([module_id, action])`.
 - **API surface:** all routes under **`/v1`** (URI versioning; `/health` is version-neutral); Swagger UI at **`/docs`**; `npm run contract:export` writes the spec to `contract/openapi.yaml`.
@@ -331,10 +337,18 @@ sign in as `superadmin@redwave.local` / `DevSuperAdmin!123`.
   (`redwave-refresh`) so a reload silently re-authenticates (`auth/session.ts`). Tradeoff accepted for an
   internal ERP. **`auth/session.ts`** owns: token storage, a **single-flight `refreshAccessToken`**,
   `clearSession`, and the `onSessionExpired` callback (how the non-React client signals React).
-- **Refresh:** the client's `onResponse` 401 interceptor (`api/client.ts`) runs a single-flight refresh
-  and **retries the original request once** (raw `fetch`, excludes `/v1/auth/login|refresh|logout`, no
-  loops); on refresh failure → `notifySessionExpired` → AuthProvider clears + RequireAuth redirects to
-  `/login`. **Multi-tab** logout/expiry syncs via the `storage` event on the refresh key.
+- **Refresh = SILENT; only a DEFINITIVE 401/403 logs you out (never a 5xx/network).** `doRefresh()` returns
+  a discriminated `RefreshResult` (`{ok,token}` | `{ok:false, expired:true}` | `{ok:false, expired:false}`):
+  refresh **200** → new access token, keep session; refresh **401/403** → `clearSession` + `expired:true`;
+  refresh **5xx/408/429 or a network throw** → **transient, session KEPT** (`expired:false`). The `onResponse`
+  401 interceptor (`api/client.ts`) runs a single-flight refresh and **retries the original request once**
+  (raw `fetch`, excludes `/v1/auth/login|refresh|logout`, no loops); only `expired` calls `notifySessionExpired`
+  → redirect to `/login`; a transient result **returns the original response without logging out**. On boot
+  `AuthProvider` **retries a transient refresh** (~4×2s) to ride a Render cold start before giving up (and even
+  then keeps the refresh token, so a later reload recovers). This fixed the "logged out within a minute" report
+  — the cause was the old refresh clearing the session on any non-OK response, so a cold-start 503 nuked it; the
+  JWT TTLs were fine (see §5 auth-stack note). `session.test.ts` (Vitest) covers 200/401/503/network. **Multi-tab**
+  logout/expiry syncs via the `storage` event on the refresh key.
 - **`AuthProvider`** (App.tsx order: `ThemeProvider › AuthProvider › QueryClientProvider › Tooltip › Toast
   › Router`) boots by restoring the session (refresh→`/me`, StrictMode-guarded), exposes
   `login`/`logout`/`setTheme`, and holds `{status, user, roles, permissions, isSuperAdmin}`; `logout` calls
