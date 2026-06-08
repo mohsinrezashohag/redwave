@@ -19,7 +19,7 @@ import { BillingRatesService } from './billing-rates.service';
 import { CreateClientDto, ListClientsQuery, UpdateClientDto } from './dto/client.dto';
 import { CreateProductDto, ListProductsQuery } from './dto/product.dto';
 import { CreateBillingRateDto, ListBillingRatesQuery } from './dto/billing-rate.dto';
-import { BillingRateResponse, ClientResponse, ProductResponse } from './dto/client.response';
+import { BillingRateResponse, ClientPageResponse, ClientResponse, ProductResponse } from './dto/client.response';
 
 @ApiTags('Clients & Products')
 @ApiBearerAuth()
@@ -34,8 +34,11 @@ export class ClientsController {
 
   @Get()
   @RequirePermission('clients', 'view')
-  @ApiOperation({ summary: 'List clients', description: 'Requires clients:view. ?status filter.' })
-  @ApiOkResponse({ type: ClientResponse, isArray: true })
+  @ApiOperation({
+    summary: 'List clients',
+    description: 'Requires clients:view. Paginated (page/limit/sort/search) + ?status filter.',
+  })
+  @ApiOkResponse({ type: ClientPageResponse })
   list(@Query() query: ListClientsQuery) {
     return this.clients.findAll(query);
   }

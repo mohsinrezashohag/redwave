@@ -9,6 +9,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { PaginationQuery } from '../../../common/pagination/pagination.query';
 
 export class CreateClientDto {
   @ApiProperty({ example: 'VF', description: 'Unique client code (e.g. VF / RF / CTI).' })
@@ -63,8 +64,8 @@ export class UpdateClientDto {
   is_active?: boolean;
 }
 
-/** Active/inactive/all filter for list endpoints (default: active only). */
-export class ListClientsQuery {
+/** Paginated list filter (default: active only). sort allowlist: client_code/name/market/is_active/created_at. */
+export class ListClientsQuery extends PaginationQuery {
   @ApiPropertyOptional({ enum: ['active', 'inactive', 'all'], default: 'active' })
   @IsOptional()
   @IsIn(['active', 'inactive', 'all'])

@@ -18,6 +18,7 @@ describe('ClientsService', () => {
     const prisma = {
       client: {
         findMany: jest.fn(),
+        count: jest.fn().mockResolvedValue(0),
         findUnique: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
@@ -27,13 +28,16 @@ describe('ClientsService', () => {
     return { service: new ClientsService(prisma as never, audit as never), prisma, audit };
   }
 
-  it('list(active) excludes inactive clients via where is_active:true', async () => {
+  it('list(active) excludes inactive clients via where is_active:true, returning a {data,meta} page', async () => {
     const { service, prisma } = make();
     prisma.client.findMany.mockResolvedValue([]);
-    await service.findAll({ status: 'active' });
+    prisma.client.count.mockResolvedValue(0);
+    const page = await service.findAll({ status: 'active' });
     expect(prisma.client.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { is_active: true } }),
     );
+    expect(prisma.client.count).toHaveBeenCalledWith({ where: { is_active: true } });
+    expect(page).toEqual({ data: [], meta: { total: 0, page: 1, limit: 20, pageCount: 0 } });
   });
 
   it('deactivate is a SOFT update (is_active=false), never a delete', async () => {

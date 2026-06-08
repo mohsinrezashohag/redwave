@@ -3,24 +3,47 @@
  * always belongs to a client. product_type is immutable after creation. — SRS CLNT-002/006
  */
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
-import { CreateProductDto, ListProductsQuery, UpdateProductDto } from './dto/product.dto';
+import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
+import { CreateProductDto, ListAllProductsQuery, ListProductsQuery, UpdateProductDto } from './dto/product.dto';
 import { activeStatusWhere } from './clients.service';
 
 @Injectable()
 export class ProductsService {
+  /** Columns a client may sort the cross-client list on (allowlist — the orderBy-injection guard). */
+  private static readonly SORTABLE = ['name', 'product_type', 'is_active', 'created_at'] as const;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
 
+  /** The nested per-client products panel — a plain array (not paginated; the client detail screen owns it). */
   async findAllForClient(clientId: string, query: ListProductsQuery) {
     await this.assertClientExists(clientId);
     return this.prisma.product.findMany({
       where: { client_id: clientId, ...activeStatusWhere(query.status) },
       orderBy: { created_at: 'asc' },
     });
+  }
+
+  /** The cross-client product list (GET /v1/products) — paginated + filterable + name search. */
+  async findAll(query: ListAllProductsQuery) {
+    const where: Prisma.ProductWhereInput = {
+      ...activeStatusWhere(query.status),
+      ...(query.client_id ? { client_id: query.client_id } : {}),
+      ...(query.product_type ? { product_type: query.product_type } : {}),
+      ...(query.search ? { name: { contains: query.search, mode: 'insensitive' } } : {}),
+    };
+    const { skip, take, page, limit } = toSkipTake(query);
+    const orderBy = resolveOrderBy(query.sort, ProductsService.SORTABLE, { created_at: 'asc' });
+    const [data, total] = await Promise.all([
+      this.prisma.product.findMany({ where, orderBy, skip, take }),
+      this.prisma.product.count({ where }),
+    ]);
+    return buildPage(data, total, page, limit);
   }
 
   async create(clientId: string, dto: CreateProductDto, actorId: string) {

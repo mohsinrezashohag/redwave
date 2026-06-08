@@ -36,6 +36,7 @@ import { ListSalesQuery } from './dto/list-sales.query';
 import {
   BulkValidateResultResponse,
   DeletedSaleResponse,
+  SalePageResponse,
   SaleResponse,
 } from './dto/sale.response';
 
@@ -62,9 +63,9 @@ export class SalesController {
   @ApiOperation({
     summary: 'List sales',
     description:
-      'Requires sales:view. Filters status/rep_id/client_id/date. Scoped per caller in the query.',
+      'Requires sales:view. Paginated (page/limit/sort/search) + filters status/rep_id/client_id/date. Scoped per caller in the query.',
   })
-  @ApiOkResponse({ type: SaleResponse, isArray: true })
+  @ApiOkResponse({ type: SalePageResponse })
   list(@Query() query: ListSalesQuery, @CurrentUser() user: AuthUser) {
     return this.sales.list(query, user);
   }

@@ -471,6 +471,7 @@ model Client {
   import_batches        ImportBatch[]
   import_field_mappings ImportFieldMapping[]
 
+  @@index([is_active]) // list filter (active/inactive)
   @@map("clients")
 }
 
@@ -486,6 +487,8 @@ model Product {
   client_billing_rates ClientBillingRate[]
   sale_items           SaleItem[]
 
+  @@index([client_id, is_active]) // nested per-client product list
+  @@index([product_type]) // cross-client product list filter
   @@map("products")
 }
 
@@ -621,6 +624,8 @@ model Sale {
 
   @@index([rep_id, sale_date])
   @@index([client_id, mpu_id])
+  @@index([status]) // list filter by status (validation queue, etc.)
+  @@index([client_id, sale_date]) // billing/statement scans by client + date
   @@map("sales")
 }
 

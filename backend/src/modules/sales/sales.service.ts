@@ -28,6 +28,7 @@ import { ValidateSaleDto } from './dto/validate-sale.dto';
 import { SetGreenfieldDto } from './dto/greenfield.dto';
 import { BulkValidateDto } from './dto/bulk-validate.dto';
 import { ListSalesQuery } from './dto/list-sales.query';
+import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
 
 const dateOnly = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
 // Default sale_date = the CANONICAL Winnipeg calendar day (#7), so a late-night sale never lands in the
@@ -36,6 +37,9 @@ const SALE_INCLUDE = { sale_items: true } as const;
 
 @Injectable()
 export class SalesService {
+  /** Columns a client may sort the list on (allowlist — the orderBy-injection guard). */
+  private static readonly SORTABLE = ['sale_code', 'customer_name', 'sale_date', 'status', 'created_at'] as const;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -272,13 +276,24 @@ export class SalesService {
     if (query.client_id) and.push({ client_id: query.client_id });
     if (query.date_from) and.push({ sale_date: { gte: dateOnly(query.date_from) } });
     if (query.date_to) and.push({ sale_date: { lte: dateOnly(query.date_to) } });
+    if (query.search) {
+      and.push({
+        OR: [
+          { sale_code: { contains: query.search, mode: 'insensitive' } },
+          { customer_name: { contains: query.search, mode: 'insensitive' } },
+        ],
+      });
+    }
 
-    const sales = await this.prisma.sale.findMany({
-      where: and.length ? { AND: and } : {},
-      include: SALE_INCLUDE,
-      orderBy: { sale_date: 'desc' },
-    });
-    return this.attachPeriods(sales);
+    const where: Prisma.SaleWhereInput = and.length ? { AND: and } : {};
+    const { skip, take, page, limit } = toSkipTake(query);
+    const orderBy = resolveOrderBy(query.sort, SalesService.SORTABLE, { sale_date: 'desc' });
+
+    const [rows, total] = await Promise.all([
+      this.prisma.sale.findMany({ where, include: SALE_INCLUDE, orderBy, skip, take }),
+      this.prisma.sale.count({ where }), // same `where` → an accurate total for the meta
+    ]);
+    return buildPage(await this.attachPeriods(rows), total, page, limit);
   }
 
   async findOne(id: string, user: AuthUser) {

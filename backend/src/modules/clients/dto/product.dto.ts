@@ -6,9 +6,11 @@ import {
   IsIn,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { PaginationQuery } from '../../../common/pagination/pagination.query';
 
 export class CreateProductDto {
   @ApiProperty({ example: 'Fibre 1gig' })
@@ -39,6 +41,27 @@ export class UpdateProductDto {
 }
 
 export class ListProductsQuery {
+  @ApiPropertyOptional({ enum: ['active', 'inactive', 'all'], default: 'active' })
+  @IsOptional()
+  @IsIn(['active', 'inactive', 'all'])
+  status?: 'active' | 'inactive' | 'all';
+}
+
+/**
+ * Cross-client product list (GET /v1/products) — paginated. Filters client_id/product_type/status + name
+ * search. sort allowlist: name/product_type/is_active/created_at.
+ */
+export class ListAllProductsQuery extends PaginationQuery {
+  @ApiPropertyOptional({ description: 'Filter to one client.' })
+  @IsOptional()
+  @IsUUID()
+  client_id?: string;
+
+  @ApiPropertyOptional({ enum: ProductType })
+  @IsOptional()
+  @IsEnum(ProductType)
+  product_type?: ProductType;
+
   @ApiPropertyOptional({ enum: ['active', 'inactive', 'all'], default: 'active' })
   @IsOptional()
   @IsIn(['active', 'inactive', 'all'])

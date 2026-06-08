@@ -6,6 +6,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
 import { CreateClientDto, ListClientsQuery, UpdateClientDto } from './dto/client.dto';
 
 /** Build the is_active filter for list endpoints (default: active only). */
@@ -24,16 +25,33 @@ function isUniqueViolation(error: unknown): boolean {
 
 @Injectable()
 export class ClientsService {
+  /** Columns a client may sort the list on (allowlist — the orderBy-injection guard). */
+  private static readonly SORTABLE = ['client_code', 'name', 'market', 'is_active', 'created_at'] as const;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
 
-  findAll(query: ListClientsQuery) {
-    return this.prisma.client.findMany({
-      where: activeStatusWhere(query.status),
-      orderBy: { created_at: 'asc' },
-    });
+  async findAll(query: ListClientsQuery) {
+    const where: Prisma.ClientWhereInput = {
+      ...activeStatusWhere(query.status),
+      ...(query.search
+        ? {
+            OR: [
+              { client_code: { contains: query.search, mode: 'insensitive' } },
+              { name: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    const { skip, take, page, limit } = toSkipTake(query);
+    const orderBy = resolveOrderBy(query.sort, ClientsService.SORTABLE, { created_at: 'asc' });
+    const [data, total] = await Promise.all([
+      this.prisma.client.findMany({ where, orderBy, skip, take }),
+      this.prisma.client.count({ where }),
+    ]);
+    return buildPage(data, total, page, limit);
   }
 
   async findOne(id: string) {

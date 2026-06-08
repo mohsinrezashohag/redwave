@@ -4,6 +4,7 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 import { Market, ProductType, RateKind } from '@prisma/client';
+import { PageMetaResponse } from '../../../common/pagination/page.response';
 
 const RATE_STATUS = ['current', 'pending', 'past'] as const;
 type RateStatus = (typeof RATE_STATUS)[number];
@@ -49,6 +50,24 @@ export class ProductResponse {
 
   @ApiProperty({ type: String, format: 'date-time' })
   created_at!: string;
+}
+
+/** Paginated list envelope (arch §5.1) — one page of clients + the meta. */
+export class ClientPageResponse {
+  @ApiProperty({ type: () => [ClientResponse] })
+  data!: ClientResponse[];
+
+  @ApiProperty({ type: () => PageMetaResponse })
+  meta!: PageMetaResponse;
+}
+
+/** Paginated list envelope (arch §5.1) — one page of products (cross-client) + the meta. */
+export class ProductPageResponse {
+  @ApiProperty({ type: () => [ProductResponse] })
+  data!: ProductResponse[];
+
+  @ApiProperty({ type: () => PageMetaResponse })
+  meta!: PageMetaResponse;
 }
 
 export class BillingRateResponse {

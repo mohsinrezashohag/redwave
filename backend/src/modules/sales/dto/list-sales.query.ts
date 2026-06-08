@@ -1,10 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { SaleStatus } from '@prisma/client';
 import { IsEnum, IsOptional, IsUUID, Matches } from 'class-validator';
+import { PaginationQuery } from '../../../common/pagination/pagination.query';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-export class ListSalesQuery {
+// page/limit/sort/search come from PaginationQuery; sort allowlist: sale_code/customer_name/sale_date/status/created_at.
+export class ListSalesQuery extends PaginationQuery {
   @ApiPropertyOptional({ enum: SaleStatus })
   @IsOptional()
   @IsEnum(SaleStatus)
