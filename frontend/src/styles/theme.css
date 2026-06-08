@@ -64,6 +64,16 @@
   --sidebar-width-collapsed: 64px;
   --topbar-height: 56px;
 
+  /* ── Breakpoints (design-system §8) — documentation only ──────────────────
+   * CSS @media can't read var(), so media queries use these literal px with a
+   * comment; JS reads them via lib/useMediaQuery (MOBILE_MAX / TABLET_RANGE).
+   *   mobile  < 640px   sidebar → off-canvas drawer (hamburger)
+   *   tablet  640–1024  sidebar → icon rail (auto-collapsed)
+   *   desktop > 1024px  full sidebar (user-collapsible)
+   */
+  --bp-mobile: 640px;
+  --bp-tablet: 1024px;
+
   /* Static colour — white text on the accent fill, identical in both themes. */
   --on-accent: #ffffff;
 

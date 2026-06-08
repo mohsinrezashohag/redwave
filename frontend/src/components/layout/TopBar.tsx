@@ -3,7 +3,7 @@
  * notifications bell, environment badge, and the user menu (real signed-in user + the Light/Dark/System
  * theme toggle + Sign out). Search / pay-cycle / notifications are PLACEHOLDERS this session. Tokens only.
  */
-import { PanelLeft, Search } from 'lucide-react';
+import { Menu, PanelLeft, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { IconButton } from '../ui/IconButton';
 import { Popover } from '../ui/Popover';
@@ -21,14 +21,18 @@ const initials = (name: string): string =>
     .map((p) => p[0]?.toUpperCase() ?? '')
     .join('') || '?';
 
-export function TopBar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
+export function TopBar({ onToggleSidebar, isMobile = false }: { onToggleSidebar: () => void; isMobile?: boolean }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
   return (
     <header className={styles.topbar}>
       <div className={styles.left}>
-        <IconButton label="Toggle sidebar" icon={<PanelLeft size={18} />} onClick={onToggleSidebar} />
+        <IconButton
+          label={isMobile ? 'Open menu' : 'Toggle sidebar'}
+          icon={isMobile ? <Menu size={18} /> : <PanelLeft size={18} />}
+          onClick={onToggleSidebar}
+        />
         <div className={styles.search}>
           <Search size={16} className={styles.searchIcon} aria-hidden />
           <input className={styles.searchInput} type="search" placeholder="Search…" aria-label="Search" />
