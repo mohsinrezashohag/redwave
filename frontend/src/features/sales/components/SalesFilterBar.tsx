@@ -5,7 +5,7 @@
  * Active filters show as removable chips. Tokens only.
  */
 import { X } from 'lucide-react';
-import { Input, Select } from '../../../components/ui';
+import { DatePicker, Select } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
 import { useClients, useReps } from '../api/useSales';
 import type { SaleStatus, SalesFilters } from '../sales.types';
@@ -89,20 +89,22 @@ export function SalesFilterBar({ filters, onChange }: SalesFilterBarProps) {
           </div>
         )}
 
-        <Input
-          type="date"
-          aria-label="Sale date from"
-          value={filters.date_from ?? ''}
-          onChange={(e) => onChange({ date_from: e.target.value || undefined })}
-          className={styles.date}
-        />
-        <Input
-          type="date"
-          aria-label="Sale date to"
-          value={filters.date_to ?? ''}
-          onChange={(e) => onChange({ date_to: e.target.value || undefined })}
-          className={styles.date}
-        />
+        <div className={styles.date}>
+          <DatePicker
+            aria-label="Sale date from"
+            placeholder="From date"
+            value={filters.date_from ?? ''}
+            onChange={(v) => onChange({ date_from: v || undefined })}
+          />
+        </div>
+        <div className={styles.date}>
+          <DatePicker
+            aria-label="Sale date to"
+            placeholder="To date"
+            value={filters.date_to ?? ''}
+            onChange={(v) => onChange({ date_to: v || undefined })}
+          />
+        </div>
       </div>
 
       {chips.length > 0 && (

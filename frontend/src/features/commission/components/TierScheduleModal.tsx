@@ -5,9 +5,10 @@
  * at runtime; this only stores the schedule (#5). Tokens only.
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { FormProvider, useForm, useWatch } from 'react-hook-form';
+import { Controller, FormProvider, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
-import { Banner, Button, FormField, Input, Modal, useToast } from '../../../components/ui';
+import { Banner, Button, FormField, Modal, useToast } from '../../../components/ui';
+import { PayPeriodSelect } from '../../../components/data/PayPeriodSelect';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
 import { useCreateTierSchedule } from '../api/useCommissionMutations';
@@ -33,9 +34,9 @@ export function TierScheduleModal({ open, onClose }: { open: boolean; onClose: (
 
   const methods = useForm<TierFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { effective_from: todayIso(), effective_to: '', tiers: DEFAULT_TIERS },
+    defaultValues: { effective_from: '', effective_to: '', tiers: DEFAULT_TIERS },
   });
-  const { control, register, handleSubmit, formState } = methods;
+  const { control, handleSubmit, formState } = methods;
   const tiers = useWatch({ control, name: 'tiers' }) ?? [];
   const bracketError = validateTierBrackets(toBracketInputs(tiers));
 
@@ -58,12 +59,24 @@ export function TierScheduleModal({ open, onClose }: { open: boolean; onClose: (
           </Banner>
 
           <div className={styles.dates}>
-            <FormField label="Effective from" required error={formState.errors.effective_from?.message}>
-              <Input type="date" {...register('effective_from')} />
-            </FormField>
-            <FormField label="Effective to" help="Leave blank for open-ended.">
-              <Input type="date" {...register('effective_to')} />
-            </FormField>
+            <Controller
+              control={control}
+              name="effective_from"
+              render={({ field }) => (
+                <FormField label="Effective from" required error={formState.errors.effective_from?.message}>
+                  <PayPeriodSelect value={field.value} onChange={field.onChange} aria-label="Effective from period" />
+                </FormField>
+              )}
+            />
+            <Controller
+              control={control}
+              name="effective_to"
+              render={({ field }) => (
+                <FormField label="Effective to" help="Ends after the chosen period — or open-ended.">
+                  <PayPeriodSelect value={field.value} onChange={field.onChange} boundary="end" allowOpenEnded aria-label="Effective to period" />
+                </FormField>
+              )}
+            />
           </div>
 
           <TierBracketEditor error={bracketError} />

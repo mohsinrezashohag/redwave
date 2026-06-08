@@ -5,10 +5,11 @@
  */
 import { Check, X } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { Banner, Button, FormField, Input, Modal, useToast } from '../../../components/ui';
 import { cx } from '../../../components/ui';
+import { PayPeriodSelect } from '../../../components/data/PayPeriodSelect';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
 import { useSetHoldback } from '../api/useCommissionMutations';
@@ -37,7 +38,7 @@ export function HoldbackSplitModal({ open, onClose }: { open: boolean; onClose: 
   const set = useSetHoldback();
   const { control, register, handleSubmit, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { advance_pct: '0.70', holdback_pct: '0.30', effective_from: todayIso(), effective_to: '' },
+    defaultValues: { advance_pct: '0.70', holdback_pct: '0.30', effective_from: '', effective_to: '' },
   });
   const errors = formState.errors;
   const advance = useWatch({ control, name: 'advance_pct' }) ?? '';
@@ -68,12 +69,24 @@ export function HoldbackSplitModal({ open, onClose }: { open: boolean; onClose: 
           {ok ? <Check size={15} /> : <X size={15} />} Total = {pctLabel(advance)} + {pctLabel(holdback)} {ok ? '= 100%' : '(must be 100%)'}
         </span>
         <div className={styles.dates}>
-          <FormField label="Effective from" required error={errors.effective_from?.message}>
-            <Input type="date" {...register('effective_from')} />
-          </FormField>
-          <FormField label="Effective to" help="Leave blank for open-ended.">
-            <Input type="date" {...register('effective_to')} />
-          </FormField>
+          <Controller
+            control={control}
+            name="effective_from"
+            render={({ field }) => (
+              <FormField label="Effective from" required error={errors.effective_from?.message}>
+                <PayPeriodSelect value={field.value} onChange={field.onChange} aria-label="Effective from period" />
+              </FormField>
+            )}
+          />
+          <Controller
+            control={control}
+            name="effective_to"
+            render={({ field }) => (
+              <FormField label="Effective to" help="Ends after the chosen period — or open-ended.">
+                <PayPeriodSelect value={field.value} onChange={field.onChange} boundary="end" allowOpenEnded aria-label="Effective to period" />
+              </FormField>
+            )}
+          />
         </div>
         <div className={styles.footer}>
           <Button variant="secondary" type="button" onClick={onClose}>

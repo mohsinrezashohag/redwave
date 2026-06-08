@@ -5,7 +5,7 @@
  * endpoint filters by status/rep/client/period/date, not item category.) Tokens only.
  */
 import { X } from 'lucide-react';
-import { Input, Select } from '../../../components/ui';
+import { DatePicker, Select } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
 import { useClients, useReps } from '../api/useLookups';
 import type { ExpenseFilters, ExpenseStatus } from '../expenses.types';
@@ -76,20 +76,22 @@ export function ExpenseFilterBar({ filters, onChange }: ExpenseFilterBarProps) {
             />
           </div>
         )}
-        <Input
-          type="date"
-          aria-label="From date"
-          className={styles.dateInput}
-          value={filters.from ?? ''}
-          onChange={(e) => onChange({ from: e.target.value || undefined })}
-        />
-        <Input
-          type="date"
-          aria-label="To date"
-          className={styles.dateInput}
-          value={filters.to ?? ''}
-          onChange={(e) => onChange({ to: e.target.value || undefined })}
-        />
+        <div className={styles.dateInput}>
+          <DatePicker
+            aria-label="From date"
+            placeholder="From date"
+            value={filters.from ?? ''}
+            onChange={(v) => onChange({ from: v || undefined })}
+          />
+        </div>
+        <div className={styles.dateInput}>
+          <DatePicker
+            aria-label="To date"
+            placeholder="To date"
+            value={filters.to ?? ''}
+            onChange={(v) => onChange({ to: v || undefined })}
+          />
+        </div>
       </div>
       {chips.length > 0 && (
         <div className={styles.chips}>

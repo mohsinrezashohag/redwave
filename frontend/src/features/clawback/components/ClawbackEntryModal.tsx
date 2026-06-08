@@ -7,9 +7,9 @@
  * the internet activation or re-tier the period (#5).
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Banner, Button, FormField, Input, Modal, MoneyInput, Textarea, useToast } from '../../../components/ui';
+import { Banner, Button, DatePicker, FormField, Modal, MoneyInput, Textarea, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { money } from '../../../lib/format/money';
 import { todayIso } from '../../../lib/format/date';
@@ -38,7 +38,7 @@ export function ClawbackEntryModal({ saleItem, saleCode, onClose }: Props) {
   const { toast } = useToast();
   const onError = useApiErrorToast();
   const create = useCreateClawback();
-  const { register, handleSubmit, formState, reset } = useForm<Values>({
+  const { register, control, handleSubmit, formState, reset } = useForm<Values>({
     resolver: zodResolver(schema),
     values: { amount: '', reason: '', reported_date: todayIso() },
   });
@@ -93,14 +93,20 @@ export function ClawbackEntryModal({ saleItem, saleCode, onClose }: Props) {
           <FormField label="Reason" required error={formState.errors.reason?.message}>
             <Textarea {...register('reason')} placeholder="e.g. Customer cancelled — client reported." />
           </FormField>
-          <FormField
-            label="Client-reported date"
-            required
-            error={formState.errors.reported_date?.message}
-            help="Informational only — it drives no logic; no cancellation window is computed or enforced (#6)."
-          >
-            <Input type="date" {...register('reported_date')} />
-          </FormField>
+          <Controller
+            control={control}
+            name="reported_date"
+            render={({ field }) => (
+              <FormField
+                label="Client-reported date"
+                required
+                error={formState.errors.reported_date?.message}
+                help="Informational only — it drives no logic; no cancellation window is computed or enforced (#6)."
+              >
+                <DatePicker value={field.value ?? ''} onChange={field.onChange} invalid={!!formState.errors.reported_date} aria-label="Client-reported date" />
+              </FormField>
+            )}
+          />
 
           <div className={styles.footer}>
             <Button variant="secondary" type="button" onClick={onClose}>

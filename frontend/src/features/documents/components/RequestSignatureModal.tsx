@@ -4,7 +4,7 @@
  * to populate the picker (the detail returns raw ids); without it, a graceful note. Tokens only.
  */
 import { useState } from 'react';
-import { Banner, Button, FormField, Input, Modal, MultiSelect, Textarea, useToast } from '../../../components/ui';
+import { Banner, Button, DatePicker, FormField, Modal, MultiSelect, Textarea, useToast } from '../../../components/ui';
 import { useAuth } from '../../../auth/useAuth';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
@@ -70,7 +70,7 @@ export function RequestSignatureModal({ open, onClose, documentId }: { open: boo
               <Textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Please review and sign." maxLength={500} />
             </FormField>
             <FormField label="Due date" help="Optional — recorded for reference only.">
-              <Input type="date" value={dueDate} min={todayIso()} onChange={(e) => setDueDate(e.target.value)} />
+              <DatePicker value={dueDate} min={todayIso()} onChange={setDueDate} aria-label="Due date" />
             </FormField>
           </>
         ) : (

@@ -7,7 +7,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
-import { Button, FormField, Input, Modal, MoneyInput, ProposedChip, RadioGroup, Select, useToast } from '../../../components/ui';
+import { Button, DatePicker, FormField, Input, Modal, MoneyInput, ProposedChip, RadioGroup, Select, useToast } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
@@ -146,12 +146,24 @@ function CreateForm({ onClose }: { onClose: () => void }) {
       />
 
       <div className={styles.dates}>
-        <FormField label="Window start" required error={errors.window_start?.message}>
-          <Input type="date" {...register('window_start')} />
-        </FormField>
-        <FormField label="Window end" required error={errors.window_end?.message}>
-          <Input type="date" {...register('window_end')} />
-        </FormField>
+        <Controller
+          control={control}
+          name="window_start"
+          render={({ field }) => (
+            <FormField label="Window start" required error={errors.window_start?.message}>
+              <DatePicker value={field.value ?? ''} onChange={field.onChange} invalid={!!errors.window_start} aria-label="Window start" />
+            </FormField>
+          )}
+        />
+        <Controller
+          control={control}
+          name="window_end"
+          render={({ field }) => (
+            <FormField label="Window end" required error={errors.window_end?.message}>
+              <DatePicker value={field.value ?? ''} onChange={field.onChange} invalid={!!errors.window_end} aria-label="Window end" />
+            </FormField>
+          )}
+        />
       </div>
       <FormField label="Amount" required error={errors.amount?.message} help="Per-activation bonus.">
         <MoneyInput {...register('amount')} placeholder="0.00" />

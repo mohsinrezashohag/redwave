@@ -14,6 +14,7 @@ import {
   Button,
   Card,
   Checkbox,
+  DatePicker,
   FormField,
   Input,
   MultiSelect,
@@ -182,9 +183,21 @@ export function SaleForm() {
         </div>
 
         <div className={styles.grid3}>
-          <FormField label="Sale date" required error={errors.sale_date?.message} help="Governs the pay period.">
-            <Input type="date" {...register('sale_date')} />
-          </FormField>
+          <Controller
+            control={control}
+            name="sale_date"
+            render={({ field }) => (
+              <FormField label="Sale date" required error={errors.sale_date?.message} help="Governs the pay period.">
+                <DatePicker
+                  value={field.value ?? ''}
+                  onChange={field.onChange}
+                  invalid={!!errors.sale_date}
+                  aria-label="Sale date"
+                />
+              </FormField>
+            )}
+          />
+
           <FormField label="MPU ID" error={errors.mpu_id?.message} help="Where the client supplies one.">
             <Input {...register('mpu_id')} placeholder="optional" />
           </FormField>

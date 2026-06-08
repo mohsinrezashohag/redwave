@@ -7,7 +7,7 @@
 import { useEffect } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Controller, useFieldArray, useFormContext, useWatch } from 'react-hook-form';
-import { Button, FormField, IconButton, Input, RadioGroup } from '../../../components/ui';
+import { Button, DatePicker, FormField, IconButton, Input, RadioGroup } from '../../../components/ui';
 import { money } from '../../../lib/format/money';
 import { kmPreview } from '../km';
 import type { TripType } from '../expenses.types';
@@ -38,9 +38,15 @@ export function KmItemFields({ index }: { index: number }) {
 
   return (
     <>
-      <FormField label="Date" required error={itemErrors?.expense_date?.message}>
-        <Input type="date" {...register(`items.${index}.expense_date`)} />
-      </FormField>
+      <Controller
+        control={control}
+        name={`items.${index}.expense_date`}
+        render={({ field }) => (
+          <FormField label="Date" required error={itemErrors?.expense_date?.message}>
+            <DatePicker value={field.value ?? ''} onChange={field.onChange} invalid={!!itemErrors?.expense_date} aria-label="Expense date" />
+          </FormField>
+        )}
+      />
 
       <Controller
         control={control}

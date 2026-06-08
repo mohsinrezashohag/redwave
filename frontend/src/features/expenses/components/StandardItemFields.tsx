@@ -4,7 +4,7 @@
  * is the real gate. Uses the form context. Tokens only.
  */
 import { Controller, useFormContext } from 'react-hook-form';
-import { FormField, Input, MoneyInput, Select } from '../../../components/ui';
+import { DatePicker, FormField, Input, MoneyInput, Select } from '../../../components/ui';
 import { ReceiptField } from './ReceiptField';
 import type { ExpenseFormValues } from './expenseForm.schema';
 import styles from './expenses.module.css';
@@ -26,9 +26,15 @@ export function StandardItemFields({
   return (
     <>
       <div className={styles.itemGrid}>
-        <FormField label="Date" required error={itemErrors?.expense_date?.message}>
-          <Input type="date" {...register(`items.${index}.expense_date`)} />
-        </FormField>
+        <Controller
+          control={control}
+          name={`items.${index}.expense_date`}
+          render={({ field }) => (
+            <FormField label="Date" required error={itemErrors?.expense_date?.message}>
+              <DatePicker value={field.value ?? ''} onChange={field.onChange} invalid={!!itemErrors?.expense_date} aria-label="Expense date" />
+            </FormField>
+          )}
+        />
         <FormField label="Amount" required error={itemErrors?.amount?.message}>
           <MoneyInput {...register(`items.${index}.amount`)} placeholder="0.00" />
         </FormField>

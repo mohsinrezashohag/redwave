@@ -6,7 +6,8 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Banner, Button, FormField, Input, Modal, MoneyInput, Select, useToast } from '../../../components/ui';
+import { Banner, Button, FormField, Modal, MoneyInput, Select, useToast } from '../../../components/ui';
+import { PayPeriodSelect } from '../../../components/data/PayPeriodSelect';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
 import { productTypeLabel } from '../../../lib/format/productType';
@@ -32,7 +33,7 @@ export function FlatRateModal({ open, onClose }: { open: boolean; onClose: () =>
   const create = useCreateFlatRate();
   const { control, register, handleSubmit, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { product_type: 'greenfield_internet', amount: '', effective_from: todayIso(), effective_to: '' },
+    defaultValues: { product_type: 'greenfield_internet', amount: '', effective_from: '', effective_to: '' },
   });
   const errors = formState.errors;
 
@@ -61,12 +62,24 @@ export function FlatRateModal({ open, onClose }: { open: boolean; onClose: () =>
           <MoneyInput {...register('amount')} placeholder="0.00" />
         </FormField>
         <div className={styles.dates}>
-          <FormField label="Effective from" required error={errors.effective_from?.message}>
-            <Input type="date" {...register('effective_from')} />
-          </FormField>
-          <FormField label="Effective to" help="Leave blank for open-ended.">
-            <Input type="date" {...register('effective_to')} />
-          </FormField>
+          <Controller
+            control={control}
+            name="effective_from"
+            render={({ field }) => (
+              <FormField label="Effective from" required error={errors.effective_from?.message}>
+                <PayPeriodSelect value={field.value} onChange={field.onChange} aria-label="Effective from period" />
+              </FormField>
+            )}
+          />
+          <Controller
+            control={control}
+            name="effective_to"
+            render={({ field }) => (
+              <FormField label="Effective to" help="Ends after the chosen period — or open-ended.">
+                <PayPeriodSelect value={field.value} onChange={field.onChange} boundary="end" allowOpenEnded aria-label="Effective to period" />
+              </FormField>
+            )}
+          />
         </div>
         <div className={styles.footer}>
           <Button variant="secondary" type="button" onClick={onClose}>

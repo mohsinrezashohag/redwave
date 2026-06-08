@@ -10,6 +10,8 @@ export { MoneyInput } from './MoneyInput';
 export { FormField } from './FormField';
 export { Select } from './Select';
 export type { SelectOption } from './Select';
+export { DatePicker } from './DatePicker';
+export type { DatePickerProps } from './DatePicker';
 export { MultiSelect } from './MultiSelect';
 export type { MultiSelectOption } from './MultiSelect';
 export { Checkbox } from './Checkbox';

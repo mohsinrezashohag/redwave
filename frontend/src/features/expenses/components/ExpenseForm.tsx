@@ -9,7 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
 import { Controller, FormProvider, useFieldArray, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, FormField, Input, Select, useToast } from '../../../components/ui';
+import { Button, Card, DatePicker, FormField, Select, useToast } from '../../../components/ui';
 import { useAuth } from '../../../auth/useAuth';
 import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -105,7 +105,7 @@ export function ExpenseForm({
     resolver: zodResolver(makeExpenseSchema(requiresReceipt)),
     defaultValues: defaults,
   });
-  const { control, register, handleSubmit, formState } = methods;
+  const { control, handleSubmit, formState } = methods;
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
   const onSubmit = (values: ExpenseFormValues) => {
@@ -139,12 +139,24 @@ export function ExpenseForm({
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
         <Card title="Week">
           <div className={styles.reportRow}>
-            <FormField label="Week start" required error={formState.errors.week_start?.message}>
-              <Input type="date" {...register('week_start')} />
-            </FormField>
-            <FormField label="Week end" required error={formState.errors.week_end?.message}>
-              <Input type="date" {...register('week_end')} />
-            </FormField>
+            <Controller
+              control={control}
+              name="week_start"
+              render={({ field }) => (
+                <FormField label="Week start" required error={formState.errors.week_start?.message}>
+                  <DatePicker value={field.value ?? ''} onChange={field.onChange} invalid={!!formState.errors.week_start} aria-label="Week start" />
+                </FormField>
+              )}
+            />
+            <Controller
+              control={control}
+              name="week_end"
+              render={({ field }) => (
+                <FormField label="Week end" required error={formState.errors.week_end?.message}>
+                  <DatePicker value={field.value ?? ''} onChange={field.onChange} invalid={!!formState.errors.week_end} aria-label="Week end" />
+                </FormField>
+              )}
+            />
             {canSeeReps && (
               <Controller
                 control={control}
