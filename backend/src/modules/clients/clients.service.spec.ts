@@ -15,6 +15,10 @@ describe('activeStatusWhere', () => {
 
 describe('ClientsService', () => {
   function make() {
+    const tx = {
+      client: { update: jest.fn() },
+      clientCustomField: { deleteMany: jest.fn(), createMany: jest.fn() },
+    };
     const prisma = {
       client: {
         findMany: jest.fn(),
@@ -23,9 +27,10 @@ describe('ClientsService', () => {
         create: jest.fn(),
         update: jest.fn(),
       },
+      $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
     };
     const audit = { log: jest.fn().mockResolvedValue(undefined) };
-    return { service: new ClientsService(prisma as never, audit as never), prisma, audit };
+    return { service: new ClientsService(prisma as never, audit as never), prisma, audit, tx };
   }
 
   it('list(active) excludes inactive clients via where is_active:true, returning a {data,meta} page', async () => {
@@ -41,20 +46,35 @@ describe('ClientsService', () => {
   });
 
   it('deactivate is a SOFT update (is_active=false), never a delete', async () => {
-    const { service, prisma, audit } = make();
+    const { service, prisma, tx, audit } = make();
     prisma.client.findUnique.mockResolvedValue({ id: 'c1', is_active: true });
-    prisma.client.update.mockResolvedValue({ id: 'c1', is_active: false });
+    tx.client.update.mockResolvedValue({ id: 'c1', is_active: false });
 
     await service.update('c1', { is_active: false }, 'actor');
 
-    expect(prisma.client.update).toHaveBeenCalledWith(
+    expect(tx.client.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'c1' },
         data: expect.objectContaining({ is_active: false }),
       }),
     );
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'deactivate' }));
+    // No custom_fields in the dto → the set is left untouched (no replace).
+    expect(tx.clientCustomField.deleteMany).not.toHaveBeenCalled();
     // There is no delete on the mock — soft-deactivate must not attempt a hard delete (CLNT-006).
     expect((prisma.client as Record<string, unknown>).delete).toBeUndefined();
+  });
+
+  it('replaces the custom-field set in a transaction when provided', async () => {
+    const { service, prisma, tx } = make();
+    prisma.client.findUnique.mockResolvedValue({ id: 'c1', is_active: true });
+    tx.client.update.mockResolvedValue({ id: 'c1' });
+
+    await service.update('c1', { custom_fields: [{ field_name: 'AM', field_value: 'Jane' }] }, 'actor');
+
+    expect(tx.clientCustomField.deleteMany).toHaveBeenCalledWith({ where: { client_id: 'c1' } });
+    expect(tx.clientCustomField.createMany).toHaveBeenCalledWith({
+      data: [{ field_name: 'AM', field_value: 'Jane', display_order: 0, client_id: 'c1' }],
+    });
   });
 });

@@ -1,6 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Market } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsIn,
@@ -8,8 +11,23 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { PaginationQuery } from '../../../common/pagination/pagination.query';
+
+/** An SA-defined custom name/value pair on a client. Replace-in-place (the whole set is sent each save). */
+export class ClientCustomFieldInput {
+  @ApiProperty({ example: 'Account manager' })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  field_name!: string;
+
+  @ApiProperty({ example: 'Jane Smith' })
+  @IsString()
+  @MaxLength(500)
+  field_value!: string;
+}
 
 export class CreateClientDto {
   @ApiProperty({ example: 'VF', description: 'Unique client code (e.g. VF / RF / CTI).' })
@@ -31,6 +49,14 @@ export class CreateClientDto {
   @ApiProperty({ description: 'Whether the partner supplies per-house MPU IDs.' })
   @IsBoolean()
   supplies_mpu_id!: boolean;
+
+  @ApiPropertyOptional({ type: ClientCustomFieldInput, isArray: true, description: 'Custom name/value pairs.' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => ClientCustomFieldInput)
+  custom_fields?: ClientCustomFieldInput[];
 }
 
 export class UpdateClientDto {
@@ -62,6 +88,18 @@ export class UpdateClientDto {
   @IsOptional()
   @IsBoolean()
   is_active?: boolean;
+
+  @ApiPropertyOptional({
+    type: ClientCustomFieldInput,
+    isArray: true,
+    description: 'Replaces the full custom-field set when provided (omit to leave unchanged).',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => ClientCustomFieldInput)
+  custom_fields?: ClientCustomFieldInput[];
 }
 
 /** Paginated list filter (default: active only). sort allowlist: client_code/name/market/is_active/created_at. */

@@ -464,6 +464,7 @@ model Client {
 
   products              Product[]
   client_billing_rates  ClientBillingRate[]
+  custom_fields         ClientCustomField[]
   incentives            Incentive[]
   sales                 Sale[]
   expense_items         ExpenseItem[]
@@ -475,6 +476,21 @@ model Client {
 
   @@index([is_active]) // list filter (active/inactive)
   @@map("clients")
+}
+
+// CLIENT CUSTOM FIELD — SA-defined name/value pairs carrying extra info beyond the fixed client columns.
+// Replace-in-place on client create/edit (no cascade). — SRS CLNT (custom fields)
+model ClientCustomField {
+  id            String   @id @default(uuid()) @db.Uuid
+  client_id     String   @db.Uuid
+  client        Client   @relation(fields: [client_id], references: [id])
+  field_name    String
+  field_value   String
+  display_order Int
+  created_at    DateTime @default(now())
+
+  @@index([client_id])
+  @@map("client_custom_fields")
 }
 
 // PRODUCT-TYPE CATALOGUE — the configurable set of product types + their LOCKED commission
