@@ -6,6 +6,7 @@ import { Calendar, Eye, Pencil, Search, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import {
   Button,
+  DatePicker,
   DropdownMenu,
   Drawer,
   FileUpload,
@@ -16,6 +17,8 @@ import {
   Placeholder,
   Popover,
   Select,
+  SelectWithOther,
+  type SelectWithOtherValue,
   SplitButton,
   Tabs,
   Tooltip,
@@ -26,6 +29,8 @@ import styles from './Showcase.module.css';
 export function Interactive() {
   const { toast } = useToast();
   const [tags, setTags] = useState<string[]>(['valley_fiber']);
+  const [date, setDate] = useState('');
+  const [source, setSource] = useState<SelectWithOtherValue>({ value: '' });
 
   return (
     <div className={styles.row}>
@@ -71,6 +76,18 @@ export function Interactive() {
             { value: 'valley_fiber', label: 'Valley Fiber' },
             { value: 'rf_now', label: 'RF Now' },
             { value: 'cti', label: 'CTI' },
+          ]}
+        />
+        <DatePicker value={date} onChange={setDate} />
+        <SelectWithOther
+          placeholder="Lead source…"
+          value={source.value}
+          otherText={source.other_text}
+          onChange={setSource}
+          options={[
+            { value: 'referral', label: 'Referral' },
+            { value: 'event', label: 'Event' },
+            { value: 'other', label: 'Other' },
           ]}
         />
       </div>

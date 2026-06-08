@@ -14,6 +14,8 @@ export { DatePicker } from './DatePicker';
 export type { DatePickerProps } from './DatePicker';
 export { MultiSelect } from './MultiSelect';
 export type { MultiSelectOption } from './MultiSelect';
+export { SelectWithOther } from './SelectWithOther';
+export type { SelectWithOtherProps, SelectWithOtherValue } from './SelectWithOther';
 export { Checkbox } from './Checkbox';
 export { RadioGroup } from './RadioGroup';
 export type { RadioOption } from './RadioGroup';
