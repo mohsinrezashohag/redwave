@@ -10,11 +10,12 @@
  * One line per SALE (= one customer/household; its items are the products) — SRS BILL-001. Money is
  * exact Decimal, never float (#1). No GST anywhere (BILL-004). Owns client_statements + _lines.
  */
-import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 import { selectEffectiveRate } from '../../common/effective-dating';
 import { buildStatement, SaleInput, StatementDraft } from './statement.logic';
 
@@ -42,6 +43,7 @@ export class StatementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
   ) {}
 
   /**
@@ -190,6 +192,17 @@ export class StatementService {
         line_count: statement.lines.length,
       },
     });
+    // Best-effort: notify Admins/Super Admins a statement is available. — statement_ready
+    const statementEvent = {
+      eventType: 'statement_ready' as const,
+      title: 'A statement is ready',
+      body: `The statement for ${client.client_code} period ${period.period_number} is available.`,
+      relatedEntityType: 'client_statements',
+      relatedEntityId: statement.id,
+      variables: { period_number: String(period.period_number) },
+    };
+    await this.emitter.emitRole('Admin', statementEvent);
+    await this.emitter.emitRole('Super Admin', statementEvent);
     return statement;
   }
 

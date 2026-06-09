@@ -54,7 +54,7 @@ function make(opts: {
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
-  const service = new StatementService(prisma as never, audit as never);
+  const service = new StatementService(prisma as never, audit as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
   return { service, prisma, tx, audit };
 }
 

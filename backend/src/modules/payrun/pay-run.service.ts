@@ -24,6 +24,7 @@ import { resolveScheduledReleasePeriod } from './holdback-release.logic';
 import { buildLineAmounts, computeNet } from './line-amounts.logic';
 import { EXPENSE_TOTAL_PROVIDER, ExpenseTotalProvider } from './seams/expense-total.provider';
 import { CLAWBACK_TOTAL_PROVIDER, ClawbackTotalProvider } from './seams/clawback-total.provider';
+import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 import { CreatePayRunDto } from './dto/create-pay-run.dto';
 import { SetBonusDto } from './dto/bonus.dto';
 import { ExportPayRunDto } from './dto/export.dto';
@@ -46,6 +47,7 @@ export class PayRunService {
     private readonly engine: CommissionEngineService,
     @Inject(EXPENSE_TOTAL_PROVIDER) private readonly expenseSeam: ExpenseTotalProvider,
     @Inject(CLAWBACK_TOTAL_PROVIDER) private readonly clawbackSeam: ClawbackTotalProvider,
+    @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
   ) {}
 
   // ── Draft ───────────────────────────────────────────────────────────────────────────────────
@@ -176,6 +178,9 @@ export class PayRunService {
     });
     const releaseRule = releaseSetting?.release_rule ?? 'next_cycle_after_30_days';
 
+    // Collected during the tx; emitted AFTER it commits (best-effort, never inside the money tx).
+    const notices: { repId: string; net: Decimal; released: Decimal }[] = [];
+
     // EVERYTHING in one transaction — a mid-step throw rolls back entirely (no partial pay run). (#8)
     await this.prisma.$transaction(
       async (tx) => {
@@ -258,6 +263,7 @@ export class PayRunService {
             clawback,
           });
           await tx.payRunLine.create({ data: this.lineData(run.id, repId, amounts, bonus.note) });
+          notices.push({ repId, net: amounts.net_payout, released });
 
           // (h) Atomically mark the rep's pending clawbacks applied + linked to this run (CLAW-006/008).
           // Read total (above) and mark are the same pending set in one transaction — never double-deducted.
@@ -278,6 +284,35 @@ export class PayRunService {
       action: 'finalize',
       after: { pay_period_id: period.id, rep_count: reps.length },
     });
+
+    // Best-effort, post-commit: notify each paid rep (and a holdback-release note where any released). — pay_run_finalized
+    const repUsers = await this.prisma.rep.findMany({
+      where: { id: { in: notices.map((n) => n.repId) } },
+      select: { id: true, user_id: true },
+    });
+    const userByRep = new Map(repUsers.map((r) => [r.id, r.user_id]));
+    const periodNo = String(period.period_number);
+    for (const n of notices) {
+      const userId = userByRep.get(n.repId);
+      await this.emitter.emitMany([userId], {
+        eventType: 'pay_run_finalized',
+        title: 'Your pay is ready',
+        body: `Pay period ${periodNo} is finalized. Net payout ${money(n.net)}.`,
+        relatedEntityType: 'pay_runs',
+        relatedEntityId: run.id,
+        variables: { period_number: periodNo, net_payout: money(n.net) },
+      });
+      if (n.released.greaterThan(0)) {
+        await this.emitter.emitMany([userId], {
+          eventType: 'holdback_released',
+          title: 'Holdback released',
+          body: `${money(n.released)} of holdback was released in period ${periodNo}.`,
+          relatedEntityType: 'pay_runs',
+          relatedEntityId: run.id,
+          variables: { amount: money(n.released), period_number: periodNo },
+        });
+      }
+    }
     return this.getRun(runId, user);
   }
 

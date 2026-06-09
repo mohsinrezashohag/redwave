@@ -13,7 +13,8 @@ function make() {
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
-  return { service: new BillingRatesService(prisma as never, audit as never), prisma, audit, tx };
+  const emitter = { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() };
+  return { service: new BillingRatesService(prisma as never, audit as never, emitter as never), prisma, audit, tx };
 }
 
 const iso = (date: Date) => date.toISOString().slice(0, 10);

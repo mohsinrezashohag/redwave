@@ -38,7 +38,7 @@ function make() {
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const sales = { validateWithinTx: jest.fn().mockResolvedValue({ id: 'sale-A' }) };
-  const service = new ImportService(prisma as never, audit as never, sales as never);
+  const service = new ImportService(prisma as never, audit as never, sales as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
   return { service, prisma, tx, sales, audit };
 }
 

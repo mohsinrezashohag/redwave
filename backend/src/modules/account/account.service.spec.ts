@@ -38,8 +38,10 @@ function makeService() {
   const scope = {
     canReviewRequest: jest.fn().mockResolvedValue(true),
     profileReviewWhere: jest.fn(),
+    reviewerUserIds: jest.fn().mockResolvedValue([]),
   };
-  const service = new AccountService(prisma as never, audit as never, scope as never);
+  const emitter = { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() };
+  const service = new AccountService(prisma as never, audit as never, scope as never, emitter as never);
   return { service, prisma, audit, scope };
 }
 

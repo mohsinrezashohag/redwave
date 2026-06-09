@@ -9,6 +9,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -24,6 +25,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { SalesService } from '../sales/sales.service';
+import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 import { applyMapping, RawRow } from './mapping.logic';
 import {
   Classification,
@@ -61,6 +63,7 @@ export class ImportService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly sales: SalesService,
+    @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
   ) {}
 
   // ── Stage ───────────────────────────────────────────────────────────────────────
@@ -271,6 +274,17 @@ export class ImportService {
       action: 'commit',
       after: { import_type: batch.import_type, applied: batch.matched_rows },
     });
+    // Best-effort: notify Admins/Super Admins (the importer is import:approve → already in these roles). — import_committed
+    const importEvent = {
+      eventType: 'import_committed' as const,
+      title: 'Import committed',
+      body: `An ${batch.import_type} import was committed (${batch.matched_rows} rows).`,
+      relatedEntityType: 'import_batches',
+      relatedEntityId: id,
+      variables: { import_type: batch.import_type, committed_count: String(batch.matched_rows) },
+    };
+    await this.emitter.emitRole('Admin', importEvent);
+    await this.emitter.emitRole('Super Admin', importEvent);
     return committed;
   }
 

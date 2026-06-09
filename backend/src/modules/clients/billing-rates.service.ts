@@ -8,10 +8,11 @@
  * periods are never altered; back-dating is rejected. — SRS CLNT-004/005, CLAUDE #10. Money is exact
  * Decimal (amount arrives as a validated decimal STRING, stored as Prisma Decimal — never float, #1).
  */
-import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { ClientBillingRate } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 import { CreateBillingRateDto, ListBillingRatesQuery } from './dto/billing-rate.dto';
 import {
   dateOnly,
@@ -29,6 +30,7 @@ export class BillingRatesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
   ) {}
 
   async create(
@@ -109,6 +111,19 @@ export class BillingRatesService {
         bounded_current_id: plan.boundCurrent?.id ?? null,
       },
     });
+
+    // Best-effort: notify Admins/Super Admins of the rate change (in-app only by default, RPT-010). — rate_change
+    const client = await this.prisma.client.findUnique({ where: { id: clientId }, select: { client_code: true } });
+    const rateEvent = {
+      eventType: 'rate_change' as const,
+      title: 'Billing rate changed',
+      body: `A ${dto.rate_kind} rate for ${client?.client_code ?? 'a client'} changed.`,
+      relatedEntityType: 'client_billing_rates',
+      relatedEntityId: created.id,
+      variables: { client_code: client?.client_code ?? '', rate_kind: dto.rate_kind },
+    };
+    await this.emitter.emitRole('Admin', rateEvent);
+    await this.emitter.emitRole('Super Admin', rateEvent);
 
     return { ...created, status: deriveStatus(created, today) };
   }

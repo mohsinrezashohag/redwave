@@ -7,6 +7,7 @@
 import {
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -18,6 +19,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { ScopeService } from '../../common/scope/scope.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { CommissionEngineService } from '../engine/commission-engine.service';
+import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 import { CreateClawbackDto } from './dto/create-clawback.dto';
 import { ListClawbacksQuery } from './dto/list-clawbacks.query';
 
@@ -31,6 +33,7 @@ export class ClawbackService {
     private readonly audit: AuditService,
     private readonly scope: ScopeService,
     private readonly engine: CommissionEngineService,
+    @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
   ) {}
 
   async enter(dto: CreateClawbackDto, user: AuthUser) {
@@ -103,6 +106,16 @@ export class ClawbackService {
         reported_date: dto.reported_date,
         status: 'pending',
       },
+    });
+    // Best-effort: notify the affected rep a clawback was recorded. — clawback_applied
+    const rep = await this.prisma.rep.findUnique({ where: { id: item.sale.rep_id }, select: { user_id: true } });
+    await this.emitter.emitMany([rep?.user_id], {
+      eventType: 'clawback_applied',
+      title: 'A clawback was applied',
+      body: `A clawback of ${amount.toFixed(2)} was applied: ${dto.reason}.`,
+      relatedEntityType: 'clawbacks',
+      relatedEntityId: created.id,
+      variables: { amount: amount.toFixed(2), reason: dto.reason },
     });
     return created;
   }

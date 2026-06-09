@@ -56,6 +56,26 @@ export class ScopeService {
     return { subject: { rep_login: { is: { field_manager_id: user.id } } } };
   }
 
+  /**
+   * The user ids who REVIEW a profile-change request for `subjectUserId` (for notifying the reviewers):
+   * a rep's request → their Field Manager + all active Admins + Super Admins; any other subject → Super
+   * Admins only. Mirrors `profileReviewWhere`/`canReviewRequest`. — AUTH-012
+   */
+  async reviewerUserIds(subjectUserId: string): Promise<string[]> {
+    const rep = await this.prisma.rep.findUnique({
+      where: { user_id: subjectUserId },
+      select: { field_manager_id: true },
+    });
+    const roles = rep ? [BUILTIN_ROLES.ADMIN, BUILTIN_ROLES.SUPER_ADMIN] : [BUILTIN_ROLES.SUPER_ADMIN];
+    const users = await this.prisma.user.findMany({
+      where: { status: 'active', user_roles: { some: { role: { name: { in: roles } } } } },
+      select: { id: true },
+    });
+    const ids = new Set(users.map((u) => u.id));
+    if (rep?.field_manager_id) ids.add(rep.field_manager_id);
+    return [...ids];
+  }
+
   /** Whether `reviewer` is allowed to approve/reject a request whose subject is `subjectUserId`. */
   async canReviewRequest(reviewer: AuthUser, subjectUserId: string): Promise<boolean> {
     if (reviewer.isSuperAdmin) {

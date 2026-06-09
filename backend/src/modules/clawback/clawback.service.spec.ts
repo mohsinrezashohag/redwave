@@ -25,15 +25,18 @@ function make() {
   const prisma = {
     saleItem: { findUnique: jest.fn() },
     clawback: { findFirst: jest.fn().mockResolvedValue(null) },
+    rep: { findUnique: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const scope = { getRepScope: jest.fn().mockResolvedValue({ level: 'all' }) };
+  const emitter = { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() };
   const service = new ClawbackService(
     prisma as never,
     audit as never,
     scope as never,
     new CommissionEngineService(), // the REAL engine clawback calc
+    emitter as never,
   );
   return { service, prisma, tx };
 }

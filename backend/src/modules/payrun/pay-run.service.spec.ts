@@ -92,6 +92,7 @@ function make(opts: { runStatus?: string; dueHolds?: unknown[]; bonuses?: unknow
       update: jest.fn().mockResolvedValue({}),
     },
     sale: { findMany: jest.fn().mockResolvedValue([{ rep_id: 'rep-1' }]) }, // repsWithValidatedSales (distinct)
+    rep: { findMany: jest.fn().mockResolvedValue([{ id: 'rep-1', user_id: null }]) }, // pay_run_finalized recipients
     holdbackReleaseSetting: {
       findFirst: jest.fn().mockResolvedValue({ release_rule: 'next_cycle_after_30_days' }),
     },
@@ -101,6 +102,7 @@ function make(opts: { runStatus?: string; dueHolds?: unknown[]; bonuses?: unknow
   const scope = { getRepScope: jest.fn().mockResolvedValue({ level: 'all' }) };
   const config = { getEngineConfig: jest.fn().mockResolvedValue({}) };
   const engine = { computePeriod: jest.fn().mockReturnValue(ENGINE_RESULT) };
+  const emitter = { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() };
   const service = new PayRunService(
     prisma as never,
     audit as never,
@@ -109,6 +111,7 @@ function make(opts: { runStatus?: string; dueHolds?: unknown[]; bonuses?: unknow
     engine as never,
     new ZeroExpenseTotalProvider(),
     new ZeroClawbackTotalProvider(),
+    emitter as never,
   );
   return { service, prisma, tx };
 }

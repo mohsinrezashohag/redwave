@@ -32,8 +32,10 @@ describe('Billing #3 — structural separation', () => {
     expect(src).not.toMatch(FORBIDDEN_DELEGATE);
   });
 
-  it('StatementService constructs with only (prisma, audit) — no engine dependency', () => {
-    expect(StatementService.length).toBe(2);
+  it('StatementService constructs with only (prisma, audit, notification-emitter) — no engine/commission dependency', () => {
+    // Arity 3 (the 3rd is the notification emitter, a cross-cutting seam — NOT a commission/engine dep; #3
+    // separation is asserted by the source-scan + behavioural specs below).
+    expect(StatementService.length).toBe(3);
   });
 });
 
@@ -113,7 +115,7 @@ function makePrisma() {
 describe('Billing #3 — behavioral + equivalence', () => {
   it('statement generation reads client_billing_rates and NEVER the commission stream', async () => {
     const { prisma, audit } = makePrisma();
-    const service = new StatementService(prisma as never, audit as never);
+    const service = new StatementService(prisma as never, audit as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
     await expect(service.generate('c1', 'P1', 'admin')).resolves.toBeDefined();
     expect(prisma.clientBillingRate.findMany).toHaveBeenCalled(); // billing stream IS used
     // (commission traps would have thrown if touched; success already proves they weren't.)
@@ -121,7 +123,7 @@ describe('Billing #3 — behavioral + equivalence', () => {
 
   it('invoice total_commission == statement total_amount (both from the billing stream)', async () => {
     const { prisma, audit } = makePrisma();
-    const statements = new StatementService(prisma as never, audit as never);
+    const statements = new StatementService(prisma as never, audit as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
     const invoices = new InvoiceService(prisma as never, audit as never, statements);
 
     const stmt = (await statements.generate('c1', 'P1', 'admin')) as unknown as {
