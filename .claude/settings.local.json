@@ -22,7 +22,9 @@
       "Bash(node backend/smoke-gate4-shape.mjs)",
       "Bash(git add *)",
       "Bash(git --no-pager diff --cached --stat)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(npm -w frontend run stylelint)",
+      "Bash(npm -w backend test)"
     ]
   }
 }

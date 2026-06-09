@@ -3,13 +3,14 @@
  * notifications bell, environment badge, and the user menu (real signed-in user + the Light/Dark/System
  * theme toggle + Sign out). Search / pay-cycle / notifications are PLACEHOLDERS this session. Tokens only.
  */
-import { Menu, PanelLeft, Search } from 'lucide-react';
+import { Menu, PanelLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { IconButton } from '../ui/IconButton';
 import { Popover } from '../ui/Popover';
 import { ThemeToggle } from '../../theme/ThemeToggle';
 import { useAuth } from '../../auth/useAuth';
 import { NotificationsBell } from '../../features/notifications/NotificationsBell';
+import { GlobalSearch } from '../../features/search/components/GlobalSearch';
 import { EnvironmentBadge } from './EnvironmentBadge';
 import styles from './TopBar.module.css';
 
@@ -33,10 +34,7 @@ export function TopBar({ onToggleSidebar, isMobile = false }: { onToggleSidebar:
           icon={isMobile ? <Menu size={18} /> : <PanelLeft size={18} />}
           onClick={onToggleSidebar}
         />
-        <div className={styles.search}>
-          <Search size={16} className={styles.searchIcon} aria-hidden />
-          <input className={styles.searchInput} type="search" placeholder="Search…" aria-label="Search" />
-        </div>
+        <GlobalSearch />
       </div>
 
       <div className={styles.right}>

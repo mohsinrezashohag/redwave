@@ -31,6 +31,7 @@ import { BillingModule } from './modules/billing/billing.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ImportModule } from './modules/import/import.module';
 import { ReportingModule } from './modules/reporting/reporting.module';
+import { SearchModule } from './modules/search/search.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { ReportingModule } from './modules/reporting/reporting.module';
     DocumentsModule,
     ImportModule,
     ReportingModule,
+    SearchModule,
   ],
   // Global exception filter — normalises every error to the contract envelope (arch §5.1) and masks 500s.
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],

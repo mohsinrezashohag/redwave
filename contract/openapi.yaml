@@ -4566,6 +4566,67 @@ paths:
       summary: Ask the read-only assistant
       tags:
         - Reporting & Dashboards
+  /v1/search:
+    get:
+      description: Authenticated. RBAC-scoped per entity (reps need hrm:view, clients
+        need clients:view, sales are scoped to the caller). Returns grouped
+        results with ids to deep-link.
+      operationId: SearchController_query_v1
+      parameters:
+        - name: q
+          required: true
+          in: query
+          description: Search term (≥2 chars).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "400":
+          description: Bad Request — validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "401":
+          description: Unauthorized — missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "403":
+          description: Forbidden — RBAC denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "409":
+          description: Conflict — invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "422":
+          description: Unprocessable Entity — domain rule violated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+      security:
+        - bearer: []
+      summary: Global search
+      tags:
+        - Search
 info:
   title: Redwave ERP / HRM API
   description: Versioned REST contract for the Redwave platform. Each protected
@@ -8019,3 +8080,64 @@ components:
         - conversation_id
         - intent
         - answer
+    SearchRepResult:
+      type: object
+      properties:
+        id:
+          type: string
+        rep_code:
+          type: string
+          example: RW-D-0001
+        full_name:
+          type: string
+      required:
+        - id
+        - rep_code
+        - full_name
+    SearchClientResult:
+      type: object
+      properties:
+        id:
+          type: string
+        client_code:
+          type: string
+          example: VF
+        name:
+          type: string
+      required:
+        - id
+        - client_code
+        - name
+    SearchSaleResult:
+      type: object
+      properties:
+        id:
+          type: string
+        sale_code:
+          type: string
+          example: 2026-01-10-VF
+        customer_name:
+          type: string
+      required:
+        - id
+        - sale_code
+        - customer_name
+    SearchResponse:
+      type: object
+      properties:
+        reps:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchRepResult"
+        clients:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchClientResult"
+        sales:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchSaleResult"
+      required:
+        - reps
+        - clients
+        - sales
