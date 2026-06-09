@@ -9,9 +9,27 @@ export type NotificationChannel = components['schemas']['AppNotificationResponse
 
 export type AppNotification = components['schemas']['AppNotificationResponse'];
 
+/** The paginated /v1/notifications envelope ({ data, meta }). */
+export type NotificationPage = components['schemas']['NotificationPageResponse'];
+
 export interface NotificationFilter {
   is_read?: boolean;
 }
+
+export interface NotificationsFilters {
+  is_read?: boolean;
+  search?: string;
+}
+
+/** Server-side list params: filters + pagination/sort (page is 1-based). */
+export interface NotificationListParams extends NotificationsFilters {
+  page: number;
+  limit: number;
+  sort?: string;
+}
+
+/** Manual broadcast request body (notifications:broadcast / Super Admin). */
+export type BroadcastBody = components['schemas']['BroadcastDto'];
 
 /**
  * A global per-event channel setting (GET /v1/notification-settings, settings:view / Super Admin). There

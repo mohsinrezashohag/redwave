@@ -119,8 +119,8 @@ export class SignaturesService {
         userId: result.ownerId,
         title: 'A recipient signed your document',
         body: `${user.full_name} signed ${result.documentName}.`,
-        relatedEntityType: 'document_signatures',
-        relatedEntityId: result.signatureId,
+        relatedEntityType: 'documents',
+        relatedEntityId: result.documentId,
         variables: sigVars,
       });
     } else {

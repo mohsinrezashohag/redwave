@@ -1,26 +1,40 @@
 /**
- * NotificationsBell — the TopBar bell, now wired to /v1/notifications. Shows an unread dot when the
- * caller has any unread notification, and opens a Popover listing their own notifications (read-only;
- * click an unread row to mark it read). Closes the in-app notification loop (signature events surface here).
+ * NotificationsBell — the TopBar bell. Shows an accurate unread COUNT badge (polled every 60s + on window
+ * focus, via useUnreadCount), and a controlled Popover listing the caller's recent notifications. Clicking
+ * a row marks it read and deep-links to the related record (closing the popover). A "Mark all read" action
+ * and a "View all" link to the Notification Center. Controlled so a click-through can close it.
  */
+import { useState } from 'react';
+import * as RPopover from '@radix-ui/react-popover';
 import { Bell } from 'lucide-react';
 import { IconButton } from '../../components/ui';
-import { Popover } from '../../components/ui';
-import { useNotifications } from './api/useNotifications';
+import { useUnreadCount } from './api/useNotifications';
 import { NotificationList } from './NotificationList';
 import styles from './NotificationsBell.module.css';
+import popoverStyles from '../../components/ui/Popover.module.css';
 
 export function NotificationsBell() {
-  // Cheap always-on query just for the unread dot; the full list loads when the popover opens.
-  const unread = useNotifications({ is_read: false });
-  const hasUnread = (unread.data?.length ?? 0) > 0;
+  const [open, setOpen] = useState(false);
+  const unread = useUnreadCount();
+  const count = unread.data?.count ?? 0;
 
   return (
-    <span className={styles.wrap}>
-      <Popover align="end" trigger={<IconButton label="Notifications" icon={<Bell size={18} />} />}>
-        <NotificationList />
-      </Popover>
-      {hasUnread && <span className={styles.dot} aria-hidden />}
-    </span>
+    <RPopover.Root open={open} onOpenChange={setOpen}>
+      <span className={styles.wrap}>
+        <RPopover.Trigger asChild>
+          <IconButton label={count > 0 ? `Notifications (${count} unread)` : 'Notifications'} icon={<Bell size={18} />} />
+        </RPopover.Trigger>
+        {count > 0 && (
+          <span className={styles.badge} aria-hidden>
+            {count > 99 ? '99+' : count}
+          </span>
+        )}
+      </span>
+      <RPopover.Portal>
+        <RPopover.Content className={popoverStyles.content} align="end" sideOffset={6}>
+          <NotificationList onClose={() => setOpen(false)} />
+        </RPopover.Content>
+      </RPopover.Portal>
+    </RPopover.Root>
   );
 }

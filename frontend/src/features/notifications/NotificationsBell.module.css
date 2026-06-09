@@ -3,14 +3,23 @@
   display: inline-flex;
 }
 
-.dot {
+/* Numeric unread badge overlaid on the bell. */
+.badge {
   position: absolute;
-  top: 7px;
-  right: 7px;
-  width: 7px;
-  height: 7px;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: var(--radius-full);
   background-color: var(--danger);
+  color: var(--on-accent);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
   border: 1px solid var(--surface-0);
   pointer-events: none;
 }

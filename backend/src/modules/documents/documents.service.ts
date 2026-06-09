@@ -145,8 +145,8 @@ export class DocumentsService {
         userId: recipientId,
         title: 'A document needs your signature',
         body: dto.message ?? `${user.full_name} asked you to sign ${document.title}.`,
-        relatedEntityType: 'signature_requests',
-        relatedEntityId: request.id,
+        relatedEntityType: 'documents', // deep-links to the document so the recipient can sign
+        relatedEntityId: documentId,
         variables: { requester_name: user.full_name, document_name: document.title },
       });
     }
