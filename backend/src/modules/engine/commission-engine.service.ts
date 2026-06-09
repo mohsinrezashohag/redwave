@@ -125,18 +125,13 @@ export class CommissionEngineService {
     };
   }
 
-  private flatRateFor(productType: ProductType, flatRates: EngineConfig['flatRates']): Decimal {
-    switch (productType) {
-      case ProductType.greenfield_internet:
-        return flatRates.greenfield_internet;
-      case ProductType.tv:
-        return flatRates.tv;
-      case ProductType.home_phone:
-        return flatRates.home_phone;
-      default:
-        // internet is handled by the tier path; anything else is a programming error.
-        throw new Error(`No flat rate for product type ${productType}`);
+  private flatRateFor(productType: string, flatRates: EngineConfig['flatRates']): Decimal {
+    // internet is handled by the tier path; every other (flat) type is a map lookup by key.
+    const rate = flatRates[productType];
+    if (rate === undefined) {
+      throw new Error(`No flat rate for product type ${productType}`);
     }
+    return rate;
   }
 
   /**

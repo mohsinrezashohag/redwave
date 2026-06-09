@@ -30,11 +30,7 @@ export class FlatRateService {
   }
 
   async create(dto: CreateFlatRateDto, actorId: string) {
-    if (dto.product_type === 'internet') {
-      throw new UnprocessableEntityException(
-        'internet is tiered; flat rates apply to greenfield_internet / tv / home_phone only',
-      );
-    }
+    await this.assertFlatRatable(dto.product_type);
     const { from, to, today } = parseEffectiveWindow(dto.effective_from, dto.effective_to);
 
     const existing = await this.prisma.commissionFlatRate.findMany({
@@ -79,5 +75,25 @@ export class FlatRateService {
       },
     });
     return { ...created, status: deriveStatus(created, today) };
+  }
+
+  /**
+   * A flat rate may only target a NON-tiered, active catalogue type. A tiered type (internet) is rejected
+   * — it's priced by the tier schedule, never a flat rate (#5). Reads behaviour from the catalogue, so new
+   * standard-add-on types are flat-ratable automatically.
+   */
+  private async assertFlatRatable(key: string): Promise<void> {
+    const type = await this.prisma.productTypeCatalogue.findUnique({
+      where: { key },
+      select: { behaviour: true, is_active: true },
+    });
+    if (!type || !type.is_active) {
+      throw new UnprocessableEntityException(`Unknown or inactive product type '${key}'`);
+    }
+    if (type.behaviour === 'tiered') {
+      throw new UnprocessableEntityException(
+        `'${key}' is tiered; flat rates apply to non-tiered (greenfield / add-on) types only`,
+      );
+    }
   }
 }

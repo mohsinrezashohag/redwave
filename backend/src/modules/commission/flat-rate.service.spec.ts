@@ -7,6 +7,8 @@ function make() {
   };
   const prisma = {
     commissionFlatRate: { findMany: jest.fn().mockResolvedValue([]) },
+    // The flat-ratable check reads behaviour from the catalogue (default: a standard add-on).
+    productTypeCatalogue: { findUnique: jest.fn().mockResolvedValue({ behaviour: 'standard_addon', is_active: true }) },
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
@@ -20,8 +22,9 @@ const iso = (n: number) => {
 };
 
 describe('FlatRateService.create (COMM-002)', () => {
-  it('rejects product_type internet (it is tiered, not flat) — 422', async () => {
-    const { service } = make();
+  it('rejects a tiered product_type (e.g. internet — it is tiered, not flat) — 422', async () => {
+    const { service, prisma } = make();
+    prisma.productTypeCatalogue.findUnique.mockResolvedValue({ behaviour: 'tiered', is_active: true });
     await expect(
       service.create(
         { product_type: 'internet' as never, amount: '50.00', effective_from: iso(1) },

@@ -47,25 +47,22 @@ export class CommissionConfigProvider {
       ratePerActivation: toDecimal(t.rate_per_activation),
     }));
 
-    // 2. Flat rates, one effective row per product_type.
+    // 2. Flat rates — one effective row per product_type, as a map keyed by the catalogue key. Built over
+    // whatever flat types are configured & effective on the date (NOT a hard-coded trio), so SA-added types
+    // are supported. A sold type missing from this map throws in the engine (the inline-rate-at-creation
+    // flow makes that an edge). The engine determines tiers — flat rates here are pay rates only (#3/#5).
     const flatRows = await this.prisma.commissionFlatRate.findMany();
-    const flatFor = (productType: string): Decimal => {
+    const flatTypes = [...new Set(flatRows.map((r) => r.product_type))];
+    const flatRates: FlatRates = {};
+    for (const productType of flatTypes) {
       const effective = selectEffectiveRate(
         flatRows.filter((r) => r.product_type === productType),
         on,
       );
-      if (!effective) {
-        throw new UnprocessableEntityException(
-          `no effective flat rate for ${productType} on ${date}`,
-        );
+      if (effective) {
+        flatRates[productType] = toDecimal(effective.amount);
       }
-      return toDecimal(effective.amount);
-    };
-    const flatRates: FlatRates = {
-      greenfield_internet: flatFor('greenfield_internet'),
-      tv: flatFor('tv'),
-      home_phone: flatFor('home_phone'),
-    };
+    }
 
     // 3. Holdback split.
     const holdbackRows = await this.prisma.holdbackConfig.findMany();
