@@ -1,12 +1,16 @@
 /**
- * ClientFormModal — create or edit a client (RHF+zod, the playbook). Soft-deactivate is a separate row
- * action (not this form). A duplicate client_code → 409, surfaced as a toast. Tokens only.
+ * ClientFormModal — create or edit a client (RHF+zod, the playbook). Carries the SA-defined CUSTOM FIELDS
+ * (repeatable name/value pairs): when editing, the modal fetches the client DETAIL so the existing fields
+ * are loaded before any save (the server replaces the whole set, so we never wipe). Soft-deactivate is a
+ * separate row action. A duplicate client_code → 409, surfaced as a toast. Tokens only.
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useFieldArray, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Button, FormField, Input, Modal, Select, Switch, useToast } from '../../../components/ui';
+import { Trash2 } from 'lucide-react';
+import { Button, FormField, IconButton, Input, Modal, Select, Switch, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
+import { useClient } from '../api/useClients';
 import { useCreateClient, useUpdateClient } from '../api/useClientMutations';
 import type { Client } from '../clients.types';
 import styles from './clients.module.css';
@@ -18,6 +22,7 @@ const schema = z.object({
   name: z.string().min(1, 'Required').max(150),
   market: z.enum(['CA', 'US']),
   supplies_mpu_id: z.boolean(),
+  custom_fields: z.array(z.object({ field_name: z.string().min(1, 'Name required').max(100), field_value: z.string().max(500) })),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -28,11 +33,15 @@ const MARKET_OPTIONS = [
 
 export function ClientFormModal({ state, onClose }: { state: ClientFormState; onClose: () => void }) {
   const open = state !== null;
-  const editing = state?.mode === 'edit' ? state.client : null;
+  const editingId = state?.mode === 'edit' ? state.client.id : undefined;
   const { toast } = useToast();
   const onError = useApiErrorToast();
   const create = useCreateClient();
   const update = useUpdateClient();
+  // When editing, load the DETAIL so existing custom_fields are present before a save (avoids wiping them).
+  const detail = useClient(editingId);
+  const editing = state?.mode === 'edit' ? detail.data ?? state.client : null;
+  const fieldsLoaded = !editingId || detail.isSuccess;
 
   const { control, register, handleSubmit, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -41,14 +50,16 @@ export function ClientFormModal({ state, onClose }: { state: ClientFormState; on
       name: editing?.name ?? '',
       market: editing?.market ?? 'CA',
       supplies_mpu_id: editing?.supplies_mpu_id ?? false,
+      custom_fields: (editing?.custom_fields ?? []).map((f) => ({ field_name: f.field_name, field_value: f.field_value })),
     },
   });
   const errors = formState.errors;
+  const customFields = useFieldArray({ control, name: 'custom_fields' });
 
   const onSubmit = (values: FormValues) => {
-    if (editing) {
+    if (state?.mode === 'edit') {
       update.mutate(
-        { id: editing.id, body: values },
+        { id: state.client.id, body: values },
         { onSuccess: () => { toast({ title: 'Client updated', tone: 'success' }); onClose(); }, onError },
       );
     } else {
@@ -60,7 +71,7 @@ export function ClientFormModal({ state, onClose }: { state: ClientFormState; on
   };
 
   return (
-    <Modal open={open} onOpenChange={(o) => !o && onClose()} title={editing ? 'Edit client' : 'Create client'}>
+    <Modal open={open} onOpenChange={(o) => !o && onClose()} title={state?.mode === 'edit' ? 'Edit client' : 'Create client'}>
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
         <FormField label="Client code" required error={errors.client_code?.message} help="Unique — never reused.">
           <Input {...register('client_code')} placeholder="VF" />
@@ -84,12 +95,30 @@ export function ClientFormModal({ state, onClose }: { state: ClientFormState; on
             <Switch label="Supplies per-house MPU IDs" checked={field.value} onCheckedChange={field.onChange} />
           )}
         />
+
+        <FormField label="Custom fields" help="Optional name/value pairs carrying extra info about this client.">
+          <div className={styles.customFieldsList}>
+            {customFields.fields.map((f, i) => (
+              <div key={f.id} className={styles.customFieldRow}>
+                <Input {...register(`custom_fields.${i}.field_name`)} placeholder="Field name" aria-label="Field name" />
+                <Input {...register(`custom_fields.${i}.field_value`)} placeholder="Value" aria-label="Field value" />
+                <IconButton label="Remove field" icon={<Trash2 size={16} />} variant="ghost" onClick={() => customFields.remove(i)} />
+              </div>
+            ))}
+            <div>
+              <Button type="button" variant="tertiary" size="sm" onClick={() => customFields.append({ field_name: '', field_value: '' })}>
+                Add field
+              </Button>
+            </div>
+          </div>
+        </FormField>
+
         <div className={styles.footer}>
           <Button variant="secondary" type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" type="submit" loading={create.isPending || update.isPending}>
-            {editing ? 'Save changes' : 'Create client'}
+          <Button variant="primary" type="submit" disabled={!fieldsLoaded} loading={create.isPending || update.isPending}>
+            {state?.mode === 'edit' ? 'Save changes' : 'Create client'}
           </Button>
         </div>
       </form>

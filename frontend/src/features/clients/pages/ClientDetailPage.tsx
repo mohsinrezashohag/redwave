@@ -3,7 +3,7 @@
  * (the deep-linkable detail route, like the role editor). `clients:view` to see; edit/add gated by useCan.
  * 403 → AccessDenied. Touches ONLY /v1/clients* (#3).
  */
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Breadcrumbs, Button, Card, PageHeader } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
@@ -59,6 +59,12 @@ export default function ClientDetailPage() {
                 <dd>{c.supplies_mpu_id ? 'Yes' : 'No'}</dd>
                 <dt>Created</dt>
                 <dd className="mono">{displayDate(c.created_at)}</dd>
+                {(c.custom_fields ?? []).map((f) => (
+                  <Fragment key={f.id}>
+                    <dt>{f.field_name}</dt>
+                    <dd>{f.field_value}</dd>
+                  </Fragment>
+                ))}
               </dl>
             </Card>
 
