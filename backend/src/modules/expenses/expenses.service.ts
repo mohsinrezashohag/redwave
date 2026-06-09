@@ -25,6 +25,7 @@ import { ScopeService } from '../../common/scope/scope.service';
 import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
+import { MapsService } from './maps.service';
 import { CreateExpenseItemsDto } from './dto/create-items.dto';
 import { ExpenseItemInput } from './dto/expense-item.input';
 import { UpdateExpenseItemDto } from './dto/update-item.dto';
@@ -63,6 +64,7 @@ export class ExpensesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly scope: ScopeService,
+    private readonly maps: MapsService,
     @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
   ) {}
 
@@ -80,7 +82,7 @@ export class ExpensesService {
     const contents: ItemContent[] = [];
     for (const item of dto.items) {
       const payPeriodId = await this.resolvePayPeriodId(item.expense_date, periodCache);
-      contents.push(this.buildItemContent(item, configs, payPeriodId));
+      contents.push(await this.buildItemContent(item, configs, payPeriodId));
     }
 
     const created = await this.prisma.$transaction((tx) =>
@@ -183,7 +185,7 @@ export class ExpensesService {
     }
     const periodCache = new Map<string, string | null>();
     const payPeriodId = await this.resolvePayPeriodId(dto.expense_date, periodCache);
-    const content = this.buildItemContent(dto, configs, payPeriodId);
+    const content = await this.buildItemContent(dto, configs, payPeriodId);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       // Re-derive the km log/stops wholesale (delete old, create new) so an edit can switch category.
@@ -370,15 +372,22 @@ export class ExpensesService {
   }
 
   /** Build one item's CONTENT (validates receipt/km rules); throws 422 on violation. — EXP-002..004 */
-  private buildItemContent(item: ExpenseItemInput, configs: ConfigMap, payPeriodId: string | null): ItemContent {
+  private async buildItemContent(
+    item: ExpenseItemInput,
+    configs: ConfigMap,
+    payPeriodId: string | null,
+  ): Promise<ItemContent> {
     if (item.category === ExpenseCategory.km) {
       // km item: a km log is required; amount is COMPUTED (never trusted from the client). — EXP-004
       if (!item.km) {
         throw new UnprocessableEntityException('a km item requires a km log');
       }
       const tripType = item.km.trip_type as TripType;
-      // BE-2 uses the client total_km; BE-4 re-derives it from the stops when Maps is configured.
-      const { deductionKm, billableKm, computedAmount } = computeKm(new Decimal(item.km.total_km), tripType);
+      // Distance is AUTHORITATIVE server-side: re-derive from the stops via Maps when configured,
+      // else fall back to the client total_km (no-geocoder mode). The amount is always computed here.
+      const routeKm = await this.maps.routeDistanceKm(item.km.stops);
+      const totalKm = routeKm ?? new Decimal(item.km.total_km);
+      const { deductionKm, billableKm, computedAmount } = computeKm(totalKm, tripType);
       return {
         category: ExpenseCategory.km,
         client_id: item.client_id ?? null,
@@ -390,7 +399,7 @@ export class ExpensesService {
         km_log: {
           create: {
             trip_type: item.km.trip_type,
-            total_km: item.km.total_km,
+            total_km: totalKm.toFixed(2), // the server-derived (or fallback) authoritative distance
             deduction_km: deductionKm.toString(),
             billable_km: billableKm.toString(),
             rate_per_km: DEFAULT_RATE_PER_KM.toString(),

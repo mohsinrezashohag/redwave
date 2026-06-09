@@ -1,4 +1,5 @@
 import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
+import { Decimal } from 'decimal.js';
 import { ExpensesService } from './expenses.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { ExpenseItemInput } from './dto/expense-item.input';
@@ -56,9 +57,11 @@ function make() {
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const scope = { getRepScope: jest.fn().mockResolvedValue({ level: 'all' }) };
+  // Maps OFF by default → km distance falls back to the client total_km (preserves the 130→70→31.50 case).
+  const maps = { routeDistanceKm: jest.fn().mockResolvedValue(null), isConfigured: jest.fn().mockReturnValue(false) };
   const emitter = { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() };
-  const service = new ExpensesService(prisma as never, audit as never, scope as never, emitter as never);
-  return { service, prisma, audit, scope, tx, emitter };
+  const service = new ExpensesService(prisma as never, audit as never, scope as never, maps as never, emitter as never);
+  return { service, prisma, audit, scope, maps, tx, emitter };
 }
 
 const kmItem = (date = '2026-03-10', tripType: 'single' | 'round' = 'round'): ExpenseItemInput => ({
@@ -153,6 +156,17 @@ describe('ExpensesService.createItems (SRS §11, item-first)', () => {
     await expect(service.createItems(dto([bad]), user)).rejects.toBeInstanceOf(
       UnprocessableEntityException,
     );
+  });
+
+  // BE-4: when Maps is configured the server re-derives the route distance and IGNORES the client total_km.
+  it('km amount uses the server-derived distance when Maps is available (100 round → 40 → $18.00)', async () => {
+    const { service, tx, maps } = make();
+    maps.routeDistanceKm.mockResolvedValue(new Decimal('100')); // server says 100 km, client claimed 130
+    await service.createItems(dto([kmItem()]), user);
+    const item = createdItems(tx)[0] as { amount: string; km_log: { create: { total_km: string; billable_km: string } } };
+    expect(item.km_log.create.total_km).toBe('100.00'); // authoritative server distance, not 130
+    expect(item.km_log.create.billable_km).toBe('40'); // 100 − 60 (round)
+    expect(item.amount).toBe('18.00'); // 40 × $0.45
   });
 
   it('defaults rep_id to the submitter’s rep; status starts submitted', async () => {

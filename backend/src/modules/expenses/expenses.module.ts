@@ -9,6 +9,7 @@ import { ExpensesService } from './expenses.service';
 import { FieldConfigService } from './field-config.service';
 import { ExpenseExportService } from './expense-export.service';
 import { ExpensePayrunProvider } from './expense-payrun.provider';
+import { MapsService } from './maps.service';
 
 @Module({
   controllers: [ExpenseItemsController, ExpenseFieldConfigsController, ExpenseExportsController],
@@ -16,6 +17,7 @@ import { ExpensePayrunProvider } from './expense-payrun.provider';
     ExpensesService,
     FieldConfigService,
     ExpenseExportService,
+    MapsService,
     ExpensePayrunProvider,
     // The REAL implementation of the Pay Run expense seam — re-binds the token Pay Run left at zero.
     { provide: EXPENSE_TOTAL_PROVIDER, useExisting: ExpensePayrunProvider },
