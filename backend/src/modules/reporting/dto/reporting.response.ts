@@ -123,28 +123,7 @@ export class ManagerDashboardResponse {
   sales_in_period!: number;
 }
 
-export class BusinessDashboardResponse {
-  @ApiProperty({ type: String, example: '12000.00', description: 'Decimal string — client revenue.' })
-  revenue!: string;
-
-  @ApiProperty({ type: String, example: '8000.00', description: 'Decimal string — rep payout.' })
-  rep_payout!: string;
-
-  @ApiProperty({ type: String, example: '4000.00', description: 'Decimal string — revenue − payout (display).' })
-  net_margin!: string;
-
-  @ApiProperty({ type: String, example: '3000.00', description: 'Decimal string — outstanding holdback.' })
-  holdback_liability!: string;
-
-  @ApiProperty({ type: String, example: '0.00', description: 'Decimal string — clawbacks.' })
-  clawback_total!: string;
-
-  @ApiProperty()
-  active_rep_count!: number;
-
-  @ApiProperty()
-  top_sales_in_period!: number;
-}
+// BusinessDashboardResponse moved to ./business-dashboard.response.ts (rich, period-aware KPI set).
 
 export class AdminDashboardResponse {
   @ApiProperty()

@@ -15,11 +15,11 @@ import { LeaderboardService } from './leaderboard.service';
 import { DashboardQuery } from './dto/dashboard-query.dto';
 import {
   AdminDashboardResponse,
-  BusinessDashboardResponse,
   LeaderboardResponse,
   ManagerDashboardResponse,
   RepDashboardResponse,
 } from './dto/reporting.response';
+import { BusinessDashboardResponse } from './dto/business-dashboard.response';
 
 @ApiTags('Reporting & Dashboards')
 @ApiBearerAuth()
