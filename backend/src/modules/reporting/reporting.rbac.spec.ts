@@ -15,9 +15,13 @@ describe('Reporting RBAC metadata — arch §6.12', () => {
     expect(meta(LeaderboardController, 'list')).toEqual({ moduleKey: 'reports', action: 'view' });
   });
 
-  it('notification list/read are authenticated-only (own); settings require the settings permission (SA)', () => {
+  it('notification reads/mark are authenticated-only (own); broadcast needs notifications:broadcast; settings need settings:* (SA)', () => {
     expect(meta(NotificationsController, 'list')).toBeUndefined();
-    expect(meta(NotificationsController, 'markRead')).toBeUndefined();
+    expect(meta(NotificationsController, 'unreadCount')).toBeUndefined();
+    expect(meta(NotificationsController, 'setReadState')).toBeUndefined();
+    expect(meta(NotificationsController, 'markAllRead')).toBeUndefined();
+    expect(meta(NotificationsController, 'bulkMark')).toBeUndefined();
+    expect(meta(NotificationsController, 'broadcast')).toEqual({ moduleKey: 'notifications', action: 'broadcast' });
     expect(meta(NotificationSettingsController, 'list')).toEqual({ moduleKey: 'settings', action: 'view' });
     expect(meta(NotificationSettingsController, 'update')).toEqual({ moduleKey: 'settings', action: 'edit' });
   });

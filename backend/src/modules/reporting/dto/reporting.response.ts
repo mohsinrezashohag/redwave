@@ -236,6 +236,15 @@ export class NotificationSettingResponse {
   @ApiProperty()
   email_enabled!: boolean;
 
+  @ApiProperty({ type: String, nullable: true, example: 'Rate change' })
+  label!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Title template with {var} placeholders.' })
+  title_template!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Body template with {var} placeholders.' })
+  body_template!: string | null;
+
   @ApiProperty()
   updated_by!: string;
 

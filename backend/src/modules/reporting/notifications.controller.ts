@@ -3,7 +3,7 @@
  * The list/read endpoints are authenticated-only and scoped to the caller's OWN notifications. The
  * per-event settings are Super-Admin-gated via the `settings` permission (only Super Admin holds it).
  */
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiErrorResponses } from '../../common/errors/api-error-responses.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -12,7 +12,15 @@ import { AuthUser } from '../../common/rbac/auth-user.type';
 import { NotificationsService } from './notifications.service';
 import { ListNotificationsQuery } from './dto/list-notifications.query';
 import { UpdateNotificationSettingsDto } from './dto/notification-settings.dto';
+import { MarkNotificationDto, BulkMarkDto } from './dto/mark-notifications.dto';
+import { BroadcastDto } from './dto/broadcast.dto';
 import { AppNotificationResponse, NotificationSettingResponse } from './dto/reporting.response';
+import {
+  BroadcastResultResponse,
+  BulkMarkResultResponse,
+  NotificationPageResponse,
+  UnreadCountResponse,
+} from './dto/notification.response';
 
 @ApiTags('Reporting & Dashboards')
 @ApiBearerAuth()
@@ -22,17 +30,55 @@ export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'My notifications', description: 'Authenticated; returns only the caller’s own notifications.' })
-  @ApiOkResponse({ type: AppNotificationResponse, isArray: true })
+  @ApiOperation({
+    summary: 'My notifications',
+    description: 'Authenticated; only the caller’s own. Paginated (page/limit/sort/search) + is_read filter.',
+  })
+  @ApiOkResponse({ type: NotificationPageResponse })
   list(@Query() query: ListNotificationsQuery, @CurrentUser() user: AuthUser) {
     return this.notifications.listOwn(user, query);
   }
 
-  @Patch(':id/read')
-  @ApiOperation({ summary: 'Mark a notification read', description: 'Authenticated; only the caller’s own notification.' })
+  @Get('unread-count')
+  @ApiOperation({ summary: 'My unread count', description: 'Authenticated; for the top-bar bell badge (polled).' })
+  @ApiOkResponse({ type: UnreadCountResponse })
+  unreadCount(@CurrentUser() user: AuthUser) {
+    return this.notifications.unreadCount(user);
+  }
+
+  @Post('mark-all-read')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Mark all read', description: 'Authenticated; marks all the caller’s unread notifications read.' })
+  @ApiOkResponse({ type: BulkMarkResultResponse })
+  markAllRead(@CurrentUser() user: AuthUser) {
+    return this.notifications.markAllRead(user);
+  }
+
+  @Post('mark-read')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Bulk mark read/unread', description: 'Authenticated; own-scoped bulk toggle.' })
+  @ApiOkResponse({ type: BulkMarkResultResponse })
+  bulkMark(@Body() dto: BulkMarkDto, @CurrentUser() user: AuthUser) {
+    return this.notifications.bulkMark(user, dto.ids, dto.read);
+  }
+
+  @Post('broadcast')
+  @RequirePermission('notifications', 'broadcast')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Send a manual broadcast',
+    description: 'Requires notifications:broadcast (Super Admin). Fans out to a role / specific users / everyone.',
+  })
+  @ApiOkResponse({ type: BroadcastResultResponse })
+  broadcast(@Body() dto: BroadcastDto, @CurrentUser() user: AuthUser) {
+    return this.notifications.broadcast(dto, user);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Mark a notification read/unread', description: 'Authenticated; only the caller’s own.' })
   @ApiOkResponse({ type: AppNotificationResponse })
-  markRead(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
-    return this.notifications.markRead(id, user);
+  setReadState(@Param('id', ParseUUIDPipe) id: string, @Body() dto: MarkNotificationDto, @CurrentUser() user: AuthUser) {
+    return this.notifications.setReadState(id, user, dto.is_read);
   }
 }
 

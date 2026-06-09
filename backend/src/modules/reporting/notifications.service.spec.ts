@@ -13,9 +13,12 @@ function make() {
     notification: {
       create: jest.fn().mockResolvedValue({ id: 'n1' }),
       findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       findFirst: jest.fn(),
       update: jest.fn().mockResolvedValue({ id: 'n1', is_read: true }),
     },
+    user: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn().mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
@@ -65,10 +68,26 @@ describe('NotificationsService own-scope + settings', () => {
     expect((prisma.notification.findMany.mock.calls[0][0] as { where: { user_id: string } }).where.user_id).toBe('u1');
   });
 
-  it('markRead refuses another user’s notification (404)', async () => {
+  it('setReadState refuses another user’s notification (404)', async () => {
     const { service, prisma } = make();
     prisma.notification.findFirst.mockResolvedValue(null);
-    await expect(service.markRead('n-other', user)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.setReadState('n-other', user, true)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('listOwn returns a paginated {data,meta} page scoped to the caller', async () => {
+    const { service } = make();
+    const page = await service.listOwn(user, {});
+    expect(page).toEqual({ data: [], meta: { total: 0, page: 1, limit: 20, pageCount: 0 } });
+  });
+
+  it('bulkMark is own-scoped (updateMany where includes user_id) and returns the updated count', async () => {
+    const { service, prisma } = make();
+    prisma.notification.updateMany.mockResolvedValue({ count: 3 });
+    const res = await service.bulkMark(user, ['a', 'b'], true);
+    expect(prisma.notification.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ user_id: 'u1' }) }),
+    );
+    expect(res).toEqual({ updated: 3 });
   });
 
   it('updateSettings upserts each event (global — no per-user override) and audits', async () => {
