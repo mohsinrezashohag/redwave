@@ -49,6 +49,7 @@ const NewImportPage = lazy(() => import('../features/import/pages/NewImportPage'
 const ImportDetailPage = lazy(() => import('../features/import/pages/ImportDetailPage'));
 const ChatbotPage = lazy(() => import('../features/chatbot/pages/ChatbotPage'));
 const NotificationCenterPage = lazy(() => import('../features/notifications/pages/NotificationCenterPage'));
+const BroadcastPage = lazy(() => import('../features/notifications/pages/BroadcastPage'));
 
 const fallback = (
   <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-7)' }}>
@@ -105,6 +106,7 @@ export const router = createBrowserRouter([
           { path: 'admin/roles/new', element: lazyEl(<RoleEditorPage />) },
           { path: 'admin/roles/:id', element: lazyEl(<RoleEditorPage />) },
           { path: 'admin/notifications', element: lazyEl(<NotificationSettingsPage />) },
+          { path: 'admin/broadcast', element: lazyEl(<BroadcastPage />) },
           { path: 'admin/clients', element: lazyEl(<ClientsPage />) },
           { path: 'admin/clients/:id', element: lazyEl(<ClientDetailPage />) },
           { path: 'admin/products', element: lazyEl(<ProductsListPage />) },

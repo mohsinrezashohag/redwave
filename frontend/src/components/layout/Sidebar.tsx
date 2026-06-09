@@ -10,6 +10,7 @@ import {
   FileSignature,
   FileText,
   LayoutDashboard,
+  Megaphone,
   Receipt,
   Settings,
   ShieldCheck,
@@ -62,7 +63,7 @@ const statusOf = (search: string) => new URLSearchParams(search).get('status');
 const canReport = (a: NavAccess) => a.permissions.has('reports:view');
 const isAdmin = (a: NavAccess) => a.isSuperAdmin || a.roles.includes('Admin');
 // Permissions that reveal at least one Administration hub card (so the nav item isn't a dead-end).
-const ADMIN_CARD_PERMS = ['profile:approve', 'users:view', 'roles:view', 'settings:view', 'commission:edit', 'clients:view', 'expenses:edit'];
+const ADMIN_CARD_PERMS = ['profile:approve', 'users:view', 'roles:view', 'settings:view', 'notifications:broadcast', 'commission:edit', 'clients:view', 'expenses:edit'];
 const hasAnyAdmin = (a: NavAccess) => isAdmin(a) || ADMIN_CARD_PERMS.some((p) => a.permissions.has(p));
 
 const NAV: NavGroup[] = [
@@ -172,6 +173,7 @@ const NAV: NavGroup[] = [
         show: (a) => a.permissions.has('roles:view'),
       },
       { label: 'Notifications', icon: Bell, to: '/admin/notifications', show: (a) => a.permissions.has('settings:view') },
+      { label: 'Broadcast', icon: Megaphone, to: '/admin/broadcast', show: (a) => a.permissions.has('notifications:broadcast') },
       {
         label: 'Clients',
         icon: ShoppingBag,

@@ -7,6 +7,7 @@
  */
 import {
   Bell,
+  Megaphone,
   Receipt,
   ShieldCheck,
   ShoppingBag,
@@ -42,7 +43,8 @@ const CARDS: HubCard[] = [
   },
   { title: 'Users', description: 'Create users, assign roles, and deactivate access.', icon: <Users size={20} />, permission: 'users:view', to: '/admin/users' },
   { title: 'Roles & Permissions', description: 'Build roles from a module × action permission matrix.', icon: <UserCog size={20} />, permission: 'roles:view', to: '/admin/roles' },
-  { title: 'Notification settings', description: 'Configure which events notify in-app and by email.', icon: <Bell size={20} />, permission: 'settings:view', to: '/admin/notifications' },
+  { title: 'Notification settings', description: 'Per-event channels and title/body templates.', icon: <Bell size={20} />, permission: 'settings:view', to: '/admin/notifications' },
+  { title: 'Send broadcast', description: 'Compose a one-off announcement to everyone, a role, or specific people.', icon: <Megaphone size={20} />, permission: 'notifications:broadcast', to: '/admin/broadcast' },
   { title: 'Commission Config', description: 'Tiers, flat rates, holdback split, and incentives.', icon: <SlidersHorizontal size={20} />, permission: 'commission:edit', to: '/admin/commission' },
   { title: 'Clients', description: 'Partners, their products, and billing rates.', icon: <ShoppingBag size={20} />, permission: 'clients:view', to: '/admin/clients' },
   { title: 'Products', description: 'Every per-client product across all partners.', icon: <ShoppingCart size={20} />, permission: 'clients:view', to: '/admin/products' },
