@@ -187,6 +187,18 @@
   max-width: 760px;
 }
 
+/* A selectable review row: a leading checkbox + the report card (for bulk-approve). */
+.selectableRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.selectableBody {
+  flex: 1;
+  min-width: 0;
+}
+
 .reviewHead {
   display: flex;
   align-items: center;

@@ -161,6 +161,7 @@ export class DocumentsService {
           this.visibilityWhere(user),
           ...(query.status ? [{ status: query.status }] : []),
           ...(query.doc_type ? [{ doc_type: query.doc_type }] : []),
+          ...(query.pending_signatures ? [{ signature_requests: { some: { status: 'pending' as const } } }] : []),
         ],
       },
       orderBy: { created_at: 'desc' },

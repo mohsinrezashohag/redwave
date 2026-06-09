@@ -5,7 +5,7 @@
  * create` to upload. 403 → AccessDenied; the server is the real gate (§5).
  */
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Upload } from 'lucide-react';
 import { Button, PageHeader, Select, Table, TBody, TD, TH, THead, TR } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
@@ -35,11 +35,21 @@ const TYPE_OPTIONS = [{ value: ALL, label: 'All types' }, ...(Object.keys(DOC_TY
 export default function DocumentsListPage() {
   const canView = useCan('documents:view');
   const canCreate = useCan('documents:create');
+  const [params] = useSearchParams();
+  // The Operations "Signature requests" card deep-links here as ?queue=awaiting-signatures (server-filtered).
+  const awaitingSignatures = params.get('queue') === 'awaiting-signatures';
   const [status, setStatus] = useState<DocumentStatus | 'all'>('all');
   const [docType, setDocType] = useState<DocType | 'all'>('all');
   const [uploadOpen, setUploadOpen] = useState(false);
 
-  const q = useDocuments({ status: status === 'all' ? undefined : status, doc_type: docType === 'all' ? undefined : docType }, canView);
+  const q = useDocuments(
+    {
+      status: status === 'all' ? undefined : status,
+      doc_type: docType === 'all' ? undefined : docType,
+      pending_signatures: awaitingSignatures || undefined,
+    },
+    canView,
+  );
   const { resolve } = useUserLookup();
 
   if (!canView || isForbidden(q.error)) {
@@ -51,8 +61,12 @@ export default function DocumentsListPage() {
   return (
     <div className={styles.page}>
       <PageHeader
-        title="Documents"
-        subtitle="Upload, share for signature, and track signing. You see documents you own or are asked to sign."
+        title={awaitingSignatures ? 'Documents awaiting signatures' : 'Documents'}
+        subtitle={
+          awaitingSignatures
+            ? 'Documents with at least one pending signature request.'
+            : 'Upload, share for signature, and track signing. You see documents you own or are asked to sign.'
+        }
         actions={
           canCreate ? (
             <Button variant="primary" leftIcon={<Upload size={16} />} onClick={() => setUploadOpen(true)}>

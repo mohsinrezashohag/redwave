@@ -32,6 +32,7 @@ function make(scopeLevel: 'all' | 'roster' | 'self' = 'self', repIds: string[] =
     salesTarget: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
     expenseReport: { count: jest.fn().mockResolvedValue(1) },
     profileChangeRequest: { count: jest.fn().mockResolvedValue(3) },
+    document: { count: jest.fn().mockResolvedValue(4) }, // admin "signature requests" = docs awaiting signatures
     signatureRequest: { count: jest.fn().mockResolvedValue(4) },
     payRun: { count: jest.fn().mockResolvedValue(5) },
     rep: { count: jest.fn().mockResolvedValue(7), findMany: jest.fn().mockResolvedValue([]) },

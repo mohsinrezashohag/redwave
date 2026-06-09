@@ -24,6 +24,7 @@ export type Document = components['schemas']['DocumentResponse'];
 export interface DocumentFilters {
   status?: DocumentStatus;
   doc_type?: DocType;
+  pending_signatures?: boolean;
 }
 
 // Request bodies — typed from the generated schema.

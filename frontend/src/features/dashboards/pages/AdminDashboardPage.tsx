@@ -30,10 +30,10 @@ export default function AdminDashboardPage() {
               to="/sales?status=entered"
               cta="Review queue"
             />
-            <AdminQueueCard label="Expenses to approve" count={d.pending_expense_approvals} icon={<Receipt size={16} />} />
-            <AdminQueueCard label="Profile changes" count={d.pending_profile_changes} icon={<UserCog size={16} />} />
-            <AdminQueueCard label="Signature requests" count={d.pending_signature_requests} icon={<FileSignature size={16} />} />
-            <AdminQueueCard label="Draft pay runs" count={d.draft_pay_runs} icon={<Wallet size={16} />} />
+            <AdminQueueCard label="Expenses to approve" count={d.pending_expense_approvals} icon={<Receipt size={16} />} to="/expenses/approvals" cta="Review queue" />
+            <AdminQueueCard label="Profile changes" count={d.pending_profile_changes} icon={<UserCog size={16} />} to="/admin/profile-review" cta="Review queue" />
+            <AdminQueueCard label="Signature requests" count={d.pending_signature_requests} icon={<FileSignature size={16} />} to="/documents?queue=awaiting-signatures" cta="Open queue" />
+            <AdminQueueCard label="Draft pay runs" count={d.draft_pay_runs} icon={<Wallet size={16} />} to="/pay-runs" cta="Open pay runs" />
           </div>
         )}
       </DataState>

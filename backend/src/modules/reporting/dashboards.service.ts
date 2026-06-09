@@ -442,7 +442,8 @@ export class DashboardsService {
         this.prisma.sale.count({ where: { status: 'entered' } }),
         this.prisma.expenseReport.count({ where: { status: 'submitted' } }),
         this.prisma.profileChangeRequest.count({ where: { status: 'pending' } }),
-        this.prisma.signatureRequest.count({ where: { status: 'pending' } }),
+        // Count DOCUMENTS awaiting signatures (matches the /documents?pending_signatures queue), not raw rows.
+        this.prisma.document.count({ where: { signature_requests: { some: { status: 'pending' } } } }),
         this.prisma.payRun.count({ where: { status: 'draft' } }),
       ]);
     return {

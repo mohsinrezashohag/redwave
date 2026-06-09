@@ -4175,6 +4175,13 @@ paths:
               - rate_notice
               - equipment
               - other
+        - name: pending_signatures
+          required: false
+          in: query
+          description: Only documents with at least one PENDING signature request (the ops
+            queue).
+          schema:
+            type: boolean
       responses:
         "200":
           description: ""
