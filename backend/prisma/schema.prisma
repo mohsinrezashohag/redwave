@@ -116,6 +116,8 @@ enum SaleStatus {
   paid
   clawed_back
   deleted
+  historical // migrated/already-paid sale — reference-only; never enters the pay pipeline (excluded from
+  // commission/tier/leaderboard/holdback/clawback), shown only in business aggregations. Set ONLY at import.
 }
 
 enum SaleItemStatus {
@@ -242,6 +244,7 @@ enum ImportType {
   reps
   clients
   products
+  billing_rates
   sales
   holdback
   clawback
@@ -676,6 +679,7 @@ model Sale {
   validated_at    DateTime?
   pay_run_id      String?    @db.Uuid
   pay_run         PayRun?    @relation(fields: [pay_run_id], references: [id])
+  import_batch_id String?    @db.Uuid // provenance for imported sales (bulk-validated / historical); no FK (polymorphic, IMP-008)
   created_at      DateTime   @default(now())
 
   sale_items             SaleItem[]
@@ -686,6 +690,7 @@ model Sale {
   @@index([client_id, mpu_id])
   @@index([status]) // list filter by status (validation queue, etc.)
   @@index([client_id, sale_date]) // billing/statement scans by client + date
+  @@index([import_batch_id]) // trace imported sales back to their batch
   @@map("sales")
 }
 
@@ -705,6 +710,8 @@ model SaleItem {
   incentive_id        String?        @db.Uuid
   incentive           Incentive?     @relation(fields: [incentive_id], references: [id])
   incentive_amount    Decimal?       @db.Decimal(12, 2) // SNAPSHOT
+  historical_billed_amount Decimal?  @db.Decimal(12, 2) // historical sales only — the source-file BILLED amount
+  // (a billing-stream reference for business aggregations; NOT commission, never joined to commission_*, #3)
   item_status         SaleItemStatus
 
   clawbacks Clawback[]

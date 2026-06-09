@@ -16,6 +16,7 @@ export const SALE_TRANSITIONS: Record<SaleStatus, SaleStatus[]> = {
   paid: ['clawed_back'],
   clawed_back: [], // terminal (items may be clawed back independently)
   deleted: [], // terminal
+  historical: [], // terminal — reference-only; set ONLY at import, never transitions in or out
 };
 
 export function canTransition(from: SaleStatus, to: SaleStatus): boolean {
