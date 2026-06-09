@@ -19,13 +19,22 @@ describe('Clients & Products RBAC metadata', () => {
       moduleKey: 'clients',
       action: 'edit',
     });
+    // Billing rate cards are gated by the discrete billing_rates module (Super Admin only by default).
     expect(meta(ClientsController, 'listBillingRates')).toEqual({
-      moduleKey: 'clients',
+      moduleKey: 'billing_rates',
       action: 'view',
     });
     expect(meta(ClientsController, 'createBillingRate')).toEqual({
-      moduleKey: 'clients',
+      moduleKey: 'billing_rates',
+      action: 'create',
+    });
+    expect(meta(ClientsController, 'updateBillingRate')).toEqual({
+      moduleKey: 'billing_rates',
       action: 'edit',
+    });
+    expect(meta(ClientsController, 'removeBillingRate')).toEqual({
+      moduleKey: 'billing_rates',
+      action: 'delete',
     });
     expect(meta(ProductsController, 'update')).toEqual({ moduleKey: 'clients', action: 'edit' });
   });

@@ -4,12 +4,12 @@ import { dateOnly, toUtcDateOnly } from './billing-rate.logic';
 
 function make() {
   const tx = {
-    clientBillingRate: { deleteMany: jest.fn(), update: jest.fn(), create: jest.fn() },
+    clientBillingRate: { deleteMany: jest.fn(), update: jest.fn(), create: jest.fn(), updateMany: jest.fn(), delete: jest.fn() },
   };
   const prisma = {
     client: { findUnique: jest.fn().mockResolvedValue({ id: 'c1' }) },
     product: { findFirst: jest.fn() },
-    clientBillingRate: { findMany: jest.fn().mockResolvedValue([]) },
+    clientBillingRate: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn() },
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
@@ -110,5 +110,48 @@ describe('BillingRatesService.create', () => {
       expect.objectContaining({ where: { id: 'cur' } }),
     );
     expect(tx.clientBillingRate.create).toHaveBeenCalled();
+  });
+});
+
+describe('BillingRatesService.update / remove (pending-only — #10)', () => {
+  const pending = () => ({
+    id: 'r1',
+    client_id: 'c1',
+    product_id: 'p1',
+    rate_kind: 'product',
+    amount: '50.00',
+    effective_from: monthsFromToday(1), // future → pending
+    effective_to: null,
+  });
+  const current = () => ({ ...pending(), id: 'r2', effective_from: monthsFromToday(-1), effective_to: null });
+
+  it('update edits a pending rate', async () => {
+    const { service, prisma, tx } = make();
+    prisma.clientBillingRate.findFirst.mockResolvedValue(pending());
+    tx.clientBillingRate.update.mockResolvedValue({ ...pending(), amount: '55.00' });
+    await service.update('c1', 'r1', { amount: '55.00' }, 'actor');
+    expect(tx.clientBillingRate.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'r1' }, data: expect.objectContaining({ amount: '55.00' }) }),
+    );
+  });
+
+  it('update rejects a current rate (422 — supersede instead)', async () => {
+    const { service, prisma } = make();
+    prisma.clientBillingRate.findFirst.mockResolvedValue(current());
+    await expect(service.update('c1', 'r2', { amount: '55.00' }, 'actor')).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('remove deletes a pending rate and re-opens any predecessor it bounded', async () => {
+    const { service, prisma, tx } = make();
+    prisma.clientBillingRate.findFirst.mockResolvedValue(pending());
+    await service.remove('c1', 'r1', 'actor');
+    expect(tx.clientBillingRate.delete).toHaveBeenCalledWith({ where: { id: 'r1' } });
+    expect(tx.clientBillingRate.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { effective_to: null } }));
+  });
+
+  it('remove rejects a current rate (422)', async () => {
+    const { service, prisma } = make();
+    prisma.clientBillingRate.findFirst.mockResolvedValue(current());
+    await expect(service.remove('c1', 'r2', 'actor')).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
 });

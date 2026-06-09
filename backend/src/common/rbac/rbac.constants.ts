@@ -12,6 +12,7 @@ export const MODULE_KEYS = [
   'profile',
   'hrm',
   'clients',
+  'billing_rates', // sensitive partner billing rate cards — view/manage gated separately (Super Admin only)
   'commission',
   'sales',
   'payrun',

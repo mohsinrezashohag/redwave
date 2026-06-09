@@ -29,6 +29,7 @@ const MODULE_NAMES: Record<ModuleKey, string> = {
   profile: 'My Account / Profile',
   hrm: 'HRM / Reps',
   clients: 'Clients & Products',
+  billing_rates: 'Client Billing Rates',
   commission: 'Commission Configuration',
   sales: 'Sales & Validation',
   payrun: 'Pay Run & Holdback',

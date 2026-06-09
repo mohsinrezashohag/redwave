@@ -13,17 +13,20 @@ import { ClientBillingRate } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
-import { CreateBillingRateDto, ListBillingRatesQuery } from './dto/billing-rate.dto';
+import { CreateBillingRateDto, ListBillingRatesQuery, UpdateBillingRateDto } from './dto/billing-rate.dto';
 import {
   dateOnly,
   deriveStatus,
   planSupersession,
+  previousDay,
   RateStatus,
   selectEffectiveRate,
 } from './billing-rate.logic';
 import { winnipegDateOnly } from '../../common/timezone';
 
 type RateWithStatus = ClientBillingRate & { status: RateStatus };
+
+const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
 
 @Injectable()
 export class BillingRatesService {
@@ -126,6 +129,108 @@ export class BillingRatesService {
     await this.emitter.emitRole('Super Admin', rateEvent);
 
     return { ...created, status: deriveStatus(created, today) };
+  }
+
+  /**
+   * Edit a PENDING rate (amount / effective window). A current/past rate is immutable (#10) — 422; supersede
+   * it instead. rate_kind + product_id (the scope) are immutable. Repositioning re-runs supersession against
+   * the scope's other rows so the current row is re-bounded cleanly.
+   */
+  async update(
+    clientId: string,
+    rateId: string,
+    dto: UpdateBillingRateDto,
+    actorId: string,
+  ): Promise<RateWithStatus> {
+    const rate = await this.prisma.clientBillingRate.findFirst({ where: { id: rateId, client_id: clientId } });
+    if (!rate) {
+      throw new NotFoundException('Billing rate not found');
+    }
+    const today = winnipegDateOnly();
+    if (deriveStatus(rate, today) !== 'pending') {
+      throw new UnprocessableEntityException('Only a pending rate can be edited; supersede a current/past rate instead'); // #10
+    }
+
+    const from = dateOnly(dto.effective_from ?? isoDate(rate.effective_from));
+    const toIso = dto.effective_to !== undefined ? dto.effective_to : rate.effective_to ? isoDate(rate.effective_to) : null;
+    const to = toIso ? dateOnly(toIso) : null;
+    if (from.getTime() < today.getTime()) {
+      throw new UnprocessableEntityException('effective_from cannot be in the past'); // #10
+    }
+    if (to && to.getTime() < from.getTime()) {
+      throw new UnprocessableEntityException('effective_to cannot be before effective_from');
+    }
+
+    // Re-run supersession against the scope's OTHER rows (this row is being repositioned).
+    const others = await this.prisma.clientBillingRate.findMany({
+      where: { client_id: clientId, product_id: rate.product_id, rate_kind: rate.rate_kind, id: { not: rateId } },
+      select: { id: true, effective_from: true, effective_to: true },
+    });
+    const plan = planSupersession(others, from, today);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (plan.deletePendingIds.length > 0) {
+        await tx.clientBillingRate.deleteMany({ where: { id: { in: plan.deletePendingIds } } });
+      }
+      if (plan.boundCurrent) {
+        await tx.clientBillingRate.update({
+          where: { id: plan.boundCurrent.id },
+          data: { effective_to: plan.boundCurrent.effectiveTo },
+        });
+      }
+      return tx.clientBillingRate.update({
+        where: { id: rateId },
+        data: { amount: dto.amount ?? rate.amount, effective_from: from, effective_to: to },
+      });
+    });
+
+    await this.audit.log({
+      actorId,
+      entityType: 'client_billing_rates',
+      entityId: rateId,
+      action: 'update',
+      before: rate,
+      after: updated,
+    });
+    return { ...updated, status: deriveStatus(updated, today) };
+  }
+
+  /**
+   * Delete a PENDING rate (#10 — a current/past rate is immutable → 422). If this pending had bounded a
+   * predecessor (set its effective_to to from−1 when created), re-open that predecessor so no gap is left.
+   */
+  async remove(clientId: string, rateId: string, actorId: string): Promise<void> {
+    const rate = await this.prisma.clientBillingRate.findFirst({ where: { id: rateId, client_id: clientId } });
+    if (!rate) {
+      throw new NotFoundException('Billing rate not found');
+    }
+    const today = winnipegDateOnly();
+    if (deriveStatus(rate, today) !== 'pending') {
+      throw new UnprocessableEntityException('Only a pending rate can be deleted; a current/past rate is immutable'); // #10
+    }
+    const predecessorEnd = previousDay(rate.effective_from); // the date a row this pending bounded would carry
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.clientBillingRate.delete({ where: { id: rateId } });
+      // Re-open a predecessor in the same scope that this pending had bounded (restore open-ended).
+      await tx.clientBillingRate.updateMany({
+        where: {
+          client_id: clientId,
+          product_id: rate.product_id,
+          rate_kind: rate.rate_kind,
+          effective_to: predecessorEnd,
+        },
+        data: { effective_to: null },
+      });
+    });
+
+    await this.audit.log({
+      actorId,
+      entityType: 'client_billing_rates',
+      entityId: rateId,
+      action: 'delete',
+      before: rate,
+    });
   }
 
   /** List the client's rates, each annotated past/current/pending. With `effectiveOn`, returns the

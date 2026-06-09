@@ -9,6 +9,8 @@ import { AuditService } from '../../common/audit/audit.service';
 import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
 import { CreateProductDto, ListAllProductsQuery, ListProductsQuery, UpdateProductDto } from './dto/product.dto';
 import { activeStatusWhere } from './clients.service';
+import { dateOnly } from '../../common/effective-dating';
+import { winnipegDateOnly } from '../../common/timezone';
 
 @Injectable()
 export class ProductsService {
@@ -49,20 +51,53 @@ export class ProductsService {
   async create(clientId: string, dto: CreateProductDto, actorId: string) {
     await this.assertClientExists(clientId);
     await this.assertProductTypeActive(dto.product_type);
-    const product = await this.prisma.product.create({
-      data: {
-        client_id: clientId, // attaches the product to the correct client — CLNT-002
-        name: dto.name,
-        product_type: dto.product_type,
-        is_active: true,
-      },
+
+    // Validate the optional inline CLIENT-BILLING rate window up-front (back-dating → 422) so we never
+    // half-create the product. The rate write is a separate billing-stream concern (#3). — Q2 (item 2)
+    const initialRate = dto.initial_billing_rate;
+    if (initialRate) {
+      const from = dateOnly(initialRate.effective_from);
+      if (from.getTime() < winnipegDateOnly().getTime()) {
+        throw new UnprocessableEntityException('initial_billing_rate.effective_from cannot be in the past');
+      }
+    }
+
+    const product = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.product.create({
+        data: {
+          client_id: clientId, // attaches the product to the correct client — CLNT-002
+          name: dto.name,
+          product_type: dto.product_type,
+          is_active: true,
+        },
+      });
+      if (initialRate) {
+        await tx.clientBillingRate.create({
+          data: {
+            client_id: clientId,
+            product_id: created.id,
+            rate_kind: 'product',
+            amount: initialRate.amount, // decimal STRING → Prisma Decimal (exact; never float, #1)
+            effective_from: dateOnly(initialRate.effective_from),
+            effective_to: null,
+            created_by: actorId,
+          },
+        });
+      }
+      return created;
     });
+
     await this.audit.log({
       actorId,
       entityType: 'products',
       entityId: product.id,
       action: 'create',
-      after: { client_id: clientId, name: product.name, product_type: product.product_type },
+      after: {
+        client_id: clientId,
+        name: product.name,
+        product_type: product.product_type,
+        initial_billing_rate: initialRate ?? null,
+      },
     });
     return product;
   }
