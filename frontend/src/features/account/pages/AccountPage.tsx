@@ -8,10 +8,12 @@ import { ProfileTab } from '../components/ProfileTab';
 import { SecurityTab } from '../components/SecurityTab';
 import { PreferencesTab } from '../components/PreferencesTab';
 import { NotificationsTab } from '../components/NotificationsTab';
+import { SignaturesTab } from '../components/SignaturesTab';
 
 const TABS: TabItem[] = [
   { value: 'profile', label: 'Profile', content: <ProfileTab /> },
   { value: 'security', label: 'Security', content: <SecurityTab /> },
+  { value: 'signatures', label: 'Signatures', content: <SignaturesTab /> },
   { value: 'preferences', label: 'Preferences', content: <PreferencesTab /> },
   { value: 'notifications', label: 'Notifications', content: <NotificationsTab /> },
 ];

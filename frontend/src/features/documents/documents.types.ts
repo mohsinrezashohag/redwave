@@ -27,10 +27,21 @@ export interface DocumentFilters {
   pending_signatures?: boolean;
 }
 
-// Request bodies — typed from the generated schema.
-export type CreateDocumentBody = components['schemas']['CreateDocumentDto'];
+// Request bodies. Upload is now MULTIPART (a real file + metadata) so it isn't a JSON schema component;
+// the rest are typed from the generated schema.
+export interface CreateDocumentBody {
+  file: File;
+  title: string;
+  doc_type: DocType;
+}
 export type CreateSignatureRequestBody = components['schemas']['CreateSignatureRequestDto'];
 export type SignBody = components['schemas']['SignDto'];
+
+/** A placed signature field — request-body shape (normalized 0..1 fractions, top-left origin). */
+export type SignatureFieldInput = NonNullable<CreateSignatureRequestBody['fields']>[number];
+/** A placed field as returned on the document detail (server adds id + decimal-string coords). */
+export type SignatureField = SignatureRequest['signature_fields'][number];
+export type SignatureFieldType = SignatureFieldInput['type'];
 
 export const DOC_TYPE_LABELS: Record<DocType, string> = {
   compensation_agreement: 'Compensation agreement',

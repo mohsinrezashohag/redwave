@@ -1,7 +1,7 @@
 /**
- * UploadDocumentModal — create a document (documents:create). The binary upload is STUBBED (§12): the body
- * sends ONLY {title, doc_type}; the server mints the `original_file_url` reference. The FileUpload is cosmetic
- * (models the "attach a file" step) and sends nothing. On success → the new document's detail page.
+ * UploadDocumentModal — create a document (documents:create) by uploading a REAL PDF. Multipart: a PDF
+ * file + title + doc_type → the server stores the original to object storage and never mutates it (DOC-001).
+ * PDF-only (the server 422s anything else; Word should be saved as PDF first). On success → the detail page.
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -21,15 +21,20 @@ export function UploadDocumentModal({ open, onClose }: { open: boolean; onClose:
   const upload = useUploadDocument();
   const [title, setTitle] = useState('');
   const [docType, setDocType] = useState<DocType>('compensation_agreement');
+  const [file, setFile] = useState<File | null>(null);
+
+  const isPdf = !!file && file.type === 'application/pdf';
+  const canSubmit = !!title.trim() && isPdf && !upload.isPending;
 
   const onSubmit = () => {
-    if (!title.trim()) return;
+    if (!file || !title.trim()) return;
     upload.mutate(
-      { title: title.trim(), doc_type: docType },
+      { file, title: title.trim(), doc_type: docType },
       {
         onSuccess: (doc) => {
-          toast({ title: 'Document created', tone: 'success' });
+          toast({ title: 'Document uploaded', tone: 'success' });
           setTitle('');
+          setFile(null);
           onClose();
           navigate(`/documents/${doc.id}`);
         },
@@ -42,14 +47,14 @@ export function UploadDocumentModal({ open, onClose }: { open: boolean; onClose:
     <Modal
       open={open}
       onOpenChange={(o) => !o && !upload.isPending && onClose()}
-      title="New document"
+      title="Upload document"
       footer={
         <div className={styles.footer}>
           <Button variant="secondary" type="button" onClick={onClose} disabled={upload.isPending}>
             Cancel
           </Button>
-          <Button variant="primary" type="button" onClick={onSubmit} loading={upload.isPending} disabled={upload.isPending || !title.trim()}>
-            Create document
+          <Button variant="primary" type="button" onClick={onSubmit} loading={upload.isPending} disabled={!canSubmit}>
+            Upload
           </Button>
         </div>
       }
@@ -61,12 +66,14 @@ export function UploadDocumentModal({ open, onClose }: { open: boolean; onClose:
         <FormField label="Type">
           <Select options={TYPE_OPTIONS} value={docType} onValueChange={(v) => setDocType(v as DocType)} />
         </FormField>
-        <FormField label="File" help="Attaching a file is stubbed for now — the document reference is created server-side.">
-          <FileUpload accept=".pdf" multiple={false} hint="PDF — upload wiring deferred (§12)" />
+        <FormField label="PDF file" required help="PDF only. Save Word documents as PDF before uploading.">
+          <FileUpload accept="application/pdf" multiple={false} hint="PDF up to 25 MB" onFiles={(files) => setFile(files[0] ?? null)} />
         </FormField>
-        <Banner tone="info" title="Stubbed upload">
-          The binary upload is deferred — creating the document records its metadata + a reference. You can then request signatures.
-        </Banner>
+        {file && !isPdf && (
+          <Banner tone="warning" title="PDF required">
+            “{file.name}” isn’t a PDF. Please save it as a PDF and upload again.
+          </Banner>
+        )}
       </div>
     </Modal>
   );

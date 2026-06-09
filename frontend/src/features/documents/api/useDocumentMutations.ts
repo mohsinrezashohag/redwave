@@ -1,19 +1,27 @@
 /**
- * Documents mutations — upload, the unified share/request-signature, row-level sign/decline, and cancel. The
- * upload binary + e-sign provider are STUBBED (the body carries no file; the server mints the ref). Sign/
- * cancel carry NO permission — they are gated row-level server-side (a non-signer → 403; non-pending → 409).
- * All invalidate the documents cache. Toasts at the call site. Responses `never`-typed → cast.
+ * Documents mutations — REAL multipart upload, the unified share/request-signature (with placed fields),
+ * row-level sign (stamp) / decline / sign-upload, and cancel. Sign/cancel/sign-upload carry NO permission —
+ * they are gated row-level server-side (a non-signer → 403; non-pending → 409). All invalidate the
+ * documents cache. Toasts at the call site.
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { multipartPost } from '../../../lib/api/multipartUpload';
 import { documentKeys } from './keys';
 import type { CreateDocumentBody, CreateSignatureRequestBody, Document, SignBody, SignatureRequest } from '../documents.types';
 
+/** Real multipart upload — a PDF + title + doc_type → POST /v1/documents (the original is stored once). */
 export function useUploadDocument() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreateDocumentBody) => unwrap<Document>(api.POST('/v1/documents', { body })),
+    mutationFn: ({ file, title, doc_type }: CreateDocumentBody) => {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('title', title);
+      form.append('doc_type', doc_type);
+      return multipartPost<Document>('/v1/documents', form);
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: documentKeys.all }),
   });
 }
@@ -28,12 +36,25 @@ export function useRequestSignature() {
   });
 }
 
-/** Sign or decline — row-level (must be the asked pending recipient; the server is the real gate). */
+/** Sign (stamp) or decline — row-level (must be the asked pending recipient; the server is the real gate). */
 export function useSignRequest() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ requestId, body }: { requestId: string; body: SignBody }) =>
       unwrap<unknown>(api.POST('/v1/signature-requests/{id}/sign', { params: { path: { id: requestId } }, body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: documentKeys.all }),
+  });
+}
+
+/** Complete a signature by uploading an externally-signed PDF (method = uploaded) — row-level. */
+export function useSignUpload() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, file }: { requestId: string; file: File }) => {
+      const form = new FormData();
+      form.append('file', file);
+      return multipartPost<unknown>(`/v1/signature-requests/${requestId}/sign-upload`, form);
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: documentKeys.all }),
   });
 }
