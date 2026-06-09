@@ -57,6 +57,7 @@ enum PermissionAction {
   approve
   delete
   export
+  broadcast // one off-grid action: gates the manual notification broadcast (Super Admin)
 }
 
 enum ProfileChangeStatus {
@@ -990,6 +991,11 @@ model NotificationEventSetting {
   event_type     String   @unique
   in_app_enabled Boolean
   email_enabled  Boolean
+  // Super-Admin-editable presentation: a display label + title/body templates with {var} placeholders the
+  // emitter substitutes at send time (null → the call-site title/body is used). — RPT-009 / SRS §14
+  label          String?  @db.VarChar(120)
+  title_template String?  @db.VarChar(200)
+  body_template  String?  @db.VarChar(1000)
   updated_by     String   @db.Uuid
   updater        User     @relation("NotifSettingUpdatedBy", fields: [updated_by], references: [id])
   updated_at     DateTime @updatedAt

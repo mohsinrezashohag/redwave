@@ -39,6 +39,7 @@ const MODULE_NAMES: Record<ModuleKey, string> = {
   import: 'Data Import & Integration',
   reports: 'Reporting & Dashboards',
   settings: 'System Settings',
+  notifications: 'Notifications',
 };
 
 type Grant = [ModuleKey, PermissionAction];
@@ -97,15 +98,37 @@ const EXPENSE_FIELD_CONFIGS: { category_key: string; label: string; requires_rec
   { category_key: 'other', label: 'Other', requires_receipt: true },
 ];
 
-const NOTIFICATION_EVENT_SETTINGS: { event_type: string; in_app_enabled: boolean; email_enabled: boolean }[] = [
-  { event_type: 'signature_requested', in_app_enabled: true, email_enabled: false },
-  { event_type: 'signature_signed', in_app_enabled: true, email_enabled: false },
-  { event_type: 'document_completed', in_app_enabled: true, email_enabled: false },
-  { event_type: 'expense_approved', in_app_enabled: true, email_enabled: false },
-  { event_type: 'expense_rejected', in_app_enabled: true, email_enabled: false },
-  { event_type: 'profile_change_decided', in_app_enabled: true, email_enabled: false },
-  { event_type: 'pay_run_finalized', in_app_enabled: true, email_enabled: false },
-  { event_type: 'rate_change', in_app_enabled: true, email_enabled: false }, // RPT-010 — email off by default
+// The COMPREHENSIVE event catalogue (RPT-009 / SRS §14). Each carries a display label + title/body templates
+// (with {var} placeholders the emitter fills; null → call-site text). All default in-app on, email off (the
+// SA flips email; rate_change stays email-off, RPT-010). Recipients are INTRINSIC to each trigger (documented),
+// never re-routed here; free targeting is the manual broadcast.
+type EventSetting = {
+  event_type: string;
+  in_app_enabled: boolean;
+  email_enabled: boolean;
+  label: string;
+  title_template: string | null;
+  body_template: string | null;
+};
+const NOTIFICATION_EVENT_SETTINGS: EventSetting[] = [
+  { event_type: 'sale_validated', in_app_enabled: true, email_enabled: false, label: 'Sale validated', title_template: 'Sale {sale_code} validated', body_template: 'Your sale for {customer_name} has been validated.' },
+  { event_type: 'expense_submitted', in_app_enabled: true, email_enabled: false, label: 'Expense submitted', title_template: 'New expense report from {submitter_name}', body_template: 'An expense report for week {week_start} needs your review.' },
+  { event_type: 'expense_approved', in_app_enabled: true, email_enabled: false, label: 'Expense approved', title_template: 'Expense report approved', body_template: 'Your expense report for {week_start} was approved.' },
+  { event_type: 'expense_rejected', in_app_enabled: true, email_enabled: false, label: 'Expense rejected', title_template: 'Expense report rejected', body_template: 'Your expense report for {week_start} was rejected. {note}' },
+  { event_type: 'expense_sent_back', in_app_enabled: true, email_enabled: false, label: 'Expense sent back', title_template: 'Expense report needs changes', body_template: 'Your expense report for {week_start} was sent back. {note}' },
+  { event_type: 'signature_requested', in_app_enabled: true, email_enabled: false, label: 'Signature requested', title_template: 'A document needs your signature', body_template: '{requester_name} asked you to sign {document_name}.' },
+  { event_type: 'signature_signed', in_app_enabled: true, email_enabled: false, label: 'Document signed', title_template: 'A recipient signed your document', body_template: '{signer_name} signed {document_name}.' },
+  { event_type: 'signature_declined', in_app_enabled: true, email_enabled: false, label: 'Signature declined', title_template: 'A recipient declined to sign', body_template: '{signer_name} declined to sign {document_name}.' },
+  { event_type: 'document_completed', in_app_enabled: true, email_enabled: false, label: 'Document completed', title_template: 'Your document is fully signed', body_template: '{document_name} is complete — all recipients signed.' },
+  { event_type: 'pay_run_finalized', in_app_enabled: true, email_enabled: false, label: 'Pay run finalized', title_template: 'Your pay is ready', body_template: 'Pay period {period_number} is finalized. Net payout {net_payout}.' },
+  { event_type: 'holdback_released', in_app_enabled: true, email_enabled: false, label: 'Holdback released', title_template: 'Holdback released', body_template: '{amount} of holdback was released in period {period_number}.' },
+  { event_type: 'clawback_applied', in_app_enabled: true, email_enabled: false, label: 'Clawback applied', title_template: 'A clawback was applied', body_template: 'A clawback of {amount} was applied: {reason}.' },
+  { event_type: 'profile_change_requested', in_app_enabled: true, email_enabled: false, label: 'Profile change requested', title_template: 'Profile change to review', body_template: '{subject_name} requested a profile change.' },
+  { event_type: 'profile_change_decided', in_app_enabled: true, email_enabled: false, label: 'Profile change decided', title_template: 'Profile change {outcome}', body_template: 'Your requested profile change was {outcome}.' },
+  { event_type: 'statement_ready', in_app_enabled: true, email_enabled: false, label: 'Statement ready', title_template: 'A statement is ready', body_template: 'The statement for period {period_number} is available.' },
+  { event_type: 'rate_change', in_app_enabled: true, email_enabled: false, label: 'Rate change', title_template: 'Billing rate changed', body_template: 'A {rate_kind} rate for {client_code} changed.' }, // RPT-010 — email off
+  { event_type: 'import_committed', in_app_enabled: true, email_enabled: false, label: 'Import committed', title_template: 'Import committed', body_template: 'An {import_type} import was committed ({committed_count} rows).' },
+  { event_type: 'broadcast', in_app_enabled: true, email_enabled: false, label: 'Broadcast announcement', title_template: null, body_template: null }, // SA supplies title/body
 ];
 
 /** Seed the genesis catalogue. Idempotent. Returns the Super Admin user id (used by the demo seed). */
@@ -130,6 +153,14 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
       });
     }
   }
+  // 2b. The ONE off-grid action: notifications:broadcast (gates the manual broadcast — Super Admin only).
+  //     Kept out of the module×action grid so `broadcast` doesn't cross-product onto every module.
+  const notificationsModuleId = modules.find((m) => m.key === 'notifications')!.id;
+  await prisma.permission.upsert({
+    where: { module_id_action: { module_id: notificationsModuleId, action: 'broadcast' } },
+    update: {},
+    create: { module_id: notificationsModuleId, action: 'broadcast' },
+  });
   const permissions = await prisma.permission.findMany({
     select: { id: true, action: true, module: { select: { key: true } } },
   });
@@ -254,11 +285,20 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
   }
 
   // 9. Notification event settings — idempotent by event_type. — RPT-009/010
+  //     update refreshes the label/templates (the default copy) but NEVER the SA's channel toggles.
   for (const s of NOTIFICATION_EVENT_SETTINGS) {
     await prisma.notificationEventSetting.upsert({
       where: { event_type: s.event_type },
-      update: {}, // never clobber a Super-Admin override on re-seed
-      create: { event_type: s.event_type, in_app_enabled: s.in_app_enabled, email_enabled: s.email_enabled, updated_by: superAdminUser.id },
+      update: { label: s.label, title_template: s.title_template, body_template: s.body_template },
+      create: {
+        event_type: s.event_type,
+        in_app_enabled: s.in_app_enabled,
+        email_enabled: s.email_enabled,
+        label: s.label,
+        title_template: s.title_template,
+        body_template: s.body_template,
+        updated_by: superAdminUser.id,
+      },
     });
   }
 

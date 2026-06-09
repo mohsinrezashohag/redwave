@@ -22,6 +22,7 @@ export const MODULE_KEYS = [
   'import',
   'reports',
   'settings',
+  'notifications', // gates the manual broadcast (notifications:broadcast); per-user reads stay self-scoped
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
