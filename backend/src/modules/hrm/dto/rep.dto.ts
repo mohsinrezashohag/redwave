@@ -11,6 +11,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { PaginationQuery } from '../../../common/pagination/pagination.query';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/; // 'YYYY-MM-DD' date-only
 
@@ -90,7 +91,9 @@ export class UpdateRepDto {
   termination_date?: string;
 }
 
-export class ListRepsQuery {
+/** Paginated rep list (page/limit/sort/search from PaginationQuery). sort allowlist:
+ *  rep_code/full_name/status/hire_date/created_at. search matches full_name + rep_code. */
+export class ListRepsQuery extends PaginationQuery {
   @ApiPropertyOptional({ enum: ['active', 'terminated', 'all'], default: 'active' })
   @IsOptional()
   @IsIn(['active', 'terminated', 'all'])
@@ -100,10 +103,4 @@ export class ListRepsQuery {
   @IsOptional()
   @IsUUID()
   fieldManagerId?: string;
-
-  @ApiPropertyOptional({ description: 'Search by name or rep_code (case-insensitive).' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  search?: string;
 }

@@ -21,7 +21,7 @@ import { RepEquipmentService } from './rep-equipment.service';
 import { CreateRepDto, ListRepsQuery, UpdateRepDto } from './dto/rep.dto';
 import { CreateRepDocumentDto } from './dto/rep-document.dto';
 import { CreateRepEquipmentDto } from './dto/rep-equipment.dto';
-import { RepDocumentResponse, RepEquipmentResponse, RepResponse } from './dto/hrm.response';
+import { RepDocumentResponse, RepEquipmentResponse, RepPageResponse, RepResponse } from './dto/hrm.response';
 
 @ApiTags('HRM / Reps')
 @ApiBearerAuth()
@@ -39,9 +39,9 @@ export class RepsController {
   @ApiOperation({
     summary: 'List reps',
     description:
-      'Requires hrm:view. Filters: status, fieldManagerId, search. payment_details redacted unless hrm:edit.',
+      'Requires hrm:view. Paginated (page/limit/sort/search) + status/fieldManagerId filters. payment_details redacted unless hrm:edit.',
   })
-  @ApiOkResponse({ type: RepResponse, isArray: true })
+  @ApiOkResponse({ type: RepPageResponse })
   list(@Query() query: ListRepsQuery, @CurrentUser() user: AuthUser) {
     return this.reps.findAll(query, user);
   }

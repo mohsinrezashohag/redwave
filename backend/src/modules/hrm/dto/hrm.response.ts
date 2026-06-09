@@ -7,6 +7,7 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 import { EquipmentStatus, RepStatus } from '@prisma/client';
+import { PageMetaResponse } from '../../../common/pagination/page.response';
 
 export class RepResponse {
   @ApiProperty()
@@ -43,6 +44,15 @@ export class RepResponse {
 
   @ApiProperty({ type: String, format: 'date-time' })
   created_at!: string;
+}
+
+/** Paginated list envelope (arch §5.1) — one page of reps + the meta. */
+export class RepPageResponse {
+  @ApiProperty({ type: () => [RepResponse] })
+  data!: RepResponse[];
+
+  @ApiProperty({ type: () => PageMetaResponse })
+  meta!: PageMetaResponse;
 }
 
 export class RepDocumentResponse {

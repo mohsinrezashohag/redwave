@@ -1425,10 +1425,41 @@ paths:
       tags: *a66
   /v1/reps:
     get:
-      description: "Requires hrm:view. Filters: status, fieldManagerId, search.
-        payment_details redacted unless hrm:edit."
+      description: Requires hrm:view. Paginated (page/limit/sort/search) +
+        status/fieldManagerId filters. payment_details redacted unless hrm:edit.
       operationId: RepsController_list_v1
       parameters:
+        - name: page
+          required: false
+          in: query
+          description: 1-based page number.
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: limit
+          required: false
+          in: query
+          description: Rows per page (max 100).
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 20
+            type: number
+        - name: sort
+          required: false
+          in: query
+          description: Sort as `field:dir` (e.g. `sale_date:desc`). Unknown fields fall
+            back to the default sort.
+          schema:
+            example: sale_date:desc
+            type: string
+        - name: search
+          required: false
+          in: query
+          description: Case-insensitive free-text search across the entity’s key columns.
+          schema:
+            type: string
         - name: status
           required: false
           in: query
@@ -1445,21 +1476,13 @@ paths:
           description: Filter by field manager (user id).
           schema:
             type: string
-        - name: search
-          required: false
-          in: query
-          description: Search by name or rep_code (case-insensitive).
-          schema:
-            type: string
       responses:
         "200":
           description: ""
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/RepResponse"
+                $ref: "#/components/schemas/RepPageResponse"
         "400": &a67
           description: Bad Request — validation failed
           content:
@@ -4337,9 +4360,41 @@ paths:
         - Reporting & Dashboards
   /v1/notifications:
     get:
-      description: Authenticated; returns only the caller’s own notifications.
+      description: Authenticated; only the caller’s own. Paginated
+        (page/limit/sort/search) + is_read filter.
       operationId: NotificationsController_list_v1
       parameters:
+        - name: page
+          required: false
+          in: query
+          description: 1-based page number.
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: limit
+          required: false
+          in: query
+          description: Rows per page (max 100).
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 20
+            type: number
+        - name: sort
+          required: false
+          in: query
+          description: Sort as `field:dir` (e.g. `sale_date:desc`). Unknown fields fall
+            back to the default sort.
+          schema:
+            example: sale_date:desc
+            type: string
+        - name: search
+          required: false
+          in: query
+          description: Case-insensitive free-text search across the entity’s key columns.
+          schema:
+            type: string
         - name: is_read
           required: false
           in: query
@@ -4352,9 +4407,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AppNotificationResponse"
+                $ref: "#/components/schemas/NotificationPageResponse"
         "400": &a195
           description: Bad Request — validation failed
           content:
@@ -4396,16 +4449,119 @@ paths:
       summary: My notifications
       tags: &a202
         - Reporting & Dashboards
-  /v1/notifications/{id}/read:
+  /v1/notifications/unread-count:
+    get:
+      description: Authenticated; for the top-bar bell badge (polled).
+      operationId: NotificationsController_unreadCount_v1
+      parameters: []
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCountResponse"
+        "400": *a195
+        "401": *a196
+        "403": *a197
+        "404": *a198
+        "409": *a199
+        "422": *a200
+      security: *a201
+      summary: My unread count
+      tags: *a202
+  /v1/notifications/mark-all-read:
+    post:
+      description: Authenticated; marks all the caller’s unread notifications read.
+      operationId: NotificationsController_markAllRead_v1
+      parameters: []
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkMarkResultResponse"
+        "400": *a195
+        "401": *a196
+        "403": *a197
+        "404": *a198
+        "409": *a199
+        "422": *a200
+      security: *a201
+      summary: Mark all read
+      tags: *a202
+  /v1/notifications/mark-read:
+    post:
+      description: Authenticated; own-scoped bulk toggle.
+      operationId: NotificationsController_bulkMark_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkMarkDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkMarkResultResponse"
+        "400": *a195
+        "401": *a196
+        "403": *a197
+        "404": *a198
+        "409": *a199
+        "422": *a200
+      security: *a201
+      summary: Bulk mark read/unread
+      tags: *a202
+  /v1/notifications/broadcast:
+    post:
+      description: Requires notifications:broadcast (Super Admin). Fans out to a role
+        / specific users / everyone.
+      operationId: NotificationsController_broadcast_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BroadcastDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BroadcastResultResponse"
+        "400": *a195
+        "401": *a196
+        "403": *a197
+        "404": *a198
+        "409": *a199
+        "422": *a200
+      security: *a201
+      summary: Send a manual broadcast
+      tags: *a202
+  /v1/notifications/{id}:
     patch:
-      description: Authenticated; only the caller’s own notification.
-      operationId: NotificationsController_markRead_v1
+      description: Authenticated; only the caller’s own.
+      operationId: NotificationsController_setReadState_v1
       parameters:
         - name: id
           required: true
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkNotificationDto"
       responses:
         "200":
           description: ""
@@ -4420,7 +4576,7 @@ paths:
         "409": *a199
         "422": *a200
       security: *a201
-      summary: Mark a notification read
+      summary: Mark a notification read/unread
       tags: *a202
   /v1/notification-settings:
     get:
@@ -5045,6 +5201,7 @@ components:
             - approve
             - delete
             - export
+            - broadcast
         key:
           type: string
           example: clients:view
@@ -5568,6 +5725,18 @@ components:
         - termination_date
         - payment_details
         - created_at
+    RepPageResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RepResponse"
+        meta:
+          $ref: "#/components/schemas/PageMetaResponse"
+      required:
+        - data
+        - meta
     CreateRepDto:
       type: object
       properties:
@@ -8001,6 +8170,101 @@ components:
         - is_read
         - sent_at
         - created_at
+    NotificationPageResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AppNotificationResponse"
+        meta:
+          $ref: "#/components/schemas/PageMetaResponse"
+      required:
+        - data
+        - meta
+    UnreadCountResponse:
+      type: object
+      properties:
+        count:
+          type: number
+          example: 7
+          description: The caller's unread notification count.
+      required:
+        - count
+    BulkMarkResultResponse:
+      type: object
+      properties:
+        updated:
+          type: number
+          example: 5
+          description: Rows updated (own-scoped; non-owned ids are ignored).
+      required:
+        - updated
+    BulkMarkDto:
+      type: object
+      properties:
+        ids:
+          description: Notification ids to update (own-scoped).
+          type: array
+          items:
+            type: string
+        read:
+          type: boolean
+          description: Mark the selected notifications read (true) or unread (false).
+      required:
+        - ids
+        - read
+    BroadcastAudienceDto:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+            - role
+            - users
+            - all
+        role:
+          type: string
+          description: Required when kind='role' (a role name, e.g. 'Manager').
+        userIds:
+          description: Required when kind='users'.
+          type: array
+          items:
+            type: string
+      required:
+        - kind
+    BroadcastDto:
+      type: object
+      properties:
+        title:
+          type: string
+          example: System maintenance tonight
+        body:
+          type: string
+          example: The platform will be briefly unavailable at 10pm CT.
+        audience:
+          $ref: "#/components/schemas/BroadcastAudienceDto"
+      required:
+        - title
+        - body
+        - audience
+    BroadcastResultResponse:
+      type: object
+      properties:
+        recipients:
+          type: number
+          example: 12
+          description: Number of active users the broadcast reached.
+      required:
+        - recipients
+    MarkNotificationDto:
+      type: object
+      properties:
+        is_read:
+          type: boolean
+          description: Mark read (true) or unread (false).
+      required:
+        - is_read
     NotificationSettingResponse:
       type: object
       properties:
@@ -8013,6 +8277,18 @@ components:
           type: boolean
         email_enabled:
           type: boolean
+        label:
+          type: string
+          nullable: true
+          example: Rate change
+        title_template:
+          type: string
+          nullable: true
+          description: Title template with {var} placeholders.
+        body_template:
+          type: string
+          nullable: true
+          description: Body template with {var} placeholders.
         updated_by:
           type: string
         updated_at:
@@ -8023,6 +8299,9 @@ components:
         - event_type
         - in_app_enabled
         - email_enabled
+        - label
+        - title_template
+        - body_template
         - updated_by
         - updated_at
     EventSettingInput:
@@ -8037,6 +8316,15 @@ components:
         email_enabled:
           type: boolean
           example: false
+        label:
+          type: string
+          description: Display label for the catalogue.
+        title_template:
+          type: string
+          description: Title template with {var} placeholders (null → call-site title).
+        body_template:
+          type: string
+          description: Body template with {var} placeholders (null → call-site body).
       required:
         - event_type
         - in_app_enabled
