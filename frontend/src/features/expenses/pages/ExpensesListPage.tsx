@@ -1,49 +1,57 @@
 /**
- * ExpensesListPage — My Expenses (SRS EXP-010). Server-scoped list of weekly reports with filters in the
- * URL (status/rep/client/date). Defaults the date range to the CURRENT pay cycle for users who can read
- * pay periods (payrun:view); others see their own reports unfiltered. New (expenses:create) + Export
- * (expenses:export). `expenses:view` to see; 403 → AccessDenied. Reuses the playbook.
+ * ExpensesListPage — the item-first expense list (SRS EXP-010). Server-scoped + paginated items on a
+ * DataTable, with filters in the URL (status/category/rep/client/date/search), defaulting the date range to
+ * the CURRENT pay cycle for users who can read pay periods (payrun:view). Approvers get bulk approve/reject/
+ * send-back; everyone with create can add items. Flexible daily/weekly/monthly grouping + PDF/Excel export,
+ * plus a server-recorded export (for the per-rep KM-log client submission). `expenses:view` to see; 403 →
+ * AccessDenied. Reuses the playbook.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, PageHeader } from '../../../components/ui';
-import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
-import { isForbidden } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { currentPeriod, usePayPeriods } from '../api/useLookups';
-import { useExpenseReports } from '../api/useExpenses';
+import { useAllExpenseItems, useFieldConfigs } from '../api/useExpenseItems';
 import { ExpenseFilterBar } from '../components/ExpenseFilterBar';
-import { ExpenseReportsTable } from '../components/ExpenseReportsTable';
+import { ExpenseItemsTable } from '../components/ExpenseItemsTable';
+import { ExpenseExportControls } from '../components/ExpenseExportControls';
+import { GroupedSummary } from '../components/GroupedSummary';
 import { ExportModal } from '../components/ExportModal';
-import type { ExpenseFilters, ExpenseStatus } from '../expenses.types';
+import type { GroupMode } from '../format';
+import type { ExpenseCategory, ExpenseFilters, ExpenseStatus } from '../expenses.types';
 import styles from '../components/expenses.module.css';
 
-const KEYS = ['status', 'rep_id', 'client_id', 'from', 'to'] as const;
+const KEYS = ['status', 'category', 'rep_id', 'client_id', 'from', 'to', 'search'] as const;
 
 export default function ExpensesListPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const canView = useCan('expenses:view');
   const canCreate = useCan('expenses:create');
+  const canApprove = useCan('expenses:approve');
   const canExport = useCan('expenses:export');
   const canViewPeriods = useCan('payrun:view');
   const [exportOpen, setExportOpen] = useState(false);
+  const [groupMode, setGroupMode] = useState<GroupMode>('none');
 
   const filters = useMemo<ExpenseFilters>(
     () => ({
       status: (params.get('status') as ExpenseStatus | null) ?? undefined,
+      category: (params.get('category') as ExpenseCategory | null) ?? undefined,
       rep_id: params.get('rep_id') ?? undefined,
       client_id: params.get('client_id') ?? undefined,
       from: params.get('from') ?? undefined,
       to: params.get('to') ?? undefined,
+      search: params.get('search') ?? undefined,
     }),
     [params],
   );
 
   // One-time: default the date range to the current pay cycle (only if the URL has no filters at all).
   const periods = usePayPeriods(canView && canViewPeriods);
+  const configs = useFieldConfigs(canView);
   const defaulted = useRef(false);
   useEffect(() => {
     if (defaulted.current || !periods.data) return;
@@ -77,43 +85,36 @@ export default function ExpensesListPage() {
     [setParams],
   );
 
-  const q = useExpenseReports(filters, canView);
+  const grouped = useAllExpenseItems(filters, canView && groupMode !== 'none');
 
-  if (!canView || isForbidden(q.error)) {
+  if (!canView) {
     return <AccessDenied message="Viewing expenses requires the expenses view permission." />;
   }
 
-  const reports = q.data ?? [];
   return (
     <div className={styles.page}>
       <PageHeader
         title="Expenses"
-        subtitle="Weekly expense reports across your scope."
+        subtitle="Every expense item across your scope. Filter, group, approve, and export."
         actions={
-          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+          <div className={styles.headerActions}>
+            <ExpenseExportControls filters={filters} groupMode={groupMode} onGroupChange={setGroupMode} configs={configs.data} />
             {canExport && (
               <Button variant="secondary" onClick={() => setExportOpen(true)}>
-                Export
+                Record export
               </Button>
             )}
             {canCreate && (
               <Button variant="primary" onClick={() => navigate('/expenses/new')}>
-                New report
+                Add expense
               </Button>
             )}
           </div>
         }
       />
       <ExpenseFilterBar filters={filters} onChange={onChange} />
-      <DataState
-        isLoading={q.isLoading}
-        isError={q.isError}
-        isEmpty={reports.length === 0}
-        onRetry={() => q.refetch()}
-        emptyNode={<p className="mono">No expense reports match these filters.</p>}
-      >
-        <ExpenseReportsTable reports={reports} />
-      </DataState>
+      {groupMode !== 'none' && grouped.data && <GroupedSummary items={grouped.data} mode={groupMode} />}
+      <ExpenseItemsTable filters={filters} canReview={canApprove} />
       <ExportModal open={exportOpen} onOpenChange={setExportOpen} />
     </div>
   );

@@ -8,6 +8,12 @@ interface ImportMetaEnv {
    * See src/api/client.ts.
    */
   readonly VITE_API_BASE_URL?: string;
+  /**
+   * Google Maps browser key for the expense KM entry (Places autocomplete + route map). When unset, the
+   * KM form falls back to manual address + total-km entry; the server still computes the authoritative
+   * amount (and re-derives the distance with its own GOOGLE_MAPS_API_KEY).
+   */
+  readonly VITE_GOOGLE_MAPS_API_KEY?: string;
 }
 
 interface ImportMeta {

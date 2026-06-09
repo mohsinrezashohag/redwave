@@ -1,28 +1,28 @@
 /**
- * ReviewActions — Approve / Reject / Send-back for a submitted report (SRS EXP-006). Approve is immediate;
- * Reject and Send-back open a note dialog (optional reason). One endpoint: POST /{id}/approve with the
- * decision. Reused by the approval queue card and the detail page. Tokens only.
+ * ReviewActions — Approve / Reject / Send-back for one submitted expense item (SRS EXP-006). Approve is
+ * immediate; Reject and Send-back open a note dialog (optional reason). Endpoint: POST /{id}/review with the
+ * decision. Used by the item detail page (the list uses the bulk bar). Tokens only.
  */
 import { useState } from 'react';
 import { Button, FormField, Modal, Textarea, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
-import { useReviewReport } from '../api/useExpenseMutations';
+import { useReviewItem } from '../api/useExpenseMutations';
 import type { ReviewDecision } from '../expenses.types';
 
-export function ReviewActions({ reportId, onDone }: { reportId: string; onDone?: () => void }) {
+export function ReviewActions({ itemId, onDone }: { itemId: string; onDone?: () => void }) {
   const { toast } = useToast();
   const onError = useApiErrorToast();
-  const review = useReviewReport();
+  const review = useReviewItem();
   const [noteFor, setNoteFor] = useState<null | 'reject' | 'send_back'>(null);
   const [note, setNote] = useState('');
 
   const decide = (decision: ReviewDecision, withNote?: string) =>
     review.mutate(
-      { id: reportId, body: { decision, note: withNote || undefined } },
+      { id: itemId, body: { decision, note: withNote || undefined } },
       {
         onSuccess: () => {
           toast({
-            title: decision === 'approve' ? 'Report approved' : decision === 'reject' ? 'Report rejected' : 'Sent back',
+            title: decision === 'approve' ? 'Item approved' : decision === 'reject' ? 'Item rejected' : 'Sent back',
             tone: 'success',
           });
           setNoteFor(null);
@@ -48,7 +48,7 @@ export function ReviewActions({ reportId, onDone }: { reportId: string; onDone?:
       <Modal
         open={noteFor !== null}
         onOpenChange={(o) => !o && setNoteFor(null)}
-        title={noteFor === 'reject' ? 'Reject report' : 'Send back for correction'}
+        title={noteFor === 'reject' ? 'Reject item' : 'Send back for correction'}
         footer={
           <>
             <Button variant="secondary" onClick={() => setNoteFor(null)}>

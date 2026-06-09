@@ -278,3 +278,53 @@
 .kmBreakdown strong {
   color: var(--text-primary);
 }
+
+.stopList {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* ── List header / grouping / export ────────────────────────────────────── */
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.exportControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.categoryCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.groupGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+/* ── KM map ─────────────────────────────────────────────────────────────── */
+.mapWrap {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.mapLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 160px;
+  background-color: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}

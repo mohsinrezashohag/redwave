@@ -1,83 +1,64 @@
 /**
- * ExpenseForm — the weekly report entry/edit form (SRS EXP-001..005). RHF + zod + useFieldArray over the
- * items; categories come from the field configs (dynamic), the receipt rule is config-driven, and the km
- * amount is computed SERVER-SIDE (the form sends `km`, never `amount`, for km items). Handles create
- * (POST) and edit (PATCH, which replaces all items). On-behalf rep shows for admins/managers. Tokens only.
+ * ExpenseForm — the ITEM-FIRST add/edit form (SRS EXP-001..005). RHF + zod + useFieldArray over items.
+ * CREATE adds one or several items at once ("Add another item") → POST /v1/expense-items; EDIT shows a
+ * SINGLE item → PATCH /v1/expense-items/{id}. Categories come from the field configs (dynamic), the receipt
+ * rule is config-driven, and the km amount is computed SERVER-SIDE (the form sends `km`, never `amount`, for
+ * km items). On-behalf rep shows for admins/managers. Tokens only.
  */
 import { useMemo } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus } from 'lucide-react';
 import { Controller, FormProvider, useFieldArray, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, DatePicker, FormField, Select, useToast } from '../../../components/ui';
+import { Button, Card, FormField, Select, useToast } from '../../../components/ui';
 import { useAuth } from '../../../auth/useAuth';
 import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
 import { useReps } from '../api/useLookups';
-import { useCreateReport, useUpdateReport } from '../api/useExpenseMutations';
+import { useCreateItems, useUpdateItem } from '../api/useExpenseMutations';
 import { ExpenseItemRow } from './ExpenseItemRow';
-import { blankItem, buildReportBody, makeExpenseSchema, type ExpenseFormValues, type ItemValue } from './expenseForm.schema';
-import type { ExpenseReport, FieldConfig } from '../expenses.types';
+import {
+  blankItem,
+  buildItemBody,
+  buildItemsBody,
+  makeExpenseSchema,
+  type ExpenseFormValues,
+  type ItemValue,
+} from './expenseForm.schema';
+import type { ExpenseItem, FieldConfig } from '../expenses.types';
 import styles from './expenses.module.css';
 
 const SELF = '__self__';
 
-function pad(n: number): string {
-  return String(n).padStart(2, '0');
-}
-function isoFrom(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-function currentWeekStart(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - d.getDay()); // back to Sunday
-  return isoFrom(d);
-}
-function addDays(iso: string, n: number): string {
-  const d = new Date(`${iso}T00:00:00`);
-  d.setDate(d.getDate() + n);
-  return isoFrom(d);
-}
-
-/** Map an existing report → form values for editing. */
-function reportToValues(report: ExpenseReport): ExpenseFormValues {
-  return {
-    week_start: report.week_start.slice(0, 10),
-    week_end: report.week_end.slice(0, 10),
-    rep_id: report.rep_id ?? '',
-    items: report.expense_items.map((it): ItemValue => {
-      if (it.category === 'km' && it.km_log) {
-        return {
-          category: 'km',
-          expense_date: it.expense_date.slice(0, 10),
-          client_id: it.client_id ?? undefined,
-          description: it.description,
-          trip_type: it.km_log.trip_type,
-          total_km: it.km_log.total_km,
-          stops: it.km_log.stops.map((s) => ({ address: s.address })),
-        };
-      }
-      return {
-        category: it.category,
-        expense_date: it.expense_date.slice(0, 10),
-        client_id: it.client_id ?? undefined,
-        description: it.description,
-        amount: it.amount,
-        receipt_url: it.receipt_url ?? undefined,
-      };
-    }),
+/** Map an existing item → form values (single item) for editing. */
+function itemToValues(item: ExpenseItem): ExpenseFormValues {
+  const base = {
+    category: item.category,
+    expense_date: item.expense_date.slice(0, 10),
+    client_id: item.client_id ?? undefined,
+    description: item.description,
   };
+  const value: ItemValue =
+    item.category === 'km' && item.km_log
+      ? {
+          ...base,
+          trip_type: item.km_log.trip_type,
+          total_km: item.km_log.total_km,
+          stops: item.km_log.stops.map((s) => ({ address: s.address, lat: s.lat, lng: s.lng })),
+        }
+      : { ...base, amount: item.amount, receipt_url: item.receipt_url ?? undefined };
+  return { rep_id: item.rep_id ?? '', items: [value] };
 }
 
 export function ExpenseForm({
   mode,
-  report,
+  item,
   configs,
   clientOptions,
 }: {
   mode: 'create' | 'edit';
-  report?: ExpenseReport;
+  item?: ExpenseItem;
   configs: FieldConfig[];
   clientOptions: { value: string; label: string }[];
 }) {
@@ -88,8 +69,8 @@ export function ExpenseForm({
   const canSeeReps = useCan('hrm:view') && (isSuperAdmin || roles.includes('Admin') || roles.includes('Manager'));
   const reps = useReps(canSeeReps);
 
-  const create = useCreateReport();
-  const update = useUpdateReport();
+  const create = useCreateItems();
+  const update = useUpdateItem();
 
   const requiresReceipt = useMemo(() => {
     const map = new Map(configs.map((c) => [c.category_key, c.requires_receipt]));
@@ -97,9 +78,7 @@ export function ExpenseForm({
   }, [configs]);
 
   const defaults: ExpenseFormValues =
-    mode === 'edit' && report
-      ? reportToValues(report)
-      : { week_start: currentWeekStart(), week_end: addDays(currentWeekStart(), 6), rep_id: '', items: [blankItem('', todayIso())] };
+    mode === 'edit' && item ? itemToValues(item) : { rep_id: '', items: [blankItem('', todayIso())] };
 
   const methods = useForm<ExpenseFormValues>({
     resolver: zodResolver(makeExpenseSchema(requiresReceipt)),
@@ -109,23 +88,22 @@ export function ExpenseForm({
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
   const onSubmit = (values: ExpenseFormValues) => {
-    const body = buildReportBody(values);
-    if (mode === 'edit' && report) {
+    if (mode === 'edit' && item) {
       update.mutate(
-        { id: report.id, body },
+        { id: item.id, body: buildItemBody(values) },
         {
-          onSuccess: (r) => {
-            toast({ title: 'Report updated', tone: 'success' });
-            navigate(`/expenses/${r.id}`);
+          onSuccess: (updated) => {
+            toast({ title: 'Expense updated', tone: 'success' });
+            navigate(`/expenses/${updated.id}`);
           },
           onError,
         },
       );
     } else {
-      create.mutate(body, {
-        onSuccess: (r) => {
-          toast({ title: 'Expenses submitted for the week', tone: 'success' });
-          navigate(`/expenses/${r.id}`);
+      create.mutate(buildItemsBody(values), {
+        onSuccess: (created) => {
+          toast({ title: `Added ${created.length} expense item(s)`, tone: 'success' });
+          navigate('/expenses');
         },
         onError,
       });
@@ -137,49 +115,31 @@ export function ExpenseForm({
   return (
     <FormProvider {...methods}>
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
-        <Card title="Week">
-          <div className={styles.reportRow}>
+        {canSeeReps && (
+          <Card title="Rep">
             <Controller
               control={control}
-              name="week_start"
+              name="rep_id"
               render={({ field }) => (
-                <FormField label="Week start" required error={formState.errors.week_start?.message}>
-                  <DatePicker value={field.value ?? ''} onChange={field.onChange} invalid={!!formState.errors.week_start} aria-label="Week start" />
+                <FormField label="Rep (on behalf of)" help="Defaults to you.">
+                  <Select
+                    options={[{ value: SELF, label: 'Myself' }, ...(reps.data ?? []).map((r) => ({ value: r.id, label: `${r.full_name} (${r.rep_code})` }))]}
+                    value={field.value || SELF}
+                    onValueChange={(v) => field.onChange(v === SELF ? '' : v)}
+                  />
                 </FormField>
               )}
             />
-            <Controller
-              control={control}
-              name="week_end"
-              render={({ field }) => (
-                <FormField label="Week end" required error={formState.errors.week_end?.message}>
-                  <DatePicker value={field.value ?? ''} onChange={field.onChange} invalid={!!formState.errors.week_end} aria-label="Week end" />
-                </FormField>
-              )}
-            />
-            {canSeeReps && (
-              <Controller
-                control={control}
-                name="rep_id"
-                render={({ field }) => (
-                  <FormField label="Rep (on behalf of)" help="Defaults to you.">
-                    <Select
-                      options={[{ value: SELF, label: 'Myself' }, ...(reps.data ?? []).map((r) => ({ value: r.id, label: `${r.full_name} (${r.rep_code})` }))]}
-                      value={field.value || SELF}
-                      onValueChange={(v) => field.onChange(v === SELF ? '' : v)}
-                    />
-                  </FormField>
-                )}
-              />
-            )}
-          </div>
-        </Card>
+          </Card>
+        )}
 
         <div className={styles.itemsHead}>
-          <h3 className={styles.itemsTitle}>Items</h3>
-          <Button variant="secondary" type="button" leftIcon={<Plus size={16} />} onClick={() => append(blankItem('', todayIso()))}>
-            Add item
-          </Button>
+          <h3 className={styles.itemsTitle}>{mode === 'edit' ? 'Expense item' : 'Items'}</h3>
+          {mode === 'create' && (
+            <Button variant="secondary" type="button" leftIcon={<Plus size={16} />} onClick={() => append(blankItem('', todayIso()))}>
+              Add another item
+            </Button>
+          )}
         </div>
         {itemsError && <p className={styles.itemsError}>{itemsError}</p>}
 
@@ -189,7 +149,7 @@ export function ExpenseForm({
             index={i}
             configs={configs}
             clientOptions={clientOptions}
-            canRemove={fields.length > 1}
+            canRemove={mode === 'create' && fields.length > 1}
             onRemove={() => remove(i)}
           />
         ))}
@@ -199,7 +159,7 @@ export function ExpenseForm({
             Cancel
           </Button>
           <Button variant="primary" type="submit" loading={create.isPending || update.isPending}>
-            {mode === 'edit' ? 'Save changes' : 'Submit for the week'}
+            {mode === 'edit' ? 'Save changes' : 'Add expense(s)'}
           </Button>
         </div>
       </form>

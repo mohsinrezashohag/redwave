@@ -1,14 +1,17 @@
 /**
- * ExpenseFilterBar — server-side filters for the reports list (status / rep / client / date range). Filter
- * state lives in the URL (the page owns it). Rep/client dropdowns are gated on the relevant read permission
- * and degrade gracefully. Active filters show as removable chips. (No category filter — the report-list
- * endpoint filters by status/rep/client/period/date, not item category.) Tokens only.
+ * ExpenseFilterBar — server-side filters for the item-first list (status / category / rep / client / date
+ * range / free-text search). Filter state lives in the URL (the page owns it). Rep/client dropdowns are
+ * gated on the relevant read permission and degrade gracefully; the category list comes from the dynamic
+ * field configs. Active filters show as removable chips. Tokens only.
  */
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { DatePicker, Select } from '../../../components/ui';
+import { DatePicker, Input, Select } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
+import { useFieldConfigs } from '../api/useExpenseItems';
 import { useClients, useReps } from '../api/useLookups';
-import type { ExpenseFilters, ExpenseStatus } from '../expenses.types';
+import { categoryLabel } from '../format';
+import type { ExpenseCategory, ExpenseFilters, ExpenseStatus } from '../expenses.types';
 import styles from './expenses.module.css';
 
 const ALL = '__all__';
@@ -26,11 +29,31 @@ export interface ExpenseFilterBarProps {
   onChange: (patch: Partial<ExpenseFilters>) => void;
 }
 
+/** Debounced free-text search box — commits after the user pauses typing (server-side search). */
+function SearchBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [local, setLocal] = useState(value);
+  useEffect(() => setLocal(value), [value]);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (local !== value) onChange(local);
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [local]);
+  return <Input type="search" placeholder="Search description…" aria-label="Search expenses" value={local} onChange={(e) => setLocal(e.target.value)} />;
+}
+
 export function ExpenseFilterBar({ filters, onChange }: ExpenseFilterBarProps) {
   const canViewReps = useCan('hrm:view');
   const canViewClients = useCan('clients:view');
   const reps = useReps(canViewReps);
   const clients = useClients(canViewClients);
+  const configs = useFieldConfigs();
+
+  const categoryOptions = [
+    { value: ALL, label: 'All categories' },
+    ...(configs.data ?? []).filter((c) => c.is_active).map((c) => ({ value: c.category_key, label: c.label })),
+  ];
 
   const repName = (id?: string) => {
     const r = reps.data?.find((x) => x.id === id);
@@ -40,6 +63,7 @@ export function ExpenseFilterBar({ filters, onChange }: ExpenseFilterBarProps) {
 
   const chips: { label: string; clear: () => void }[] = [];
   if (filters.status) chips.push({ label: `Status: ${filters.status}`, clear: () => onChange({ status: undefined }) });
+  if (filters.category) chips.push({ label: `Category: ${categoryLabel(filters.category, configs.data)}`, clear: () => onChange({ category: undefined }) });
   if (filters.rep_id) chips.push({ label: `Rep: ${repName(filters.rep_id)}`, clear: () => onChange({ rep_id: undefined }) });
   if (filters.client_id) chips.push({ label: `Client: ${clientName(filters.client_id)}`, clear: () => onChange({ client_id: undefined }) });
   if (filters.from) chips.push({ label: `From ${filters.from}`, clear: () => onChange({ from: undefined }) });
@@ -49,11 +73,22 @@ export function ExpenseFilterBar({ filters, onChange }: ExpenseFilterBarProps) {
     <div className={styles.bar}>
       <div className={styles.controls}>
         <div className={styles.control}>
+          <SearchBox value={filters.search ?? ''} onChange={(v) => onChange({ search: v || undefined })} />
+        </div>
+        <div className={styles.control}>
           <Select
             aria-label="Status"
             options={STATUS_OPTIONS}
             value={filters.status ?? ALL}
             onValueChange={(v) => onChange({ status: v === ALL ? undefined : (v as ExpenseStatus) })}
+          />
+        </div>
+        <div className={styles.control}>
+          <Select
+            aria-label="Category"
+            options={categoryOptions}
+            value={filters.category ?? ALL}
+            onValueChange={(v) => onChange({ category: v === ALL ? undefined : (v as ExpenseCategory) })}
           />
         </div>
         {canViewReps && (
@@ -77,20 +112,10 @@ export function ExpenseFilterBar({ filters, onChange }: ExpenseFilterBarProps) {
           </div>
         )}
         <div className={styles.dateInput}>
-          <DatePicker
-            aria-label="From date"
-            placeholder="From date"
-            value={filters.from ?? ''}
-            onChange={(v) => onChange({ from: v || undefined })}
-          />
+          <DatePicker aria-label="From date" placeholder="From date" value={filters.from ?? ''} onChange={(v) => onChange({ from: v || undefined })} />
         </div>
         <div className={styles.dateInput}>
-          <DatePicker
-            aria-label="To date"
-            placeholder="To date"
-            value={filters.to ?? ''}
-            onChange={(v) => onChange({ to: v || undefined })}
-          />
+          <DatePicker aria-label="To date" placeholder="To date" value={filters.to ?? ''} onChange={(v) => onChange({ to: v || undefined })} />
         </div>
       </div>
       {chips.length > 0 && (

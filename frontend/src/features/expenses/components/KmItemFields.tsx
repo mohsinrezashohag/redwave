@@ -1,15 +1,18 @@
 /**
- * KmItemFields — the km item sub-form (SRS EXP-004). Trip type (single −30 / round −60), reorderable
- * address stops (≥2; lat/lng stubbed '0', no geocoder), and the total distance. A LIVE INDICATIVE billable
- * preview (kmPreview) shows for UX — but the server computes the authoritative amount, so no `amount` is
- * sent for km. Uses the form context + a nested field array for stops. Tokens only.
+ * KmItemFields — the km item sub-form (SRS EXP-004). Trip type (single −30 / round −60), the stops, and
+ * the total distance, with a LIVE INDICATIVE billable preview (kmPreview) — but the server computes the
+ * authoritative amount, so no `amount` is sent for km. When a browser Maps key is configured, the stops are
+ * Places autocompletes and the distance auto-derives from the route (MapStops); otherwise it falls back to
+ * manual address + total-km entry (the server still computes the amount). Tokens only.
  */
 import { useEffect } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Controller, useFieldArray, useFormContext, useWatch } from 'react-hook-form';
-import { Button, DatePicker, FormField, IconButton, Input, RadioGroup } from '../../../components/ui';
+import { Banner, Button, DatePicker, FormField, IconButton, Input, RadioGroup } from '../../../components/ui';
 import { money } from '../../../lib/format/money';
 import { kmPreview } from '../km';
+import { mapsEnabled } from '../maps.config';
+import { MapStops } from './MapStops';
 import type { TripType } from '../expenses.types';
 import type { ExpenseFormValues } from './expenseForm.schema';
 import styles from './expenses.module.css';
@@ -58,35 +61,52 @@ export function KmItemFields({ index }: { index: number }) {
         )}
       />
 
-      <FormField label="Stops" required error={stopsError}>
-        <div className={styles.stops}>
-          {fields.map((f, k) => (
-            <div className={styles.stopRow} key={f.id}>
-              <span className={styles.stopOrder}>{k + 1}</span>
-              <Input className={styles.stopAddress} placeholder="123 Main St, Winnipeg" {...register(`items.${index}.stops.${k}.address`)} />
-              <IconButton
-                label="Remove stop"
-                icon={<Trash2 size={15} />}
-                variant="outline"
-                size="sm"
-                disabled={fields.length <= 2}
-                onClick={() => remove(k)}
-              />
+      {mapsEnabled ? (
+        <>
+          <MapStops index={index} stopsError={stopsError} />
+          <FormField label="Total distance (km)" help="Auto-derived from the route — the server re-computes it.">
+            <Input inputMode="decimal" readOnly value={totalKm ?? ''} placeholder="—" aria-label="Total distance" />
+          </FormField>
+        </>
+      ) : (
+        <>
+          <FormField label="Stops" required error={stopsError}>
+            <div className={styles.stops}>
+              {fields.map((f, k) => (
+                <div className={styles.stopRow} key={f.id}>
+                  <span className={styles.stopOrder}>{k + 1}</span>
+                  <Input className={styles.stopAddress} placeholder="123 Main St, Winnipeg" {...register(`items.${index}.stops.${k}.address`)} />
+                  <IconButton
+                    label="Remove stop"
+                    icon={<Trash2 size={15} />}
+                    variant="outline"
+                    size="sm"
+                    disabled={fields.length <= 2}
+                    onClick={() => remove(k)}
+                  />
+                </div>
+              ))}
+              <Button variant="tertiary" size="sm" type="button" leftIcon={<Plus size={14} />} onClick={() => append({ address: '' })}>
+                Add stop
+              </Button>
             </div>
-          ))}
-          <Button variant="tertiary" size="sm" type="button" leftIcon={<Plus size={14} />} onClick={() => append({ address: '' })}>
-            Add stop
-          </Button>
-        </div>
-      </FormField>
+          </FormField>
 
-      <FormField label="Total distance (km)" required error={itemErrors?.total_km?.message} help="Total driven distance for the day.">
-        <Input inputMode="decimal" placeholder="130" {...register(`items.${index}.total_km`)} />
-      </FormField>
+          <FormField label="Total distance (km)" required error={itemErrors?.total_km?.message} help="Total driven distance for the day.">
+            <Input inputMode="decimal" placeholder="130" {...register(`items.${index}.total_km`)} />
+          </FormField>
+        </>
+      )}
 
       <FormField label="Description" required error={itemErrors?.description?.message}>
         <Input placeholder="Client visits" {...register(`items.${index}.description`)} />
       </FormField>
+
+      {!mapsEnabled && (
+        <Banner tone="info">
+          Address coordinates aren’t captured without a map key — enter the total distance manually. The server computes the final amount.
+        </Banner>
+      )}
 
       <div className={styles.preview}>
         <span className={`${styles.previewAmount} mono`}>{preview.valid ? money(preview.amount) : '—'}</span>

@@ -1,12 +1,14 @@
 /**
- * Expenses types — RESPONSE shapes ALIASED to the generated OpenAPI schema (the backend ships `@ApiResponse`
- * DTOs as of Batch A #2). Mirrors `backend/src/modules/expenses/dto/expense.response.ts`. Money/km amounts
- * are decimal STRINGS; the km amount is computed SERVER-SIDE. REQUEST bodies are typed from the schema.
+ * Expenses types — ITEM-FIRST. RESPONSE shapes ALIASED to the generated OpenAPI schema (mirrors
+ * `backend/src/modules/expenses/dto/expense.response.ts`). The expense ITEM is the atomic unit: it carries
+ * its own submitter/status/approver and a pay_period derived from its expense_date. Money/km amounts are
+ * decimal STRINGS; the km amount is computed SERVER-SIDE. REQUEST bodies are typed from the schema.
  */
 import type { components } from '../../api/generated/schema';
 
 // Enums derived from the contract.
-export type ExpenseStatus = components['schemas']['ExpenseReportResponse']['status'];
+export type ExpenseStatus = components['schemas']['ExpenseItemResponse']['status'];
+export type ExpenseCategory = components['schemas']['ExpenseItemResponse']['category'];
 export type TripType = components['schemas']['KmLogResponse']['trip_type'];
 export type ExportFormat = components['schemas']['ExpenseExportResponse']['format'];
 /** The review decision (request enum). */
@@ -18,27 +20,42 @@ export type KmStop = components['schemas']['KmStopResponse'];
 export type KmLog = components['schemas']['KmLogResponse'];
 
 export type ExpenseItem = components['schemas']['ExpenseItemResponse'];
-
-export type ExpenseReport = components['schemas']['ExpenseReportResponse'];
+export type ExpenseItemPage = components['schemas']['ExpenseItemPageResponse'];
 
 /** A category config row — drives the dynamic category list + the receipt rule. */
 export type FieldConfig = components['schemas']['FieldConfigResponse'];
 
 export type ExpenseExport = components['schemas']['ExpenseExportResponse'];
 
+/** Sortable columns for the item DataTable (must match the backend SORTABLE allowlist). */
+export type ExpenseSortKey = 'expense_date' | 'amount' | 'status' | 'category' | 'created_at';
+
+/** Server-side filters for the item list (scope is always enforced server-side, §5). */
 export interface ExpenseFilters {
   status?: ExpenseStatus;
+  category?: ExpenseCategory;
   rep_id?: string;
   client_id?: string;
   pay_period_id?: string;
   from?: string;
   to?: string;
+  search?: string;
 }
 
-// Request bodies — typed from the generated schema (the backend DID emit request DTOs).
-export type CreateReportBody = components['schemas']['CreateReportDto'];
-export type UpdateReportBody = components['schemas']['UpdateReportDto'];
+/** The full list params sent to the server (filters + pagination). */
+export interface ExpenseListParams extends ExpenseFilters {
+  page?: number;
+  limit?: number;
+  sort?: string;
+}
+
+// Request bodies — typed from the generated schema.
+export type CreateItemsBody = components['schemas']['CreateExpenseItemsDto'];
+export type UpdateItemBody = components['schemas']['UpdateExpenseItemDto'];
 export type ReviewBody = components['schemas']['ReviewDto'];
+export type BulkReviewBody = components['schemas']['BulkReviewDto'];
+export type BulkReviewResult = components['schemas']['BulkReviewResultResponse'];
 export type CreateExportBody = components['schemas']['CreateExportDto'];
 export type ExpenseItemInput = components['schemas']['ExpenseItemInput'];
 export type KmLogInput = components['schemas']['KmLogInput'];
+export type ReceiptUpload = components['schemas']['ReceiptUploadResponse'];

@@ -1,11 +1,12 @@
 /**
- * Shared schema + payload builder for the expense entry form. The km amount is NEVER built client-side
- * (server computes it) — km items send `km` (trip/total/stops, lat/lng stubbed '0'); non-km items send
- * `amount` (+ receipt where the config requires). Receipt-required is config-driven (passed in). Lives in
- * its own module so the form + nested field components share the types without a circular import.
+ * Shared schema + payload builders for the item-first expense form. The km amount is NEVER built
+ * client-side (the server computes it) — km items send `km` (trip/total/stops with lat/lng); non-km items
+ * send `amount` (+ receipt where the config requires). Stop coordinates come from Places geocoding when
+ * Maps is enabled, else stubbed '0' (manual mode) and the server falls back to the client total_km.
+ * Receipt-required is config-driven (passed in). One module so the form + nested fields share the types.
  */
 import { z } from 'zod';
-import type { CreateReportBody, ExpenseItemInput, TripType } from '../expenses.types';
+import type { CreateItemsBody, ExpenseItemInput, TripType, UpdateItemBody } from '../expenses.types';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONEY = /^\d+(\.\d{1,2})?$/;
@@ -13,6 +14,9 @@ const KM = /^\d+(\.\d{1,6})?$/;
 
 export interface StopValue {
   address: string;
+  /** Captured from Places geocoding when Maps is enabled; '0' in manual fallback mode. */
+  lat?: string;
+  lng?: string;
 }
 export interface ItemValue {
   category: string;
@@ -26,8 +30,6 @@ export interface ItemValue {
   stops?: StopValue[];
 }
 export interface ExpenseFormValues {
-  week_start: string;
-  week_end: string;
   rep_id?: string;
   items: ItemValue[];
 }
@@ -44,7 +46,9 @@ export function makeExpenseSchema(requiresReceipt: (category: string) => boolean
       receipt_url: z.string().optional(),
       trip_type: z.enum(['single', 'round']).optional(),
       total_km: z.string().optional(),
-      stops: z.array(z.object({ address: z.string().min(1, 'Address required') })).optional(),
+      stops: z
+        .array(z.object({ address: z.string().min(1, 'Address required'), lat: z.string().optional(), lng: z.string().optional() }))
+        .optional(),
     })
     .superRefine((val, ctx) => {
       if (val.category === 'km') {
@@ -59,43 +63,48 @@ export function makeExpenseSchema(requiresReceipt: (category: string) => boolean
 
   return z
     .object({
-      week_start: z.string().regex(DATE, 'Week start required'),
-      week_end: z.string().regex(DATE, 'Week end required'),
       rep_id: z.string().optional(),
       items: z.array(item).min(1, 'Add at least one item'),
     })
     .superRefine((val, ctx) => {
-      // One km log per day (the server also enforces this with a 422).
+      // One km log per day (the server also enforces one per rep/day with a 422).
       const kmDates = val.items.filter((i) => i.category === 'km').map((i) => i.expense_date);
       const dup = kmDates.find((d, i) => kmDates.indexOf(d) !== i);
       if (dup) ctx.addIssue({ code: 'custom', path: ['items'], message: `Only one km log per day (duplicate ${dup})` });
     });
 }
 
-/** Build the API payload from validated form values (km amount omitted — server computes it). */
-export function buildReportBody(values: ExpenseFormValues): CreateReportBody {
-  const items: ExpenseItemInput[] = values.items.map((it) => {
-    const base = {
-      category: it.category as ExpenseItemInput['category'],
-      client_id: it.client_id || undefined,
-      expense_date: it.expense_date,
-      description: it.description,
+/** Build ONE item payload from a validated form item (km amount omitted — server computes it). */
+function toItemInput(it: ItemValue): ExpenseItemInput {
+  const base = {
+    category: it.category as ExpenseItemInput['category'],
+    client_id: it.client_id || undefined,
+    expense_date: it.expense_date,
+    description: it.description,
+  };
+  if (it.category === 'km') {
+    return {
+      ...base,
+      km: {
+        trip_type: it.trip_type!,
+        total_km: it.total_km!,
+        // Coordinates from Places when Maps is on; '0' in manual mode (the server re-derives the distance
+        // from real coordinates and otherwise falls back to total_km).
+        stops: (it.stops ?? []).map((s, i) => ({ stop_order: i, address: s.address, lat: s.lat || '0', lng: s.lng || '0' })),
+      },
     };
-    if (it.category === 'km') {
-      return {
-        ...base,
-        km: {
-          trip_type: it.trip_type!,
-          total_km: it.total_km!,
-          // lat/lng stubbed — no geocoder in scope (§12 follow-up); the server computes the amount.
-          stops: (it.stops ?? []).map((s, i) => ({ stop_order: i, address: s.address, lat: '0', lng: '0' })),
-        },
-      };
-    }
-    return { ...base, amount: it.amount!, receipt_url: it.receipt_url || undefined };
-  });
+  }
+  return { ...base, amount: it.amount!, receipt_url: it.receipt_url || undefined };
+}
 
-  return { week_start: values.week_start, week_end: values.week_end, rep_id: values.rep_id || undefined, items };
+/** Build the CREATE payload (one or several items) from validated form values. */
+export function buildItemsBody(values: ExpenseFormValues): CreateItemsBody {
+  return { rep_id: values.rep_id || undefined, items: values.items.map(toItemInput) };
+}
+
+/** Build the EDIT payload (a single item) from the first form item. */
+export function buildItemBody(values: ExpenseFormValues): UpdateItemBody {
+  return toItemInput(values.items[0]);
 }
 
 /** A fresh blank item for a given category (km gets a trip type + two empty stops). */

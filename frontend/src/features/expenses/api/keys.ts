@@ -1,10 +1,10 @@
-/** Query-key factories for the expenses feature (mirrors the Sales/admin playbook). */
-import type { ExpenseFilters } from '../expenses.types';
+/** Query-key factories for the expenses feature (item-first; mirrors the Sales/admin playbook). */
+import type { ExpenseListParams } from '../expenses.types';
 
-export const expensesKeys = {
-  all: ['expenses'] as const,
-  list: (filters: ExpenseFilters) => ['expenses', 'list', filters] as const,
-  detail: (id: string) => ['expenses', 'detail', id] as const,
+export const expenseItemsKeys = {
+  all: ['expense-items'] as const,
+  page: (params: ExpenseListParams) => ['expense-items', 'list', params] as const,
+  detail: (id: string) => ['expense-items', 'detail', id] as const,
 };
 
 export const fieldConfigKeys = {
