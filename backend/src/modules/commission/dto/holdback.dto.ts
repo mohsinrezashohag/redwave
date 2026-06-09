@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsOptional, Matches, MaxLength, MinLength } from 'class-validator';
 
 const PCT = /^[01](\.\d{1,4})?$/; // 0..1 with up to 4 decimals (Decimal(5,4)) — exact string, never float
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -50,17 +50,17 @@ export class UpdateHoldbackConfigDto {
 }
 
 /**
- * PROPOSED (SRS §17.1) — pending Redwave confirmation. The Super Admin sets, in bulk and stickily,
- * which cycle a period's 30% holdback releases into. `release_rule` is stored as a free-form string;
- * its INTERPRETATION is deferred to the Pay Run module. This endpoint only persists the setting.
+ * The CONFIRMED holdback-release rule (SRS §17.1) — the Super Admin sets it once, stickily, and the Pay
+ * Run reads it at finalize to schedule each period's 30% into the correct future cycle. Stored as a
+ * structured string: `cycles:N` (release in the Nth pay period after the origin) or `days:N` (release in
+ * the first period whose payday ≥ origin payday + N days). A later change affects only FUTURE holds.
  */
 export class SetHoldbackReleaseSettingDto {
   @ApiProperty({
-    example: 'next_cycle_after_30_days',
-    description:
-      'PROPOSED (SRS §17): free-form release rule, stored only. Interpretation deferred to Pay Run.',
+    example: 'days:30',
+    description: 'Sticky release rule: `cycles:N` (Nth period after origin) or `days:N` (first payday ≥ origin payday + N days).',
   })
-  @IsString()
+  @Matches(/^(cycles|days):\d{1,3}$/, { message: 'release_rule must be `cycles:N` or `days:N` (N a small positive integer)' })
   @MinLength(1)
   @MaxLength(255)
   release_rule!: string;
