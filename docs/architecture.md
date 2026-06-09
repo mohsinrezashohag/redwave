@@ -208,12 +208,20 @@ Representative endpoints per module (not exhaustive; the OpenAPI spec is authori
 
 ### 6.10 Documents & E-Signature
 
-| **Verb** | **Path**                              | **Purpose**                             | **Permission**   |
-|----------|---------------------------------------|-----------------------------------------|------------------|
-| **POST** | /v1/documents                         | Upload a document.                      | documents:create |
-| **POST** | /v1/documents/{id}/signature-requests | Request signature (1..many recipients). | documents:create |
-| **POST** | /v1/signature-requests/{id}/sign      | Sign or decline; stores signed copy.    | any (recipient)  |
-| **GET**  | /v1/documents/{id}                    | Status + per-signer audit.              | documents:view   |
+| **Verb**   | **Path**                                       | **Purpose**                                           | **Permission**   |
+|------------|------------------------------------------------|-------------------------------------------------------|------------------|
+| **POST**   | /v1/documents                                  | Upload a PDF (multipart). Stores the original (never mutated). | documents:create |
+| **GET**    | /v1/documents/{id}                             | Status + per-signer audit + placed fields.            | documents:view   |
+| **GET**    | /v1/documents/{id}/file-url                    | Access-controlled short-TTL signed URL for the original. | documents:view   |
+| **GET**    | /v1/documents/{id}/completed-file-url          | Signed URL for the final all-signatures copy (404 until complete). | documents:view   |
+| **POST**   | /v1/documents/{id}/signature-requests          | Request signature (1..many recipients) + place fields. | documents:create |
+| **POST**   | /v1/signature-requests/{id}/sign               | Sign (server stamps a per-signer copy) or decline.    | any (recipient)  |
+| **POST**   | /v1/signature-requests/{id}/sign-upload        | Complete by uploading an externally-signed PDF (method=uploaded). | any (recipient)  |
+| **POST**   | /v1/signature-requests/{id}/cancel             | Cancel a pending request.                             | requester/owner/admin |
+| **GET**    | /v1/signatures/{id}/file-url                   | Signed URL for a per-signer signed copy.              | any (visible)    |
+| **GET/POST/PATCH/DELETE** | /v1/account/signatures[...]    | Manage own saved reusable signatures (+ /{id}/file-url). | authenticated (own-scoped) |
+
+**Signing is row-level, not a module permission** ("any (recipient)"): the service gates on the caller being the asked pending recipient (else 403 / 409). File-url endpoints re-check visibility and mint a short-TTL signed URL on each access — the object path is never exposed and bytes are never public. Saved-signature endpoints carry no module permission; they are own-scoped server-side. PDF-only at upload (Word→PDF conversion is deferred).
 
 ### 6.11 Data Import & Integration
 

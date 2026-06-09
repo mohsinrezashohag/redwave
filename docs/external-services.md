@@ -10,17 +10,22 @@
 > `backend/.env` (dev) or the host's secret manager (prod), **never into code or chat.**
 
 ## 1. Object storage (file uploads) — REQUIRED for go-live
-- **WIRED: expense receipts → Supabase Storage.** `POST /v1/expense-receipts` (multipart) uploads to a
-  Supabase bucket and returns an **access-controlled (signed) URL** stored on the item. Env-gated +
-  graceful: with the env below set it's a real upload; unset → a selection-only reference (no upload).
+- **WIRED → Supabase Storage (the same provider for all of):** expense receipts (`POST /v1/expense-receipts`),
+  **documents** (`POST /v1/documents` — the PDF original, per-signer stamped copies, the final all-signatures
+  copy, and saved-signature images), and **rep documents** (`POST /v1/reps/{id}/documents`). Files are stored
+  by **object path**; bytes are served only through RBAC/visibility-gated `…/file-url` endpoints that mint a
+  short-TTL **signed URL** on each access (never public). Env-gated + graceful: with the env below it's a real
+  upload; unset → a `local://` reference and file-url endpoints 404 (the workflow still functions).
   - **Credentials (env):** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (server-only secret),
     `SUPABASE_STORAGE_BUCKET` (default `receipts`). Create the bucket first.
-- **STILL STUBBED `s3://…`:** rep documents (`POST /v1/reps/{id}/documents`), expense exports,
-  billing statement/invoice exports, e-signature documents (`original_file_url`, `signed_file_url`).
-- **Provider options (for the remaining stubs):** Supabase Storage (already used for receipts) · AWS S3 ·
-  Cloudflare R2 · Backblaze B2 · MinIO. Reuse the `common/storage` `StorageService` to wire the rest.
-- **Code today:** CLAUDE.md §12 — "object-storage upload wiring" (HRM), expense/billing export stubs,
-  Documents binary-upload stub. (Expense receipts are no longer a stub.)
+- **STILL STUBBED `s3://…`:** expense exports + billing statement/invoice exports (the server-recorded export
+  artifact; the client-side file export is real). **Word→PDF conversion** for documents is deferred (PDF-only
+  today) — a later enhancement (headless LibreOffice or a hosted converter, env-gated).
+- **Provider options (for the remaining stubs):** Supabase Storage (already used) · AWS S3 · Cloudflare R2 ·
+  Backblaze B2 · MinIO. Reuse the `common/storage` `StorageService` (`upload`/`uploadBuffer`/`signedUrl`).
+- **Code today:** CLAUDE.md §12 — expense/billing export stubs + the Word→PDF deferral. (Expense receipts,
+  documents/e-signature, and rep documents are no longer stubs; the e-signature provider is now real
+  in-system stamping via pdf-lib — no third-party e-sign vendor.)
 
 ## 2. Email — REQUIRED for go-live
 - **For:** notification emails (the `EMAIL_DISPATCHER` is a noop today — Reporting/Notifications),

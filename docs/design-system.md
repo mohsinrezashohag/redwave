@@ -351,7 +351,7 @@ How the system and components compose into the highest-traffic screens. These ar
 
 - **Import:** upload → mapping → staging preview table (matched/unmatched/error counts + per-row issues) → reconciliation → guarded commit with the reconcile check. A wizard-style stepper.
 
-- **Documents/e-sign:** document list with status; share/request dialog (one or many recipients); a clean signing view; per-signer status with audit metadata.
+- **Documents/e-sign:** document list with status; PDF upload; an **in-browser PDF preview** (pdf.js, lazy-loaded) of the original + signed copies, with download. The share/request dialog (one or many recipients) lets the sender **place fields** (signature/initial/date/text) per recipient on the document (drag to move, corner to resize). A clean **in-system signing view** previews the document with the signer's fields highlighted and applies a signature (a saved one, drawn on a signature pad, or typed) — or uploads an externally-signed file. Per-signer status with audit metadata; a fully-signed copy on completion. Saved reusable signatures are managed under **My Account → Signatures**.
 
 ### 10.6 Settings, My Account & profile review
 

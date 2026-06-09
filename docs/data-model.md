@@ -632,7 +632,7 @@ Per-client, per-period output. The statement recreates the Excel Redwave sends c
 
 ## 12. Documents & E-Signature
 
-A two-way document-sharing and signature-request system. Either management or a rep can share a document and request one or more signatures. The original is retained and a distinct signed copy is stored per signer, with full audit metadata. Covers the compensation agreement, rate-change acknowledgements, equipment agreements, and ad-hoc docs.
+A two-way document-sharing and in-system e-signature system. Either management or a rep can share a document and request one or more signatures; the requester places fields per recipient, recipients sign in the browser (saved/drawn/typed) or upload an externally-signed file, and the server stamps a distinct copy per signer (plus a final all-signatures copy) — the original is never mutated. Covers the compensation agreement, rate-change acknowledgements, equipment agreements, and ad-hoc docs. **`*_file_url` columns hold an object PATH (re-signed on read); files are served via short-TTL access-controlled URLs, never public.**
 
 #### `documents`
 
@@ -644,7 +644,7 @@ A two-way document-sharing and signature-request system. Either management or a 
 | **title**             | varchar   | —       |                                                           |
 | **doc_type**          | enum      | —       | compensation_agreement / rate_notice / equipment / other. |
 | **owner_user_id**     | uuid      | **FK**  | -> users.id (who uploaded/owns it).                      |
-| **original_file_url** | varchar   | —       | The unsigned original (always retained).                  |
+| **original_file_url** | varchar   | —       | Object path of the unsigned original (always retained; **never mutated**, DOC-001/004). |
 | **status**            | enum      | —       | draft / shared / partially_signed / completed / declined. |
 | **created_at**        | timestamp | —       |                                                           |
 
@@ -652,15 +652,32 @@ A two-way document-sharing and signature-request system. Either management or a 
 
 *A request to sign a document, to one or many recipients.*
 
-| **Field**        | **Type**  | **Key** | **Notes**                                   |
-|------------------|-----------|---------|---------------------------------------------|
-| **id**           | uuid      | **PK**  |                                             |
-| **document_id**  | uuid      | **FK**  | -> documents.id                            |
-| **requested_by** | uuid      | **FK**  | -> users.id (sender; mgmt or rep).         |
-| **message**      | varchar   | —       | Optional note to recipients.                |
-| **due_date**     | date      | —       | Nullable.                                   |
-| **status**       | enum      | —       | pending / completed / declined / cancelled. |
-| **created_at**   | timestamp | —       |                                             |
+| **Field**             | **Type**  | **Key** | **Notes**                                   |
+|-----------------------|-----------|---------|---------------------------------------------|
+| **id**                | uuid      | **PK**  |                                             |
+| **document_id**       | uuid      | **FK**  | -> documents.id                            |
+| **requested_by**      | uuid      | **FK**  | -> users.id (sender; mgmt or rep).         |
+| **message**           | varchar   | —       | Optional note to recipients.                |
+| **due_date**          | date      | —       | Nullable.                                   |
+| **status**            | enum      | —       | pending / completed / declined / cancelled. |
+| **completed_file_path** | varchar | —       | Object path of the final all-signatures copy (set on completion, DOC-005; nullable). |
+| **created_at**        | timestamp | —       |                                             |
+
+#### `signature_fields`
+
+*A field the requester places on the PDF for a specific recipient (where/what to sign). Coordinates are normalized 0..1 fractions of the page, top-left origin; the server converts to PDF points at stamp time. Values are filled at signing.*
+
+| **Field**                | **Type**  | **Key** | **Notes**                                            |
+|--------------------------|-----------|---------|------------------------------------------------------|
+| **id**                   | uuid      | **PK**  |                                                      |
+| **signature_request_id** | uuid      | **FK**  | -> signature_requests.id                            |
+| **recipient_user_id**    | uuid      | **FK**  | -> users.id (who must fill it).                     |
+| **type**                 | enum      | —       | signature / initial / date / text.                   |
+| **page**                 | int       | —       | 0-based page index.                                  |
+| **x / y / w / h**        | decimal(6,5) | —    | Normalized 0..1 fractions (top-left origin).         |
+| **value_text**           | varchar   | —       | Filled for text/date fields at signing (nullable).   |
+| **value_image_path**     | varchar   | —       | Filled for signature/initial fields (the applied signature image path; nullable). |
+| **created_at**           | timestamp | —       |                                                      |
 
 #### `document_signatures`
 
@@ -672,10 +689,24 @@ A two-way document-sharing and signature-request system. Either management or a 
 | **signature_request_id** | uuid      | **FK**  | -> signature_requests.id                            |
 | **recipient_user_id**    | uuid      | **FK**  | -> users.id (the signer).                           |
 | **status**               | enum      | —       | pending / signed / declined.                         |
-| **signed_file_url**      | varchar   | —       | Distinct stored signed copy (nullable until signed). |
+| **signed_file_url**      | varchar   | —       | Object path of the distinct per-signer stamped copy (nullable until signed). |
 | **signed_at**            | timestamp | —       | Nullable.                                            |
-| **method**               | varchar   | —       | Signature method (e.g. typed / drawn).               |
+| **method**               | varchar   | —       | Signature method (drawn / typed / saved / uploaded). |
 | **ip_address**           | varchar   | —       | Captured at signing for audit.                       |
+
+#### `user_signatures`
+
+*A user's saved, reusable signature (private + own-scoped). One default per user.*
+
+| **Field**       | **Type**  | **Key** | **Notes**                                            |
+|-----------------|-----------|---------|------------------------------------------------------|
+| **id**          | uuid      | **PK**  |                                                      |
+| **user_id**     | uuid      | **FK**  | -> users.id (owner).                                |
+| **label**       | varchar   | —       | Display label.                                       |
+| **file_path**   | varchar   | —       | Private object path; served via an own-scoped signed URL. |
+| **method**      | enum      | —       | drawn / typed / uploaded.                            |
+| **is_default**  | boolean   | —       | One default per user.                                |
+| **created_at**  | timestamp | —       |                                                      |
 
 ## 13. Reporting & Platform
 
@@ -878,8 +909,11 @@ Key foreign-key relationships across the model (cardinality shown from the child
 | **documents**                   | 1:N       | users                   | owner        |
 | **signature_requests**          | 1:N       | documents               |              |
 | **signature_requests**          | 1:N       | users                   | requested_by |
+| **signature_fields**            | 1:N       | signature_requests      |              |
+| **signature_fields**            | 1:N       | users                   | recipient    |
 | **document_signatures**         | 1:N       | signature_requests      |              |
 | **document_signatures**         | 1:N       | users                   | signer       |
+| **user_signatures**             | 1:N       | users                   | owner        |
 | **notification_event_settings** | 1:N       | users                   | updated_by   |
 | **import_batches**              | 1:N       | clients                 |              |
 | **import_batches**              | 1:N       | import_field_mappings   | mapping      |

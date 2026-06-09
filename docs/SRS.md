@@ -484,32 +484,40 @@ client_statements, client_statement_lines, client_invoices, sales, clients, pay_
 
 ## 13. Documents & E-Signature
 
-A two-way document-sharing and signature-request system. Either management or a rep can share a document and request one or many signatures; the original and a distinct signed copy per signer are stored with audit metadata.
+A two-way document-sharing and in-system e-signature system. Either management or a rep can share a document and request one or many signatures; the requester places signature fields on the PDF, recipients sign **in the browser** (a saved, drawn, or typed signature) or upload an externally-signed file, and the original plus a distinct stamped copy per signer (and a final all-signatures copy) are stored with immutable audit metadata. Files are stored in object storage (Supabase) and served only through **access-controlled, short-TTL signed URLs** — never public.
 
 ### 13.1 Functional Requirements
 
 | **ID**      | **Requirement**                                                                                                                     | **Pri** |
 |-------------|-------------------------------------------------------------------------------------------------------------------------------------|---------|
-| **DOC-001** | A user can upload a document (compensation agreement, rate notice, equipment agreement, or other) and retain the unsigned original. | **M**   |
-| **DOC-002** | **Share & request.** Either management or a rep can share a document and request a signature from one or many recipients.           | **M**   |
-| **DOC-003** | Each recipient can sign or decline; the system records signer, status, method, IP, and timestamp.                                   | **M**   |
-| **DOC-004** | **Distinct signed copies.** On signing, a distinct signed copy is stored per signer in addition to the retained original.           | **M**   |
-| **DOC-005** | A request tracks overall status (pending / partially signed / completed / declined / cancelled) across its recipients.              | **M**   |
+| **DOC-001** | A user can upload a **PDF** document (compensation agreement, rate notice, equipment agreement, or other) and retain the unsigned original **unchanged**. Non-PDF (e.g. Word) is rejected with guidance to save as PDF first. | **M**   |
+| **DOC-002** | **Share & request.** Either management or a rep can share a document and request a signature from one or many recipients; recipients become the shared-with set. | **M**   |
+| **DOC-003** | **Field placement + signing.** The requester places fields (signature / initial / date / text) per recipient on the PDF. Each recipient can sign (applying a signature into their fields) or decline; the system records signer, status, method (drawn / typed / saved / uploaded), IP, and timestamp. | **M**   |
+| **DOC-004** | **Distinct signed copies; original immutable.** On signing, the server stamps the signer's fields into a distinct per-signer copy (pdf-lib) stored alongside the retained original, which is **never** modified. | **M**   |
+| **DOC-005** | A request tracks overall status (pending / partially signed / completed / declined / cancelled) across its recipients; on completion a **final copy carrying all signatures** is produced. | **M**   |
 | **DOC-006** | Signature requests and completions raise notifications per the configured channels.                                                 | **S**   |
 | **DOC-007** | Signed-document audit metadata is queryable and immutable.                                                                          | **M**   |
+| **DOC-008** | **In-browser preview + download.** Any user with access can preview the original and the signed copies in-app (pdf.js) and download them; signing needs no download/upload round-trip, but uploading an externally-signed file is also offered (method = uploaded). | **M**   |
+| **DOC-009** | **Saved reusable signatures.** Each user can create and save a reusable signature (draw / type / upload an image), set a default, and reuse it on every future signing. Saved signatures are private and own-scoped. | **S**   |
 
 ### 13.2 UI / Screen Requirements
 
 | **Screen / View**             | **Purpose & key UI elements**                                                         |
 |-------------------------------|---------------------------------------------------------------------------------------|
-| **Documents**                 | List of documents with status; upload; open detail.                                   |
-| **Share / Request Signature** | Pick recipient(s) (one or many), add a message and due date, send request.            |
-| **Sign Document**             | Recipient views the document and signs or declines; signed copy generated and stored. |
+| **Documents**                 | List of documents with status; upload a PDF; open detail.                             |
+| **Document detail**           | In-browser PDF preview of the original + download; per-signer signed-copy + final-copy download; activity timeline. |
+| **Share / Request Signature** | Pick recipient(s) (one or many), add a message and due date, optionally **place fields** on the PDF per recipient, send request. |
+| **Sign Document**             | Recipient previews the document with their fields highlighted and signs (saved / drawn / typed) or declines; or uploads an externally-signed PDF. |
 | **Signature Status**          | Per-document view of each recipient's status, signed copy, and audit metadata.        |
+| **My Account → Signatures**   | Manage saved reusable signatures (create by draw/type/upload, set default, delete).   |
 
 ### 13.3 Data Touchpoints
 
-documents, signature_requests, document_signatures, users, notifications.
+documents, signature_requests, signature_fields, document_signatures, user_signatures, users, notifications.
+
+### 13.4 Storage & access control
+
+Document files (originals, per-signer signed copies, the final copy, saved-signature images, rep documents) are uploaded to object storage; the row stores the object **path**, and bytes are served only via an RBAC/visibility-gated `…/file-url` endpoint that mints a short-TTL signed URL on each access. Word→PDF conversion is a later enhancement (PDF-only today). When storage is unconfigured the upload returns a `local://` reference and file-url endpoints respond 404 — the workflow, status rollup, audit, and notifications still function.
 
 ## 14. Reporting, Dashboards & Platform
 
