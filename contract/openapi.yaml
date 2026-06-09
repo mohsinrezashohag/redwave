@@ -4624,7 +4624,7 @@ paths:
       tags: *a202
   /v1/dashboards/business:
     get:
-      description: Requires reports:view AND Super Admin (else 403).
+      description: Requires reports:business (Super Admin only).
       operationId: DashboardsController_business_v1
       parameters:
         - name: pay_period_id
@@ -4660,6 +4660,37 @@ paths:
         "422": *a200
       security: *a201
       summary: Business / executive dashboard
+      tags: *a202
+  /v1/dashboards/business/trends:
+    get:
+      description: Requires reports:business (Super Admin). Headline series +
+        by-product / by-client / tier breakdowns over the last N periods.
+      operationId: DashboardsController_businessTrends_v1
+      parameters:
+        - name: periods
+          required: false
+          in: query
+          description: How many recent pay periods to return.
+          schema:
+            minimum: 1
+            maximum: 24
+            default: 6
+            type: number
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BusinessTrendsResponse"
+        "400": *a195
+        "401": *a196
+        "403": *a197
+        "404": *a198
+        "409": *a199
+        "422": *a200
+      security: *a201
+      summary: Cross-period business trends
       tags: *a202
   /v1/dashboards/admin:
     get:
@@ -4736,6 +4767,93 @@ paths:
       summary: Company-wide leaderboard (counts only)
       tags:
         - Reporting & Dashboards
+  /v1/sales-targets:
+    get:
+      description: Authenticated; scoped rep=own / manager=roster / admin=all.
+      operationId: TargetsController_list_v1
+      parameters:
+        - name: pay_period_id
+          required: false
+          in: query
+          description: Restrict to one pay period.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SalesTargetResponse"
+        "400": &a203
+          description: Bad Request — validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "401": &a204
+          description: Unauthorized — missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "403": &a205
+          description: Forbidden — RBAC denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "404": &a206
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "409": &a207
+          description: Conflict — invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "422": &a208
+          description: Unprocessable Entity — domain rule violated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+      security: &a209
+        - bearer: []
+      summary: List sales targets (scoped)
+      tags: &a210
+        - Reporting & Dashboards
+    put:
+      description: Requires hrm:edit; a manager may only set targets for reps they manage.
+      operationId: TargetsController_set_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetSalesTargetDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesTargetResponse"
+        "400": *a203
+        "401": *a204
+        "403": *a205
+        "404": *a206
+        "409": *a207
+        "422": *a208
+      security: *a209
+      summary: Set / replace a rep target for a period
+      tags: *a210
   /v1/notifications:
     get:
       description: Authenticated; only the caller’s own. Paginated
@@ -4786,190 +4904,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NotificationPageResponse"
-        "400": &a203
-          description: Bad Request — validation failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a204
-          description: Unauthorized — missing/invalid token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a205
-          description: Forbidden — RBAC denied
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a206
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a207
-          description: Conflict — invalid state transition
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a208
-          description: Unprocessable Entity — domain rule violated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a209
-        - bearer: []
-      summary: My notifications
-      tags: &a210
-        - Reporting & Dashboards
-  /v1/notifications/unread-count:
-    get:
-      description: Authenticated; for the top-bar bell badge (polled).
-      operationId: NotificationsController_unreadCount_v1
-      parameters: []
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UnreadCountResponse"
-        "400": *a203
-        "401": *a204
-        "403": *a205
-        "404": *a206
-        "409": *a207
-        "422": *a208
-      security: *a209
-      summary: My unread count
-      tags: *a210
-  /v1/notifications/mark-all-read:
-    post:
-      description: Authenticated; marks all the caller’s unread notifications read.
-      operationId: NotificationsController_markAllRead_v1
-      parameters: []
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BulkMarkResultResponse"
-        "400": *a203
-        "401": *a204
-        "403": *a205
-        "404": *a206
-        "409": *a207
-        "422": *a208
-      security: *a209
-      summary: Mark all read
-      tags: *a210
-  /v1/notifications/mark-read:
-    post:
-      description: Authenticated; own-scoped bulk toggle.
-      operationId: NotificationsController_bulkMark_v1
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BulkMarkDto"
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BulkMarkResultResponse"
-        "400": *a203
-        "401": *a204
-        "403": *a205
-        "404": *a206
-        "409": *a207
-        "422": *a208
-      security: *a209
-      summary: Bulk mark read/unread
-      tags: *a210
-  /v1/notifications/broadcast:
-    post:
-      description: Requires notifications:broadcast (Super Admin). Fans out to a role
-        / specific users / everyone.
-      operationId: NotificationsController_broadcast_v1
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BroadcastDto"
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BroadcastResultResponse"
-        "400": *a203
-        "401": *a204
-        "403": *a205
-        "404": *a206
-        "409": *a207
-        "422": *a208
-      security: *a209
-      summary: Send a manual broadcast
-      tags: *a210
-  /v1/notifications/{id}:
-    patch:
-      description: Authenticated; only the caller’s own.
-      operationId: NotificationsController_setReadState_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MarkNotificationDto"
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AppNotificationResponse"
-        "400": *a203
-        "401": *a204
-        "403": *a205
-        "404": *a206
-        "409": *a207
-        "422": *a208
-      security: *a209
-      summary: Mark a notification read/unread
-      tags: *a210
-  /v1/notification-settings:
-    get:
-      description: Requires settings:view (Super Admin).
-      operationId: NotificationSettingsController_list_v1
-      parameters: []
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/NotificationSettingResponse"
         "400": &a211
           description: Bad Request — validation failed
           content:
@@ -5008,8 +4942,192 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
       security: &a217
         - bearer: []
-      summary: Notification event settings
+      summary: My notifications
       tags: &a218
+        - Reporting & Dashboards
+  /v1/notifications/unread-count:
+    get:
+      description: Authenticated; for the top-bar bell badge (polled).
+      operationId: NotificationsController_unreadCount_v1
+      parameters: []
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCountResponse"
+        "400": *a211
+        "401": *a212
+        "403": *a213
+        "404": *a214
+        "409": *a215
+        "422": *a216
+      security: *a217
+      summary: My unread count
+      tags: *a218
+  /v1/notifications/mark-all-read:
+    post:
+      description: Authenticated; marks all the caller’s unread notifications read.
+      operationId: NotificationsController_markAllRead_v1
+      parameters: []
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkMarkResultResponse"
+        "400": *a211
+        "401": *a212
+        "403": *a213
+        "404": *a214
+        "409": *a215
+        "422": *a216
+      security: *a217
+      summary: Mark all read
+      tags: *a218
+  /v1/notifications/mark-read:
+    post:
+      description: Authenticated; own-scoped bulk toggle.
+      operationId: NotificationsController_bulkMark_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkMarkDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkMarkResultResponse"
+        "400": *a211
+        "401": *a212
+        "403": *a213
+        "404": *a214
+        "409": *a215
+        "422": *a216
+      security: *a217
+      summary: Bulk mark read/unread
+      tags: *a218
+  /v1/notifications/broadcast:
+    post:
+      description: Requires notifications:broadcast (Super Admin). Fans out to a role
+        / specific users / everyone.
+      operationId: NotificationsController_broadcast_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BroadcastDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BroadcastResultResponse"
+        "400": *a211
+        "401": *a212
+        "403": *a213
+        "404": *a214
+        "409": *a215
+        "422": *a216
+      security: *a217
+      summary: Send a manual broadcast
+      tags: *a218
+  /v1/notifications/{id}:
+    patch:
+      description: Authenticated; only the caller’s own.
+      operationId: NotificationsController_setReadState_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkNotificationDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppNotificationResponse"
+        "400": *a211
+        "401": *a212
+        "403": *a213
+        "404": *a214
+        "409": *a215
+        "422": *a216
+      security: *a217
+      summary: Mark a notification read/unread
+      tags: *a218
+  /v1/notification-settings:
+    get:
+      description: Requires settings:view (Super Admin).
+      operationId: NotificationSettingsController_list_v1
+      parameters: []
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NotificationSettingResponse"
+        "400": &a219
+          description: Bad Request — validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "401": &a220
+          description: Unauthorized — missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "403": &a221
+          description: Forbidden — RBAC denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "404": &a222
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "409": &a223
+          description: Conflict — invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "422": &a224
+          description: Unprocessable Entity — domain rule violated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+      security: &a225
+        - bearer: []
+      summary: Notification event settings
+      tags: &a226
         - Reporting & Dashboards
     patch:
       description: Requires settings:edit (Super Admin). Per-event in-app/email
@@ -5031,15 +5149,15 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/NotificationSettingResponse"
-        "400": *a211
-        "401": *a212
-        "403": *a213
-        "404": *a214
-        "409": *a215
-        "422": *a216
-      security: *a217
+        "400": *a219
+        "401": *a220
+        "403": *a221
+        "404": *a222
+        "409": *a223
+        "422": *a224
+      security: *a225
       summary: Configure event×channel settings
-      tags: *a218
+      tags: *a226
   /v1/chatbot/query:
     post:
       description: Authenticated. Answers from Redwave data within the caller’s scope
@@ -5580,6 +5698,7 @@ components:
             - delete
             - export
             - broadcast
+            - business
         key:
           type: string
           example: clients:view
@@ -6397,7 +6516,7 @@ components:
           type: string
         status:
           type: string
-          enum: &a219
+          enum: &a227
             - current
             - pending
             - past
@@ -6494,7 +6613,7 @@ components:
           type: string
         status:
           type: string
-          enum: *a219
+          enum: *a227
       required:
         - id
         - product_type
@@ -6563,7 +6682,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: *a219
+          enum: *a227
       required:
         - id
         - advance_pct
@@ -7664,7 +7783,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: &a220
+          enum: &a228
             - draft
             - finalized
             - exported
@@ -7772,7 +7891,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: *a220
+          enum: *a228
         executed_by:
           type: string
         created_at:
@@ -8495,6 +8614,57 @@ components:
         - holdback_release_30
         - incentive_total
         - net_payout
+    RepTargetResponse:
+      type: object
+      properties:
+        target_activations:
+          type: number
+          nullable: true
+          example: 20
+        actual:
+          type: number
+          example: 12
+          description: Actual internet activations this period.
+        to_go:
+          type: number
+          nullable: true
+          example: 8
+          description: Remaining to hit target (null if none).
+      required:
+        - target_activations
+        - actual
+        - to_go
+    RepRecentSaleResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        sale_code:
+          type: string
+          example: 2026-01-10-VF
+        customer_name:
+          type: string
+        status:
+          type: string
+          enum:
+            - entered
+            - validated
+            - in_pay_run
+            - paid
+            - clawed_back
+            - deleted
+        is_greenfield:
+          type: boolean
+        sale_date:
+          type: string
+          format: date-time
+      required:
+        - id
+        - sale_code
+        - customer_name
+        - status
+        - is_greenfield
+        - sale_date
     RepClawbackResponse:
       type: object
       properties:
@@ -8545,6 +8715,12 @@ components:
           type: string
           example: "0.00"
           description: Decimal string — held, awaiting release.
+        target:
+          $ref: "#/components/schemas/RepTargetResponse"
+        recent_sales:
+          type: array
+          items:
+            $ref: "#/components/schemas/RepRecentSaleResponse"
         recent_clawbacks:
           type: array
           items:
@@ -8556,7 +8732,46 @@ components:
         - tier
         - commission
         - holdback_pending_release
+        - target
+        - recent_sales
         - recent_clawbacks
+    ManagerTopPerformerResponse:
+      type: object
+      properties:
+        rep_id:
+          type: string
+        rep_name:
+          type: string
+        activations:
+          type: number
+          example: 12
+          description: Internet activations (the count-ranking signal).
+        payout:
+          type: string
+          nullable: true
+          description: Per-rep payout — present ONLY with hrm:edit.
+      required:
+        - rep_id
+        - rep_name
+        - activations
+        - payout
+    ManagerTargetRowResponse:
+      type: object
+      properties:
+        rep_id:
+          type: string
+        rep_name:
+          type: string
+        target_activations:
+          type: number
+          nullable: true
+        actual:
+          type: number
+      required:
+        - rep_id
+        - rep_name
+        - target_activations
+        - actual
     ManagerDashboardResponse:
       type: object
       properties:
@@ -8570,54 +8785,414 @@ components:
           nullable: true
         team_internet_activations:
           type: number
+        sales_in_period:
+          type: number
+        roster_payout:
+          type: string
+          example: "8000.00"
+          description: Decimal — roster total net payout (period).
+        roster_holdback:
+          type: string
+          example: "3000.00"
+          description: Decimal — roster outstanding holdback.
+        can_see_rep_money:
+          type: boolean
+          description: True when the caller holds hrm:edit (per-rep payout is then
+            populated).
+        top_performers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ManagerTopPerformerResponse"
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/ManagerTargetRowResponse"
         pending_validations:
           type: number
         pending_expense_approvals:
           type: number
-        sales_in_period:
+        pending_profile_changes:
           type: number
       required:
         - period
         - roster_size
         - team_internet_activations
+        - sales_in_period
+        - roster_payout
+        - roster_holdback
+        - can_see_rep_money
+        - top_performers
+        - targets
         - pending_validations
         - pending_expense_approvals
-        - sales_in_period
+        - pending_profile_changes
+    HoldbackBreakdownResponse:
+      type: object
+      properties:
+        held:
+          type: string
+          example: "3000.00"
+          description: Decimal — currently held (status=held).
+        scheduled:
+          type: string
+          example: "500.00"
+          description: Decimal — scheduled to release (status=scheduled).
+        released_this_period:
+          type: string
+          example: "993.00"
+          description: Decimal — released in this period (30% advance release).
+      required:
+        - held
+        - scheduled
+        - released_this_period
+    ExpenseBreakdownResponse:
+      type: object
+      properties:
+        total:
+          type: string
+          example: "420.00"
+          description: Decimal — total approved expenses (period).
+        km:
+          type: string
+          example: "120.00"
+          description: Decimal — KM mileage portion.
+        other:
+          type: string
+          example: "300.00"
+          description: Decimal — everything else.
+      required:
+        - total
+        - km
+        - other
+    GreenfieldStatResponse:
+      type: object
+      properties:
+        count:
+          type: number
+          example: 2
+          description: Greenfield internet activations (excluded from the tally).
+        amount:
+          type: string
+          example: "200.00"
+          description: Decimal — frozen commission_paid on those items.
+      required:
+        - count
+        - amount
+    NamedCountResponse:
+      type: object
+      properties:
+        key:
+          type: string
+          example: internet
+          description: Key (product-type key or client code).
+        label:
+          type: string
+          example: Internet
+        count:
+          type: number
+          example: 12
+      required:
+        - key
+        - label
+        - count
+    ValidationFunnelResponse:
+      type: object
+      properties:
+        entered:
+          type: number
+          example: 3
+        validated:
+          type: number
+          example: 20
+        in_pay_run:
+          type: number
+          example: 12
+        paid:
+          type: number
+          example: 40
+      required:
+        - entered
+        - validated
+        - in_pay_run
+        - paid
+    TierCountResponse:
+      type: object
+      properties:
+        tier_number:
+          type: number
+          example: 2
+          description: Tier number (1 highest .. 4 entry).
+        rep_count:
+          type: number
+          example: 5
+          description: Reps whose period tally lands in this tier.
+      required:
+        - tier_number
+        - rep_count
+    ClientMixRowResponse:
+      type: object
+      properties:
+        client_code:
+          type: string
+          example: VF
+        client_name:
+          type: string
+          example: Valley Fiber
+        revenue:
+          type: string
+          example: "6000.00"
+          description: Decimal — revenue.
+        revenue_pct:
+          type: string
+          example: "50.0"
+          description: Decimal — % of total revenue.
+        volume:
+          type: number
+          example: 24
+          description: Activation volume.
+        volume_pct:
+          type: string
+          example: "48.0"
+          description: Decimal — % of total volume.
+      required:
+        - client_code
+        - client_name
+        - revenue
+        - revenue_pct
+        - volume
+        - volume_pct
+    GrowthMoneyResponse:
+      type: object
+      properties:
+        current:
+          type: string
+          example: "12000.00"
+        previous:
+          type: string
+          example: "10000.00"
+        pct:
+          type: string
+          nullable: true
+          example: "20.0"
+          description: Decimal % vs previous; null if no prior.
+      required:
+        - current
+        - previous
+        - pct
+    GrowthCountResponse:
+      type: object
+      properties:
+        current:
+          type: number
+          example: 60
+        previous:
+          type: number
+          example: 50
+        pct:
+          type: string
+          nullable: true
+          example: "20.0"
+      required:
+        - current
+        - previous
+        - pct
     BusinessDashboardResponse:
       type: object
       properties:
+        period:
+          nullable: true
+          description: The period in scope (null = all-time).
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/DashPeriodResponse"
         revenue:
           type: string
           example: "12000.00"
-          description: Decimal string — client revenue.
         rep_payout:
           type: string
           example: "8000.00"
-          description: Decimal string — rep payout.
         net_margin:
           type: string
           example: "4000.00"
-          description: Decimal string — revenue − payout (display).
-        holdback_liability:
+        net_margin_pct:
           type: string
-          example: "3000.00"
-          description: Decimal string — outstanding holdback.
+          example: "33.3"
+          description: Decimal % = margin / revenue.
+        holdback:
+          $ref: "#/components/schemas/HoldbackBreakdownResponse"
         clawback_total:
           type: string
-          example: "0.00"
-          description: Decimal string — clawbacks.
+          example: "145.00"
+        clawback_rate:
+          type: string
+          example: "0.0181"
+          description: Decimal ratio = clawback $ / paid commission $.
+        expense:
+          $ref: "#/components/schemas/ExpenseBreakdownResponse"
+        total_activations:
+          type: number
+          example: 60
+        internet_activations:
+          type: number
+          example: 48
+          description: Non-greenfield internet (the tally driver).
+        greenfield:
+          $ref: "#/components/schemas/GreenfieldStatResponse"
+        activations_by_product:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamedCountResponse"
+        activations_by_client:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamedCountResponse"
+        validation_funnel:
+          $ref: "#/components/schemas/ValidationFunnelResponse"
         active_rep_count:
           type: number
-        top_sales_in_period:
-          type: number
+          example: 8
+        tier_distribution:
+          type: array
+          items:
+            $ref: "#/components/schemas/TierCountResponse"
+        client_mix:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientMixRowResponse"
+        revenue_growth:
+          $ref: "#/components/schemas/GrowthMoneyResponse"
+        activation_growth:
+          $ref: "#/components/schemas/GrowthCountResponse"
       required:
+        - period
         - revenue
         - rep_payout
         - net_margin
-        - holdback_liability
+        - net_margin_pct
+        - holdback
         - clawback_total
+        - clawback_rate
+        - expense
+        - total_activations
+        - internet_activations
+        - greenfield
+        - activations_by_product
+        - activations_by_client
+        - validation_funnel
         - active_rep_count
-        - top_sales_in_period
+        - tier_distribution
+        - client_mix
+        - revenue_growth
+        - activation_growth
+    TrendPeriodResponse:
+      type: object
+      properties:
+        period_number:
+          type: number
+          example: 3
+        revenue:
+          type: string
+          example: "12000.00"
+        payout:
+          type: string
+          example: "8000.00"
+        net_margin:
+          type: string
+          example: "4000.00"
+        activations:
+          type: number
+          example: 60
+        internet_activations:
+          type: number
+          example: 48
+        holdback_released:
+          type: string
+          example: "993.00"
+          description: Holdback released (30% advance) in the period.
+        clawback_total:
+          type: string
+          example: "145.00"
+      required:
+        - period_number
+        - revenue
+        - payout
+        - net_margin
+        - activations
+        - internet_activations
+        - holdback_released
+        - clawback_total
+    TrendProductResponse:
+      type: object
+      properties:
+        period_number:
+          type: number
+          example: 3
+        product_type:
+          type: string
+          example: internet
+        count:
+          type: number
+          example: 12
+      required:
+        - period_number
+        - product_type
+        - count
+    TrendClientRevenueResponse:
+      type: object
+      properties:
+        period_number:
+          type: number
+          example: 3
+        client_code:
+          type: string
+          example: VF
+        amount:
+          type: string
+          example: "6000.00"
+      required:
+        - period_number
+        - client_code
+        - amount
+    TrendTierResponse:
+      type: object
+      properties:
+        period_number:
+          type: number
+          example: 3
+        tier_number:
+          type: number
+          example: 2
+        rep_count:
+          type: number
+          example: 5
+      required:
+        - period_number
+        - tier_number
+        - rep_count
+    BusinessTrendsResponse:
+      type: object
+      properties:
+        periods:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrendPeriodResponse"
+        by_product:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrendProductResponse"
+        by_client_revenue:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrendClientRevenueResponse"
+        tier_distribution:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrendTierResponse"
+      required:
+        - periods
+        - by_product
+        - by_client_revenue
+        - tier_distribution
     AdminDashboardResponse:
       type: object
       properties:
@@ -8674,6 +9249,46 @@ components:
       required:
         - period
         - rankings
+    SalesTargetResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        rep_id:
+          type: string
+          nullable: true
+        target_count:
+          type: number
+          example: 20
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+      required:
+        - id
+        - rep_id
+        - target_count
+        - period_start
+        - period_end
+    SetSalesTargetDto:
+      type: object
+      properties:
+        rep_id:
+          type: string
+          description: The rep this target applies to.
+        pay_period_id:
+          type: string
+          description: The pay period the target covers (stored as the period’s date range).
+        target_count:
+          type: number
+          example: 20
+          description: Target internet activations for the period.
+      required:
+        - rep_id
+        - pay_period_id
+        - target_count
     AppNotificationResponse:
       type: object
       properties:
