@@ -18,10 +18,12 @@ import { TierScheduleService } from './tier-schedule.service';
 import { FlatRateService } from './flat-rate.service';
 import { HoldbackService } from './holdback.service';
 import { IncentiveService } from './incentive.service';
+import { ProductTypeService } from './product-type.service';
 import { CreateTierScheduleDto } from './dto/tier.dto';
 import { CreateFlatRateDto, ListFlatRatesQuery } from './dto/flat-rate.dto';
 import { SetHoldbackConfigDto, SetHoldbackReleaseSettingDto } from './dto/holdback.dto';
 import { CreateIncentiveDto, ListIncentivesQuery, UpdateIncentiveDto } from './dto/incentive.dto';
+import { CreateProductTypeDto, ListProductTypesQuery, UpdateProductTypeDto } from './dto/product-type.dto';
 import {
   FlatRateResponse,
   HoldbackConfigResponse,
@@ -29,6 +31,7 @@ import {
   IncentiveResponse,
   TierConfigResponse,
 } from './dto/commission.response';
+import { ProductTypeResponse } from './dto/product-type.response';
 
 @ApiTags('Commission Config')
 @ApiBearerAuth()
@@ -186,5 +189,51 @@ export class IncentivesController {
     @CurrentUser('id') actorId: string,
   ) {
     return this.incentives.update(id, dto, actorId);
+  }
+}
+
+/**
+ * Product-type catalogue — the configurable type list + behaviour. GET is an authenticated reference read
+ * (product / flat-rate / incentive forms use it); create/edit require commission:edit. — §6
+ */
+@ApiTags('Commission Config')
+@ApiBearerAuth()
+@ApiErrorResponses()
+@Controller('product-types')
+export class ProductTypesController {
+  constructor(private readonly productTypes: ProductTypeService) {}
+
+  @Get()
+  @ApiOperation({
+    summary: 'List product types (catalogue)',
+    description: 'Authenticated reference read. ?status=active filters to active types.',
+  })
+  @ApiOkResponse({ type: ProductTypeResponse, isArray: true })
+  list(@Query() query: ListProductTypesQuery) {
+    return this.productTypes.list(query);
+  }
+
+  @Post()
+  @RequirePermission('commission', 'edit')
+  @ApiOperation({
+    summary: 'Add a product type (always a standard add-on)',
+    description:
+      'Requires commission:edit. behaviour is forced standard_addon — a new type can never be tiered/' +
+      'greenfield (#5/#9). May carry an inline commission flat rate (written to the commission stream).',
+  })
+  @ApiCreatedResponse({ type: ProductTypeResponse })
+  create(@Body() dto: CreateProductTypeDto, @CurrentUser('id') actorId: string) {
+    return this.productTypes.create(dto, actorId);
+  }
+
+  @Patch(':key')
+  @RequirePermission('commission', 'edit')
+  @ApiOperation({
+    summary: 'Relabel / activate / deactivate a product type',
+    description: 'Requires commission:edit. key + behaviour are immutable; system types cannot be deactivated.',
+  })
+  @ApiOkResponse({ type: ProductTypeResponse })
+  update(@Param('key') key: string, @Body() dto: UpdateProductTypeDto, @CurrentUser('id') actorId: string) {
+    return this.productTypes.update(key, dto, actorId);
   }
 }
