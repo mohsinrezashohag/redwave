@@ -1,13 +1,10 @@
 /**
- * Data Import types — RESPONSE shapes ALIASED to the generated OpenAPI schema (the backend ships
- * `@ApiResponse` DTOs as of Batch A #2). Mirrors `backend/src/modules/import/dto/import.response.ts`. The
- * backend stages + matches + gates + commits ATOMICALLY; this UI presents the staged rows and reconciles —
- * it does NO matching/commit logic. The `rows`/`mapped_data` swagger quirk is now fixed, so the REQUEST
- * bodies are typed from the generated schema too (no more hand-written bodies / casts).
+ * Data Import types — RESPONSE shapes ALIASED to the generated OpenAPI schema. The backend now does a REAL
+ * upload → parse → clean → auto-map → classify → stage, then the ATOMIC + idempotent commit; this UI uploads
+ * a file, adjusts the suggested mapping, reconciles, and commits — it does NO matching/commit logic. — SRS §15
  */
 import type { components } from '../../api/generated/schema';
 
-// Enums derived from the contract.
 export type ImportSourceType = components['schemas']['ImportBatchResponse']['source_type'];
 export type ImportType = components['schemas']['ImportBatchResponse']['import_type'];
 export type ImportBatchStatus = components['schemas']['ImportBatchResponse']['status'];
@@ -15,8 +12,9 @@ export type MatchStatus = components['schemas']['ImportRowResponse']['match_stat
 export type ReconcileAction = components['schemas']['RowResolution']['action'];
 
 export type ImportRow = components['schemas']['ImportRowResponse'];
-
 export type ImportBatch = components['schemas']['ImportBatchResponse'];
+export type StagedImport = components['schemas']['StagedImportResponse'];
+export type ImportFieldMapping = components['schemas']['ImportFieldMappingResponse'];
 
 export interface ImportFilters {
   status?: ImportBatchStatus;
@@ -24,14 +22,21 @@ export interface ImportFilters {
   import_type?: ImportType;
 }
 
-// Request bodies — typed from the generated schema (the rows/mapped_data quirk is fixed in Batch A #2).
-export type CreateImportBody = components['schemas']['CreateImportDto'];
+// Request bodies.
 export type RowResolutionBody = components['schemas']['RowResolution'];
 export type ReconcileBody = components['schemas']['ReconcileDto'];
+export type RemapBody = components['schemas']['RemapDto'];
+export type CreateMappingBody = components['schemas']['CreateMappingDto'];
 
-// ── The 3 supported kinds (friendly → pairing). The UI offers ONLY these, so an unsupported pairing can't be
-//    staged from the screen. Each carries an editable JSON template for the rows editor. ──────────────────
-export type ImportKind = 'bulk_validation' | 'billing_rate' | 'opening_holdback';
+// ── The 7 supported targets (friendly → pairing). The UI offers ONLY these. ──────────────────────────────
+export type ImportKind =
+  | 'bulk_validation'
+  | 'create_clients'
+  | 'create_products'
+  | 'billing_rate'
+  | 'create_reps'
+  | 'historical_sales'
+  | 'opening_holdback';
 
 export interface KindDef {
   kind: ImportKind;
@@ -41,33 +46,73 @@ export interface KindDef {
   import_type: ImportType;
   needsClient: boolean;
   needsReconcileTotal: boolean;
-  template: Record<string, unknown>[];
   /** What the commit applies (shown in the commit confirm). */
   commitEffect: string;
+  /** Optional caveat banner (e.g. historical = reference-only). */
+  note?: string;
 }
 
 export const KINDS: KindDef[] = [
   {
     kind: 'bulk_validation',
     label: 'Bulk sales validation (client report)',
-    description: 'Match a client report to entered sales by MPU ID and validate the matched sales.',
+    description: 'Match a client report to entered sales by MPU ID and validate the matches.',
     source_type: 'client_report',
     import_type: 'sales',
     needsClient: true,
     needsReconcileTotal: false,
-    template: [{ mpu_id: 'MPU-001' }, { mpu_id: 'MPU-002' }],
     commitEffect: 'validates each matched sale (entered → validated), in one transaction',
+  },
+  {
+    kind: 'create_clients',
+    label: 'Clients (master data)',
+    description: 'Create or update clients (partners) by code.',
+    source_type: 'master_migration',
+    import_type: 'clients',
+    needsClient: false,
+    needsReconcileTotal: false,
+    commitEffect: 'creates/updates each client, in one transaction',
+  },
+  {
+    kind: 'create_products',
+    label: 'Products + billing rates (master data)',
+    description: 'Create products for a client, with an optional inline client-billing rate.',
+    source_type: 'master_migration',
+    import_type: 'products',
+    needsClient: false,
+    needsReconcileTotal: false,
+    commitEffect: 'creates each product (+ optional billing rate), in one transaction',
   },
   {
     kind: 'billing_rate',
     label: 'Historical billing rates (migration)',
     description: 'Load back-dated client billing rates (the sanctioned migration path; bypasses the live back-date guard).',
     source_type: 'master_migration',
-    import_type: 'clients',
+    import_type: 'billing_rates',
     needsClient: false,
     needsReconcileTotal: false,
-    template: [{ client_id: '<client-uuid>', rate_kind: 'product', product_id: '<product-uuid>', amount: '60.00', effective_from: '2025-01-01' }],
     commitEffect: 'writes each back-dated client billing rate, in one transaction',
+  },
+  {
+    kind: 'create_reps',
+    label: 'Reps (master data)',
+    description: 'Create reps by code (codes are never reused, #11).',
+    source_type: 'master_migration',
+    import_type: 'reps',
+    needsClient: false,
+    needsReconcileTotal: false,
+    commitEffect: 'creates each rep, in one transaction',
+  },
+  {
+    kind: 'historical_sales',
+    label: 'Historical sales (migration — reference only)',
+    description: 'Load already-paid / migrated sales for the owner’s business reporting.',
+    source_type: 'master_migration',
+    import_type: 'sales',
+    needsClient: false,
+    needsReconcileTotal: false,
+    commitEffect: 'writes each historical sale (status=historical), in one transaction',
+    note: 'Historical sales are REFERENCE-ONLY: they appear in the business dashboard but NEVER pay out, and never count toward commission / tier / leaderboard / holdback. Import clients, products, and reps first.',
   },
   {
     kind: 'opening_holdback',
@@ -77,10 +122,13 @@ export const KINDS: KindDef[] = [
     import_type: 'holdback',
     needsClient: false,
     needsReconcileTotal: true,
-    template: [{ rep_id: '<rep-uuid>', origin_pay_period_id: '<closed-period-uuid>', amount_held: '993.00' }],
     commitEffect: 'writes each opening holdback ledger entry, in one transaction',
   },
 ];
+
+export function kindByValue(kind: ImportKind): KindDef {
+  return KINDS.find((k) => k.kind === kind)!;
+}
 
 export function kindOf(batch: { source_type: ImportSourceType; import_type: ImportType }): KindDef | undefined {
   return KINDS.find((k) => k.source_type === batch.source_type && k.import_type === batch.import_type);

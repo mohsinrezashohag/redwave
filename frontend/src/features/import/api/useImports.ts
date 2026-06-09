@@ -6,7 +6,16 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
 import { importKeys } from './keys';
-import type { ImportBatch, ImportFilters } from '../import.types';
+import type { ImportBatch, ImportFieldMapping, ImportFilters, ImportSourceType } from '../import.types';
+
+/** Saved field mappings (optionally scoped to a source type). */
+export function useImportMappings(source_type?: ImportSourceType, enabled = true) {
+  return useQuery({
+    queryKey: importKeys.mappings(),
+    queryFn: () => unwrap<ImportFieldMapping[]>(api.GET('/v1/import-mappings', { params: { query: source_type ? { source_type } : {} } })),
+    enabled,
+  });
+}
 
 export function useImports(filters: ImportFilters = {}, enabled = true) {
   return useQuery({

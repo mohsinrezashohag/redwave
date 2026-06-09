@@ -11,6 +11,7 @@ export type SaleStatus =
   | 'paid'
   | 'clawed_back'
   | 'deleted'
+  | 'historical'
   | 'pending';
 
 const STATUS_MAP: Record<SaleStatus, { tone: BadgeTone; label: string }> = {
@@ -20,6 +21,7 @@ const STATUS_MAP: Record<SaleStatus, { tone: BadgeTone; label: string }> = {
   paid: { tone: 'success', label: 'Paid' },
   clawed_back: { tone: 'danger', label: 'Clawed Back' },
   deleted: { tone: 'muted', label: 'Deleted' },
+  historical: { tone: 'muted', label: 'Historical' }, // migrated/reference-only — never in the pay pipeline
   pending: { tone: 'warning', label: 'Pending' },
 };
 

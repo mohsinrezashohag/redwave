@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Lock } from 'lucide-react';
+import { ArrowLeft, Download, Lock } from 'lucide-react';
 import { Banner, Button, Card, PageHeader, StatCard, TableError, TableSkeleton, useToast } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
 import { isForbidden, useApiErrorToast } from '../../../lib/api/apiError';
@@ -16,10 +16,11 @@ import { displayDate } from '../../../lib/format/date';
 import { money } from '../../../lib/format/money';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useImportBatch } from '../api/useImports';
-import { useReconcile } from '../api/useImportMutations';
+import { downloadErrorReport, useReconcile } from '../api/useImportMutations';
 import { ImportStatusBadge } from '../components/ImportStatusBadge';
 import { StepIndicator, type StepState } from '../components/StepIndicator';
 import { ImportRowsTable } from '../components/ImportRowsTable';
+import { MappingEditor } from '../components/MappingEditor';
 import { MatchSaleModal } from '../components/MatchSaleModal';
 import { ReconcileEditModal } from '../components/ReconcileEditModal';
 import { CommitConfirmModal } from '../components/CommitConfirmModal';
@@ -132,6 +133,21 @@ export default function ImportDetailPage() {
         <StatCard label="Outstanding" value={String(outstanding)} />
         <StatCard label="Ignored" value={String(counts.ignored)} />
       </div>
+
+      {staged && canEdit && <MappingEditor batch={batch} kind={kind} />}
+
+      {outstanding > 0 && (
+        <div>
+          <Button
+            variant="tertiary"
+            size="sm"
+            leftIcon={<Download size={14} />}
+            onClick={() => downloadErrorReport(batch.id).catch(onError)}
+          >
+            Download error report (CSV)
+          </Button>
+        </div>
+      )}
 
       <Card title="Rows" flush>
         <ImportRowsTable batch={batch} kind={kind} canEdit={canEdit} onMatch={setMatchRow} onEdit={setEditRow} onIgnore={onIgnore} />

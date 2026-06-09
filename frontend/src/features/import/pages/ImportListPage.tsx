@@ -15,6 +15,7 @@ import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useClients } from '../../clients/api/useClients';
 import { useImports } from '../api/useImports';
 import { ImportStatusBadge } from '../components/ImportStatusBadge';
+import { TemplatesPanel } from '../components/TemplatesPanel';
 import { kindOf } from '../import.types';
 import styles from '../components/import.module.css';
 import type { ImportBatchStatus } from '../import.types';
@@ -108,6 +109,8 @@ export default function ImportListPage() {
           </TBody>
         </Table>
       </DataState>
+
+      <TemplatesPanel />
     </div>
   );
 }

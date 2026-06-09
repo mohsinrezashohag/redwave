@@ -38,25 +38,3 @@ export function outstandingCount(batch: ImportBatch): number {
 export function isUnresolved(status: MatchStatus): boolean {
   return UNRESOLVED.includes(status);
 }
-
-/** Parse the JSON rows editor. Must be a NON-EMPTY array of plain objects. */
-export function parseRows(text: string): { rows: Record<string, unknown>[] } | { error: string } {
-  const trimmed = text.trim();
-  if (!trimmed) return { error: 'Paste a JSON array of rows (or insert a template).' };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch (e) {
-    return { error: `Invalid JSON: ${e instanceof Error ? e.message : 'parse error'}` };
-  }
-  if (!Array.isArray(parsed)) return { error: 'Expected a JSON array of row objects.' };
-  if (parsed.length === 0) return { error: 'The rows array is empty — add at least one row.' };
-  if (!parsed.every((r) => r !== null && typeof r === 'object' && !Array.isArray(r))) {
-    return { error: 'Every row must be a JSON object (e.g. { "mpu_id": "MPU-001" }).' };
-  }
-  return { rows: parsed as Record<string, unknown>[] };
-}
-
-export function templateText(template: Record<string, unknown>[]): string {
-  return JSON.stringify(template, null, 2);
-}
