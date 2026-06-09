@@ -487,11 +487,35 @@ A cancellation recovery. No in-system date math: Redwave inputs a clawback when 
 
 ## 10. Expenses
 
-Weekly expense submissions by any user. Categories are configurable. Receipts are mandatory for all except the kilometre log. KM logs hold multi-stop trips with a single/round-trip deduction. Approved expenses pay in the same cycle as the period's commission.
+**Item-first** expense capture by any user — the expense ITEM is the atomic unit (its own submitter, status, approver, and pay period derived from its `expense_date`). Categories are configurable; receipts are mandatory for all except the kilometre log and upload to object storage (access-controlled URL). KM logs hold multi-stop trips with a single/round-trip deduction; with a Maps key the route distance is re-derived server-side from the stops' coordinates. An approved item pays in the same cycle its `expense_date` falls in.
+
+#### `expense_items`
+
+*One expense (item-first). Carries its own lifecycle; the report wrapper is optional.*
+
+| **Field**             | **Type**  | **Key** | **Notes**                                                                |
+|-----------------------|-----------|---------|--------------------------------------------------------------------------|
+| **id**                | uuid      | **PK**  |                                                                          |
+| **expense_report_id** | uuid      | **FK**  | -> expense_reports.id (**nullable** — optional grouping/history).        |
+| **rep_id**            | uuid      | **FK**  | -> reps.id (nullable; the rep this item is for).                         |
+| **submitted_by**      | uuid      | **FK**  | -> users.id (the submitter).                                             |
+| **category**          | enum      | —       | km / meals / hotel / flight / rental / gas / other.                      |
+| **client_id**         | uuid      | **FK**  | -> clients.id (nullable; which program).                                 |
+| **expense_date**      | date      | —       | Governs the payout pay period (EXP-009).                                 |
+| **amount**            | decimal   | —       | For km, computed server-side.                                            |
+| **description**       | varchar   | —       |                                                                          |
+| **receipt_url**       | varchar   | —       | Mandatory except km (nullable); access-controlled storage URL.          |
+| **status**            | enum      | —       | draft / submitted / approved / rejected / sent_back.                     |
+| **approved_by**       | uuid      | **FK**  | -> users.id (nullable).                                                  |
+| **approved_at**       | timestamp | —       | Nullable.                                                                |
+| **pay_period_id**     | uuid      | **FK**  | -> pay_periods.id (nullable; **derived from `expense_date`** at create). |
+| **created_at**        | timestamp | —       |                                                                          |
+
+Indexes: `(rep_id, pay_period_id, status)` (the Pay Run aggregation), `(submitted_by)`, `(status)`, `(expense_date)`.
 
 #### `expense_reports`
 
-*A user's weekly expense submission.*
+*Legacy weekly submission wrapper — RETAINED for history/optional grouping; new items are created report-less.*
 
 | **Field**         | **Type**  | **Key** | **Notes**                                            |
 |-------------------|-----------|---------|------------------------------------------------------|
@@ -505,21 +529,6 @@ Weekly expense submissions by any user. Categories are configurable. Receipts ar
 | **approved_at**   | timestamp | —       | Nullable.                                            |
 | **pay_period_id** | uuid      | **FK**  | -> pay_periods.id (cycle it pays in).               |
 | **created_at**    | timestamp | —       |                                                      |
-
-#### `expense_items`
-
-*One line within a report.*
-
-| **Field**             | **Type** | **Key** | **Notes**                                           |
-|-----------------------|----------|---------|-----------------------------------------------------|
-| **id**                | uuid     | **PK**  |                                                     |
-| **expense_report_id** | uuid     | **FK**  | -> expense_reports.id                              |
-| **category**          | enum     | —       | km / meals / hotel / flight / rental / gas / other. |
-| **client_id**         | uuid     | **FK**  | -> clients.id (nullable; which program).           |
-| **expense_date**      | date     | —       |                                                     |
-| **amount**            | decimal  | —       |                                                     |
-| **description**       | varchar  | —       |                                                     |
-| **receipt_url**       | varchar  | —       | Mandatory except km (nullable).                     |
 
 #### `expense_km_logs`
 
@@ -856,7 +865,10 @@ Key foreign-key relationships across the model (cardinality shown from the child
 | **expense_reports**             | 1:N       | users                   | submitted_by |
 | **expense_reports**             | 1:N       | reps                    |              |
 | **expense_reports**             | 1:N       | pay_periods             |              |
-| **expense_items**               | 1:N       | expense_reports         |              |
+| **expense_items**               | 1:N       | expense_reports         | nullable (optional grouping) |
+| **expense_items**               | 1:N       | reps                    |              |
+| **expense_items**               | 1:N       | users                   | submitted_by / approved_by |
+| **expense_items**               | 1:N       | pay_periods             | derived from expense_date |
 | **expense_items**               | 1:N       | clients                 |              |
 | **expense_km_logs**             | 1:1       | expense_items           |              |
 | **expense_km_stops**            | 1:N       | expense_km_logs         |              |

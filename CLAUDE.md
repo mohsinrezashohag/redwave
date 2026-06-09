@@ -252,13 +252,14 @@ This file is the project's **persistent memory**. Claude Code loads it at the st
 - **Greenfield two-step at close (SALE-006/§17.2, PROPOSED).** Sales captures the confirmed flag as `sale.is_greenfield` + per-item `sale_item.counts_toward_tally` (`= internet && !is_greenfield`), set at entry and at validation. **Pay Run** must, at period close, map a greenfield internet activation to the flat **$100** rate (engine `productType=greenfield_internet`) when building engine inputs — Sales never runs the engine. Confirm the rule with Redwave.
 - **Bulk-validation ↔ Import boundary (DONE — Import).** Sales implements **queue bulk-select** validation (`POST /v1/sales/bulk-validate`) and now exposes the tx-aware `SalesService.validateWithinTx`. The **client-report ingestion** (MPU matching, manual reconciliation, atomic commit) lives in the **Import** module (`client_report`+`sales`), which drives `validateWithinTx` inside its commit transaction. Real Excel/CSV parsing is still stubbed (rows fed).
 - **Holdback-release timing in Pay Run (SRS §17.1, PROPOSED).** Finalize schedules each 30% hold via the pure `modules/payrun/holdback-release.logic.ts#resolveScheduledReleasePeriod` (default `next_cycle_after_30_days` = first period with payday ≥ origin payday + 30d). Confirm the exact rule with Redwave and change that one function.
-- **Expense ↔ Pay Run seam (built, rebound).** `EXPENSE_TOTAL_PROVIDER` is now bound to `ExpensePayrunProvider` (`modules/expenses/`); it is **read-only** (no finalize hook — unlike Clawback). Each report's `pay_period_id` is fixed at submit from `week_start` (#7), so `getApprovedExpenseTotal(rep, period)` is period-scoped and Pay Run's own finalize idempotency pays an approved report **exactly once**. Pay Run finalize is **unchanged**. Edge: a report **approved after** its period was already finalized is never auto-paid — it needs manual re-assignment to an open period (no `ExpenseReportStatus='paid'` / `paid_in_pay_run_id` column exists; adding one would let a finalize hook sweep late approvals).
+- **Expense ↔ Pay Run seam (built, rebound; ITEM-FIRST).** `EXPENSE_TOTAL_PROVIDER` is bound to `ExpensePayrunProvider` (`modules/expenses/`); **read-only** (no finalize hook — unlike Clawback). It sums approved expense **ITEMS** directly by `{rep_id, pay_period_id, status:'approved'}` — each item's `pay_period_id` is derived from its **own `expense_date`** at create (EXP-009), so an approved item pays in the cycle of its date and Pay Run's finalize idempotency pays it **exactly once**. Pay Run finalize is **unchanged** (`expense-payrun.provider.spec` asserts the item-level where + no report join). Edge: an item **approved after** its period was already finalized is never auto-paid — needs manual re-assignment to an open period (no `paid_in_pay_run_id` column).
 - **Clawback ↔ Pay Run seam (built, rebound).** `CLAWBACK_TOTAL_PROVIDER` is now bound to `ClawbackPayrunProvider` (`modules/clawback/`); finalize gained one hooked line `markApplied(rep, period, run, tx)` inside its transaction (atomic pending→applied + link). Two known edges: (a) a clawback entered *during* a finalize (admin-gated, rare) could be marked-but-not-deducted or vice-versa — acceptable now, revisit if concurrent entry becomes real; (b) a clawback for a rep with **no validated sales** in the period being run is not applied until their **next run that has a line** (it stays pending) — fine for active reps, but a terminated rep with a trailing clawback would never have it applied.
 - **`pay_run_exports` table (PAY-010).** The data model has no pay-run export table, so the ADP export is currently generated, the run marked `exported`, and the **audit row is the stored record**. Add a `pay_run_exports` table (file_url/format/generated_by, like `expense_exports`) if the artifact must be persisted.
-- **Expenses built (any user submits; report-level approval).** `modules/expenses/` — weekly `expense_reports` + `expense_items`; the **km log is pure** (`km.logic.ts`: single −30 km / round −60 km, billable floored at 0, `$0.45/km`). Approval is at the **report** level (submitted→approved/rejected/sent_back); **edit-rights gating** (EXP-007): pre-approval needs `expenses:edit` (Manager/Admin), **after approval only a Super Admin** may edit. Receipt requirement is **config-driven** (`expense_field_configs.requires_receipt`; km=false, others true — seeded). Meal eligibility is the **approver's judgement**, not auto-enforced. Scoping reuses `ScopeService` (own = `submitted_by`, roster = `rep_id ∈ roster`, all). Manager seed grant gained `expenses:create`/`edit`.
+- **Expenses built (ITEM-FIRST; per-item approval).** `modules/expenses/` — the **expense item is the atomic unit**: `expense_items` gained `submitted_by`/`status`/`approved_by`/`approved_at`/`rep_id`/`pay_period_id` (derived from `expense_date`, EXP-009) and `expense_report_id` is **nullable** (the `expense_reports` table is kept for history/optional grouping; new items are report-less — migration `expense_items_item_first` backfills + applies with `migrate deploy`). Endpoints at **`/v1/expense-items`** (`ExpenseItemsController`): create one/**several** in a tx, paginated+scoped list (filters status/category/rep/client/period/date/search), per-item edit, **per-item + bulk review** (`/bulk-review`), delete. The **km log is pure** (`km.logic.ts`: single −30 / round −60, floor 0, `$0.45/km`); the km amount is **server-authoritative**. Approval is **per item** (submitted→approved/rejected/sent_back); **edit-gating** (EXP-007): pre-approval needs `expenses:edit` (Manager/Admin), **after approval only Super Admin**; delete (not-yet-approved) needs `expenses:delete` (Admin/SA). KM dedup is **one per (rep, expense_date)**. Receipt is **config-driven** (`expense_field_configs.requires_receipt`). Meal eligibility = approver judgement. Scoping reuses `ScopeService` (own = `submitted_by`, roster = `rep_id ∈ roster`, all). Seed grants: Admin gained `expenses:delete`.
+- **Expense KM Maps + receipt storage (WIRED, env-gated, graceful).** **Distance:** `MapsService` (`GOOGLE_MAPS_API_KEY`) re-derives the authoritative route distance from the stops via the Directions API; falls back to the client `total_km` when no key / stub coords / error. FE (`VITE_GOOGLE_MAPS_API_KEY`, `@react-google-maps/api`) does Places autocomplete + a route map + auto-distance, else manual entry. **Receipts:** `common/storage` `StorageService` (Supabase) + `POST /v1/expense-receipts` (multipart) returns a signed URL; falls back to a selection-only reference when unconfigured. Both never block the build/tests without keys.
 - **Expense km-rate config.** The km rate is the **constant `0.45 $/km`** (`km.logic.ts#DEFAULT_RATE_PER_KM`) — there is no rate-config table. If Redwave changes the rate or wants it effective-dated, add a config row + read it at submit (reuse the effective-dating pattern).
 - **Configurable expense categories beyond the 7 enum values.** `expense_field_configs` is an open catalogue (label/requires_receipt/is_active), but `expense_items.category` is bound to the **`ExpenseCategory` enum** (km/meals/hotel/flight/rental/gas/other). A new `category_key` is catalogue-only until an **enum migration** adds the value; the POST endpoint accepts the config row but items can't use it yet.
-- **Real expense export generation.** `POST /v1/expense-exports` records an `expense_exports` row with a **stubbed `file_url`** (`s3://…`); the actual PDF/Excel render + object-storage upload is deferred (same as HRM document upload). Wire the storage provider + generator.
+- **Expense export (FE file = real; server record = stub).** The FE generates the actual **CSV/Excel/PDF** client-side via the Batch-1 `ExportMenu`/`exportRows` (per-item rows or grouped daily/weekly/monthly buckets). The **server-recorded** `POST /v1/expense-exports` still writes an `expense_exports` row with a **stubbed `file_url`** (`s3://…`) — the server-side render + object-storage upload is still deferred (reuse `common/storage`).
 - **2026 pay-period anchor/payday offset.** The seed generates a standard bi-weekly schedule (anchor Sunday `2026-01-04`, payday = close + 13d). Confirm the exact Redwave 2026 schedule + payday offset; adjust `pay-periods.seed-data.ts` if needed.
 - **Billing built (read-only over sales × `client_billing_rates`; computes no commission).** `modules/billing/` — per client+period: **client statement** (one line per **sale** = customer/household, `products_summary` + `line_total`) and one-line **commission invoice**. **#3 is the law here**: priced **solely** from `client_billing_rates` (only `rate_kind='product'`, effective on each **sale_date** via the shared `selectEffectiveRate`, #7/#10) — **zero** path reads `commission_*`/engine; the pure `statement.logic.ts#buildStatement` is reused by the invoice so `total_commission` == statement `total_amount` (billing stream only). Asserted by `billing.no-commission.spec` (structural source scan + behavioral throw-on-touch Prisma mock + total equivalence). Confirmed rules: **invoice total = billing-stream statement total** (NOT rep payout); **missing rate → 422** (never silently under-bill); confirmed sales only (`validated|in_pay_run|paid`), excluding clawed-back sales **and** clawed-back items; **NO GST** (no tax field); **replace-in-place** regeneration per (client, period) in a txn (no `@@unique`, no silent dup). **No `ScopeService`** (per-client partner data, RBAC `billing:{view,create,export}`, Admin/Super Admin only). No seam, no migration, no Pay Run change.
 - **Billing add-on `rate_kind` pricing (deferred).** Only `rate_kind='product'` is applied when pricing a statement; the add-on kinds (`tv_addon`/`hp_addon`/`bundle_bonus`/`spiff`) are **not yet combined into line totals** — their combination rules aren't pinned down. Confirm with Redwave, then extend `StatementService.priceClientPeriod` (the pure `buildStatement` already sums whatever priced items it's given).
@@ -271,8 +272,8 @@ This file is the project's **persistent memory**. Claude Code loads it at the st
 - **User-facing notification-preferences READ endpoint (deferred — surfaced by the Account UI).** AUTH-013 says every user can see (read-only) which notifications they receive, but the only channel-config endpoint is `GET /v1/notification-settings`, gated **`settings:view` (Super Admin)**. So the My Account → Notifications tab can only show the real list to a Super Admin; a non-SA gets a graceful "your administrator controls these" banner. Add a small authenticated, **own-scoped read** of the global event×channel settings (no per-user override — still SA-configured) so non-SA users can see their channels. No per-user override is intended (AUTH-013), just visibility.
 - **Trend/period-aggregation dashboard endpoint (deferred — surfaced by the Business dashboard).** The business dashboard returns single-period scalars only; cross-period trend/breakdown charts need a backend aggregation endpoint (`date_from`/`date_to` are accepted by the contract but ignored server-side today). Flagged, not built; the FE shows a single-period breakdown + a "trends coming" banner.
 - **User invite / password-reset flow (AUTH-002, deferred — surfaced by User Management).** There is **no** admin-set-password, invite/email, must-change, or self-service reset capability: `CreateUserDto.password` is **required** (8–128), `UpdateUserDto` has **no password field**, and the only self-service path is `POST /v1/account/change-password` (needs the current password). So the create-user UI **generates a temp password shown once** and tells the admin to share it securely + the user to change it under My Account → Security. Build the real flow: an invite/email or an admin "reset password" endpoint (and optionally a `must_change_password` flag). Until then a user who forgets their password cannot self-recover. Also note: the server has **no self-protection** (an admin can deactivate themselves / remove their own roles → lockout) — the UI adds guardrails, but a server-side actor self-check (block self-deactivate / self-role-removal) would be safer.
-- **KM map / geocoder (deferred — surfaced by Expenses entry).** The km log requires ≥2 stops each with `lat`/`lng` (signed-decimal, required) + a client-supplied `total_km`, but there's no geocoder/map in scope. The entry form sends **address-only stops with `lat`/`lng` stubbed `'0'`** and the user types `total_km` manually; the indicative billable preview is client-side and the server computes the authoritative amount. Build a map/places integration to capture real coordinates and **auto-derive `total_km`** (then drop the manual field + the `'0'` stubs).
-- **No expense-report DELETE endpoint (noted — surfaced by the Expenses smoke).** `expense_reports`/`expense_exports` have create/edit/review but **no delete** — so test data (and any mis-submitted report) can't be removed via the API; a report is corrected via reject/send-back + edit, not deletion. Add a soft-delete/void if reports ever need removing. (Real receipt upload + real export-file generation remain stubbed — see the Expenses deferrals in §12 above.)
+- **KM map / geocoder (DONE — env-gated).** Wired: with `VITE_GOOGLE_MAPS_API_KEY` the FE captures real `lat`/`lng` via Places autocomplete + shows the route map + auto-derives the distance; with `GOOGLE_MAPS_API_KEY` the server re-derives the authoritative route distance via the Directions API. Graceful fallback (no key) = manual address + `total_km` (stops carry `lat`/`lng`=`'0'`, the server falls back to the typed total). The amount is always server-computed.
+- **Expense item DELETE (DONE — per item).** `DELETE /v1/expense-items/{id}` (`expenses:delete`, scoped) removes a **not-yet-approved** item (approved items are preserved). The legacy `expense_reports`/`expense_exports` tables still have no delete endpoint. Real **server-side** export-file generation remains stubbed (the FE file export is real — see above).
 
 ---
 
@@ -573,46 +574,45 @@ the notification-settings WRITE lives in `features/notifications/` next to its r
   **inactive** (no hard-delete endpoint exists). **Not done (needs a browser):** the light/dark visual pass
   (esp. the matrix). **§12 follow-ups recorded:** AUTH-002 invite/reset + a server-side self-protection check.
 
-### Expenses (built — weekly submission, KM log, approval queue, list/detail/export)
-The daily expenses workflow. `features/expenses/`. Reuses the playbook + the **profile-review approval-queue
-pattern**; the Sales entry form is the form reference. SRS §11; design-system §10.4.
+### Expenses (built — ITEM-FIRST: DataTable list, multi-add, KM maps, real receipts, per-item bulk approval, grouped export)
+The daily expenses workflow, rebuilt item-first. `features/expenses/`. Reuses the playbook (DataTable +
+`use{Feature}Table` + bulk + export). SRS §11; design-system §10.4. The **expense item is the unit** — no
+weekly report in the UI.
 
-- **Categories are config-driven (never hard-coded).** The entry form's category Select renders from
-  `GET /v1/expense-field-configs` (active rows; `{category_key,label,requires_receipt}`), so an SA-added
-  category appears automatically and the **receipt rule is per-category** (`requires_receipt`; km = false).
-  Receipt is enforced client-side (zod, built from the configs) AND the server is the real gate.
-- **KM amount is SERVER-AUTHORITATIVE.** The km item sends `km:{trip_type, total_km, stops}` and **never an
-  `amount`** — the server computes `billable_km`/`computed_amount` (single −30 / round −60, floor 0, ×$0.45).
-  `km.ts#kmPreview` shows a **live INDICATIVE** preview (string→Number, display-only, #1) labelled "the
-  server computes the final amount" — same pattern as the Sales-ID preview. **Stops are address-only;
-  `lat`/`lng` are stubbed `'0'`** and `total_km` is typed manually (no geocoder — §12 follow-up).
-- **Entry = one weekly report, multi-item.** `ExpenseForm` (RHF+zod+**`useFieldArray`**) over items; each
-  `ExpenseItemRow` picks a category → **`KmItemFields`** (trip RadioGroup + reorderable address stops +
-  total_km + preview) or **`StandardItemFields`** (date + `MoneyInput` + description + optional client +
-  `ReceiptField`). `ReceiptField` (FileUpload selection-only) sets a **stub `receipt_url`** (`s3://…`). One
-  POST submits the week (`status:'submitted'` — no draft flow). The schema + payload builder live in
-  `components/expenseForm.schema.ts` (km amount omitted; lat/lng stubbed). **Edit reuses the same form**
-  (PATCH replaces all items).
-- **Approval queue = a status-filtered, server-scoped list.** `/expenses/approvals` calls
-  `useExpenseReports({status:'submitted'})` (the server scopes manager=roster / admin=all; the UI never
-  filters) → `ExpenseReviewCard` + **`ReviewActions`** (Approve immediate; Reject/Send-back open a note
-  Modal). **Review is ONE endpoint** `POST /{id}/approve {decision:'approve'|'reject'|'send_back', note?}`.
-- **Edit-rights gating by approval state (EXP-007).** Detail/edit show **Edit** when `(status!=='approved'
-  && useCan('expenses:edit')) || (status==='approved' && isSuperAdmin)`; the edit page re-checks and the
-  **server is the real gate** (an approved report → non-SA PATCH → 403 → AccessDenied).
-- **`ExpenseStatusBadge`** maps submitted→info / approved→success / rejected→danger / sent_back→warning /
-  draft→neutral (StatusPill is sale-only). **`money()`** for display; **`sumMoney()`** (new, integer-cents,
-  no float #1) totals a report. List default date = **current pay cycle** when `payrun:view` (else no
-  default). Export = `ExportModal` → `POST /v1/expense-exports` (stub `file_url`).
-- **Nav:** the Sidebar Money group's **Expenses** placeholder now links `/expenses` (`expenses:view`); added
-  **Approvals** `/expenses/approvals` (`expenses:approve`). Routes: `/expenses[/new|/approvals|/:id|/:id/edit]`.
-- **Verified live** (seeded backend, SA token + a temp Admin for the gate; creates-then-cleans-up): configs=7
-  (km no receipt); **km round 130 → computed 31.5 ($31.50), billable 70**; **single → 45 ($45.00)**; meals
-  **without receipt → 422**, with stub → 201; list/detail; **edit pre-approval (SA) → 200**; approve/reject/
-  send_back transitions; **temp Admin PATCH of an APPROVED report → 403**; export 201. Temp Admin deactivated;
-  **expense reports/exports persist (no DELETE endpoint — §12)**. **Not done (needs a browser):** the
-  light/dark visual pass (esp. the km-log entry + the approval queue). **§12 follow-ups:** km map/geocoder
-  (lat/lng `'0'`, manual total_km), real receipt upload + export generation (stubs), no report-delete endpoint.
+- **Item-first API hooks.** `expenses.types.ts` aliases the generated schema (`ExpenseItem(Page)`,
+  `BulkReviewResult`, `ReceiptUpload`). `api/useExpenseItems.ts` = `useExpenseItemsTable(filters)`
+  (server page+sort, reset-on-filter), `useExpenseItem(id)`, `useAllExpenseItems`/`fetchAllExpenseItems`
+  (export/grouped summary), `useFieldConfigs`, `useExpenseExports`. `api/useExpenseMutations.ts` =
+  create-items / update / review / **bulk-review** / delete / export + **`useUploadReceipt`** (raw multipart
+  fetch to `POST /v1/expense-receipts`, bearer from the session).
+- **List = item DataTable** (`ExpenseItemsTable` on `ExpensesListPage`): server-paginated; filters in the URL
+  (status/category/rep/client/date-range/search), **default = current pay cycle** (`payrun:view`). Columns:
+  date · category (+ KM badge) · rep/client (gated) · description · status · amount (mono). Row kebab →
+  View/Edit/Delete (edit-gating EXP-007; delete only pre-approval, `expenses:delete`). Approvers
+  (`expenses:approve`) get row-select → a **bulk approve/reject/send-back** bar (`BulkReviewBar` →
+  `/bulk-review`). `ExpenseApprovalsPage` is the same table fixed to `status=submitted`.
+- **Add = multi-item** (`ExpenseForm`, RHF+zod+`useFieldArray`): "Add another item" captures several at once →
+  `POST /v1/expense-items`; **edit = a single item** → PATCH. `ExpenseItemRow` picks a category →
+  `KmItemFields` or `StandardItemFields`. Schema/builders in `components/expenseForm.schema.ts`
+  (`buildItemsBody`/`buildItemBody`; km amount omitted).
+- **KM amount is SERVER-AUTHORITATIVE; distance via Maps (env-gated).** `KmItemFields` branches on
+  `maps.config#mapsEnabled` (`VITE_GOOGLE_MAPS_API_KEY`): with a key → `MapStops` (`@react-google-maps/api`
+  Places autocomplete per stop → real lat/lng, a route `GoogleMap` + `DirectionsService` that **auto-derives
+  `total_km`**); without → manual address + total-km entry (lat/lng `'0'`). The server re-derives the
+  authoritative distance + always computes the amount; `km.ts#kmPreview` is the indicative-only preview.
+- **Receipts upload for real** (`ReceiptField`): selecting a file → `useUploadReceipt` → stores the returned
+  access-controlled URL; required per category (config-driven, client + server gate). Graceful when storage
+  is unconfigured (server returns a reference).
+- **Grouping + export (FE-6).** `ExpenseExportControls` = a grouping Select (none/daily/weekly/monthly;
+  from/to = custom range) + the Batch-1 `ExportMenu` (per-item rows, or grouped period·count·total buckets) as
+  CSV/Excel/PDF; `GroupedSummary` (StatCards) shows the bucket totals. `format.ts#groupItems` buckets via
+  `sumMoney` (exact, #1). The server-recorded export (`ExportModal` → `POST /v1/expense-exports`) is kept for
+  the per-rep KM-log client submission (stub `file_url`). `ExpenseStatusBadge` unchanged.
+- **Nav/routes unchanged:** `/expenses[/new|/approvals|/:id|/:id/edit]` (Sidebar Expenses + Approvals).
+  Removed the report-era files (`useExpenses`, `ExpenseReportsTable`, `ExpenseReviewCard`).
+- **Verified LOCAL only** (tsc + build + lint + stylelint green). Operator applies `migrate deploy` + re-seeds
+  bootstrap, and optionally sets `GOOGLE_MAPS_API_KEY`/`SUPABASE_*`/`VITE_GOOGLE_MAPS_API_KEY`. Light/dark +
+  live-data + the map/upload visual pass needs a browser/running backend with the keys.
 
 ### Clients & Products + the EFFECTIVE-DATING UI (built — Admin Config Session 1; Commission Config = Session 2)
 The deployment-setup config for the **billing stream** (what we charge partners). `features/clients/`. Fills

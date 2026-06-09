@@ -109,7 +109,7 @@ The data model is the foundation of the system. It is designed so that business 
 | Pay Run                    | A bi-weekly payroll cycle.                   | 1 Pay Run → many Pay-Run Lines (one per rep).                                                    |
 | Holdback Ledger            | Tracks each 30% hold and its release.        | Belongs to Rep + originating Pay Period; released into a later Pay Run.                          |
 | Clawback                   | A cancellation recovery.                     | References the original Sale; applied against a Pay-Run Line.                                    |
-| Expense Report / Item      | Weekly expense submission and its lines.     | Belongs to Rep; many Items per Report; flows into a Pay Run.                                     |
+| Expense Item               | A single expense (item-first; the atomic unit). | Belongs to a submitter/Rep; carries its own status + pay period (by its date); flows into a Pay Run. |
 | Client Statement / Invoice | Billing output per client per period.        | Aggregates Sales for one Client + period.                                                        |
 
 ### 3.2 The Sale Entity & Unique Sale ID
@@ -277,13 +277,13 @@ Per rep per cycle the pay run produces: 70% advance for the period, any 30% hold
 
 ## 7. Expense Module
 
-Expenses are submitted weekly (work Tue–Sat, sometimes Sun; submit by Sunday night; approve by Monday). Approved expenses follow the SAME pay cycle as the commission for that period — i.e. they pay out with the current period’s payday, not the next.
+Expenses are captured **item-by-item** (the expense item is the atomic unit — there is no mandatory weekly report to fill in first; a user adds one or several items whenever they incur them). Each approved item follows the SAME pay cycle as the commission for the period **its own expense date falls in** — i.e. it pays out with that period's payday, not the next.
 
 ### 7.1 Expense Categories (confirmed)
 
 | **Category** | **Rules**                                                                                                                                                                                                                                              |
 |--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Kilometres   | From / To with multi-stop (Google Maps style “add stop”). ONE km log per day. Rep manually selects Single Trip (‒30 km) or Round Trip (‒60 km). $0.45/km on billable distance. Origin is an open input, not a hardcoded office. Receipt NOT required. |
+| Kilometres   | From / To with multi-stop (Google Maps Places autocomplete + “add stop”). ONE km log per day per rep. Rep selects Single Trip (‒30 km) or Round Trip (‒60 km). $0.45/km on billable distance, computed server-side. With a Maps key the route distance is derived automatically from the stops; otherwise the rep enters it manually. Origin is an open input, not a hardcoded office. Receipt NOT required. |
 | Meals        | Lunch $15, Dinner $30 (admin-configurable; may be lowered). Amount entered manually + place name. Receipt mandatory.                                                                                                                                 |
 | Hotel        | Name, location, date, amount. Receipt mandatory.                                                                                                                                                                                                       |
 | Flight       | Description, date, amount. Receipt mandatory.                                                                                                                                                                                                          |
@@ -296,15 +296,15 @@ Expenses are submitted weekly (work Tue–Sat, sometimes Sun; submit by Sunday n
 
 ### 7.2 Submission, Approval & Visibility
 
-- All users (reps, managers, admins, partners) can submit their own expenses; receipts are stored as cloud digital copies.
+- All users (reps, managers, admins, partners) can add their own expense items — one or several at a time; receipts upload to cloud storage and are stored as access-controlled digital copies.
 
-- Submitted expenses go to a Pending Approval queue for the Field Manager / Admin.
+- Submitted items go to a Pending Approval queue for the Field Manager / Admin. Approval is **per item, with bulk select** to act on many at once (approve / reject / send back).
 
-- Manager/Admin can edit before approval and can send a report back for correction. After approval, only the Super Admin can change it.
+- Manager/Admin can edit an item before approval and can send it back for correction. After approval, only the Super Admin can change it; a not-yet-approved item can be deleted.
 
-- **List view, not folders.** Expenses display as a filterable list — default filter is the current pay cycle — filterable by Date, Rep, Client, and Type.
+- **List view, not folders.** Expenses display as a filterable, paginated list of items — default filter is the current pay cycle — filterable by Date range, Rep, Client, Category, and Status, and **groupable daily/weekly/monthly/custom**.
 
-- **Export.** Exportable to Excel/PDF: per-rep KM logs for client submission (KM only where that is all the client needs), and select-all for internal accounting/bookkeeping.
+- **Export.** Exportable to Excel/PDF/CSV — per-item rows or grouped period totals: per-rep KM logs for client submission (KM only where that is all the client needs), and select-all for internal accounting/bookkeeping; each server-recorded export is stored.
 
 ## 8. Client Billing & Statements
 

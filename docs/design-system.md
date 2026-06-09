@@ -341,11 +341,11 @@ How the system and components compose into the highest-traffic screens. These ar
 
 - **Finalize:** confirmation dialog restating totals and the irreversible snapshot-freeze; idempotent on the server.
 
-### 10.4 Expenses
+### 10.4 Expenses (item-first)
 
-- **Submission:** category picker → per-category form (km log with map stops + single/round toggle; meals/hotel/flight/rental/gas/other with amount + mandatory receipt upload); weekly grouping.
+- **Add expense:** category picker → per-category form (km log with Places-autocomplete map stops + auto distance + single/round toggle; meals/hotel/flight/rental/gas/other with amount + mandatory receipt **upload**). “Add another item” captures **several items at once** — no weekly report to fill in first. Sensible defaults (date = today, rep = self). Where no Maps key is set, the km form falls back to manual address + total-km entry.
 
-- **List & approval:** filterable list (default current cycle), pending-approval queue with approve/send-back, export action that records the export.
+- **List, group & approval:** a paginated **DataTable** of items (default current cycle) with filters (status/category/rep/client/date/search) and a **grouping** control (daily/weekly/monthly/custom) that drives an at-a-glance summary strip + the export. Approvers get row-select → a **bulk** approve/reject/send-back bar (and a per-item Approvals queue); per-row View/Edit/Delete via a kebab (edit-gating EXP-007). Export to PDF/Excel/CSV (per-item or grouped buckets) plus a server-recorded export for the per-rep KM-log client submission. Money is right-aligned mono; the KM amount is server-authoritative (the on-form preview is indicative only).
 
 ### 10.5 Data import & documents
 

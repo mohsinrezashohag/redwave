@@ -57,7 +57,7 @@ const ADMIN_GRANTS: Grant[] = [
   ...g('sales', 'view', 'create', 'edit', 'approve', 'delete', 'export'),
   ...g('payrun', 'view', 'create', 'approve', 'export'),
   ...g('clawback', 'view', 'create', 'export'),
-  ...g('expenses', 'view', 'create', 'edit', 'approve', 'export'),
+  ...g('expenses', 'view', 'create', 'edit', 'approve', 'delete', 'export'), // delete = remove a not-yet-approved item
   ...g('billing', 'view', 'create', 'export'),
   ...g('documents', 'view', 'create', 'edit', 'export'),
   ...g('import', 'view', 'create', 'edit', 'approve'),

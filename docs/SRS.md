@@ -415,41 +415,41 @@ clawbacks, sale_items (snapshot read), sales, reps, pay_runs.
 
 ## 11. Expenses
 
-Weekly expense submission by any user, configurable categories, multi-stop kilometre logs, an approval workflow, list/export, and same-cycle payout.
+**Item-first** expense capture by any user — the expense ITEM is the atomic unit (no mandatory weekly report wrapper). Configurable categories, map-automated multi-stop kilometre logs, real receipt storage, a **per-item** approval workflow, a grouped filterable list/export, and same-cycle payout derived from each item's own date.
 
 ### 11.1 Functional Requirements
 
 | **ID**      | **Requirement**                                                                                                                                                                                                                                   | **Pri** |
 |-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
-| **EXP-001** | Any user (rep, manager, admin, partner) can submit expenses; a submission groups items for a week.                                                                                                                                                | **M**   |
-| **EXP-002** | Supported categories: kilometres, meals, hotel, flight, rental, gas, other; the Super Admin can add new categories/fields that appear in the selector.                                                                                            | **M**   |
-| **EXP-003** | A receipt upload is mandatory for every category except the kilometre log.                                                                                                                                                                        | **M**   |
-| **EXP-004** | **Kilometre log.** One km log per day, with multiple stops (Google-Maps-style add-stop); the user selects single trip (−30 km) or round trip (−60 km); billable km × rate (default $0.45) is the amount. Origin is an open input, not hardcoded. | **M**   |
+| **EXP-001** | Any user (rep, manager, admin, partner) can add **expense items** — one or several at once. Each item is independent (its own submitter, status, approver); there is **no required weekly report**. (The legacy `expense_reports` table is retained only as optional grouping/history.)                                                                          | **M**   |
+| **EXP-002** | Supported categories: kilometres, meals, hotel, flight, rental, gas, other; the Super Admin can add new categories/fields (with a per-category receipt rule) that appear in the selector. Config-driven, not hardcoded.                            | **M**   |
+| **EXP-003** | A receipt upload is mandatory for every category except the kilometre log; enforced client- **and** server-side. Receipts upload to object storage (Supabase) and return an access-controlled URL.                                                | **M**   |
+| **EXP-004** | **Kilometre log.** One km log per day **per rep**, with multiple stops; the user selects single trip (−30 km) or round trip (−60 km); billable km × rate (default $0.45) is the amount, **computed server-side**. When a Maps key is configured, each stop is a Places autocomplete and the route distance is **re-derived server-side** from the coordinates (the client value is ignored); otherwise the user enters the total distance manually and the server falls back to it. | **M**   |
 | **EXP-005** | The “other” category provides a free description, date, amount, and receipt for ad-hoc costs (e.g. events).                                                                                                                                       | **M**   |
-| **EXP-006** | Submitted expenses enter a Pending Approval queue; a Manager/Admin can edit before approval and send back for correction.                                                                                                                         | **M**   |
-| **EXP-007** | **Edit rights.** Before approval: Manager/Admin can edit. After approval: only the Super Admin can change an expense.                                                                                                                             | **M**   |
+| **EXP-006** | Submitted items enter a Pending Approval queue; a Manager/Admin can edit before approval and **approve/reject/send-back per item, with bulk select** for many at once.                                                                            | **M**   |
+| **EXP-007** | **Edit rights.** Before approval: Manager/Admin can edit. After approval: only the Super Admin can change an item. Not-yet-approved items can be deleted (`expenses:delete`); approved items are preserved.                                        | **M**   |
 | **EXP-008** | Meal eligibility is a manual approver judgement; the system does not auto-enforce it.                                                                                                                                                             | **M**   |
-| **EXP-009** | **Same-cycle payout.** Approved expenses are paid in the same pay cycle as that period's commission.                                                                                                                                              | **M**   |
-| **EXP-010** | Expenses display as a filterable list (default: current pay cycle), filterable by date, rep, client, and type; each item can be tagged to a client/program.                                                                                       | **M**   |
-| **EXP-011** | Expenses can be exported to PDF/Excel (e.g. per-rep KM logs for clients, select-all for accounting); each export is stored as a record.                                                                                                           | **M**   |
+| **EXP-009** | **Same-cycle payout (by item date).** Each item's pay period is derived from its **own `expense_date`**; an approved item is paid in the cycle of its date. Pay Run aggregates approved ITEMS by `{rep, pay_period, status}`.                       | **M**   |
+| **EXP-010** | Expenses display as a filterable, **paginated** item list (default: current pay cycle), filterable by date range, rep, client, category, status, and free-text; **groupable daily/weekly/monthly/custom**; each item can be tagged to a client/program.                                                                                                        | **M**   |
+| **EXP-011** | Expenses can be exported to PDF/Excel/CSV (per-item rows or grouped period·count·total; e.g. per-rep KM logs for clients, select-all for accounting); the server-recorded export is stored as a record, RBAC-scoped (manager = roster, rep = own). | **M**   |
 
 ### 11.2 Worked Example — kilometre deduction (acceptance criterion)
 
 > **Single vs round trip**
-> A rep logs a day with stops totalling 130 km and selects **round trip**. Deduction = 60 km. Billable = 70 km × $0.45 = $31.50. Had they selected single trip, deduction = 30 km, billable = 100 km × $0.45 = $45.00.
+> A rep logs a day with stops totalling 130 km and selects **round trip**. Deduction = 60 km. Billable = 70 km × $0.45 = $31.50. Had they selected single trip, deduction = 30 km, billable = 100 km × $0.45 = $45.00. (With Maps configured the 130 km is the server-derived route distance; without it, the rep types it and the server uses that value.)
 
 ### 11.3 UI / Screen Requirements
 
-| **Screen / View**      | **Purpose & key UI elements**                                                                                                                                                |
-|------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Expense Submission** | Choose category; per-category form (km log with map stops + trip type; meals/hotel/flight/rental/gas/other with amount + receipt); optional client tag; submit for the week. |
-| **Expense List**       | Filterable list (date default current cycle, rep, client, type); status badges; row → detail.                                                                                |
-| **Approval Queue**     | Pending submissions; approve / edit / send back; Super-Admin edit after approval.                                                                                            |
-| **Expense Export**     | Custom date/rep/client/type selection; export to PDF/Excel; stored export history.                                                                                           |
+| **Screen / View**   | **Purpose & key UI elements**                                                                                                                                                                          |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Add Expense**     | Pick a category → per-category fields (km log: trip type + Places-autocomplete stops on a map with auto distance, or manual entry; standard: date + amount + receipt + description + optional client). “Add another item” to capture several at once. |
+| **Expense List**    | Paginated DataTable of items (date default current cycle); filters (status/category/rep/client/date/search); grouping (daily/weekly/monthly); approvers get row-select → bulk approve/reject/send-back; row → detail/edit/delete. |
+| **Approval Queue**  | Pending items (server-scoped); per-item + bulk approve/reject/send-back; Super-Admin edit after approval.                                                                                              |
+| **Expense Export**  | Grouping + PDF/Excel/CSV (per-item or grouped buckets); a server-recorded export with date/rep/client scope.                                                                                          |
 
 ### 11.4 Data Touchpoints
 
-expense_reports, expense_items, expense_km_logs, expense_km_stops, expense_field_configs, expense_exports, clients, pay_periods.
+expense_items (item-first: submitter/status/approver/pay_period on the item), expense_km_logs, expense_km_stops, expense_field_configs, expense_exports, expense_reports (optional grouping/history), clients, pay_periods. External: Google Maps Directions (server) + Places (browser); Supabase Storage (receipts).
 
 ## 12. Billing & Statements
 
@@ -670,7 +670,7 @@ Each module's requirements trace to the BRD and data model. Summary mapping:
 | 8 Sales & Validation         | BRD §5, §3.2      | sales, sale_items                                                              |
 | 9 Pay Run & Holdback         | BRD §6            | pay_periods, pay_runs, pay_run_lines, holdback_ledger                          |
 | 10 Clawback                  | BRD §6.3          | clawbacks, sale_items                                                          |
-| 11 Expenses                  | BRD §7            | expense_reports, expense_items, expense_km_\*, expense_exports                |
+| 11 Expenses                  | BRD §7            | expense_items (item-first), expense_km_\*, expense_field_configs, expense_exports |
 | 12 Billing                   | BRD §8            | client_statements, client_statement_lines, client_invoices                     |
 | 13 Documents                 | BRD §9.5 (new)    | documents, signature_requests, document_signatures                             |
 | 14 Reporting & Platform      | BRD §9            | sales_targets, notifications, notification_event_settings, chatbot_\*         |
