@@ -106,3 +106,35 @@ samp {
     scroll-behavior: auto !important;
   }
 }
+
+/* Print (Export → Print / Save-as-PDF) — print the content region (#main-content) only; the sidebar/top
+   bar/footer and any in-content toolbar marked `.no-print` are hidden. The fixed full-height shell is
+   reset so content flows across pages. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #main-content,
+  #main-content * {
+    visibility: visible;
+  }
+
+  #main-content {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    padding: 0;
+  }
+
+  .no-print,
+  .no-print * {
+    visibility: hidden !important;
+  }
+
+  html,
+  body {
+    height: auto !important;
+    background: white !important;
+  }
+}

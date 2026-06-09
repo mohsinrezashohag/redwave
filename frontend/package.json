@@ -31,6 +31,8 @@
     "@radix-ui/react-toast": "^1.2.15",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tanstack/react-query": "^5.101.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.17.0",
     "openapi-fetch": "^0.17.0",
     "react": "^19.0.0",
@@ -38,6 +40,7 @@
     "react-hook-form": "^7.77.0",
     "react-router-dom": "^7.16.0",
     "recharts": "^3.8.1",
+    "write-excel-file": "^4.1.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -1,0 +1,32 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.selectCell {
+  width: 36px;
+  padding-right: 0;
+}
+
+.actionsCell {
+  white-space: nowrap;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.pageInfo {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.pageBtns {
+  display: flex;
+  gap: var(--space-2);
+}

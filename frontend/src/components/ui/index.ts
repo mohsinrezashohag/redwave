@@ -12,6 +12,8 @@ export { Select } from './Select';
 export type { SelectOption } from './Select';
 export { DatePicker } from './DatePicker';
 export type { DatePickerProps } from './DatePicker';
+export { ConfirmDialog } from './ConfirmDialog';
+export type { ConfirmDialogProps } from './ConfirmDialog';
 export { MultiSelect } from './MultiSelect';
 export type { MultiSelectOption } from './MultiSelect';
 export { SelectWithOther } from './SelectWithOther';
