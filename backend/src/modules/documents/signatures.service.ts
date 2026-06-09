@@ -21,7 +21,7 @@ import { AuthUser } from '../../common/rbac/auth-user.type';
 import { BUILTIN_ROLES } from '../../common/rbac/rbac.constants';
 import { SignDto, SignDecision } from './dto/sign.dto';
 import { recomputeDocumentStatus, recomputeRequestStatus } from './status.recompute';
-import { NOTIFICATION_EMITTER, NotificationEmitter } from './seams/notification-emitter.provider';
+import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 
 const isAdmin = (user: AuthUser): boolean =>
   user.isSuperAdmin || user.roleNames.includes(BUILTIN_ROLES.ADMIN);

@@ -10,6 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { EMAIL_DISPATCHER, EmailDispatcher } from './seams/email-dispatcher.provider';
+import { renderTemplate } from '../../common/notifications/render-template';
 import { UpdateNotificationSettingsDto } from './dto/notification-settings.dto';
 import { ListNotificationsQuery } from './dto/list-notifications.query';
 
@@ -18,6 +19,8 @@ export interface NotifyPayload {
   body: string;
   relatedEntityType?: string;
   relatedEntityId?: string;
+  /** Values substituted into the event's `{var}` template placeholders (else the title/body are used). */
+  variables?: Record<string, string>;
 }
 
 @Injectable()
@@ -39,14 +42,18 @@ export class NotificationsService {
       const inApp = setting?.in_app_enabled ?? true; // unknown event → safe default: in-app only
       const email = setting?.email_enabled ?? false;
 
+      // The SA-edited templates win (with the call-site `variables` substituted); else the call-site text.
+      const title = renderTemplate(setting?.title_template, payload.variables, payload.title);
+      const body = renderTemplate(setting?.body_template, payload.variables, payload.body);
+
       if (inApp) {
         await this.prisma.notification.create({
           data: {
             user_id: userId,
             type: eventType,
             channel: 'in_app',
-            title: payload.title,
-            body: payload.body,
+            title,
+            body,
             related_entity_type: payload.relatedEntityType ?? null,
             related_entity_id: payload.relatedEntityId ?? null,
             is_read: false,
@@ -54,7 +61,7 @@ export class NotificationsService {
         });
       }
       if (email) {
-        await this.email.send({ userId, subject: payload.title, body: payload.body });
+        await this.email.send({ userId, subject: title, body });
       }
     } catch (error) {
       // Best-effort: a notification failure must NEVER break the action that triggered it.

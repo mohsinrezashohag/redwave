@@ -23,7 +23,7 @@ import { CreateDocumentDto } from './dto/create-document.dto';
 import { CreateSignatureRequestDto } from './dto/create-signature-request.dto';
 import { ListDocumentsQuery } from './dto/list-documents.query';
 import { recomputeDocumentStatus } from './status.recompute';
-import { NOTIFICATION_EMITTER, NotificationEmitter } from './seams/notification-emitter.provider';
+import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 
 const dateOnly = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
 
