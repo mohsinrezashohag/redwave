@@ -231,10 +231,17 @@ Representative endpoints per module (not exhaustive; the OpenAPI spec is authori
 |-----------|---------------------------|------------------------------|-----------------------|
 | **GET**   | /v1/dashboards/rep        | Rep's own dashboard data.    | self                  |
 | **GET**   | /v1/dashboards/manager    | Roster-scoped manager data.  | reports:view (roster) |
-| **GET**   | /v1/dashboards/business   | Company financials.          | reports:business (SA) |
+| **GET**   | /v1/dashboards/business   | Company financials (period). | reports:business (SA) |
+| **GET**   | /v1/dashboards/business/trends | Cross-period trend series. | reports:business (SA) |
+| **GET**   | /v1/dashboards/admin      | Operational queue counts.    | reports:view (Admin/SA) |
 | **GET**   | /v1/leaderboard           | Ranked counts (no earnings). | reports:view          |
+| **GET/PUT** | /v1/sales-targets       | Rep activation targets (read scoped; set requires hrm:edit). | self/roster · hrm:edit (set) |
 | **GET**   | /v1/notifications         | User's notifications.        | self                  |
 | **PATCH** | /v1/notification-settings | Event×channel config.        | settings:edit (SA)    |
+
+`reports:business` is an off-grid `PermissionAction` (Super Admin only) — the business/executive dashboard and
+the trends endpoint. The trends endpoint is a **bounded in-app aggregation** (≤24 periods) over the Batch-1
+`sales` indexes; materialized views remain a deferred performance option (§12), not a source of truth.
 
 ## 7. RBAC Enforcement Model
 

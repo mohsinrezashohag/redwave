@@ -334,9 +334,18 @@ Each client has its own product catalogue and its own billing rates, created and
 
 ### 9.2 Admin / Partner Analytics
 
-- Company revenue (client billings), total rep payout, net estimate, by client / rep / product / period.
+- Company revenue (client billings), total rep payout, net margin ($ and %), by client / rep / product / period.
 
-- Kept separate from the rep leaderboard and gated to Super Admin / permitted roles.
+- A full period KPI set: holdback liability (held / scheduled / released), clawback total + rate, expenses
+  (KM vs other), activation volumes (by product, by client, greenfield), the validation funnel, the rep tier
+  distribution, client mix, and period-over-period growth — plus **cross-period trend charts** (revenue/payout/
+  margin, activations by product, revenue by client, tier distribution over time).
+
+- All figures are READ from the frozen ledger (commissions are never recomputed). Kept separate from the rep
+  leaderboard and gated to Super Admin (`reports:business`) / permitted roles.
+
+- **Sales targets** (per rep per period) drive the rep "target progress" widget and the manager
+  "target-vs-actual"; a manager sees roster aggregates always but per-rep earnings only with `hrm:edit`.
 
 ### 9.3 Notifications
 
