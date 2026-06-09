@@ -117,7 +117,7 @@ Identity, authentication, and modular role-based access. A role is a set of (mod
 | **AUTH-001** | Users authenticate with email and password over an encrypted connection; sessions expire after inactivity.                                                                                                                                                                                               | **M**   |
 | **AUTH-002** | Users can reset a forgotten password via a secure flow.                                                                                                                                                                                                                                                  | **S**   |
 | **AUTH-003** | The Super Admin can create, rename, and deactivate custom roles; built-in roles cannot be deleted.                                                                                                                                                                                                       | **M**   |
-| **AUTH-004** | The Super Admin can grant a role any combination of (module, action) permissions, where action is view / create / edit / approve / delete / export.                                                                                                                                                      | **M**   |
+| **AUTH-004** | The Super Admin can grant a role any combination of (module, action) permissions, where action is view / create / edit / approve / delete / export. One additional dedicated action exists outside the grid: **`notifications:broadcast`** (the right to send a manual broadcast), granted to the **Super Admin only** (see RPT-013).                                                                                                                                                      | **M**   |
 | **AUTH-005** | The Super Admin can assign one or more roles to a user; effective permissions are the union of the user's roles.                                                                                                                                                                                         | **M**   |
 | **AUTH-006** | Every server request is authorized against the caller's permissions; unauthorized requests are rejected and written to the audit log.                                                                                                                                                                    | **M**   |
 | **AUTH-007** | Admin/Manager/Rep default roles are seeded; CM (Administration & Operations Coordinator) is granted Admin access.                                                                                                                                                                                        | **M**   |
@@ -128,6 +128,15 @@ Identity, authentication, and modular role-based access. A role is a set of (mod
 | **AUTH-012** | **Review routing.** A rep's profile-change request is reviewed by their Field Manager or an Admin; any other user's request is reviewed by a Super Admin. Routing is expressed via an approve permission on the profile area.                                                                            | **M**   |
 | **AUTH-013** | **Personal notifications are not individually overridable.** Users see which notifications they receive, but channel configuration is controlled by the Super Admin per event (no per-user opt-out in this version).                                                                                     | **S**   |
 | **AUTH-014** | **System Settings / Administration grouping.** Existing org-wide configuration (roles & permissions, users, tiers/rates, holdback release, incentives, clients/products, expense categories, notification routing, chatbot) is presented under one role-gated Administration area rather than scattered. | **S**   |
+
+> **Built-in role grants (reference).** The RBAC catalogue is **16 modules** (auth/users, hrm, clients, commission, sales, payrun, clawback, expenses, billing, documents, import, reporting, settings, profile, account, **notifications**) × **6 actions** (view/create/edit/approve/delete/export), seeded as the standard permission grid, **plus one off-grid permission `notifications:broadcast`**. Default role coverage:
+>
+> | Permission | Super Admin | Admin | Manager | Sales Rep |
+> |---|:---:|:---:|:---:|:---:|
+> | All (module, action) grid permissions | ✅ all | operational subset | roster subset | self subset |
+> | **`notifications:broadcast`** | ✅ | — | — | — |
+>
+> `notifications:broadcast` is **Super Admin only** and is the only path that targets notification recipients freely; all other (automatic) events have intrinsic, non-re-targetable recipients (RPT-012/RPT-013).
 
 ### 4.2 UI / Screen Requirements
 
@@ -529,6 +538,9 @@ The platform provides four role-scoped landing experiences. Each is built from t
 | **RPT-008** | The Super Admin/Admin can set sales targets (daily/weekly/monthly, per rep or global) used by the leaderboard and manager dashboard.                                                               | **S**   |
 | **RPT-009** | **Notifications.** In-app notifications are produced for actionable events; the Super Admin configures, per event type, whether email is also sent. The rate_change event defaults to in-app only. | **M**   |
 | **RPT-010** | No automated email is sent for rate changes unless the Super Admin explicitly enables it; rate-change comms are otherwise manual.                                                                  | **M**   |
+| **RPT-012** | **Event catalogue management.** The Super Admin manages a catalogue of every automatic event. Per event they may enable/disable it, set the channel (in-app and/or email), and edit the **title/body templates** (documented `{variable}` placeholders; blank → built-in wording). **Recipients are intrinsic to each event** and shown read-only — automatic events are never re-targeted. A genuinely **new** automatic trigger needs a code change (a new emit call); the catalogue manages wording/channel, not trigger logic. | **M**   |
+| **RPT-013** | **Manual broadcast.** The Super Admin can compose a one-off broadcast (title + body) to a chosen audience — everyone, a role, or specific users — delivered in-app (and by email where the broadcast channel is on). Gated by the dedicated `notifications:broadcast` permission (Super Admin only). | **S**   |
+| **RPT-014** | **Notification Center + unread badge.** Every user has a Notification Center (own-scoped: read/unread, mark-all, bulk read/unread, unread/all filter, search) and a live unread-count badge on the bell that refreshes on a poll interval and on window focus. Clicking a notification deep-links to the related record and marks it read. | **M**   |
 | **RPT-011** | **Chatbot.** An integrated, Gemini-powered chatbot grounded on Redwave data answers in-context questions; access is role-gated and the provider is configurable.                                   | **S**   |
 
 > **Worked example — dashboard scope & privacy**
@@ -543,8 +555,9 @@ The platform provides four role-scoped landing experiences. Each is built from t
 | **Business / Executive Dashboard** | Revenue, payout, net margin, holdback liability, clawback totals; breakdowns and trends by client/product/rep/period; filters; export. Super Admin only. |
 | **Admin Operational Home**         | Action queues: pending validations, pending approvals, cycle status, statements due.                                                                     |
 | **Leaderboard**                    | Ranked reps by internet volume with target progress; counts only.                                                                                        |
-| **Notification Center**            | In-app notifications; read/unread.                                                                                                                       |
-| **Notification Settings**          | Super-Admin matrix of event type × channel (in-app/email); rate_change email default off.                                                                |
+| **Notification Center**            | Own notifications on the shared DataTable: unread/all filter + search, read/unread, mark-all, bulk read/unread, row click → deep-link to the record. Live unread-count badge on the bell (polled + refetch-on-focus). |
+| **Notification Settings**          | Super-Admin per-event management: enable/disable, channel (in-app/email), editable title/body templates (`{variable}` hints), read-only intrinsic recipients per event. rate_change email default off.               |
+| **Broadcast composer**             | Super-Admin one-off announcement (title + body) to an audience (everyone / a role / specific users). Gated `notifications:broadcast`.                     |
 | **Chatbot**                        | Role-gated assistant widget answering from Redwave data.                                                                                                 |
 
 ### 14.5 Data Touchpoints

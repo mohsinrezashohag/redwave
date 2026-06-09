@@ -115,7 +115,7 @@ One module = one NestJS module owning its tables and endpoints. A module calls a
 - **Auditing is explicit** at the service layer via `AuditService` (`common/audit/`, `@Global`) — accurate before/after — not a magic interceptor; the guard logs denials.
 - **Auth stack:** `@nestjs/jwt` with **custom guards (no passport)**; **access + refresh** tokens (separate secrets, env `JWT_*`); password hashing with **bcryptjs** (`password_hash` never selected/returned). **TTLs are ms-strings (not coerced):** `JWT_ACCESS_TTL` (`'15m'`) / `JWT_REFRESH_TTL` (`'7d'`) are passed **verbatim** to `signAsync({ expiresIn })` — jsonwebtoken parses the string natively. Do **not** wrap them in `parseInt`/`Number` (that yields `15`/`NaN` ms → tokens expire instantly, the classic "logged out within a minute"). `token.service.spec.ts` locks the access call to `expiresIn: '15m'` (string). The premature-logout bug was **not** here — it was the frontend refresh clearing the session on transient failures; see the §13 auth note.
 - **HR-field profile edits** (name/phone/avatar) go through `ProfileChangeRequest` review (`account` module) — never a direct write; **theme applies instantly**. (SRS §4.4)
-- **RBAC catalogue:** 15 module keys + 6 actions seeded as 90 permissions; 4 built-in (`is_system`) roles (`prisma/seed.ts`, idempotent). Built-in roles can't be deleted/renamed (RBAC keys off names like `Super Admin`). Module keys live in `common/rbac/rbac.constants.ts`. The `permissions` table carries `@@unique([module_id, action])`. **The catalogue is unchanged by the global-search endpoint** — `/v1/search` adds **no new permission**; it reuses the per-entity reads (`hrm:view`/`clients:view`/sales scope) to gate each result group.
+- **RBAC catalogue:** 16 module keys + 6 actions seeded as the standard grid, **plus one off-grid permission `notifications:broadcast`** (the `notifications` module carries ONLY `broadcast`, kept off the module×action grid so it doesn't cross-product onto every module); 4 built-in (`is_system`) roles (`prisma/seed.ts`, idempotent). `broadcast` is added to the `PermissionAction` Prisma enum (migration) and granted to **Super Admin only** (it's already in the SA's all-perms grant). Built-in roles can't be deleted/renamed (RBAC keys off names like `Super Admin`). Module keys live in `common/rbac/rbac.constants.ts`. The `permissions` table carries `@@unique([module_id, action])`. **The catalogue is unchanged by the global-search endpoint** — `/v1/search` adds **no new permission**; it reuses the per-entity reads (`hrm:view`/`clients:view`/sales scope) to gate each result group.
 - **API surface:** all routes under **`/v1`** (URI versioning; `/health` is version-neutral); Swagger UI at **`/docs`**; `npm run contract:export` writes the spec to `contract/openapi.yaml`.
 - **Global error envelope (built — `common/filters/all-exceptions.filter.ts`, Batch A #1).** One `APP_FILTER` (`@Catch()`, registered in `app.module.ts` like the global guards) normalizes **every** error to the contract envelope **`{ error: { code, message, details } }`** (arch §5.1), statuses preserved. Three classes: **`HttpException`** → `CODE_BY_STATUS[status]` (400→`BAD_REQUEST`, 401→`UNAUTHORIZED`, 403→`FORBIDDEN`, 404→`NOT_FOUND`, 409→`CONFLICT`, 422→`UNPROCESSABLE_ENTITY`), message from the response (array joined → `details.messages`), structured payloads (billing's **`unpriced`**, the import gate) preserved into `details`; **`DomainError`** (the **framework-free** marker `common/errors/domain-error.ts` — extends `Error`, **no `@nestjs/common` import**, carries `code`/`message`/`details?`) → **422**; **anything else** (bare `Error`, Prisma, the engine's internal-invariant throws) → **masked 500** generic message + `details.correlationId` (`randomUUID()`) + a server-side `Logger.error` (no internal leak, arch §11). **Map a client-fault domain error at the service boundary**, never inside pure/mirrored logic: e.g. `tier-schedule.service` wraps the pure `validateTierBrackets` bare-`Error` in `DomainError('TIER_SCHEDULE_INVALID', …)`; the engine throws are **left bare → stay 500** (real server faults, NOT 422). Contract: `ErrorEnvelopeDto` is registered via `extraModels` (in `main.ts` + `scripts/export-openapi.ts`) so the envelope is documented in `components.schemas` (per-endpoint `@ApiResponse` wiring still deferred — responses are `never`-typed). FE companion: `frontend/src/lib/query/unwrap.ts` reads `body.error.message`/`body.error.details`. **Reuse `DomainError` for any new client-fault domain rule** instead of returning a bare `Error` (→ 500) or coupling pure logic to Nest.
 - **Sensitive-PII gating (built, HRM):** sensitive fields are **redacted in the query/response server-side**, gated on a permission — e.g. rep `payment_details` and document `file_url`s require **`hrm:edit`** (a plain `hrm:view` caller gets them nulled), computed from `user.permissions.has(permissionKey(...))`. Sensitive values are also kept **out of audit payloads**. Reuse this redaction pattern for other PII.
@@ -996,3 +996,44 @@ A batch of shared primitives + an app-shell pass. **New screens MUST reuse these
 - **Overlays + z-index + responsive shell.** Radix menus already portal; the clip fixes were (a) `max-height: var(--radix-*-content-available-height)` + `overflow-y:auto` on the Select/DropdownMenu/Popover viewports, and (b) **reordering the z-index ladder so floating menus (dropdown/select/popover = 1300) sit ABOVE modal/drawer content (1200)** — a Select opened inside a Modal was rendering behind it (both portal to `<body>`; z-index decides). The shell is now responsive on the design-system §8 breakpoints (`--bp-mobile 640` / `--bp-tablet 1024`, `lib/useMediaQuery`): **<640px** sidebar → off-canvas drawer (hamburger); **640–1024** icon rail; **>1024** full. `.sr-only` helper in `base.css`.
 - **Global search** (`GET /v1/search?q=`, `modules/search/`) — authenticated; the SERVICE scopes each group to the caller's perms (reps→`hrm:view`, clients→`clients:view`, sales→`ScopeService`). **No new RBAC permission** (the role-permission matrix is unchanged). FE: `features/search/GlobalSearch` is the real top-bar box (debounced, grouped results, deep-links).
 - **Verified LOCAL only** (build + lint + stylelint + 329 backend tests green; the `add_list_pagination_indexes` migration is applied by the operator with `migrate deploy`). The light/dark + live-data visual pass needs a browser/running backend.
+
+### Notifications overhaul + SA event management/broadcast + dead-tab fixes (built — Notifications batch)
+A real, Super-Admin-manageable notification system + the previously dead Reps/Reports/`/users` tabs fixed.
+The architecture below is durable — reuse it; don't reinvent.
+
+- **The emitter seam is PROMOTED to `common/notifications/`** (`notification-emitter.ts`: `NOTIFICATION_EMITTER`
+  token + `NotificationEmitter {emit, emitMany, emitRole}` interface + `NotificationEvent` with optional
+  `variables`). `NotificationsModule` (`modules/reporting/`) is **`@Global()`** and binds it via
+  `NotificationEmitterAdapter`, so **any** domain module injects `@Inject(NOTIFICATION_EMITTER)` with no
+  import + no cycle (NotificationsService depends only on Prisma/Audit/`EMAIL_DISPATCHER`). Emits are
+  **post-commit, best-effort** (never inside a `$transaction`, never throw to the originating action); rep
+  `user_id` is nullable → **`emitMany` centralizes the null-skip**. `emitRole(event, roleName, payload)`
+  targets active users in a role. **Templates render in `notify`** via the pure
+  `common/notifications/render-template.ts#renderTemplate(tpl, vars, fallback)` — `{var}` substitution that
+  **falls back to the complete call-site text if ANY token is unfilled** (never shows a raw `{placeholder}`).
+- **Catalogue (bootstrap, idempotent):** **17 automatic events** + `broadcast`, each with `label` +
+  `title_template` + `body_template` (new nullable `NotificationEventSetting` columns). The upsert `update`
+  refreshes label/templates but **never clobbers** the SA's channel toggles. The documented
+  **recipients + variables per event** live in `frontend/src/features/notifications/eventCatalogue.ts`
+  (mirrors the emit sites) — shown read-only in the editor. **A genuinely NEW automatic trigger needs a code
+  change** (a new emit call); the SA manages wording/channel, not trigger logic.
+- **API (own-scoped, paginated):** `GET /v1/notifications` → `{data, meta}` (PaginationQuery: page/limit/
+  sort/search + `is_read`); `GET /unread-count`; `PATCH /:id {is_read}` (replaced `/:id/read`);
+  `POST /mark-all-read`; `POST /mark-read {ids, read}`; `POST /broadcast` gated
+  **`@RequirePermission('notifications','broadcast')`**. Settings GET/PATCH carry label/title/body templates.
+- **Frontend:** the bell shows a **numeric unread-count badge** (`useUnreadCount`, `refetchInterval 60s` +
+  `refetchOnWindowFocus`); **`lib/notifications/resolveLink.ts`** deep-links a notification to its record by
+  `related_entity_type`; clicking marks read + navigates. **Notification Center** `/notifications` (DataTable:
+  unread/all filter + search, bulk mark read/unread, row click-through). **SA event management** extends the
+  settings editor (per-event channels + title/body template inputs + read-only recipients). **Broadcast
+  composer** `/admin/broadcast` (audience everyone/role/specific-users, gated `notifications:broadcast`).
+- **Dead-tab fixes:** `features/reps/` (server-paginated roster on DataTable, `/admin/reps`, `hrm:view`);
+  `features/reports/ReportsLandingPage` (hub of dashboard cards, `/reports`, `reports:view`); router gained
+  `/users`→`/admin/users` + `/reps`→`/admin/reps` redirects and a friendly **catch-all `NotFoundPage`** so no
+  path dead-ends. Sidebar Reps/Reports items now carry a `to`.
+- **Paginated `GET /v1/reps`** (`buildPage`, sort allowlist `rep_code/full_name/status/hire_date/created_at`,
+  PII redaction preserved) — the contract was regenerated.
+- **Verified LOCAL only** (backend build + affected specs green; frontend build + lint + stylelint green). The
+  **operator applies the migration (`migrate deploy`) + re-seeds bootstrap** (idempotent) against Supabase to
+  add `notifications:broadcast` + the 17-event catalogue/templates. Light/dark + live-data visual pass needs a
+  browser.
