@@ -9,9 +9,9 @@ import { Injectable } from '@nestjs/common';
 
 export const NOTIFICATION_EMITTER = Symbol('NOTIFICATION_EMITTER');
 
-export interface NotificationEvent {
+/** An event WITHOUT a specific recipient — for the many/role fan-out helpers. */
+export interface NotificationEventBase {
   eventType: string;
-  userId: string;
   /** Fallback title/body used when the event has no SA-edited template. */
   title: string;
   body: string;
@@ -21,8 +21,17 @@ export interface NotificationEvent {
   variables?: Record<string, string>;
 }
 
+export interface NotificationEvent extends NotificationEventBase {
+  userId: string;
+}
+
 export interface NotificationEmitter {
+  /** Notify ONE user. */
   emit(event: NotificationEvent): Promise<void>;
+  /** Notify several users (dedupes + drops null/undefined ids — e.g. reps without a linked user). */
+  emitMany(userIds: (string | null | undefined)[], event: NotificationEventBase): Promise<void>;
+  /** Notify every ACTIVE user holding `roleName` (e.g. all Admins). */
+  emitRole(roleName: string, event: NotificationEventBase): Promise<void>;
 }
 
 @Injectable()
@@ -30,4 +39,6 @@ export class NoopNotificationEmitter implements NotificationEmitter {
   async emit(): Promise<void> {
     // no-op until NotificationsModule rebinds the token
   }
+  async emitMany(): Promise<void> {}
+  async emitRole(): Promise<void> {}
 }

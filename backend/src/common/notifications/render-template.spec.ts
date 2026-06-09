@@ -12,8 +12,8 @@ describe('renderTemplate', () => {
     expect(renderTemplate('', undefined, 'fallback text')).toBe('fallback text');
   });
 
-  it('leaves an unknown token intact (no vars or missing key)', () => {
-    expect(renderTemplate('Hi {name}', undefined, 'f')).toBe('Hi {name}');
-    expect(renderTemplate('Hi {name} {missing}', { name: 'Sam' }, 'f')).toBe('Hi Sam {missing}');
+  it('falls back to the complete call-site text when any token is unfilled (never shows a raw placeholder)', () => {
+    expect(renderTemplate('Hi {name}', undefined, 'fallback')).toBe('fallback');
+    expect(renderTemplate('Hi {name} {missing}', { name: 'Sam' }, 'fallback')).toBe('fallback');
   });
 });

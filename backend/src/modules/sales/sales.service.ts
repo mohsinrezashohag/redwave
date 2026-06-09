@@ -8,11 +8,13 @@
 import {
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { ScopeService } from '../../common/scope/scope.service';
@@ -44,6 +46,7 @@ export class SalesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly scope: ScopeService,
+    @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
   ) {}
 
   async create(dto: CreateSaleDto, user: AuthUser) {
@@ -181,6 +184,16 @@ export class SalesService {
       action: 'validate',
       before: { status: 'entered' },
       after: { status: 'validated', is_greenfield: updated.is_greenfield },
+    });
+    // Best-effort, post-commit: notify the rep their sale was validated. — sale_validated / RPT-009
+    const rep = await this.prisma.rep.findUnique({ where: { id: updated.rep_id }, select: { user_id: true } });
+    await this.emitter.emitMany([rep?.user_id], {
+      eventType: 'sale_validated',
+      title: `Sale ${updated.sale_code} validated`,
+      body: `Your sale for ${updated.customer_name} has been validated.`,
+      relatedEntityType: 'sales',
+      relatedEntityId: updated.id,
+      variables: { sale_code: updated.sale_code, customer_name: updated.customer_name },
     });
     return updated;
   }

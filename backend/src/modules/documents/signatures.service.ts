@@ -39,7 +39,7 @@ export class SignaturesService {
     const result = await this.prisma.$transaction(async (tx) => {
       const request = await tx.signatureRequest.findUnique({
         where: { id: requestId },
-        select: { id: true, status: true, document_id: true, document: { select: { owner_user_id: true } } },
+        select: { id: true, status: true, document_id: true, document: { select: { owner_user_id: true, title: true } } },
       });
       if (!request) {
         throw new NotFoundException('Signature request not found');
@@ -79,6 +79,7 @@ export class SignaturesService {
         signatureId: signature.id,
         documentId: request.document_id,
         ownerId: request.document.owner_user_id,
+        documentName: request.document.title,
         requestStatus,
         documentStatus,
       };
@@ -111,14 +112,26 @@ export class SignaturesService {
     }
 
     // Notify the document owner (best-effort — never breaks the signing flow). — DOC-006/RPT-009
+    const sigVars = { signer_name: user.full_name, document_name: result.documentName };
     if (dto.decision === SignDecision.sign) {
       await this.emitter.emit({
         eventType: 'signature_signed',
         userId: result.ownerId,
         title: 'A recipient signed your document',
-        body: 'A signature was recorded on a document you own.',
+        body: `${user.full_name} signed ${result.documentName}.`,
         relatedEntityType: 'document_signatures',
         relatedEntityId: result.signatureId,
+        variables: sigVars,
+      });
+    } else {
+      await this.emitter.emit({
+        eventType: 'signature_declined',
+        userId: result.ownerId,
+        title: 'A recipient declined to sign',
+        body: `${user.full_name} declined to sign ${result.documentName}.`,
+        relatedEntityType: 'documents',
+        relatedEntityId: result.documentId,
+        variables: sigVars,
       });
     }
     if (result.documentStatus === 'completed') {
@@ -126,9 +139,10 @@ export class SignaturesService {
         eventType: 'document_completed',
         userId: result.ownerId,
         title: 'Your document is fully signed',
-        body: 'All recipients have signed — the document is complete.',
+        body: `${result.documentName} is complete — all recipients signed.`,
         relatedEntityType: 'documents',
         relatedEntityId: result.documentId,
+        variables: { document_name: result.documentName },
       });
     }
     return result;

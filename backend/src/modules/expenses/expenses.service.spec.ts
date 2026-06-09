@@ -33,17 +33,24 @@ function make() {
   const prisma = {
     payPeriod: { findFirst: jest.fn().mockResolvedValue({ id: 'P1' }) },
     expenseFieldConfig: { findMany: jest.fn().mockResolvedValue(CONFIGS) },
+    rep: { findUnique: jest.fn().mockResolvedValue(null) },
     expenseReport: {
       create: jest.fn().mockResolvedValue({ id: 'r1', pay_period_id: 'P1', expense_items: [{}] }),
       findFirst: jest.fn(),
-      update: jest.fn().mockResolvedValue({ id: 'r1', expense_items: [] }),
+      update: jest.fn().mockResolvedValue({
+        id: 'r1',
+        expense_items: [],
+        week_start: new Date('2026-01-04T00:00:00.000Z'),
+        submitted_by: 'u1',
+      }),
     },
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const scope = { getRepScope: jest.fn().mockResolvedValue({ level: 'all' }) };
-  const service = new ExpensesService(prisma as never, audit as never, scope as never);
-  return { service, prisma, audit, scope, tx };
+  const emitter = { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() };
+  const service = new ExpensesService(prisma as never, audit as never, scope as never, emitter as never);
+  return { service, prisma, audit, scope, tx, emitter };
 }
 
 const kmItem = (date = '2026-03-10', tripType: 'single' | 'round' = 'round') => ({

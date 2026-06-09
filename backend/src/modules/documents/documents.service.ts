@@ -87,7 +87,7 @@ export class DocumentsService {
   async requestSignature(documentId: string, dto: CreateSignatureRequestDto, user: AuthUser) {
     const document = await this.prisma.document.findUnique({
       where: { id: documentId },
-      select: { id: true, owner_user_id: true },
+      select: { id: true, owner_user_id: true, title: true },
     });
     if (!document) {
       throw new NotFoundException('Document not found');
@@ -144,9 +144,10 @@ export class DocumentsService {
         eventType: 'signature_requested',
         userId: recipientId,
         title: 'A document needs your signature',
-        body: dto.message ?? 'You have been asked to sign a document.',
+        body: dto.message ?? `${user.full_name} asked you to sign ${document.title}.`,
         relatedEntityType: 'signature_requests',
         relatedEntityId: request.id,
+        variables: { requester_name: user.full_name, document_name: document.title },
       });
     }
     return request;

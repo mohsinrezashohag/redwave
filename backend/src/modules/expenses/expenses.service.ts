@@ -10,6 +10,7 @@
  */
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -19,6 +20,7 @@ import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { ScopeService } from '../../common/scope/scope.service';
+import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { CreateReportDto, ExpenseItemInput } from './dto/create-report.dto';
 import { UpdateReportDto } from './dto/update-report.dto';
@@ -38,6 +40,7 @@ export class ExpensesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly scope: ScopeService,
+    @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
   ) {}
 
   // ── Submit ──────────────────────────────────────────────────────────────────────
@@ -81,6 +84,24 @@ export class ExpensesService {
         item_count: report.expense_items.length,
       },
     });
+    // Best-effort: notify the approver — the rep's field manager, else Admins/Super Admins. — expense_submitted
+    const base = {
+      eventType: 'expense_submitted' as const,
+      title: `New expense report from ${user.full_name}`,
+      body: `An expense report for week ${dto.week_start} needs your review.`,
+      relatedEntityType: 'expense_reports',
+      relatedEntityId: report.id,
+      variables: { submitter_name: user.full_name, week_start: dto.week_start },
+    };
+    const manager = repId
+      ? await this.prisma.rep.findUnique({ where: { id: repId }, select: { field_manager_id: true } })
+      : null;
+    if (manager?.field_manager_id) {
+      await this.emitter.emitMany([manager.field_manager_id], base);
+    } else {
+      await this.emitter.emitRole('Admin', base);
+      await this.emitter.emitRole('Super Admin', base);
+    }
     return report;
   }
 
@@ -210,6 +231,21 @@ export class ExpensesService {
       action: 'approve',
       before: { status: report.status },
       after: { status: nextStatus, decision: dto.decision, note: dto.note ?? null },
+    });
+    // Best-effort: notify the submitter of the decision. — expense_approved / _rejected / _sent_back
+    const weekStart = updated.week_start.toISOString().slice(0, 10);
+    const note = dto.note ?? '';
+    const event =
+      nextStatus === 'approved'
+        ? { eventType: 'expense_approved', title: 'Expense report approved', body: `Your expense report for ${weekStart} was approved.` }
+        : nextStatus === 'rejected'
+          ? { eventType: 'expense_rejected', title: 'Expense report rejected', body: `Your expense report for ${weekStart} was rejected. ${note}` }
+          : { eventType: 'expense_sent_back', title: 'Expense report needs changes', body: `Your expense report for ${weekStart} was sent back. ${note}` };
+    await this.emitter.emitMany([updated.submitted_by], {
+      ...event,
+      relatedEntityType: 'expense_reports',
+      relatedEntityId: id,
+      variables: { week_start: weekStart, note, reviewer_name: user.full_name },
     });
     return updated;
   }

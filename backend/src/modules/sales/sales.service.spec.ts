@@ -43,8 +43,9 @@ function make(scope: Scope) {
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const scopeSvc = { getRepScope: jest.fn().mockResolvedValue(scope) };
+  const emitter = { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() };
   return {
-    service: new SalesService(prisma as never, audit as never, scopeSvc as never),
+    service: new SalesService(prisma as never, audit as never, scopeSvc as never, emitter as never),
     prisma,
     audit,
     tx,
