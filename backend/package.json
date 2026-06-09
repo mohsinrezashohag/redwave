@@ -38,6 +38,7 @@
     "class-validator": "^0.14.1",
     "decimal.js": "^10.4.3",
     "multer": "^2.1.1",
+    "pdf-lib": "^1.17.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },

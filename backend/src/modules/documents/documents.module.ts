@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../common/storage/storage.module';
 import { DocumentsController } from './documents.controller';
-import { SignatureRequestsController } from './signature-requests.controller';
+import { SignatureRequestsController, SignaturesController } from './signature-requests.controller';
 import { DocumentsService } from './documents.service';
 import { SignaturesService } from './signatures.service';
+import { StampService } from './stamp.service';
 
 /**
  * DocumentsModule — real document upload/preview (Supabase storage), the field-placement + e-signature
@@ -13,7 +14,7 @@ import { SignaturesService } from './signatures.service';
  */
 @Module({
   imports: [StorageModule],
-  controllers: [DocumentsController, SignatureRequestsController],
-  providers: [DocumentsService, SignaturesService],
+  controllers: [DocumentsController, SignatureRequestsController, SignaturesController],
+  providers: [DocumentsService, SignaturesService, StampService],
 })
 export class DocumentsModule {}
