@@ -4,12 +4,20 @@
  * Decline appear ONLY when they are the asked PENDING signer in THIS request (row-level — the page computes
  * it; the server enforces). Cancel appears for the requester/owner/admin on a pending request. Tokens only.
  */
-import { Avatar, Badge, Button, Card } from '../../../components/ui';
+import { Avatar, Button, Card } from '../../../components/ui';
 import { displayDate } from '../../../lib/format/date';
 import { RequestStatusBadge, SignerStatusBadge } from './SignerStatusBadge';
+import { DownloadLink } from './DownloadLink';
+import { useSignatureFileUrl } from '../api/useDocumentFiles';
 import styles from './documents.module.css';
 import type { ResolvedUser } from '../api/useUserLookup';
 import type { SignatureRequest } from '../documents.types';
+
+/** A per-signer signed-copy download (fetches its own short-TTL signed URL). */
+function SignedCopyLink({ signatureId }: { signatureId: string }) {
+  const q = useSignatureFileUrl(signatureId);
+  return <DownloadLink query={q} label="Signed copy" />;
+}
 
 interface Props {
   request: SignatureRequest;
@@ -45,11 +53,7 @@ export function SignatureRequestCard({ request, resolve, isMyPendingRequest, can
               <Avatar name={u.name} src={u.avatarUrl} size="sm" />
               <span className={styles.signerName}>{u.label}</span>
               {sig.signed_at && <span className={styles.signerTime}>{displayDate(sig.signed_at)}</span>}
-              {sig.signed_file_url && (
-                <Badge tone="muted" >
-                  <span title={sig.signed_file_url}>Signed copy</span>
-                </Badge>
-              )}
+              {sig.signed_file_url && <SignedCopyLink signatureId={sig.id} />}
               <SignerStatusBadge status={sig.status} />
             </div>
           );

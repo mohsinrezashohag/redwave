@@ -120,3 +120,49 @@
 .signedLink {
   font-size: var(--text-sm);
 }
+
+.linkBtn {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+  background: none;
+  border: none;
+  color: var(--text-link);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.details > summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--text-link);
+}
+
+.previewHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.downloadRow {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.copyLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-link);
+  text-decoration: none;
+}

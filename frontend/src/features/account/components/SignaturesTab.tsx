@@ -30,7 +30,7 @@ import {
   type SignatureMethod,
   type UserSignature,
 } from '../api/useSignatures';
-import { dataUrlToFile, typedSignatureDataUrl } from './signatureImage';
+import { dataUrlToFile, typedSignatureDataUrl } from '../../../lib/signature';
 import styles from './signatures.module.css';
 
 const METHODS = [

@@ -16,16 +16,52 @@ import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useDocument } from '../api/useDocuments';
 import { useCancelRequest } from '../api/useDocumentMutations';
+import { useCompletedFileUrl, useDocumentFileUrl } from '../api/useDocumentFiles';
 import { useUserLookup } from '../api/useUserLookup';
 import { canCancel, findMyPendingSignature, isNotFound } from '../documents.logic';
 import { DocumentStatusBadge } from '../components/DocumentStatusBadge';
+import { DocumentPreview } from '../components/DocumentPreview';
+import { DownloadLink } from '../components/DownloadLink';
 import { SignatureRequestCard } from '../components/SignatureRequestCard';
 import { DocumentTimeline } from '../components/DocumentTimeline';
 import { RequestSignatureModal } from '../components/RequestSignatureModal';
 import { SignDeclineModal } from '../components/SignDeclineModal';
 import { DOC_TYPE_LABELS } from '../documents.types';
 import styles from '../components/documents.module.css';
-import type { SignDecision } from '../documents.types';
+import type { SignDecision, SignatureRequest } from '../documents.types';
+
+/** The unsigned original — preview on demand (lazy pdf.js) + download. The original is never mutated. */
+function OriginalDocumentCard({ documentId }: { documentId: string }) {
+  const [show, setShow] = useState(false);
+  const fileUrl = useDocumentFileUrl(documentId);
+  return (
+    <Card
+      title={
+        <span className={styles.previewHead}>
+          <span>Original document</span>
+          <span className={styles.downloadRow}>
+            <Button variant="tertiary" size="sm" onClick={() => setShow((s) => !s)}>
+              {show ? 'Hide preview' : 'Preview'}
+            </Button>
+            <DownloadLink query={fileUrl} label="Download" />
+          </span>
+        </span>
+      }
+    >
+      {show ? <DocumentPreview query={fileUrl} /> : <p className={styles.note}>Preview the unsigned original in the browser, or download it.</p>}
+    </Card>
+  );
+}
+
+/** The final all-signatures copy (available once the request completes). */
+function CompletedCopyRow({ documentId }: { documentId: string }) {
+  const q = useCompletedFileUrl(documentId);
+  return (
+    <div className={styles.downloadRow}>
+      <DownloadLink query={q} label="Download fully-signed copy" />
+    </div>
+  );
+}
 
 export default function DocumentDetailPage() {
   const { id } = useParams();
@@ -42,7 +78,7 @@ export default function DocumentDetailPage() {
   const cancel = useCancelRequest();
 
   const [requestOpen, setRequestOpen] = useState(false);
-  const [signTarget, setSignTarget] = useState<{ requestId: string; decision: SignDecision } | null>(null);
+  const [signTarget, setSignTarget] = useState<{ request: SignatureRequest; decision: SignDecision } | null>(null);
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
 
   if (!canView || isForbidden(q.error)) {
@@ -113,6 +149,9 @@ export default function DocumentDetailPage() {
         }
       />
 
+      <OriginalDocumentCard documentId={doc.id} />
+      {doc.status === 'completed' && <CompletedCopyRow documentId={doc.id} />}
+
       {requests.length === 0 ? (
         <Banner tone="info" title="Not shared yet">
           This document is a draft. {canRequest ? 'Request signatures to share it and ask recipients to sign.' : 'It hasn’t been shared for signature.'}
@@ -125,7 +164,7 @@ export default function DocumentDetailPage() {
             resolve={resolve}
             isMyPendingRequest={mySig?.requestId === r.id}
             canCancelThis={canCancel(r, doc, user?.id, isAdmin)}
-            onSign={(decision) => setSignTarget({ requestId: r.id, decision })}
+            onSign={(decision) => setSignTarget({ request: r, decision })}
             onCancel={() => setCancelTarget(r.id)}
           />
         ))
@@ -136,7 +175,13 @@ export default function DocumentDetailPage() {
       </Card>
 
       <RequestSignatureModal open={requestOpen} onClose={() => setRequestOpen(false)} documentId={doc.id} />
-      <SignDeclineModal open={signTarget !== null} onClose={() => setSignTarget(null)} requestId={signTarget?.requestId ?? null} decision={signTarget?.decision ?? 'sign'} />
+      <SignDeclineModal
+        open={signTarget !== null}
+        onClose={() => setSignTarget(null)}
+        documentId={doc.id}
+        request={signTarget?.request ?? null}
+        decision={signTarget?.decision ?? 'sign'}
+      />
 
       <Modal
         open={cancelTarget !== null}
