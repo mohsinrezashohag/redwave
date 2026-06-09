@@ -3,6 +3,7 @@ import {
   ExpenseItemsController,
   ExpenseFieldConfigsController,
   ExpenseExportsController,
+  ExpenseReceiptsController,
 } from './expenses.controller';
 import { RBAC_KEY } from '../../common/decorators/require-permission.decorator';
 
@@ -27,5 +28,9 @@ describe('Expenses RBAC metadata', () => {
   it('exports require expenses:view to list and expenses:export to generate', () => {
     expect(meta(ExpenseExportsController, 'list')).toEqual({ moduleKey: 'expenses', action: 'view' });
     expect(meta(ExpenseExportsController, 'create')).toEqual({ moduleKey: 'expenses', action: 'export' });
+  });
+
+  it('receipt upload requires expenses:create', () => {
+    expect(meta(ExpenseReceiptsController, 'upload')).toEqual({ moduleKey: 'expenses', action: 'create' });
   });
 });

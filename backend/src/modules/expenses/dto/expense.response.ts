@@ -128,6 +128,15 @@ export class BulkReviewResultResponse {
   skipped!: number;
 }
 
+/** Result of a receipt upload — the URL to store on the expense item + whether it was really stored. */
+export class ReceiptUploadResponse {
+  @ApiProperty({ description: 'Access-controlled (signed) URL when stored; a reference in fallback mode.' })
+  url!: string;
+
+  @ApiProperty({ description: 'True when uploaded to object storage; false in selection-only fallback mode.' })
+  stored!: boolean;
+}
+
 export class FieldConfigResponse {
   @ApiProperty()
   id!: string;

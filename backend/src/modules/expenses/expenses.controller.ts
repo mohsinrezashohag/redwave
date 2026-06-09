@@ -3,9 +3,25 @@
  * Every endpoint declares its (expenses, action) permission; the global guard enforces it and the
  * services scope data per caller.
  */
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseFilePipeBuilder,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -15,6 +31,7 @@ import { ApiErrorResponses } from '../../common/errors/api-error-responses.decor
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../../common/rbac/auth-user.type';
+import { StorageService, UploadedFile as UploadedFileShape } from '../../common/storage/storage.service';
 import { ExpensesService } from './expenses.service';
 import { FieldConfigService } from './field-config.service';
 import { ExpenseExportService } from './expense-export.service';
@@ -31,7 +48,10 @@ import {
   ExpenseItemPageResponse,
   ExpenseItemResponse,
   FieldConfigResponse,
+  ReceiptUploadResponse,
 } from './dto/expense.response';
+
+const MAX_RECEIPT_BYTES = 10 * 1024 * 1024; // 10 MB
 
 @ApiTags('Expenses')
 @ApiBearerAuth()
@@ -183,5 +203,37 @@ export class ExpenseExportsController {
   @ApiCreatedResponse({ type: ExpenseExportResponse })
   create(@Body() dto: CreateExportDto, @CurrentUser() user: AuthUser) {
     return this.exports.generate(dto, user);
+  }
+}
+
+@ApiTags('Expenses')
+@ApiBearerAuth()
+@ApiErrorResponses()
+@Controller('expense-receipts')
+export class ExpenseReceiptsController {
+  constructor(private readonly storage: StorageService) {}
+
+  @Post()
+  @RequirePermission('expenses', 'create')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_RECEIPT_BYTES } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  @ApiOperation({
+    summary: 'Upload an expense receipt',
+    description:
+      'Requires expenses:create. Uploads the file to object storage and returns an access-controlled URL ' +
+      'to store on the expense item. When storage is unconfigured, returns a selection-only reference ' +
+      '(graceful fallback). Max 10 MB; images or PDF.',
+  })
+  @ApiCreatedResponse({ type: ReceiptUploadResponse })
+  upload(
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addFileTypeValidator({ fileType: /^(image\/(png|jpe?g|gif|webp|heic)|application\/pdf)$/ })
+        .build({ fileIsRequired: true }),
+    )
+    file: UploadedFileShape,
+  ) {
+    return this.storage.uploadReceipt(file);
   }
 }

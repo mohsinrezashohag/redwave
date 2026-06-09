@@ -2991,26 +2991,30 @@ paths:
       security: *a113
       summary: Get a clawback
       tags: *a114
-  /v1/expense-reports:
+  /v1/expense-items:
     post:
-      description: Requires expenses:create. Any user may submit (own by default). km
-        items compute their amount; non-km items require a receipt per the
-        category config. The pay period is derived from week_start.
-      operationId: ExpenseReportsController_create_v1
+      description: Requires expenses:create. Item-first — no report wrapper. Any user
+        may submit (own by default). km items compute their amount server-side;
+        non-km items require a receipt per the category config. Each item’s pay
+        period is derived from its own expense_date (same-cycle payout,
+        EXP-009).
+      operationId: ExpenseItemsController_create_v1
       parameters: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateReportDto"
+              $ref: "#/components/schemas/CreateExpenseItemsDto"
       responses:
         "201":
           description: ""
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExpenseReportResponse"
+                type: array
+                items:
+                  $ref: "#/components/schemas/ExpenseItemResponse"
         "400": &a115
           description: Bad Request — validation failed
           content:
@@ -3049,14 +3053,46 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
       security: &a121
         - bearer: []
-      summary: Submit a weekly expense report
+      summary: Create one or several expense items
       tags: &a122
         - Expenses
     get:
-      description: Requires expenses:view. Scoped (own/roster/all); filters
-        status/rep/client/period/date.
-      operationId: ExpenseReportsController_list_v1
+      description: Requires expenses:view. Paginated + scoped (own/roster/all);
+        filters status/category/rep/client/period/date-range and free-text
+        search across the description.
+      operationId: ExpenseItemsController_list_v1
       parameters:
+        - name: page
+          required: false
+          in: query
+          description: 1-based page number.
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: limit
+          required: false
+          in: query
+          description: Rows per page (max 100).
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 20
+            type: number
+        - name: sort
+          required: false
+          in: query
+          description: Sort as `field:dir` (e.g. `sale_date:desc`). Unknown fields fall
+            back to the default sort.
+          schema:
+            example: sale_date:desc
+            type: string
+        - name: search
+          required: false
+          in: query
+          description: Case-insensitive free-text search across the entity’s key columns.
+          schema:
+            type: string
         - name: status
           required: false
           in: query
@@ -3068,6 +3104,19 @@ paths:
               - approved
               - rejected
               - sent_back
+        - name: category
+          required: false
+          in: query
+          schema:
+            type: string
+            enum:
+              - km
+              - meals
+              - hotel
+              - flight
+              - rental
+              - gas
+              - other
         - name: rep_id
           required: false
           in: query
@@ -3077,7 +3126,7 @@ paths:
         - name: client_id
           required: false
           in: query
-          description: Filter by a client tagged on any item.
+          description: Filter by the client tagged on the item.
           schema:
             type: string
         - name: pay_period_id
@@ -3089,14 +3138,14 @@ paths:
         - name: from
           required: false
           in: query
-          description: Reports whose week_start ≥ this date.
+          description: Items whose expense_date ≥ this date.
           schema:
             example: 2026-03-01
             type: string
         - name: to
           required: false
           in: query
-          description: Reports whose week_start ≤ this date.
+          description: Items whose expense_date ≤ this date.
           schema:
             example: 2026-03-31
             type: string
@@ -3106,9 +3155,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ExpenseReportResponse"
+                $ref: "#/components/schemas/ExpenseItemPageResponse"
         "400": *a115
         "401": *a116
         "403": *a117
@@ -3116,12 +3163,41 @@ paths:
         "409": *a119
         "422": *a120
       security: *a121
-      summary: List expense reports
+      summary: List expense items
       tags: *a122
-  /v1/expense-reports/{id}:
+  /v1/expense-items/bulk-review:
+    post:
+      description: Requires expenses:approve. Applies one decision (approve | reject |
+        send_back) to many items; items not in a reviewable status (or out of
+        scope) are skipped.
+      operationId: ExpenseItemsController_bulkReview_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkReviewDto"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkReviewResultResponse"
+        "400": *a115
+        "401": *a116
+        "403": *a117
+        "404": *a118
+        "409": *a119
+        "422": *a120
+      security: *a121
+      summary: Bulk review expense items
+      tags: *a122
+  /v1/expense-items/{id}:
     get:
       description: Requires expenses:view (scoped).
-      operationId: ExpenseReportsController_findOne_v1
+      operationId: ExpenseItemsController_findOne_v1
       parameters:
         - name: id
           required: true
@@ -3134,7 +3210,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExpenseReportResponse"
+                $ref: "#/components/schemas/ExpenseItemResponse"
         "400": *a115
         "401": *a116
         "403": *a117
@@ -3142,13 +3218,13 @@ paths:
         "409": *a119
         "422": *a120
       security: *a121
-      summary: Get an expense report
+      summary: Get an expense item
       tags: *a122
     patch:
       description: Requires expenses:edit. Editable pre-approval; once approved, only
-        a Super Admin may edit. Supplying items replaces the report lines
-        wholesale.
-      operationId: ExpenseReportsController_edit_v1
+        a Super Admin may edit (EXP-007). The full item content is re-submitted
+        and replaces the item (km log re-derived).
+      operationId: ExpenseItemsController_edit_v1
       parameters:
         - name: id
           required: true
@@ -3160,14 +3236,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateReportDto"
+              $ref: "#/components/schemas/UpdateExpenseItemDto"
       responses:
         "200":
           description: ""
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExpenseReportResponse"
+                $ref: "#/components/schemas/ExpenseItemResponse"
         "400": *a115
         "401": *a116
         "403": *a117
@@ -3175,12 +3251,34 @@ paths:
         "409": *a119
         "422": *a120
       security: *a121
-      summary: Edit an expense report
+      summary: Edit an expense item
       tags: *a122
-  /v1/expense-reports/{id}/approve:
+    delete:
+      description: Requires expenses:delete. Only a not-yet-approved item may be
+        removed (scoped).
+      operationId: ExpenseItemsController_remove_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted.
+        "400": *a115
+        "401": *a116
+        "403": *a117
+        "404": *a118
+        "409": *a119
+        "422": *a120
+      security: *a121
+      summary: Delete an expense item
+      tags: *a122
+  /v1/expense-items/{id}/review:
     post:
       description: Requires expenses:approve. decision = approve | reject | send_back.
-      operationId: ExpenseReportsController_review_v1
+      operationId: ExpenseItemsController_review_v1
       parameters:
         - name: id
           required: true
@@ -3199,7 +3297,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExpenseReportResponse"
+                $ref: "#/components/schemas/ExpenseItemResponse"
         "400": *a115
         "401": *a116
         "403": *a117
@@ -3207,7 +3305,7 @@ paths:
         "409": *a119
         "422": *a120
       security: *a121
-      summary: Review an expense report
+      summary: Review an expense item
       tags: *a122
   /v1/expense-field-configs:
     get:
@@ -3373,6 +3471,72 @@ paths:
       security: *a137
       summary: Generate an expense export
       tags: *a138
+  /v1/expense-receipts:
+    post:
+      description: Requires expenses:create. Uploads the file to object storage and
+        returns an access-controlled URL to store on the expense item. When
+        storage is unconfigured, returns a selection-only reference (graceful
+        fallback). Max 10 MB; images or PDF.
+      operationId: ExpenseReceiptsController_upload_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptUploadResponse"
+        "400":
+          description: Bad Request — validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "401":
+          description: Unauthorized — missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "403":
+          description: Forbidden — RBAC denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "409":
+          description: Conflict — invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "422":
+          description: Unprocessable Entity — domain rule violated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+      security:
+        - bearer: []
+      summary: Upload an expense receipt
+      tags:
+        - Expenses
   /v1/pay-periods:
     get:
       description: Requires payrun:view. Pre-loaded 2026 schedule.
@@ -7375,7 +7539,8 @@ components:
         total_km:
           type: string
           example: "130.00"
-          description: Route's total driven distance in km (decimal string).
+          description: Indicative total route distance (km). The server re-derives it from
+            the stops when Maps is configured.
         stops:
           type: array
           items:
@@ -7389,7 +7554,7 @@ components:
       properties:
         category:
           type: string
-          enum:
+          enum: &a228
             - km
             - meals
             - hotel
@@ -7404,17 +7569,19 @@ components:
         expense_date:
           type: string
           example: 2026-03-10
+          description: Governs the payout pay period (EXP-009).
         amount:
           type: string
           example: "42.50"
           description: Amount (decimal string). Required for non-km items; ignored for km
-            (computed).
+            (server-computed).
         description:
           type: string
           example: Lunch with client
         receipt_url:
           type: string
-          description: Object-storage reference; mandatory per the category config.
+          description: Object-storage reference (from the receipt upload); mandatory per
+            the category config.
         km:
           description: Required for `km` items; forbidden otherwise.
           allOf:
@@ -7423,26 +7590,18 @@ components:
         - category
         - expense_date
         - description
-    CreateReportDto:
+    CreateExpenseItemsDto:
       type: object
       properties:
-        week_start:
-          type: string
-          example: 2026-03-09
-          description: Week start (governs the pay period).
-        week_end:
-          type: string
-          example: 2026-03-15
         rep_id:
           type: string
-          description: Rep this report is for; defaults to the submitter’s linked rep.
+          description: Rep these items are for; defaults to the submitter’s linked rep.
         items:
+          description: One or more items to submit together.
           type: array
           items:
             $ref: "#/components/schemas/ExpenseItemInput"
       required:
-        - week_start
-        - week_end
         - items
     KmStopResponse:
       type: object
@@ -7524,6 +7683,14 @@ components:
           type: string
         expense_report_id:
           type: string
+          nullable: true
+          description: Optional report grouping (item-first → usually null).
+        rep_id:
+          type: string
+          nullable: true
+        submitted_by:
+          type: string
+          description: The user who submitted this item.
         category:
           type: string
           enum:
@@ -7550,38 +7717,6 @@ components:
           type: string
           nullable: true
           description: Required except for km items.
-        km_log:
-          nullable: true
-          description: Present only on km items.
-          type: object
-          allOf:
-            - $ref: "#/components/schemas/KmLogResponse"
-      required:
-        - id
-        - expense_report_id
-        - category
-        - client_id
-        - expense_date
-        - amount
-        - description
-        - receipt_url
-        - km_log
-    ExpenseReportResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        submitted_by:
-          type: string
-        rep_id:
-          type: string
-          nullable: true
-        week_start:
-          type: string
-          format: date-time
-        week_end:
-          type: string
-          format: date-time
         status:
           type: string
           enum:
@@ -7590,6 +7725,7 @@ components:
             - approved
             - rejected
             - sent_back
+          description: Item lifecycle (submitted/approved/rejected/sent_back).
         approved_by:
           type: string
           nullable: true
@@ -7600,40 +7736,113 @@ components:
         pay_period_id:
           type: string
           nullable: true
-          description: Derived from week_start (#7).
+          description: Derived from expense_date — governs the payout cycle (EXP-009).
         created_at:
           type: string
           format: date-time
-        expense_items:
-          type: array
-          items:
-            $ref: "#/components/schemas/ExpenseItemResponse"
+        km_log:
+          nullable: true
+          description: Present only on km items.
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/KmLogResponse"
       required:
         - id
-        - submitted_by
+        - expense_report_id
         - rep_id
-        - week_start
-        - week_end
+        - submitted_by
+        - category
+        - client_id
+        - expense_date
+        - amount
+        - description
+        - receipt_url
         - status
         - approved_by
         - approved_at
         - pay_period_id
         - created_at
-        - expense_items
-    UpdateReportDto:
+        - km_log
+    ExpenseItemPageResponse:
       type: object
       properties:
-        week_start:
-          type: string
-          example: 2026-03-09
-        week_end:
-          type: string
-          example: 2026-03-15
-        items:
-          description: Replaces all lines when provided.
+        data:
           type: array
           items:
-            $ref: "#/components/schemas/ExpenseItemInput"
+            $ref: "#/components/schemas/ExpenseItemResponse"
+        meta:
+          $ref: "#/components/schemas/PageMetaResponse"
+      required:
+        - data
+        - meta
+    BulkReviewDto:
+      type: object
+      properties:
+        ids:
+          description: Expense-item ids to review together.
+          type: array
+          items:
+            type: string
+        decision:
+          type: string
+          enum:
+            - approve
+            - reject
+            - send_back
+        note:
+          type: string
+          description: Optional note (reason for rejection / send-back).
+      required:
+        - ids
+        - decision
+    BulkReviewResultResponse:
+      type: object
+      properties:
+        reviewed:
+          type: number
+          example: 5
+          description: Items that transitioned to the decided status.
+        skipped:
+          type: number
+          example: 1
+          description: Items skipped (not in a reviewable status, or out of scope).
+      required:
+        - reviewed
+        - skipped
+    UpdateExpenseItemDto:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: *a228
+          example: meals
+        client_id:
+          type: string
+          description: Optional client this expense is attributed to.
+        expense_date:
+          type: string
+          example: 2026-03-10
+          description: Governs the payout pay period (EXP-009).
+        amount:
+          type: string
+          example: "42.50"
+          description: Amount (decimal string). Required for non-km items; ignored for km
+            (server-computed).
+        description:
+          type: string
+          example: Lunch with client
+        receipt_url:
+          type: string
+          description: Object-storage reference (from the receipt upload); mandatory per
+            the category config.
+        km:
+          description: Required for `km` items; forbidden otherwise.
+          allOf:
+            - $ref: "#/components/schemas/KmLogInput"
+      required:
+        - category
+        - expense_date
+        - description
     ReviewDto:
       type: object
       properties:
@@ -7746,6 +7955,20 @@ components:
           description: Restrict to one pay period.
       required:
         - format
+    ReceiptUploadResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Access-controlled (signed) URL when stored; a reference in fallback
+            mode.
+        stored:
+          type: boolean
+          description: True when uploaded to object storage; false in selection-only
+            fallback mode.
+      required:
+        - url
+        - stored
     PayPeriodResponse:
       type: object
       properties:
@@ -7790,7 +8013,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: &a228
+          enum: &a229
             - draft
             - finalized
             - exported
@@ -7898,7 +8121,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: *a228
+          enum: *a229
         executed_by:
           type: string
         created_at:
