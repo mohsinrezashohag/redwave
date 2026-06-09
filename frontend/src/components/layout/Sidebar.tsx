@@ -17,6 +17,7 @@ import {
   ShoppingBag,
   ShoppingCart,
   SlidersHorizontal,
+  Tags,
   Sparkles,
   Trophy,
   Undo2,
@@ -194,6 +195,13 @@ const NAV: NavGroup[] = [
         to: '/admin/commission',
         match: (l) => l.pathname.startsWith('/admin/commission'),
         show: (a) => a.permissions.has('commission:view'),
+      },
+      {
+        label: 'Product Types',
+        icon: Tags,
+        to: '/admin/product-types',
+        match: (l) => l.pathname.startsWith('/admin/product-types'),
+        show: (a) => a.permissions.has('commission:edit'),
       },
       {
         label: 'Import',

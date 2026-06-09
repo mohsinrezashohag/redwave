@@ -11,10 +11,10 @@ import { Button, DatePicker, FormField, Input, Modal, MoneyInput, ProposedChip, 
 import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
-import { productTypeLabel } from '../../../lib/format/productType';
+import { useProductTypes } from '../../productTypes/api/useProductTypes';
 import { useClients } from '../api/useCommission';
 import { useCreateIncentive, useUpdateIncentive } from '../api/useCommissionMutations';
-import type { CreateIncentiveBody, Incentive, ProductType } from '../commission.types';
+import type { CreateIncentiveBody, Incentive } from '../commission.types';
 import styles from './commission.module.css';
 
 export type IncentiveFormState = { mode: 'create' } | { mode: 'edit'; incentive: Incentive } | null;
@@ -22,7 +22,6 @@ export type IncentiveFormState = { mode: 'create' } | { mode: 'edit'; incentive:
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONEY = /^\d+(\.\d{1,2})?$/;
 const ALL = '__all__';
-const PRODUCT_TYPES: ProductType[] = ['internet', 'greenfield_internet', 'tv', 'home_phone'];
 
 export function IncentiveModal({ state, onClose }: { state: IncentiveFormState; onClose: () => void }) {
   const open = state !== null;
@@ -62,12 +61,17 @@ function CreateForm({ onClose }: { onClose: () => void }) {
   const errors = formState.errors;
   const scopeMode = useWatch({ control, name: 'scope_mode' });
   const clients = useClients(canViewClients && scopeMode === 'specific');
+  const types = useProductTypes('active');
+  const typeOptions = [
+    { value: ALL, label: 'All product types' },
+    ...(types.data ?? []).map((t) => ({ value: t.key, label: t.label })),
+  ];
 
   const onSubmit = (values: CreateValues) => {
     const body: CreateIncentiveBody = {
       name: values.name,
       scope_client_id: values.scope_mode === 'specific' ? values.scope_client_id : undefined,
-      scope_product_type: values.scope_product_type === ALL ? undefined : (values.scope_product_type as ProductType),
+      scope_product_type: values.scope_product_type === ALL ? undefined : values.scope_product_type,
       target_type: 'per_activation',
       window_start: values.window_start,
       window_end: values.window_end,
@@ -137,7 +141,7 @@ function CreateForm({ onClose }: { onClose: () => void }) {
         render={({ field }) => (
           <FormField label="Scope: product type" help="Optional.">
             <Select
-              options={[{ value: ALL, label: 'All product types' }, ...PRODUCT_TYPES.map((t) => ({ value: t, label: productTypeLabel(t) }))]}
+              options={typeOptions}
               value={field.value}
               onValueChange={field.onChange}
             />

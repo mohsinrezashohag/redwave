@@ -13,12 +13,12 @@ import { ExportMenu } from '../../../components/data/ExportMenu';
 import type { ExportColumn } from '../../../lib/export/exportRows';
 import { productTypeLabel } from '../../../lib/format/productType';
 import { useClients } from '../../clients/api/useClients';
+import { useProductTypes } from '../../productTypes/api/useProductTypes';
 import { ProductsTable } from '../components/ProductsTable';
 import { fetchAllProducts } from '../api/useProducts';
 import type { Product, ProductStatusFilter, ProductType, ProductsFilters } from '../products.types';
 
 const ALL = '__all__';
-const PRODUCT_TYPES: ProductType[] = ['internet', 'greenfield_internet', 'tv', 'home_phone'];
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'inactive', label: 'Inactive' },
@@ -44,6 +44,11 @@ function SearchBox({ value, onChange }: { value: string; onChange: (v: string) =
 export default function ProductsListPage() {
   const canView = useCan('clients:view');
   const clients = useClients('all', canView);
+  const types = useProductTypes('all', canView);
+  const typeFilterOptions = [
+    { value: ALL, label: 'All types' },
+    ...(types.data ?? []).map((t) => ({ value: t.key, label: t.label })),
+  ];
   const [status, setStatus] = useState<ProductStatusFilter>('active');
   const [clientId, setClientId] = useState<string | undefined>(undefined);
   const [productType, setProductType] = useState<ProductType | undefined>(undefined);
@@ -83,7 +88,7 @@ export default function ProductsListPage() {
             />
             <Select
               aria-label="Type filter"
-              options={[{ value: ALL, label: 'All types' }, ...PRODUCT_TYPES.map((t) => ({ value: t, label: productTypeLabel(t) }))]}
+              options={typeFilterOptions}
               value={productType ?? ALL}
               onValueChange={(v) => setProductType(v === ALL ? undefined : (v as ProductType))}
             />

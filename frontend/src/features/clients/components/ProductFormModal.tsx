@@ -9,17 +9,16 @@ import { z } from 'zod';
 import { Badge, Button, FormField, Input, Modal, Select, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { productTypeLabel } from '../../../lib/format/productType';
+import { useProductTypes } from '../../productTypes/api/useProductTypes';
 import { useCreateProduct, useUpdateProduct } from '../api/useClientMutations';
-import type { Product, ProductType } from '../clients.types';
+import type { Product } from '../clients.types';
 import styles from './clients.module.css';
 
 export type ProductFormState = { mode: 'create'; clientId: string } | { mode: 'edit'; product: Product } | null;
 
-const PRODUCT_TYPES: ProductType[] = ['internet', 'greenfield_internet', 'tv', 'home_phone'];
-
 const createSchema = z.object({
   name: z.string().min(1, 'Required').max(150),
-  product_type: z.enum(['internet', 'greenfield_internet', 'tv', 'home_phone']),
+  product_type: z.string().regex(/^[a-z][a-z0-9_]*$/, 'Choose a product type'),
 });
 const editSchema = z.object({ name: z.string().min(1, 'Required').max(150) });
 type CreateValues = z.infer<typeof createSchema>;
@@ -39,9 +38,11 @@ function CreateProductForm({ clientId, onClose }: { clientId: string; onClose: (
   const { toast } = useToast();
   const onError = useApiErrorToast();
   const create = useCreateProduct();
+  const types = useProductTypes('active');
+  const typeOptions = (types.data ?? []).map((t) => ({ value: t.key, label: t.label }));
   const { control, register, handleSubmit, formState } = useForm<CreateValues>({
     resolver: zodResolver(createSchema),
-    defaultValues: { name: '', product_type: 'internet' },
+    defaultValues: { name: '', product_type: '' },
   });
 
   const onSubmit = (values: CreateValues) =>
@@ -61,9 +62,10 @@ function CreateProductForm({ clientId, onClose }: { clientId: string; onClose: (
         render={({ field }) => (
           <FormField label="Product type" required error={formState.errors.product_type?.message} help="Cannot be changed after creation.">
             <Select
-              options={PRODUCT_TYPES.map((t) => ({ value: t, label: productTypeLabel(t) }))}
+              options={typeOptions}
               value={field.value}
               onValueChange={field.onChange}
+              placeholder={types.isLoading ? 'Loading types…' : 'Select a type'}
             />
           </FormField>
         )}

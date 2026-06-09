@@ -36,6 +36,7 @@ const ClientsPage = lazy(() => import('../features/clients/pages/ClientsPage'));
 const ClientDetailPage = lazy(() => import('../features/clients/pages/ClientDetailPage'));
 const ProductsListPage = lazy(() => import('../features/products/pages/ProductsListPage'));
 const CommissionConfigPage = lazy(() => import('../features/commission/pages/CommissionConfigPage'));
+const ProductTypesPage = lazy(() => import('../features/productTypes/pages/ProductTypesPage'));
 const PayRunListPage = lazy(() => import('../features/payrun/pages/PayRunListPage'));
 const PayRunDetailPage = lazy(() => import('../features/payrun/pages/PayRunDetailPage'));
 const ClawbackListPage = lazy(() => import('../features/clawback/pages/ClawbackListPage'));
@@ -116,6 +117,7 @@ export const router = createBrowserRouter([
           { path: 'admin/clients/:id', element: lazyEl(<ClientDetailPage />) },
           { path: 'admin/products', element: lazyEl(<ProductsListPage />) },
           { path: 'admin/commission', element: lazyEl(<CommissionConfigPage />) },
+          { path: 'admin/product-types', element: lazyEl(<ProductTypesPage />) },
           // Convenience redirects for legacy/short paths that previously dead-ended on a blank RR-404.
           { path: 'users', element: <Navigate to="/admin/users" replace /> },
           { path: 'reps', element: <Navigate to="/admin/reps" replace /> },

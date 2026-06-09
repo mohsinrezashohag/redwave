@@ -10,17 +10,15 @@ import { Banner, Button, FormField, Modal, MoneyInput, Select, useToast } from '
 import { PayPeriodSelect } from '../../../components/data/PayPeriodSelect';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
-import { productTypeLabel } from '../../../lib/format/productType';
+import { useProductTypes } from '../../productTypes/api/useProductTypes';
 import { useCreateFlatRate } from '../api/useCommissionMutations';
-import type { FlatProductType } from '../commission.types';
 import styles from './commission.module.css';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONEY = /^\d+(\.\d{1,2})?$/;
-const FLAT_TYPES: FlatProductType[] = ['greenfield_internet', 'tv', 'home_phone'];
 
 const schema = z.object({
-  product_type: z.enum(['greenfield_internet', 'tv', 'home_phone']),
+  product_type: z.string().regex(/^[a-z][a-z0-9_]*$/, 'Choose a product type'),
   amount: z.string().regex(MONEY, 'Enter an amount (max 2 dp)'),
   effective_from: z.string().regex(DATE, 'Date required').refine((d) => d >= todayIso(), 'Must be today or later'),
   effective_to: z.string().optional(),
@@ -31,9 +29,14 @@ export function FlatRateModal({ open, onClose }: { open: boolean; onClose: () =>
   const { toast } = useToast();
   const onError = useApiErrorToast();
   const create = useCreateFlatRate();
+  // Flat rates apply to non-tiered active types only (the server also 422s a tiered type like internet).
+  const types = useProductTypes('active');
+  const flatOptions = (types.data ?? [])
+    .filter((t) => t.behaviour !== 'tiered')
+    .map((t) => ({ value: t.key, label: t.label }));
   const { control, register, handleSubmit, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { product_type: 'greenfield_internet', amount: '', effective_from: '', effective_to: '' },
+    defaultValues: { product_type: '', amount: '', effective_from: '', effective_to: '' },
   });
   const errors = formState.errors;
 
@@ -54,7 +57,12 @@ export function FlatRateModal({ open, onClose }: { open: boolean; onClose: () =>
           name="product_type"
           render={({ field }) => (
             <FormField label="Product type" required error={errors.product_type?.message} help="Internet is tiered — set it in the tier schedule.">
-              <Select options={FLAT_TYPES.map((t) => ({ value: t, label: productTypeLabel(t) }))} value={field.value} onValueChange={field.onChange} />
+              <Select
+                options={flatOptions}
+                value={field.value}
+                onValueChange={field.onChange}
+                placeholder={types.isLoading ? 'Loading types…' : 'Select a type'}
+              />
             </FormField>
           )}
         />
