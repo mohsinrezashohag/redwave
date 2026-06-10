@@ -6,7 +6,7 @@
  */
 import { useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Banner, Button, FormField, Input, Logo, useToast } from '../../components/ui';
+import { Banner, Button, FormField, Input, Logo } from '../../components/ui';
 import { useAuth } from '../../auth/useAuth';
 import { SessionLoading } from '../../auth/SessionLoading';
 import styles from './LoginPage.module.css';
@@ -14,7 +14,6 @@ import styles from './LoginPage.module.css';
 export default function LoginPage() {
   const { status, login } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -32,9 +31,11 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(email.trim(), password);
-      navigate('/', { replace: true });
-    } catch {
-      setError('Invalid email or password. Please try again.');
+      navigate('/', { replace: true }); // a must-change-password user is redirected to /change-password by the shell guard
+    } catch (err) {
+      // The server's message surfaces a lockout notice; otherwise the generic credential error.
+      const msg = err instanceof Error ? err.message : '';
+      setError(/lock/i.test(msg) ? msg : 'Invalid email or password. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -80,17 +81,7 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <button
-          type="button"
-          className={styles.forgot}
-          onClick={() =>
-            toast({
-              title: 'Password reset',
-              description: 'Contact your administrator to reset your password.',
-              tone: 'info',
-            })
-          }
-        >
+        <button type="button" className={styles.forgot} onClick={() => navigate('/forgot-password')}>
           Forgot password?
         </button>
       </main>

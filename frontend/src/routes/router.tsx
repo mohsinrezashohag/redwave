@@ -7,6 +7,7 @@ import { lazy, Suspense, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppShell } from '../components/layout/AppShell';
 import { RequireAuth } from '../auth/RequireAuth';
+import { RequirePasswordChange } from '../auth/RequirePasswordChange';
 import { LoadingSpinner } from '../components/ui';
 
 const LoginPage = lazy(() => import('../pages/login/LoginPage'));
@@ -53,6 +54,9 @@ const NotificationCenterPage = lazy(() => import('../features/notifications/page
 const BroadcastPage = lazy(() => import('../features/notifications/pages/BroadcastPage'));
 const RepsListPage = lazy(() => import('../features/reps/pages/RepsListPage'));
 const ReportsLandingPage = lazy(() => import('../features/reports/pages/ReportsLandingPage'));
+const ForgotPasswordPage = lazy(() => import('../features/auth/pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('../features/auth/pages/ResetPasswordPage'));
+const ChangePasswordRequiredPage = lazy(() => import('../features/auth/pages/ChangePasswordRequiredPage'));
 const NotFoundPage = lazy(() => import('../pages/NotFoundPage'));
 
 const fallback = (
@@ -67,9 +71,17 @@ export const router = createBrowserRouter([
     path: '/login',
     element: lazyEl(<LoginPage />),
   },
+  { path: '/forgot-password', element: lazyEl(<ForgotPasswordPage />) },
+  { path: '/reset-password', element: lazyEl(<ResetPasswordPage />) },
+  { path: '/set-password', element: lazyEl(<ResetPasswordPage flavor="invite" />) },
   {
     element: <RequireAuth />,
     children: [
+      // Authed but OUTSIDE the must-change guard, so a flagged user can actually reach it.
+      { path: '/change-password', element: lazyEl(<ChangePasswordRequiredPage />) },
+      {
+        element: <RequirePasswordChange />,
+        children: [
       {
         path: '/',
         element: <AppShell />,
@@ -123,6 +135,8 @@ export const router = createBrowserRouter([
           { path: 'reps', element: <Navigate to="/admin/reps" replace /> },
           // Friendly catch-all so no unknown path is ever a blank screen.
           { path: '*', element: lazyEl(<NotFoundPage />) },
+        ],
+      },
         ],
       },
     ],

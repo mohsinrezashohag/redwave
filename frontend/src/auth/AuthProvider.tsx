@@ -115,9 +115,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string) => {
-      const { data, response } = await api.POST('/v1/auth/login', { body: { email, password } });
+      const { data, error, response } = await api.POST('/v1/auth/login', { body: { email, password } });
       if (!response.ok) {
-        throw new Error('Invalid credentials');
+        // Surface the server message (e.g. the lockout notice); fall back to the generic credential error.
+        const msg = (error as { error?: { message?: string } } | undefined)?.error?.message;
+        throw new Error(msg ?? 'Invalid credentials');
       }
       const tokens = asData<LoginResponse>(data);
       setSession(tokens.access_token, tokens.refresh_token);
