@@ -90,6 +90,7 @@ export function LineBreakdownDrawer({ line, open, onClose, isDraft, periods }: P
                   <TH>Origin</TH>
                   <TH>Releases into</TH>
                   <TH>Status</TH>
+                  <TH align="right">Set-off</TH>
                   <TH align="right">Released</TH>
                 </TR>
               </THead>
@@ -106,6 +107,7 @@ export function LineBreakdownDrawer({ line, open, onClose, isDraft, periods }: P
                     <TD>
                       <Badge tone={RELEASE_TONE[h.release_status]}>{h.release_status}</Badge>
                     </TD>
+                    <TD numeric>{h.clawback_applied ? money(h.clawback_applied) : '—'}</TD>
                     <TD numeric>{money(h.amount_released)}</TD>
                   </TR>
                 ))}

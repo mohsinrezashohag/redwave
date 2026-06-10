@@ -46,6 +46,7 @@ export function HoldbackPanel({ lines, periods }: { lines: PayRunLine[]; periods
               <TH>Origin</TH>
               <TH>Releases into</TH>
               <TH>Status</TH>
+              <TH align="right">Clawback set-off</TH>
               <TH align="right">Released</TH>
             </TR>
           </THead>
@@ -63,6 +64,7 @@ export function HoldbackPanel({ lines, periods }: { lines: PayRunLine[]; periods
                 <TD>
                   <Badge tone={RELEASE_TONE[h.release_status]}>{h.release_status}</Badge>
                 </TD>
+                <TD numeric>{h.clawback_applied ? money(h.clawback_applied) : '—'}</TD>
                 <TD numeric>{money(h.amount_released)}</TD>
               </TR>
             ))}

@@ -1,7 +1,7 @@
 /**
- * IncentivesSection — list incentives (+ a ProposedChip on any target_based row, §12), filter by status,
- * and create/edit/end. Reuses the playbook (Table + DataState + Modal). The scope client name comes from a
- * clients reference read (gated clients:view), not a rate-stream join (#3). Tokens only.
+ * IncentivesSection — list incentives in BOTH modes (per_activation / one_time, threshold-relative), filter
+ * by status, and create/edit/end. Reuses the playbook (Table + DataState + Modal). The scope client name
+ * comes from a clients reference read (gated clients:view), not a rate-stream join (#3). Tokens only.
  */
 import { MoreHorizontal, Pencil, Square, Trash2 } from 'lucide-react';
 import { useState } from 'react';
@@ -12,7 +12,6 @@ import {
   ConfirmDialog,
   DropdownMenu,
   IconButton,
-  ProposedChip,
   Select,
   Table,
   TBody,
@@ -40,6 +39,18 @@ const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'ended', label: 'Ended' },
 ];
+
+/** A readable badge for the incentive mode + its threshold. */
+function targetLabel(inc: Incentive) {
+  if (inc.target_type === 'one_time') {
+    return <Badge tone="accent">One-time at {inc.target_count ?? '?'}</Badge>;
+  }
+  return (
+    <Badge tone="neutral">
+      {inc.target_count ? `Per activation > ${inc.target_count}` : 'Per activation'}
+    </Badge>
+  );
+}
 
 export function IncentivesSection() {
   const canEdit = useCan('commission:edit');
@@ -114,9 +125,7 @@ export function IncentivesSection() {
                   {clientName(inc.scope_client_id)}
                   {inc.scope_product_type ? ` · ${productTypeLabel(inc.scope_product_type)}` : ''}
                 </TD>
-                <TD>
-                  {inc.target_type === 'target_based' ? <ProposedChip /> : <Badge tone="neutral">Per activation</Badge>}
-                </TD>
+                <TD>{targetLabel(inc)}</TD>
                 <TD>
                   <span className="mono">{displayDate(inc.window_start)}</span> – <span className="mono">{displayDate(inc.window_end)}</span>
                 </TD>
