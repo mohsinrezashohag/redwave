@@ -13,23 +13,10 @@
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b1120" />
     <title>Redwave ERP / HRM</title>
     <!--
-      No-flash theme boot: runs BEFORE the app so the very first paint uses the correct theme.
-      Mirrors src/theme — reads the stored preference (default 'system'), resolves via the OS,
-      and sets <html data-theme>. Keep the storage key in sync with theme.types.ts (THEME_STORAGE_KEY).
+      No-flash theme boot — EXTERNALISED to /public/theme-boot.js (same-origin) so the production CSP can
+      use `script-src 'self'` with no `unsafe-inline`. Runs BEFORE the app, so the first paint is themed.
     -->
-    <script>
-      (function () {
-        try {
-          var pref = localStorage.getItem('redwave-theme') || 'system';
-          var dark =
-            pref === 'dark' ||
-            (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-        } catch (e) {
-          document.documentElement.dataset.theme = 'light';
-        }
-      })();
-    </script>
+    <script src="/theme-boot.js"></script>
   </head>
   <body>
     <div id="root"></div>

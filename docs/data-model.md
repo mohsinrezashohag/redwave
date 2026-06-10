@@ -84,6 +84,32 @@ Identity, roles, and granular module/action permissions. A Role is a bag of (mod
 | **used_at**   | timestamp | —       | Null until consumed (single-use).          |
 | **created_at**| timestamp | —       |                                            |
 
+#### `refresh_sessions`  *(Security batch)*
+
+*A persisted, rotating, revocable refresh-token session — one row per device/login. The cookie carries `<id>.<secret>`; only `sha256(secret)` is stored and ROTATED each refresh. A replayed old secret = reuse → the session is revoked. Access tokens carry this row's id as `sid`; the guard rejects revoked sessions (immediate force-logout). — arch §security*
+
+| **Field**       | **Type**  | **Key** | **Notes**                                          |
+|-----------------|-----------|---------|----------------------------------------------------|
+| **id**          | uuid      | **PK**  | = the access/refresh token `sid` claim.            |
+| **user_id**     | uuid      | **FK**  | -> users.id (RESTRICT; never hard-deleted).        |
+| **token_hash**  | varchar   | **UQ**  | sha256 of the CURRENT refresh secret (rotated).    |
+| **user_agent**  | varchar   | —       | Device label for the sessions list.                |
+| **ip_address**  | varchar   | —       | Last-seen IP.                                       |
+| **created_at**  | timestamp | —       |                                                    |
+| **last_used_at**| timestamp | —       | Updated on each rotation.                          |
+| **expires_at**  | timestamp | —       | Mirrors JWT_REFRESH_TTL.                            |
+| **revoked_at**  | timestamp | —       | Null = live; set on logout / reuse / force-logout. |
+
+#### `user_mfa` · `mfa_recovery_codes`  *(Security batch)*
+
+*Per-user TOTP MFA. `user_mfa` (PK = user_id): `secret` (base32), `enabled` (flips true only after a verified first code), `confirmed_at`. `mfa_recovery_codes`: 10 one-time codes, **hashed** (`code_hash`), `used_at` (single-use). — AUTH MFA*
+
+#### `security_settings`  *(Security batch, singleton)*
+
+*One row: `mfa_enforced` (bool, default false — the master switch that makes `roles.mfa_required` actually block login), `updated_by` (-> users.id, SET NULL), `updated_at`.*
+
+**Column additions:** `roles.mfa_required` (bool, default false — SA seeded true) · `audit_log.ip_address` (varchar, nullable — the actor's request IP).
+
 #### `roles`
 
 *A named set of permissions. Built-in or Super-Admin-created.*

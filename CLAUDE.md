@@ -115,8 +115,8 @@ One module = one NestJS module owning its tables and endpoints. A module calls a
 - **Auditing is explicit** at the service layer via `AuditService` (`common/audit/`, `@Global`) — accurate before/after — not a magic interceptor; the guard logs denials.
 - **Auth stack:** `@nestjs/jwt` with **custom guards (no passport)**; **access + refresh** tokens (separate secrets, env `JWT_*`); password hashing with **bcryptjs** (`password_hash` never selected/returned). **TTLs are ms-strings (not coerced):** `JWT_ACCESS_TTL` (`'15m'`) / `JWT_REFRESH_TTL` (`'7d'`) are passed **verbatim** to `signAsync({ expiresIn })` — jsonwebtoken parses the string natively. Do **not** wrap them in `parseInt`/`Number` (that yields `15`/`NaN` ms → tokens expire instantly, the classic "logged out within a minute"). `token.service.spec.ts` locks the access call to `expiresIn: '15m'` (string). The premature-logout bug was **not** here — it was the frontend refresh clearing the session on transient failures; see the §13 auth note.
 - **HR-field profile edits** (name/phone/avatar) go through `ProfileChangeRequest` review (`account` module) — never a direct write; **theme applies instantly**. (SRS §4.4)
-- **RBAC catalogue:** 17 module keys + 6 actions seeded as the standard grid (the 17th is **`billing_rates`** — its full 6-action set gates the client billing rate cards, **granted to Super Admin only** by default so partner financials aren't visible to every `clients:view` holder; a custom Business-Partner role can be granted `billing_rates:view`), **plus two off-grid permissions `notifications:broadcast` + `reports:business`** (each kept off the module×action grid so the action doesn't cross-product onto every module: `broadcast` gates the manual broadcast, `business` gates the business/executive dashboard + cross-period trends); 4 built-in (`is_system`) roles (`prisma/seed.ts`, idempotent). `broadcast` and `business` are added to the `PermissionAction` Prisma enum (migrations) and granted to **Super Admin only** (already in the SA's all-perms grant); each is seeded by an explicit `permission.upsert` after the grid. Built-in roles can't be deleted/renamed (RBAC keys off names like `Super Admin`). Module keys live in `common/rbac/rbac.constants.ts`. The `permissions` table carries `@@unique([module_id, action])`. **The catalogue is unchanged by the global-search endpoint** — `/v1/search` adds **no new permission**; it reuses the per-entity reads (`hrm:view`/`clients:view`/sales scope) to gate each result group.
-- **API surface:** all routes under **`/v1`** (URI versioning; `/health` is version-neutral); Swagger UI at **`/docs`**; `npm run contract:export` writes the spec to `contract/openapi.yaml`.
+- **RBAC catalogue:** **18 module keys** + 6 actions seeded as the standard grid (`billing_rates` — its full 6-action set gates the client billing rate cards, **granted to Super Admin only** by default so partner financials aren't visible to every `clients:view` holder; a custom Business-Partner role can be granted `billing_rates:view`; **and `audit`** — `audit:view`/`audit:export` gate the SA audit log + per-record History, **Super Admin only** by default — §13 Security), **plus two off-grid permissions `notifications:broadcast` + `reports:business`** (each kept off the module×action grid so the action doesn't cross-product onto every module: `broadcast` gates the manual broadcast, `business` gates the business/executive dashboard + cross-period trends); 4 built-in (`is_system`) roles (`prisma/seed.ts`, idempotent). `broadcast` and `business` are added to the `PermissionAction` Prisma enum (migrations) and granted to **Super Admin only** (already in the SA's all-perms grant); each is seeded by an explicit `permission.upsert` after the grid. Built-in roles can't be deleted/renamed (RBAC keys off names like `Super Admin`). Module keys live in `common/rbac/rbac.constants.ts`. The `permissions` table carries `@@unique([module_id, action])`. **The catalogue is unchanged by the global-search endpoint** — `/v1/search` adds **no new permission**; it reuses the per-entity reads (`hrm:view`/`clients:view`/sales scope) to gate each result group.
+- **API surface:** all routes under **`/v1`** (URI versioning; `/health` is version-neutral); Swagger UI at **`/docs`** (dev only — in production it is DISABLED unless `ENABLE_SWAGGER=true`, then gated behind HTTP Basic; never public — §13 Security); `npm run contract:export` writes the spec to `contract/openapi.yaml`.
 - **Global error envelope (built — `common/filters/all-exceptions.filter.ts`, Batch A #1).** One `APP_FILTER` (`@Catch()`, registered in `app.module.ts` like the global guards) normalizes **every** error to the contract envelope **`{ error: { code, message, details } }`** (arch §5.1), statuses preserved. Three classes: **`HttpException`** → `CODE_BY_STATUS[status]` (400→`BAD_REQUEST`, 401→`UNAUTHORIZED`, 403→`FORBIDDEN`, 404→`NOT_FOUND`, 409→`CONFLICT`, 422→`UNPROCESSABLE_ENTITY`), message from the response (array joined → `details.messages`), structured payloads (billing's **`unpriced`**, the import gate) preserved into `details`; **`DomainError`** (the **framework-free** marker `common/errors/domain-error.ts` — extends `Error`, **no `@nestjs/common` import**, carries `code`/`message`/`details?`) → **422**; **anything else** (bare `Error`, Prisma, the engine's internal-invariant throws) → **masked 500** generic message + `details.correlationId` (`randomUUID()`) + a server-side `Logger.error` (no internal leak, arch §11). **Map a client-fault domain error at the service boundary**, never inside pure/mirrored logic: e.g. `tier-schedule.service` wraps the pure `validateTierBrackets` bare-`Error` in `DomainError('TIER_SCHEDULE_INVALID', …)`; the engine throws are **left bare → stay 500** (real server faults, NOT 422). Contract: `ErrorEnvelopeDto` is registered via `extraModels` (in `main.ts` + `scripts/export-openapi.ts`) so the envelope is documented in `components.schemas` (per-endpoint `@ApiResponse` wiring still deferred — responses are `never`-typed). FE companion: `frontend/src/lib/query/unwrap.ts` reads `body.error.message`/`body.error.details`. **Reuse `DomainError` for any new client-fault domain rule** instead of returning a bare `Error` (→ 500) or coupling pure logic to Nest.
 - **Sensitive-PII gating (built, HRM):** sensitive fields are **redacted in the query/response server-side**, gated on a permission — e.g. rep `payment_details` and document `file_url`s require **`hrm:edit`** (a plain `hrm:view` caller gets them nulled), computed from `user.permissions.has(permissionKey(...))`. Sensitive values are also kept **out of audit payloads**. Reuse this redaction pattern for other PII.
 - **Sale lifecycle + Sale ID (built, Sales):** the **§16 state machine** is the authoritative pure model in `modules/sales/sale-status.logic.ts` (`assertTransition` → 409 on any invalid move); Sales owns create→entered, validate (entered→validated), delete (entered|validated→**soft** `status=deleted`); in_pay_run/paid/clawed_back are triggered by Pay Run/Clawback. The composite **Sale ID** is pure (`sale-id.logic.ts`: `sale_date[-mpu]-client`, duplicate → `-1/-2`, never blocked). Sales **produces activations only** — `sale_items` snapshot fields stay **NULL** until Pay Run (#5/#2). Reads/mutations are **scoped via `ScopeService`** in the query (rep=own/manager=roster/admin=all).
@@ -360,10 +360,10 @@ sign in as `superadmin@redwave.local` / `DevSuperAdmin!123`.
 - **Theme server-sync (loop closed):** on login the user's `theme_preference` from `/me` is applied
   locally; changing the theme while authed PATCHes `/v1/account/theme` (`useAuth().setTheme`, used by
   `ThemeToggle`); logged-out = local/System. No-flash boot preserved.
-- **Deferred / proposals (NOT built):** **httpOnly secure refresh cookie** (more XSS-resistant; needs a
-  backend change — it currently returns/accepts the refresh token in the JSON body); password-reset flow
-  (AUTH-002, the login forgot-password link is a placeholder). *(`@ApiResponse` typed responses — incl.
-  `auth/auth.types.ts` — are DONE, Batch A #2.)*
+- **DONE (Security batch — see the §13 "Security hardening" subsection + `docs/security.md`):** the refresh
+  token is now an **httpOnly, rotating, DB-backed cookie** (no longer in localStorage / the JSON body) with
+  double-submit CSRF, `sid`-based immediate revocation, TOTP MFA, and active-session management. The
+  password-reset flow is wired (AUTH-002). *(`@ApiResponse` typed responses are DONE, Batch A #2.)*
 
 ### Screen patterns (built — Sales cluster is the reference; COPY these for every later screen)
 The Sales cluster (`frontend/src/features/sales/`) is the FIRST feature screen and sets the conventions.
@@ -1145,3 +1145,50 @@ The confirmed-rules batch — all CONFIRMED rules + a new feature, money/securit
   cols + `password_reset_tokens`). **Verified LOCAL** (backend 80 suites/456 tests + build green; contract
   regen; frontend build+lint+stylelint green). Operator: `migrate deploy` + set the Resend env + DNS;
   light/dark + live-email visual pass needs a browser + a configured Resend domain.
+
+### Security hardening — cookie/CSRF · helmet/CSP · MFA · sessions · Swagger lock · audit view · rate-limit · PII (built)
+The security batch. Authoritative posture doc: **`docs/security.md`**. Server-side RBAC is still the real
+gate; the audit trail is append-only.
+- **Refresh → httpOnly rotating cookie + double-submit CSRF.** `refresh_sessions` table; the cookie value is
+  opaque `<sid>.<secret>` (only the secret HASH stored), **rotated** each `/v1/auth/refresh` — replaying an
+  old secret is **reuse → the session is revoked** (breach detection). `rw_refresh` (httpOnly) + `rw_csrf`
+  (readable) cookies; `Secure`+`Domain=COOKIE_DOMAIN` in prod only (dev host-only via the Vite proxy). Access
+  tokens carry `sid`; `JwtAuthGuard` rejects revoked sessions → **immediate** force-logout. `TokenService.
+  verifyAccess` accepts `JWT_ACCESS_SECRET` or `*_OLD` (zero-downtime secret rotation). A **global**
+  `CsrfGuard` checks `X-CSRF-Token == rw_csrf` on mutating cookie-session requests (skips safe methods,
+  `@CsrfExempt` pre-auth routes, and Bearer/API requests with no csrf cookie). FE: the refresh token is NO
+  LONGER in localStorage / the JSON body — `doRefresh()` POSTs with `credentials:'include'` + the CSRF header;
+  the client + multipart uploads send both on every request; multi-tab logout via a localStorage ping.
+- **MFA (TOTP + recovery codes), policy-driven.** `user_mfa` + `mfa_recovery_codes` (otplib; 10 hashed
+  one-time codes, shown once). Enroll/disable from **My Account → Security** (`/auth/mfa/{setup,enable,
+  disable}`); login is two-step when enrolled (`mfa_token` challenge → `/auth/mfa/verify`, no session until
+  verified). Policy: `roles.mfa_required` (SA seeded true) + singleton `security_settings.mfa_enforced`
+  (**default OFF** so testers aren't locked out) at `/admin/security` (`settings:view/edit`); when ON, a
+  required-role un-enrolled user is routed to `/setup-mfa` (RequireMfaEnrollment; `/me` carries
+  `mfa_enrollment_required`). SA force-logout + disable-MFA on `/v1/users/:id` (`users:edit`); active-session
+  list/revoke at `/v1/auth/sessions` (self) + the My-Account sessions panel.
+- **Headers.** Helmet on the API (HSTS prod, frame-ancestors none, nosniff, referrer, strict API CSP; relaxed
+  CSP on `/docs`). SPA security headers in `frontend/vercel.json` (CSP with `script-src 'self'` — the theme
+  boot is externalised to `public/theme-boot.js`; `worker-src blob:` for pdf.js; `connect-src` = API origin +
+  Maps + Supabase — **operator sets the real API origin**). **Swagger `/docs` is disabled in prod** unless
+  `ENABLE_SWAGGER=true` + HTTP Basic (`SWAGGER_USER`/`SWAGGER_PASSWORD`).
+- **Audit (append-only).** `audit_log.ip_address` stamped from an `AsyncLocalStorage` request context.
+  New `audit` RBAC module (`audit:view`/`export`, **SA only**). `GET /v1/audit-logs` (filter actor/entity/
+  action/date + pagination) → the SA **Audit log** page (`/admin/audit`) with a before→after drawer; the same
+  endpoint filtered by entity powers the reusable **`<HistoryTab entityType entityId/>`** (the Batch-1
+  deferred per-record history), wired into the Sale detail as the reference adoption. **No write/update/delete
+  path — the trail stays immutable.**
+- **Chatbot rate-limit/cost-cap.** Per-user 60s window (`CHATBOT_RPM`, in-memory) + daily cap from the
+  persisted conversation count (`CHATBOT_DAILY_CAP`); over the limit → a **graceful 200** (`intent:
+  'rate_limited'`, a normal assistant bubble), never an error. (Dropped the unused `@nestjs/throttler`.)
+- **PII / exports.** Pay-run + expense exports now scope to the caller's reps (manager=roster, rep=own,
+  admin/SA=all) — the pay-run export previously leaked every rep's pay. PIPEDA stance + secrets-rotation
+  runbook in `docs/security.md`.
+- **Migration** `20260610170000_security_hardening` (additive: 4 tables + `roles.mfa_required` +
+  `audit_log.ip_address`). New env (see `.env.example` / `docs/security.md`): `NODE_ENV`, `COOKIE_DOMAIN`,
+  `CORS_ORIGIN`, `ENABLE_SWAGGER`, `SWAGGER_USER`/`PASSWORD`, `MFA_ISSUER`, `MFA_CHALLENGE_TTL`,
+  `CHATBOT_RPM`/`CHATBOT_DAILY_CAP`, `JWT_ACCESS_SECRET_OLD`. **Verified LOCAL** (backend 84 suites/489 tests
+  + build + contract regen green; frontend build + lint + stylelint + tsc + session test green). Operator:
+  `migrate deploy` + re-seed bootstrap (adds the `audit` perms + SA `mfa_required` + `security_settings`) +
+  set the env + the Vercel CSP `connect-src` origin. Live cookie/CSP round-trip + a real MFA enrol + the
+  light/dark visual pass need a browser.

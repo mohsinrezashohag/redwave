@@ -324,9 +324,9 @@ A pay run is the most sensitive transaction in the system and is built to be ato
 
 | **Concern**        | **Rule**                                                                                                                            |
 |--------------------|-------------------------------------------------------------------------------------------------------------------------------------|
-| **Authentication** | JWT bearer tokens; short-lived access token with refresh; password hashing (bcrypt/argon2).                                         |
-| **Authorization**  | Central RBAC guard (§7) on every endpoint; scope applied in queries.                                                                |
-| **Audit logging**  | An interceptor writes create/update/delete/approve on financial & config entities to audit_log with actor, timestamp, before/after. |
+| **Authentication** | JWT bearer **access** token (in-memory, carries `sid`); the **refresh** token is an opaque, rotating, DB-backed session in an **httpOnly cookie** (`refresh_sessions`, reuse-detected); **double-submit CSRF**; optional **TOTP MFA** (policy-driven). bcrypt hashing. Full posture: **`docs/security.md`**. |
+| **Authorization**  | Central RBAC guard (§7) on every endpoint; scope applied in queries. New module **`audit`** (`audit:view`/`export`, Super Admin only).                                                                |
+| **Audit logging**  | Service-layer `AuditService.log` writes create/update/delete/approve on financial & config entities + access denials to audit_log with actor, timestamp, before/after, **and IP** (request-context). **Append-only** — no update/delete path. Read via `GET /v1/audit-logs` (`audit:view`); same endpoint by entity powers the per-record History tab. |
 | **File storage**   | Object storage for receipts, signed documents, exports, and import files; only references in Postgres; access-controlled URLs.      |
 | **Notifications**  | In-app always; email dispatched via a background job only when the event's channel setting enables it (rate_change off by default). |
 | **Validation**     | Request bodies validated against the contract schema at the boundary; business-rule validation in the service layer.                |
