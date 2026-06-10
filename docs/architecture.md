@@ -204,11 +204,18 @@ Representative endpoints per module (not exhaustive; the OpenAPI spec is authori
 
 ### 6.9 Billing & Statements
 
-| **Verb** | **Path**                    | **Purpose**                             | **Permission** |
-|----------|-----------------------------|-----------------------------------------|----------------|
-| **POST** | /v1/clients/{id}/statements | Generate statement (one line/customer). | billing:create |
-| **GET**  | /v1/statements              | List generated statements.              | billing:view   |
-| **POST** | /v1/clients/{id}/invoices   | Generate one-line commission invoice.   | billing:create |
+Statements/invoices are **gapless-numbered** (`document_sequences`, incremented inside the issue transaction → row-locked, no gaps; global per type, `STMT-00001`/`INV-00001`) and **immutable**: a re-generation CREATES a new numbered `issued` version and marks the prior one `superseded` (metadata only — financial fields frozen). Priced SOLELY from `client_billing_rates` (#3); **CAD, no GST**. Files (Excel/PDF/QuickBooks-CSV) render ON DEMAND from the frozen record (`download` streams; `export` also records a `billing_exports` artifact). One **central rounding policy** (`common/money`, 2dp HALF_UP at presentation).
+
+| **Verb** | **Path**                            | **Purpose**                                            | **Permission** |
+|----------|-------------------------------------|--------------------------------------------------------|----------------|
+| **POST** | /v1/clients/{id}/statements/preview | Preview the one-line-per-customer draft (not persisted, no number). | billing:create |
+| **POST** | /v1/clients/{id}/statements         | Issue a statement (new gapless-numbered immutable version). | billing:create |
+| **POST** | /v1/clients/{id}/invoices           | Issue a one-line commission invoice.                   | billing:create |
+| **GET**  | /v1/statements, /v1/invoices        | List every version (newest number first).              | billing:view   |
+| **GET**  | /v1/{statements,invoices}/{id}/download | Stream the rendered file (statement `?format=excel\|quickbooks`). | billing:view |
+| **POST** | /v1/{statements,invoices}/{id}/export   | Record a billing_exports artifact (+ upload) and stream it. | billing:export |
+| **GET**  | /v1/reconciliation/statements       | Tie-out: statement total = Σ lines = Σ live re-priced sales. | billing:view   |
+| **GET**  | /v1/reconciliation/pay-runs/{id}    | Tie-out: each line net = components; run total = Σ net. | payrun:view    |
 
 ### 6.10 Documents & E-Signature
 

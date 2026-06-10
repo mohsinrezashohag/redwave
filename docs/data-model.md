@@ -637,17 +637,20 @@ Per-client, per-period output. The statement recreates the Excel Redwave sends c
 
 #### `client_statements`
 
-*The per-client statement for a period.*
+*The per-client statement for a period. **IMMUTABLE + gapless-numbered** (Billing batch): a re-generation creates a NEW numbered `issued` version and marks the prior one `superseded` (metadata only — number/total/lines/file are never mutated). — BRD §8*
 
-| **Field**         | **Type**  | **Key** | **Notes**          |
-|-------------------|-----------|---------|--------------------|
-| **id**            | uuid      | **PK**  |                    |
-| **client_id**     | uuid      | **FK**  | -> clients.id     |
-| **pay_period_id** | uuid      | **FK**  | -> pay_periods.id |
-| **total_amount**  | decimal   | —       |                    |
-| **file_url**      | varchar   | —       | Generated Excel.   |
-| **generated_by**  | uuid      | **FK**  | -> users.id       |
-| **generated_at**  | timestamp | —       |                    |
+| **Field**            | **Type**  | **Key** | **Notes**                                              |
+|----------------------|-----------|---------|--------------------------------------------------------|
+| **id**               | uuid      | **PK**  |                                                        |
+| **statement_number** | int       | **UQ**  | Gapless, global per type (STMT-00001); minted on issue. |
+| **status**           | enum      | —       | `issued` (current) \| `superseded` (`BillingDocStatus`). |
+| **client_id**        | uuid      | **FK**  | -> clients.id                                          |
+| **pay_period_id**    | uuid      | **FK**  | -> pay_periods.id                                      |
+| **total_amount**     | decimal   | —       | CAD, no GST.                                            |
+| **file_url**         | varchar?  | —       | Nullable — the Excel is rendered on demand / recorded in billing_exports. |
+| **generated_by**     | uuid      | **FK**  | -> users.id                                            |
+| **generated_at**     | timestamp | —       |                                                        |
+| **superseded_by_id** | uuid?     | **FK**  | -> client_statements.id (the newer version; null if current). |
 
 #### `client_statement_lines`
 
@@ -664,16 +667,46 @@ Per-client, per-period output. The statement recreates the Excel Redwave sends c
 
 #### `client_invoices`
 
-*Optional one-line commission invoice (PDF).*
+*Optional one-line commission invoice (PDF). Gapless-numbered + immutable like statements.*
 
-| **Field**            | **Type**  | **Key** | **Notes**          |
-|----------------------|-----------|---------|--------------------|
-| **id**               | uuid      | **PK**  |                    |
-| **client_id**        | uuid      | **FK**  | -> clients.id     |
-| **pay_period_id**    | uuid      | **FK**  | -> pay_periods.id |
-| **total_commission** | decimal   | —       | No GST line.       |
-| **file_url**         | varchar   | —       |                    |
-| **generated_at**     | timestamp | —       |                    |
+| **Field**            | **Type**  | **Key** | **Notes**                                                  |
+|----------------------|-----------|---------|------------------------------------------------------------|
+| **id**               | uuid      | **PK**  |                                                            |
+| **invoice_number**   | int       | **UQ**  | Gapless, global per type (INV-00001); minted on issue.     |
+| **status**           | enum      | —       | `issued` \| `superseded`.                                  |
+| **client_id**        | uuid      | **FK**  | -> clients.id                                              |
+| **pay_period_id**    | uuid      | **FK**  | -> pay_periods.id                                          |
+| **total_commission** | decimal   | —       | CAD; = the billing-stream statement total. No GST.         |
+| **file_url**         | varchar?  | —       | Nullable — PDF rendered on demand.                         |
+| **generated_by**     | uuid?     | **FK**  | -> users.id                                                |
+| **generated_at**     | timestamp | —       |                                                            |
+| **superseded_by_id** | uuid?     | **FK**  | -> client_invoices.id.                                     |
+
+#### `document_sequences`  *(Billing batch)*
+
+*The gapless per-type counter. Incremented atomically inside the issue transaction (row lock → no gaps under concurrency). — BRD §8*
+
+| **Field**         | **Type** | **Key** | **Notes**                          |
+|-------------------|----------|---------|------------------------------------|
+| **key**           | varchar  | **PK**  | `statement` \| `invoice`.          |
+| **current_value** | int      | —       | Highest number issued so far (next = +1). |
+
+#### `billing_exports`  *(Billing batch)*
+
+*A recorded export artifact (Excel / PDF / QuickBooks CSV / summary), stored by object path — like expense_exports. Downloads render on demand; configured storage also persists + records here.*
+
+| **Field**         | **Type**  | **Key** | **Notes**                                      |
+|-------------------|-----------|---------|------------------------------------------------|
+| **id**            | uuid      | **PK**  |                                                |
+| **kind**          | varchar   | —       | statement \| invoice \| summary \| quickbooks. |
+| **format**        | varchar   | —       | excel \| pdf \| csv.                           |
+| **statement_id**  | uuid?     | **FK**  | -> client_statements.id.                       |
+| **invoice_id**    | uuid?     | **FK**  | -> client_invoices.id.                         |
+| **client_id**     | uuid?     | —       | denormalised scope.                            |
+| **pay_period_id** | uuid?     | —       | denormalised scope.                            |
+| **file_path**     | varchar   | —       | Object-storage path.                           |
+| **generated_by**  | uuid      | **FK**  | -> users.id.                                   |
+| **generated_at**  | timestamp | —       |                                                |
 
 ## 12. Documents & E-Signature
 

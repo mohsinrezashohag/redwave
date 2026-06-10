@@ -324,6 +324,15 @@ Expenses are captured **item-by-item** (the expense item is the atomic unit — 
 
 Each client has its own product catalogue and its own billing rates, created and maintained by the admin. Bundle/triple-play pricing, where applicable, is configured per client.
 
+### 8.3 Numbering, Immutability, Reconciliation & Export (confirmed)
+
+- **Gapless sequential numbering (accounting requirement).** Statements and invoices receive gapless, sequential numbers (`STMT-00001` / `INV-00001`), one sequence per document type across all clients (the issuer-side register). Numbers are minted atomically when a document is **issued** (not on preview), so they never gap even under concurrent generation.
+- **Immutable once issued.** An issued statement/invoice is never edited. A correction produces a **new numbered document**; the prior one is marked *superseded* and retained unchanged (preserves the audit trail + gapless integrity).
+- **Preview before issue.** The user previews the one-line-per-customer rows (combined total, no tax) before generating; generating then issues and renders the Excel.
+- **Reconciliation / tie-out (integrity safety net).** Finance can verify: each statement total = the sum of its customer lines = the sum of the underlying sales’ billing amounts; each pay-run total = the sum of its lines. Discrepancies are flagged clearly (e.g. a statement that has gone stale because sales changed after issue).
+- **QuickBooks-friendly export.** Because tax lives in QuickBooks, statements/invoices export as a CSV that maps cleanly into QuickBooks (no tax column), stored as a recorded artifact.
+- **Single currency: CAD (confirmed).** All clients, including US/CTI, are billed in **CAD** — there is no multi-currency or FX handling. Money is exact-decimal, formatted by one central rounding rule (2 dp, half-up) so a CAD figure is identical on screen, in the statement, the invoice, and every export.
+
 ## 9. Dashboards, Leaderboard & Notifications
 
 ### 9.1 Rep Dashboard & Leaderboard

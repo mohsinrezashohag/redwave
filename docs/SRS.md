@@ -464,6 +464,12 @@ Per-client, per-period output: the statement Excel (one line per customer) and a
 | **BILL-003** | An optional commission invoice (PDF) shows only the total commission amount for the client.                                                                                | **M**   |
 | **BILL-004** | **No GST.** Statements and invoices exclude any GST/PST line; tax is handled in QuickBooks.                                                                                | **M**   |
 | **BILL-005** | Generated statements/invoices are retained as records (client, period, total, file, generator).                                                                            | **S**   |
+| **BILL-006** | **Gapless sequential numbering.** Statements and invoices receive gapless, sequential numbers (one sequence per type), minted atomically on issue — no gaps under concurrency. | **M**   |
+| **BILL-007** | **Immutable once issued.** An issued document is never mutated; a correction issues a NEW numbered document and marks the prior one superseded (retained).                   | **M**   |
+| **BILL-008** | **Preview before issue.** The one-line-per-customer rows + total are previewable (not persisted, no number) before generating.                                              | **S**   |
+| **BILL-009** | **Reconciliation tie-out.** statement total = Σ lines = Σ underlying sales’ billing; pay-run total = Σ lines. Discrepancies are flagged.                                     | **M**   |
+| **BILL-010** | **QuickBooks CSV export** of statements/invoices/summary (no tax column), recorded like other exports.                                                                      | **S**   |
+| **BILL-011** | **Single-currency CAD** across all clients (incl. US/CTI); no multi-currency/FX. One central rounding rule (2 dp, half-up) → identical CAD figures on screen + every export. | **M**   |
 
 ### 12.2 Worked Example
 
