@@ -9,6 +9,8 @@ import { z } from 'zod';
 import { Button, FormField, Input, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useChangePassword } from '../api/useAccountMutations';
+import { MfaSection } from './MfaSection';
+import { SessionsSection } from './SessionsSection';
 import styles from './account.module.css';
 
 const schema = z
@@ -47,21 +49,25 @@ export function SecurityTab() {
   };
 
   return (
-    <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
-      <FormField label="Current password" required error={errors.current_password?.message}>
-        <Input type="password" autoComplete="current-password" {...register('current_password')} />
-      </FormField>
-      <FormField label="New password" required error={errors.new_password?.message} help="At least 8 characters.">
-        <Input type="password" autoComplete="new-password" {...register('new_password')} />
-      </FormField>
-      <FormField label="Confirm new password" required error={errors.confirm_password?.message}>
-        <Input type="password" autoComplete="new-password" {...register('confirm_password')} />
-      </FormField>
-      <div className={styles.actions}>
-        <Button variant="primary" type="submit" loading={change.isPending}>
-          Change password
-        </Button>
-      </div>
-    </form>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+      <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
+        <FormField label="Current password" required error={errors.current_password?.message}>
+          <Input type="password" autoComplete="current-password" {...register('current_password')} />
+        </FormField>
+        <FormField label="New password" required error={errors.new_password?.message} help="At least 8 characters.">
+          <Input type="password" autoComplete="new-password" {...register('new_password')} />
+        </FormField>
+        <FormField label="Confirm new password" required error={errors.confirm_password?.message}>
+          <Input type="password" autoComplete="new-password" {...register('confirm_password')} />
+        </FormField>
+        <div className={styles.actions}>
+          <Button variant="primary" type="submit" loading={change.isPending}>
+            Change password
+          </Button>
+        </div>
+      </form>
+      <MfaSection />
+      <SessionsSection />
+    </div>
   );
 }

@@ -8,6 +8,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppShell } from '../components/layout/AppShell';
 import { RequireAuth } from '../auth/RequireAuth';
 import { RequirePasswordChange } from '../auth/RequirePasswordChange';
+import { RequireMfaEnrollment } from '../auth/RequireMfaEnrollment';
 import { LoadingSpinner } from '../components/ui';
 
 const LoginPage = lazy(() => import('../pages/login/LoginPage'));
@@ -57,6 +58,9 @@ const ReportsLandingPage = lazy(() => import('../features/reports/pages/ReportsL
 const ForgotPasswordPage = lazy(() => import('../features/auth/pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('../features/auth/pages/ResetPasswordPage'));
 const ChangePasswordRequiredPage = lazy(() => import('../features/auth/pages/ChangePasswordRequiredPage'));
+const SetupMfaPage = lazy(() => import('../features/auth/pages/SetupMfaPage'));
+const SecuritySettingsPage = lazy(() => import('../features/admin/pages/SecuritySettingsPage'));
+const AuditLogPage = lazy(() => import('../features/audit/pages/AuditLogPage'));
 const NotFoundPage = lazy(() => import('../pages/NotFoundPage'));
 
 const fallback = (
@@ -77,10 +81,14 @@ export const router = createBrowserRouter([
   {
     element: <RequireAuth />,
     children: [
-      // Authed but OUTSIDE the must-change guard, so a flagged user can actually reach it.
+      // Authed but OUTSIDE the must-change / MFA-enrolment guards, so a flagged user can actually reach them.
       { path: '/change-password', element: lazyEl(<ChangePasswordRequiredPage />) },
+      { path: '/setup-mfa', element: lazyEl(<SetupMfaPage />) },
       {
         element: <RequirePasswordChange />,
+        children: [
+      {
+        element: <RequireMfaEnrollment />,
         children: [
       {
         path: '/',
@@ -130,11 +138,15 @@ export const router = createBrowserRouter([
           { path: 'admin/products', element: lazyEl(<ProductsListPage />) },
           { path: 'admin/commission', element: lazyEl(<CommissionConfigPage />) },
           { path: 'admin/product-types', element: lazyEl(<ProductTypesPage />) },
+          { path: 'admin/security', element: lazyEl(<SecuritySettingsPage />) },
+          { path: 'admin/audit', element: lazyEl(<AuditLogPage />) },
           // Convenience redirects for legacy/short paths that previously dead-ended on a blank RR-404.
           { path: 'users', element: <Navigate to="/admin/users" replace /> },
           { path: 'reps', element: <Navigate to="/admin/reps" replace /> },
           // Friendly catch-all so no unknown path is ever a blank screen.
           { path: '*', element: lazyEl(<NotFoundPage />) },
+        ],
+      },
         ],
       },
         ],

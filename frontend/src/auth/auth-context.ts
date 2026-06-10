@@ -22,6 +22,8 @@ export interface AuthContextValue {
   login: (email: string, password: string) => Promise<LoginOutcome>;
   /** Second factor — redeem the mfa challenge token + a TOTP/recovery code for a session. */
   verifyMfa: (mfaToken: string, code: string) => Promise<void>;
+  /** Re-fetch /me (e.g. after enrolling MFA so the enrollment gate clears). */
+  reloadMe: () => Promise<void>;
   logout: () => Promise<void>;
   /** Set the theme: applies instantly; persists to the server (PATCH /v1/account/theme) when authed. */
   setTheme: (preference: ThemePreference) => void;

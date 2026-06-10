@@ -3,7 +3,7 @@
  * PATCH (immediate revoke; the record is kept — never a hard delete). Self-guardrail: you can't deactivate
  * your OWN account (the server has no self-protection, so the UI doesn't offer it). Tokens only.
  */
-import { KeyRound, Link2, Mail, MoreHorizontal, Pencil, UserCheck, UserX } from 'lucide-react';
+import { KeyRound, Link2, LogOut, Mail, MoreHorizontal, Pencil, ShieldOff, UserCheck, UserX } from 'lucide-react';
 import { useState } from 'react';
 import {
   Avatar,
@@ -25,7 +25,7 @@ import {
 import { useAuth } from '../../../auth/useAuth';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { displayDate } from '../../../lib/format/date';
-import { useResetUserPassword, useUpdateUser } from '../api/useUsers';
+import { useDisableUserMfa, useForceLogout, useResetUserPassword, useUpdateUser } from '../api/useUsers';
 import type { AdminUser } from '../users.types';
 import styles from './users.module.css';
 
@@ -35,8 +35,22 @@ export function UsersTable({ users, onEdit }: { users: AdminUser[]; onEdit: (u: 
   const onError = useApiErrorToast();
   const update = useUpdateUser();
   const resetPw = useResetUserPassword();
+  const forceLogout = useForceLogout();
+  const disableMfa = useDisableUserMfa();
   const [confirm, setConfirm] = useState<AdminUser | null>(null);
   const [reset, setReset] = useState<AdminUser | null>(null);
+
+  const doForceLogout = (u: AdminUser) =>
+    forceLogout.mutate(u.id, {
+      onSuccess: () => toast({ title: `${u.full_name} signed out of all devices`, tone: 'success' }),
+      onError,
+    });
+
+  const doDisableMfa = (u: AdminUser) =>
+    disableMfa.mutate(u.id, {
+      onSuccess: () => toast({ title: `MFA disabled for ${u.full_name}`, tone: 'success' }),
+      onError,
+    });
 
   const setStatus = (u: AdminUser, status: 'active' | 'inactive') =>
     update.mutate(
@@ -69,6 +83,8 @@ export function UsersTable({ users, onEdit }: { users: AdminUser[]; onEdit: (u: 
     const items: MenuEntry[] = [
       { label: 'Edit', icon: <Pencil size={15} />, onSelect: () => onEdit(u) },
       { label: 'Reset password', icon: <KeyRound size={15} />, onSelect: () => setReset(u) },
+      { label: 'Force log out', icon: <LogOut size={15} />, onSelect: () => doForceLogout(u) },
+      { label: 'Disable MFA', icon: <ShieldOff size={15} />, onSelect: () => doDisableMfa(u) },
     ];
     if (u.status === 'active') {
       items.push('separator', {

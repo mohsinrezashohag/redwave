@@ -22,6 +22,7 @@ import { DataState } from '../../../components/data/DataState';
 import { useClients, useSaleQuery } from '../api/useSales';
 import { useDeleteSale, useSetGreenfield, useValidateSale } from '../api/useSaleMutations';
 import { GreenfieldBadge } from './GreenfieldBadge';
+import { HistoryTab } from '../../audit/components/HistoryTab';
 import styles from './SaleDetailView.module.css';
 
 export function SaleDetailView({ id }: { id: string }) {
@@ -154,6 +155,10 @@ export function SaleDetailView({ id }: { id: string }) {
                 ))}
               </ul>
             )}
+          </Card>
+
+          <Card title="History">
+            <HistoryTab entityType="sales" entityId={sale.id} />
           </Card>
 
           <div className={styles.actions}>

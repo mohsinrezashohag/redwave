@@ -60,3 +60,17 @@ export function useResetUserPassword() {
     onSuccess: () => qc.invalidateQueries({ queryKey: usersKeys.all }),
   });
 }
+
+/** SA force-logout — revoke every one of the user's sessions (all devices). — arch §security */
+export function useForceLogout() {
+  return useMutation({
+    mutationFn: (id: string) => unwrap<{ success: true }>(api.POST('/v1/users/{id}/revoke-sessions', { params: { path: { id } } })),
+  });
+}
+
+/** SA disables a user's MFA (lost-device recovery). — arch §security */
+export function useDisableUserMfa() {
+  return useMutation({
+    mutationFn: (id: string) => unwrap<{ success: true }>(api.POST('/v1/users/{id}/disable-mfa', { params: { path: { id } } })),
+  });
+}
