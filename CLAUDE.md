@@ -1142,8 +1142,12 @@ The confirmed-rules batch — all CONFIRMED rules + a new feature, money/securit
   filter (the roster scope `ScopeService.getRepScope` already reads `field_manager_id`). FE: the reps roster
   `DataTable` gains bulk-select + an "Assign manager" action + a manager filter.
 - **No new permission** (release/incentive = `commission:edit`; team = `hrm:edit`; invite/reset =
-  `users:create`/`users:edit`; forgot/reset = `@Public`). New env: `RESEND_API_KEY`/`EMAIL_FROM`/`APP_URL` +
-  `LOCKOUT_*`/`*_TTL_MINUTES`. Migrations: `incentive_one_time` (enum rename) + `auth_reset_lockout` (User
+  `users:create`/`users:edit`; forgot/reset = `@Public`). New env: `RESEND_API_KEY`/`EMAIL_FROM`/
+  **`APP_BASE_URL`** + `LOCKOUT_*`/`*_TTL_MINUTES`. **`APP_BASE_URL` is the SINGLE source for every
+  user-facing email link** (`common/email/app-link.ts`: trailing-slash-normalized, proper URL joining;
+  legacy `APP_URL` honored, deprecated): dev defaults to `http://localhost:5173`; **in production there is
+  NO default** — unset → a loud startup error and the mailer **REFUSES to send link-bearing emails**
+  (fail-safe; this fixed the prod bug where reset/invite/temp-password emails linked to localhost). Migrations: `incentive_one_time` (enum rename) + `auth_reset_lockout` (User
   cols + `password_reset_tokens`). **Verified LOCAL** (backend 80 suites/456 tests + build green; contract
   regen; frontend build+lint+stylelint green). Operator: `migrate deploy` + set the Resend env + DNS;
   light/dark + live-email visual pass needs a browser + a configured Resend domain.
