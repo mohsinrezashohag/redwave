@@ -5,13 +5,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { unwrapList } from '../../../lib/query/unwrapList';
 import { billingKeys } from './keys';
 import type { BillingFilters, ClientInvoice, ClientStatement } from '../billing.types';
 
 export function useStatements(filters: BillingFilters = {}, enabled = true) {
   return useQuery({
     queryKey: billingKeys.statements(filters),
-    queryFn: () => unwrap<ClientStatement[]>(api.GET('/v1/statements', { params: { query: filters } })),
+    queryFn: () => unwrapList<ClientStatement>(api.GET('/v1/statements', { params: { query: filters } })),
     enabled,
   });
 }
@@ -27,7 +28,7 @@ export function useStatement(id: string | undefined, enabled = true) {
 export function useInvoices(filters: BillingFilters = {}, enabled = true) {
   return useQuery({
     queryKey: billingKeys.invoices(filters),
-    queryFn: () => unwrap<ClientInvoice[]>(api.GET('/v1/invoices', { params: { query: filters } })),
+    queryFn: () => unwrapList<ClientInvoice>(api.GET('/v1/invoices', { params: { query: filters } })),
     enabled,
   });
 }

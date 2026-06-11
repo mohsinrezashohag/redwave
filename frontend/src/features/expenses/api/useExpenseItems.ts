@@ -3,10 +3,11 @@
  * the use*Table pattern), a single item, a fetch-all for export, the field-config catalogue (dynamic
  * categories + receipt rule), and the exports list. TanStack Query over the typed client via `unwrap<T>()`.
  */
-import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { unwrapList } from '../../../lib/query/unwrapList';
+import { useServerTable } from '../../../lib/query/useServerTable';
 import { expenseItemsKeys, exportKeys, fieldConfigKeys } from './keys';
 import type {
   ExpenseExport,
@@ -21,41 +22,17 @@ import type {
 const LIMIT = 20;
 const EXPORT_LIMIT = 100;
 
-export function useExpenseItemsPage(params: ExpenseListParams, enabled = true) {
-  return useQuery({
-    queryKey: expenseItemsKeys.page(params),
-    queryFn: () => unwrap<ExpenseItemPage>(api.GET('/v1/expense-items', { params: { query: params } })),
+/** Server-driven list state (page + sort) for the expense-items DataTable — via the shared `useServerTable`. */
+export function useExpenseItemsTable(filters: ExpenseFilters, enabled = true) {
+  return useServerTable<ExpenseItem, ExpenseSortKey>({
+    queryKey: (p) => expenseItemsKeys.page({ ...filters, ...p } as ExpenseListParams),
+    fetchPage: (p) =>
+      unwrap<ExpenseItemPage>(api.GET('/v1/expense-items', { params: { query: { ...filters, ...p } } })),
+    defaultSort: { key: 'expense_date', dir: 'desc' },
+    filterKey: JSON.stringify(filters),
+    limit: LIMIT,
     enabled,
   });
-}
-
-/** Server-driven list state (page + sort) for the expense-items DataTable. Resets to page 1 on a change. */
-export function useExpenseItemsTable(filters: ExpenseFilters, enabled = true) {
-  const [page, setPage] = useState(1);
-  const [sort, setSort] = useState<{ key: ExpenseSortKey; dir: 'asc' | 'desc' }>({ key: 'expense_date', dir: 'desc' });
-  const filterKey = JSON.stringify(filters);
-  const sortKey = `${sort.key}:${sort.dir}`;
-  useEffect(() => setPage(1), [filterKey, sortKey]);
-
-  const query = useExpenseItemsPage({ ...filters, page, limit: LIMIT, sort: sortKey }, enabled);
-  const meta = query.data?.meta;
-  const toggleSort = (key: ExpenseSortKey) =>
-    setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
-
-  return {
-    rows: query.data?.data ?? [],
-    total: meta?.total ?? 0,
-    page,
-    pageCount: Math.max(1, meta?.pageCount ?? 1),
-    limit: LIMIT,
-    setPage,
-    sort,
-    toggleSort,
-    isLoading: query.isLoading,
-    isError: query.isError,
-    error: query.error,
-    refetch: query.refetch,
-  };
 }
 
 export function useExpenseItem(id: string | undefined) {
@@ -92,7 +69,7 @@ export async function fetchAllExpenseItems(filters: ExpenseFilters): Promise<Exp
 export function useFieldConfigs(enabled = true) {
   return useQuery({
     queryKey: fieldConfigKeys.list(),
-    queryFn: () => unwrap<FieldConfig[]>(api.GET('/v1/expense-field-configs')),
+    queryFn: () => unwrapList<FieldConfig>(api.GET('/v1/expense-field-configs')),
     enabled,
     staleTime: 5 * 60_000,
   });
@@ -101,7 +78,7 @@ export function useFieldConfigs(enabled = true) {
 export function useExpenseExports(enabled = true) {
   return useQuery({
     queryKey: exportKeys.list(),
-    queryFn: () => unwrap<ExpenseExport[]>(api.GET('/v1/expense-exports')),
+    queryFn: () => unwrapList<ExpenseExport>(api.GET('/v1/expense-exports')),
     enabled,
   });
 }

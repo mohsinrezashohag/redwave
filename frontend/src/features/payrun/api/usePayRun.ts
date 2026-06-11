@@ -5,6 +5,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { unwrapList } from '../../../lib/query/unwrapList';
 import { payrunKeys } from './keys';
 import type { HoldbackFilters, HoldbackLedgerEntry, PayPeriod, PayRun, PayRunSummary } from '../payrun.types';
 
@@ -12,7 +13,7 @@ import type { HoldbackFilters, HoldbackLedgerEntry, PayPeriod, PayRun, PayRunSum
 export function usePayPeriods(enabled = true) {
   return useQuery({
     queryKey: payrunKeys.periods(),
-    queryFn: () => unwrap<PayPeriod[]>(api.GET('/v1/pay-periods')),
+    queryFn: () => unwrapList<PayPeriod>(api.GET('/v1/pay-periods')),
     enabled,
     staleTime: 5 * 60_000, // the schedule changes rarely
   });
@@ -22,7 +23,7 @@ export function usePayPeriods(enabled = true) {
 export function usePayRuns(enabled = true) {
   return useQuery({
     queryKey: payrunKeys.runs(),
-    queryFn: () => unwrap<PayRunSummary[]>(api.GET('/v1/pay-runs')),
+    queryFn: () => unwrapList<PayRunSummary>(api.GET('/v1/pay-runs')),
     enabled,
   });
 }
@@ -40,7 +41,7 @@ export function usePayRun(id: string | undefined, enabled = true) {
 export function useHoldbackLedger(filters: HoldbackFilters = {}, enabled = true) {
   return useQuery({
     queryKey: payrunKeys.holdback(filters),
-    queryFn: () => unwrap<HoldbackLedgerEntry[]>(api.GET('/v1/holdback-ledger', { params: { query: filters } })),
+    queryFn: () => unwrapList<HoldbackLedgerEntry>(api.GET('/v1/holdback-ledger', { params: { query: filters } })),
     enabled,
   });
 }

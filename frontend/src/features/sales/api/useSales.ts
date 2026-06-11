@@ -1,13 +1,15 @@
 /**
- * Sales queries — the data-fetching pattern (TanStack Query over the openapi-fetch client + `unwrap`).
- * Results are SERVER-SCOPED (rep=own/manager=roster/admin=all) — the UI renders what the server returns.
- * Clients/products feed the entry dropdowns (default to active rows).
+ * Sales queries — the data-fetching pattern (TanStack Query over the openapi-fetch client). ARRAY reads
+ * (finders + entry dropdowns) go through `unwrapList`, which normalizes the {data,meta} pagination envelope
+ * to a row array, so a consumer's `.map` never crashes (the bug class behind the list-page crash). Results
+ * are SERVER-SCOPED (rep=own/manager=roster/admin=all). The paginated DataTable list lives in useSalesList.
  */
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
+import { unwrapList } from '../../../lib/query/unwrapList';
 import { unwrap } from '../../../lib/query/unwrap';
 import { clientsKeys, salesKeys } from './keys';
-import type { ClientPage, Product, Rep, Sale, SalePage, SalesFilters, SalesListParams } from '../sales.types';
+import type { ClientPage, Product, Rep, Sale, SalePage, SalesFilters } from '../sales.types';
 
 // The list endpoint is paginated (max 100/page); dropdowns/finders that want "all matching" cap here.
 const LOOKUP_LIMIT = 100;
@@ -19,18 +21,7 @@ const LOOKUP_LIMIT = 100;
 export function useSalesQuery(filters: SalesFilters) {
   return useQuery({
     queryKey: salesKeys.list(filters),
-    queryFn: async () => {
-      const page = await unwrap<SalePage>(api.GET('/v1/sales', { params: { query: { ...filters, limit: LOOKUP_LIMIT } } }));
-      return page.data;
-    },
-  });
-}
-
-/** Server-paginated sales page — for the DataTable list (page/limit/sort/search + filters). */
-export function useSalesPage(params: SalesListParams) {
-  return useQuery({
-    queryKey: salesKeys.page(params),
-    queryFn: () => unwrap<SalePage>(api.GET('/v1/sales', { params: { query: params } })),
+    queryFn: () => unwrapList<Sale>(api.GET('/v1/sales', { params: { query: { ...filters, limit: LOOKUP_LIMIT } } })),
   });
 }
 
@@ -60,11 +51,9 @@ export function useSaleQuery(id: string | undefined) {
 export function useClients(enabled = true) {
   return useQuery({
     queryKey: clientsKeys.list(),
-    // /v1/clients is paginated now — unwrap the page for the dropdown (active only, capped).
-    queryFn: async () => {
-      const page = await unwrap<ClientPage>(api.GET('/v1/clients', { params: { query: { limit: LOOKUP_LIMIT } } }));
-      return page.data;
-    },
+    // /v1/clients is paginated — unwrapList returns the row array for the dropdown (active only, capped).
+    queryFn: () =>
+      unwrapList<ClientPage['data'][number]>(api.GET('/v1/clients', { params: { query: { limit: LOOKUP_LIMIT } } })),
     enabled,
     staleTime: 5 * 60_000, // clients change rarely
   });
@@ -74,7 +63,7 @@ export function useClientProducts(clientId: string | undefined, enabled = true) 
   return useQuery({
     queryKey: clientsKeys.products(clientId ?? ''),
     queryFn: () =>
-      unwrap<Product[]>(api.GET('/v1/clients/{id}/products', { params: { path: { id: clientId! } } })),
+      unwrapList<Product>(api.GET('/v1/clients/{id}/products', { params: { path: { id: clientId! } } })),
     enabled: enabled && !!clientId,
     staleTime: 5 * 60_000,
   });
@@ -84,7 +73,8 @@ export function useClientProducts(clientId: string | undefined, enabled = true) 
 export function useReps(enabled = true) {
   return useQuery({
     queryKey: ['reps', 'list'],
-    queryFn: () => unwrap<Rep[]>(api.GET('/v1/reps')),
+    // /v1/reps is the paginated {data,meta} envelope — unwrapList returns the rep array (was the crash site).
+    queryFn: () => unwrapList<Rep>(api.GET('/v1/reps')),
     enabled,
     staleTime: 5 * 60_000,
   });

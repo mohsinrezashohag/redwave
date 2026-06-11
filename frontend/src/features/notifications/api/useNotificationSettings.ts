@@ -6,14 +6,14 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
-import { unwrap } from '../../../lib/query/unwrap';
+import { unwrapList } from '../../../lib/query/unwrapList';
 import { notificationSettingsKeys } from './keys';
 import type { NotificationSetting } from '../notifications.types';
 
 export function useNotificationSettings(enabled = true) {
   return useQuery({
     queryKey: notificationSettingsKeys.list(),
-    queryFn: () => unwrap<NotificationSetting[]>(api.GET('/v1/notification-settings')),
+    queryFn: () => unwrapList<NotificationSetting>(api.GET('/v1/notification-settings')),
     enabled,
     staleTime: 5 * 60_000, // changes rarely
   });

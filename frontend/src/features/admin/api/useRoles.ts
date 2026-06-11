@@ -6,13 +6,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { unwrapList } from '../../../lib/query/unwrapList';
 import { rolesKeys } from './keys';
 import type { CreateRoleBody, RoleDetail, RoleSummary, SetRolePermissionsBody, UpdateRoleBody } from '../roles.types';
 
 export function useRoles(enabled = true) {
   return useQuery({
     queryKey: rolesKeys.list(),
-    queryFn: () => unwrap<RoleSummary[]>(api.GET('/v1/roles')),
+    queryFn: () => unwrapList<RoleSummary>(api.GET('/v1/roles')),
     enabled,
   });
 }

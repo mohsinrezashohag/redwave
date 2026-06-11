@@ -6,6 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { unwrapList } from '../../../lib/query/unwrapList';
 import type { CreateProductTypeBody, ProductType, UpdateProductTypeBody } from '../productTypes.types';
 
 export const productTypeKeys = {
@@ -17,7 +18,7 @@ export const productTypeKeys = {
 export function useProductTypes(status: 'active' | 'all' = 'all', enabled = true) {
   return useQuery({
     queryKey: productTypeKeys.list(status),
-    queryFn: () => unwrap<ProductType[]>(api.GET('/v1/product-types', { params: { query: { status } } })),
+    queryFn: () => unwrapList<ProductType>(api.GET('/v1/product-types', { params: { query: { status } } })),
     enabled,
     staleTime: 5 * 60_000,
   });

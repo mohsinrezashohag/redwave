@@ -5,6 +5,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { unwrapList } from '../../../lib/query/unwrapList';
 import { importKeys } from './keys';
 import type { ImportBatch, ImportFieldMapping, ImportFilters, ImportSourceType } from '../import.types';
 
@@ -12,7 +13,7 @@ import type { ImportBatch, ImportFieldMapping, ImportFilters, ImportSourceType }
 export function useImportMappings(source_type?: ImportSourceType, enabled = true) {
   return useQuery({
     queryKey: importKeys.mappings(),
-    queryFn: () => unwrap<ImportFieldMapping[]>(api.GET('/v1/import-mappings', { params: { query: source_type ? { source_type } : {} } })),
+    queryFn: () => unwrapList<ImportFieldMapping>(api.GET('/v1/import-mappings', { params: { query: source_type ? { source_type } : {} } })),
     enabled,
   });
 }
@@ -20,7 +21,7 @@ export function useImportMappings(source_type?: ImportSourceType, enabled = true
 export function useImports(filters: ImportFilters = {}, enabled = true) {
   return useQuery({
     queryKey: importKeys.list(filters),
-    queryFn: () => unwrap<ImportBatch[]>(api.GET('/v1/imports', { params: { query: filters } })),
+    queryFn: () => unwrapList<ImportBatch>(api.GET('/v1/imports', { params: { query: filters } })),
     enabled,
   });
 }

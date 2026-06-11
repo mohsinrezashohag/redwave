@@ -7,13 +7,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { unwrapList } from '../../../lib/query/unwrapList';
 import { adminKeys } from './keys';
 import type { ReviewRequest } from '../admin.types';
 
 export function useReviewQueue(enabled = true) {
   return useQuery({
     queryKey: adminKeys.reviewQueue(),
-    queryFn: () => unwrap<ReviewRequest[]>(api.GET('/v1/profile-change-requests')),
+    queryFn: () => unwrapList<ReviewRequest>(api.GET('/v1/profile-change-requests')),
     enabled,
   });
 }

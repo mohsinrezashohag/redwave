@@ -9,6 +9,7 @@ import { AppShell } from '../components/layout/AppShell';
 import { RequireAuth } from '../auth/RequireAuth';
 import { RequirePasswordChange } from '../auth/RequirePasswordChange';
 import { RequireMfaEnrollment } from '../auth/RequireMfaEnrollment';
+import { RouteErrorBoundary } from './RouteErrorBoundary';
 import { LoadingSpinner } from '../components/ui';
 
 const LoginPage = lazy(() => import('../pages/login/LoginPage'));
@@ -81,6 +82,8 @@ export const router = createBrowserRouter([
   { path: '/set-password', element: lazyEl(<ResetPasswordPage flavor="invite" />) },
   {
     element: <RequireAuth />,
+    // Backstop: an error thrown above the shell (in a guard) still renders the friendly panel, not a white screen.
+    errorElement: <RouteErrorBoundary />,
     children: [
       // Authed but OUTSIDE the must-change / MFA-enrolment guards, so a flagged user can actually reach them.
       { path: '/change-password', element: lazyEl(<ChangePasswordRequiredPage />) },
@@ -95,6 +98,11 @@ export const router = createBrowserRouter([
         path: '/',
         element: <AppShell />,
         children: [
+          {
+            // A render error in any feature page bubbles here → the friendly panel renders INSIDE the shell
+            // (sidebar/topbar preserved), never a white screen. — CLAUDE §13
+            errorElement: <RouteErrorBoundary />,
+            children: [
           { index: true, element: lazyEl(<DashboardLanding />) },
           { path: 'dashboards/rep', element: lazyEl(<RepDashboardPage />) },
           { path: 'dashboards/manager', element: lazyEl(<ManagerDashboardPage />) },
@@ -147,6 +155,8 @@ export const router = createBrowserRouter([
           { path: 'reps', element: <Navigate to="/admin/reps" replace /> },
           // Friendly catch-all so no unknown path is ever a blank screen.
           { path: '*', element: lazyEl(<NotFoundPage />) },
+            ],
+          },
         ],
       },
         ],

@@ -5,13 +5,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { unwrapList } from '../../../lib/query/unwrapList';
 import { clawbackKeys } from './keys';
 import type { Clawback, ClawbackFilters } from '../clawback.types';
 
 export function useClawbacks(filters: ClawbackFilters = {}, enabled = true) {
   return useQuery({
     queryKey: clawbackKeys.list(filters),
-    queryFn: () => unwrap<Clawback[]>(api.GET('/v1/clawbacks', { params: { query: filters } })),
+    queryFn: () => unwrapList<Clawback>(api.GET('/v1/clawbacks', { params: { query: filters } })),
     enabled,
   });
 }

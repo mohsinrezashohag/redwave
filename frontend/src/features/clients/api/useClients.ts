@@ -1,12 +1,14 @@
 /**
  * Clients query hooks — clients (list/detail), per-client products, and per-client billing rates (each row
- * carries a server-derived `status`). TanStack Query over the typed client via `unwrap<T>()` (the playbook).
- * Responses are `never`-typed → cast to the hand-written types. ONLY /v1/clients* — no commission path (#3).
+ * carries a server-derived `status`). TanStack Query over the typed client; ARRAY reads go through
+ * `unwrapList` (normalizes the {data,meta} envelope), the management table through the shared `useServerTable`.
+ * ONLY /v1/clients* — no commission path (#3).
  */
-import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { unwrapList } from '../../../lib/query/unwrapList';
+import { useServerTable } from '../../../lib/query/useServerTable';
 import { billingRateKeys, clientsKeys, productKeys } from './keys';
 import type {
   BillingRate,
@@ -25,52 +27,22 @@ const LOOKUP_LIMIT = 100;
 export function useClients(status: StatusFilter = 'active', enabled = true) {
   return useQuery({
     queryKey: clientsKeys.list(status),
-    queryFn: async () => {
-      const page = await unwrap<ClientPage>(api.GET('/v1/clients', { params: { query: { status, limit: LOOKUP_LIMIT } } }));
-      return page.data;
-    },
-    enabled,
-  });
-}
-
-/** Server-paginated clients page — for the management DataTable. */
-export function useClientsPage(params: ClientsListParams, enabled = true) {
-  return useQuery({
-    queryKey: clientsKeys.page(params),
-    queryFn: () => unwrap<ClientPage>(api.GET('/v1/clients', { params: { query: params } })),
+    queryFn: () => unwrapList<Client>(api.GET('/v1/clients', { params: { query: { status, limit: LOOKUP_LIMIT } } })),
     enabled,
   });
 }
 
 export type ClientSortKey = 'client_code' | 'name' | 'market' | 'is_active' | 'created_at';
 
-/** Server-driven list state (page + sort) for the Clients management table — mirrors useSalesList. */
+/** Server-driven list state (page + sort) for the Clients management table — via the shared `useServerTable`. */
 export function useClientsTable(filters: ClientsFilters) {
-  const [page, setPage] = useState(1);
-  const [sort, setSort] = useState<{ key: ClientSortKey; dir: 'asc' | 'desc' }>({ key: 'created_at', dir: 'asc' });
-  const filterKey = JSON.stringify(filters);
-  const sortKey = `${sort.key}:${sort.dir}`;
-  useEffect(() => setPage(1), [filterKey, sortKey]);
-
-  const query = useClientsPage({ ...filters, page, limit: 20, sort: sortKey });
-  const meta = query.data?.meta;
-  const toggleSort = (key: ClientSortKey) =>
-    setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
-
-  return {
-    rows: query.data?.data ?? [],
-    total: meta?.total ?? 0,
-    page,
-    pageCount: Math.max(1, meta?.pageCount ?? 1),
+  return useServerTable<Client, ClientSortKey>({
+    queryKey: (p) => clientsKeys.page({ ...filters, ...p } as ClientsListParams),
+    fetchPage: (p) => unwrap<ClientPage>(api.GET('/v1/clients', { params: { query: { ...filters, ...p } } })),
+    defaultSort: { key: 'created_at', dir: 'asc' },
+    filterKey: JSON.stringify(filters),
     limit: 20,
-    setPage,
-    sort,
-    toggleSort,
-    isLoading: query.isLoading,
-    isError: query.isError,
-    error: query.error,
-    refetch: query.refetch,
-  };
+  });
 }
 
 /** Fetch ALL clients matching the filters (paged) for an export that respects the active filters. */
@@ -96,7 +68,7 @@ export function useClientProducts(clientId: string | undefined, enabled = true) 
   return useQuery({
     queryKey: productKeys.list(clientId ?? ''),
     queryFn: () =>
-      unwrap<Product[]>(api.GET('/v1/clients/{id}/products', { params: { path: { id: clientId! }, query: { status: 'all' } } })),
+      unwrapList<Product>(api.GET('/v1/clients/{id}/products', { params: { path: { id: clientId! }, query: { status: 'all' } } })),
     enabled: enabled && !!clientId,
   });
 }
@@ -105,7 +77,7 @@ export function useClientBillingRates(clientId: string | undefined, filters: Bil
   return useQuery({
     queryKey: billingRateKeys.list(clientId ?? '', filters),
     queryFn: () =>
-      unwrap<BillingRate[]>(api.GET('/v1/clients/{id}/billing-rates', { params: { path: { id: clientId! }, query: filters } })),
+      unwrapList<BillingRate>(api.GET('/v1/clients/{id}/billing-rates', { params: { path: { id: clientId! }, query: filters } })),
     enabled: enabled && !!clientId,
   });
 }

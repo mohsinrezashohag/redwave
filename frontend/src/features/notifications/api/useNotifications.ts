@@ -4,10 +4,10 @@
  * invalidate `notificationKeys.all` so the bell + center + count refresh. (Sales playbook: TanStack Query
  * + unwrap + invalidate.)
  */
-import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { useServerTable } from '../../../lib/query/useServerTable';
 import { notificationKeys } from './keys';
 import type {
   AppNotification,
@@ -28,26 +28,17 @@ export function useNotificationsQuery(params: NotificationListParams, enabled = 
   });
 }
 
-/** Server-driven list state (page + filters) for the Notification Center — mirrors useSalesList. */
+/** Server-driven list state (page + filters) for the Notification Center — via the shared `useServerTable`
+ *  with a fixed newest-first sort. */
 export function useNotificationsList(filters: NotificationsFilters) {
-  const [page, setPage] = useState(1);
-  const filterKey = JSON.stringify(filters);
-  useEffect(() => setPage(1), [filterKey]);
-
-  const query = useNotificationsQuery({ ...filters, page, limit: PAGE_SIZE, sort: 'created_at:desc' });
-  const meta = query.data?.meta;
-  return {
-    rows: query.data?.data ?? [],
-    total: meta?.total ?? 0,
-    page,
-    pageCount: Math.max(1, meta?.pageCount ?? 1),
+  return useServerTable<AppNotification, 'created_at'>({
+    queryKey: (p) => notificationKeys.page({ ...filters, ...p } as NotificationListParams),
+    fetchPage: (p) =>
+      unwrap<NotificationPage>(api.GET('/v1/notifications', { params: { query: { ...filters, ...p } } })),
+    defaultSort: { key: 'created_at', dir: 'desc' },
+    filterKey: JSON.stringify(filters),
     limit: PAGE_SIZE,
-    setPage,
-    isLoading: query.isLoading,
-    isError: query.isError,
-    error: query.error,
-    refetch: query.refetch,
-  };
+  });
 }
 
 /** The polled unread count for the bell badge — refetches on an interval AND on window focus. */

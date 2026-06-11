@@ -6,13 +6,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { unwrapList } from '../../../lib/query/unwrapList';
 import { documentKeys } from './keys';
 import type { Document, DocumentFilters } from '../documents.types';
 
 export function useDocuments(filters: DocumentFilters = {}, enabled = true) {
   return useQuery({
     queryKey: documentKeys.list(filters),
-    queryFn: () => unwrap<Document[]>(api.GET('/v1/documents', { params: { query: filters } })),
+    queryFn: () => unwrapList<Document>(api.GET('/v1/documents', { params: { query: filters } })),
     enabled,
   });
 }

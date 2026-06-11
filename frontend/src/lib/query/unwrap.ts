@@ -7,7 +7,7 @@
  */
 import { ApiError } from '../api/apiError';
 
-interface FetchResult {
+export interface FetchResult {
   data?: unknown;
   error?: unknown;
   response: Response;

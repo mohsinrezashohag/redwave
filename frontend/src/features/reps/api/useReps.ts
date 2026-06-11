@@ -3,10 +3,10 @@
  * owns page + sort state and sends them as query params; the table consumes { data, meta }. Read-only list
  * (this batch builds the roster view; rep CRUD is its own future screen). `hrm:view` server-enforced.
  */
-import { useEffect, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { useServerTable } from '../../../lib/query/useServerTable';
 import type { Rep, RepPage, RepSortKey, RepsFilters, RepsListParams } from '../reps.types';
 
 const LIMIT = 20;
@@ -27,41 +27,16 @@ export function useBulkAssignManager() {
   });
 }
 
-export function useRepsPage(params: RepsListParams, enabled = true) {
-  return useQuery({
-    queryKey: repsListKeys.page(params),
-    queryFn: () => unwrap<RepPage>(api.GET('/v1/reps', { params: { query: params } })),
+/** Server-driven list state (page + sort) for the Reps table — via the shared `useServerTable`. */
+export function useRepsTable(filters: RepsFilters, enabled = true) {
+  return useServerTable<Rep, RepSortKey>({
+    queryKey: (p) => repsListKeys.page({ ...filters, ...p } as RepsListParams),
+    fetchPage: (p) => unwrap<RepPage>(api.GET('/v1/reps', { params: { query: { ...filters, ...p } } })),
+    defaultSort: { key: 'rep_code', dir: 'asc' },
+    filterKey: JSON.stringify(filters),
+    limit: LIMIT,
     enabled,
   });
-}
-
-/** Server-driven list state (page + sort) for the Reps table. */
-export function useRepsTable(filters: RepsFilters, enabled = true) {
-  const [page, setPage] = useState(1);
-  const [sort, setSort] = useState<{ key: RepSortKey; dir: 'asc' | 'desc' }>({ key: 'rep_code', dir: 'asc' });
-  const filterKey = JSON.stringify(filters);
-  const sortKey = `${sort.key}:${sort.dir}`;
-  useEffect(() => setPage(1), [filterKey, sortKey]);
-
-  const query = useRepsPage({ ...filters, page, limit: LIMIT, sort: sortKey }, enabled);
-  const meta = query.data?.meta;
-  const toggleSort = (key: RepSortKey) =>
-    setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
-
-  return {
-    rows: query.data?.data ?? [],
-    total: meta?.total ?? 0,
-    page,
-    pageCount: Math.max(1, meta?.pageCount ?? 1),
-    limit: LIMIT,
-    setPage,
-    sort,
-    toggleSort,
-    isLoading: query.isLoading,
-    isError: query.isError,
-    error: query.error,
-    refetch: query.refetch,
-  };
 }
 
 /** Fetch ALL reps matching the filters (paged) for an export that respects the active filters. */

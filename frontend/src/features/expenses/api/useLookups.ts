@@ -1,11 +1,12 @@
 /**
- * Lookups — clients + reps for the filter bar and the on-behalf selector. Same pattern as the Sales
- * hooks; kept self-contained in this feature (minimal types) rather than importing another feature's
- * internals. Gated by the caller on the relevant read permission. Cached longer (rarely change).
+ * Lookups — clients + reps + pay periods for the filter bar and the on-behalf selector. Same pattern as the
+ * Sales hooks; kept self-contained in this feature (minimal types) rather than importing another feature's
+ * internals. ARRAY reads go through `unwrapList` (normalizes the {data,meta} pagination envelope), so a
+ * dropdown's `.map` never crashes. Gated by the caller on the relevant read permission.
  */
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
-import { unwrap } from '../../../lib/query/unwrap';
+import { unwrapList } from '../../../lib/query/unwrapList';
 
 export interface ClientLite {
   id: string;
@@ -23,11 +24,8 @@ export interface RepLite {
 export function useClients(enabled = true) {
   return useQuery({
     queryKey: ['clients', 'list'],
-    // /v1/clients is paginated now — unwrap the {data,meta} envelope for the dropdown (capped).
-    queryFn: async () => {
-      const page = await unwrap<{ data: ClientLite[] }>(api.GET('/v1/clients', { params: { query: { limit: 100 } } }));
-      return page.data;
-    },
+    // /v1/clients is paginated — unwrapList returns the row array for the dropdown (capped).
+    queryFn: () => unwrapList<ClientLite>(api.GET('/v1/clients', { params: { query: { limit: 100 } } })),
     enabled,
     staleTime: 5 * 60_000,
   });
@@ -36,7 +34,8 @@ export function useClients(enabled = true) {
 export function useReps(enabled = true) {
   return useQuery({
     queryKey: ['reps', 'list'],
-    queryFn: () => unwrap<RepLite[]>(api.GET('/v1/reps')),
+    // /v1/reps is the paginated {data,meta} envelope — unwrapList returns the rep array (was a crash site).
+    queryFn: () => unwrapList<RepLite>(api.GET('/v1/reps')),
     enabled,
     staleTime: 5 * 60_000,
   });
@@ -53,7 +52,7 @@ export interface PayPeriodLite {
 export function usePayPeriods(enabled = true) {
   return useQuery({
     queryKey: ['pay-periods', 'list'],
-    queryFn: () => unwrap<PayPeriodLite[]>(api.GET('/v1/pay-periods')),
+    queryFn: () => unwrapList<PayPeriodLite>(api.GET('/v1/pay-periods')),
     enabled,
     staleTime: 5 * 60_000,
   });

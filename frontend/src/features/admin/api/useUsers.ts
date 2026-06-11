@@ -6,13 +6,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
+import { unwrapList } from '../../../lib/query/unwrapList';
 import { usersKeys } from './keys';
 import type { AdminUser, CreateUserBody, SetUserRolesBody, UpdateUserBody } from '../users.types';
 
 export function useUsers(enabled = true) {
   return useQuery({
     queryKey: usersKeys.list(),
-    queryFn: () => unwrap<AdminUser[]>(api.GET('/v1/users')),
+    queryFn: () => unwrapList<AdminUser>(api.GET('/v1/users')),
     enabled,
   });
 }
