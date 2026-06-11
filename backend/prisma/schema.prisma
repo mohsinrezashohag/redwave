@@ -308,6 +308,7 @@ model User {
   expense_items_approved        ExpenseItem[]              @relation("ExpenseItemApprovedBy")
   expense_field_configs_created ExpenseFieldConfig[]       @relation("ExpenseFieldConfigCreatedBy")
   expense_exports_generated     ExpenseExport[]            @relation("ExpenseExportGeneratedBy")
+  report_exports_generated      ReportExport[]             @relation("ReportExportGeneratedBy")
   statements_generated          ClientStatement[]          @relation("StatementGeneratedBy")
   invoices_generated            ClientInvoice[]            @relation("InvoiceGeneratedBy")
   billing_exports_generated     BillingExport[]            @relation("BillingExportGeneratedBy")
@@ -1030,6 +1031,27 @@ model ExpenseExport {
   generated_at  DateTime     @default(now())
 
   @@map("expense_exports")
+}
+
+// On-demand REPORT exports (/reports/exports) — the audit record of each client-generated report file
+// (who, what, when — mirrors expense_exports). `report_type`/`format` are validated Strings, not enums,
+// so adding a report type/format needs no enum migration (the §12 expense-category lesson). The file is
+// generated CLIENT-side (lib/export); `filename` records what was downloaded — no stub URL. — SRS RPT-015
+model ReportExport {
+  id            String   @id @default(uuid()) @db.Uuid
+  generated_by  String   @db.Uuid
+  generator     User     @relation("ReportExportGeneratedBy", fields: [generated_by], references: [id])
+  /// business_summary | leaderboard | payrun_summary | expense_summary (DTO allowlist).
+  report_type   String
+  /// csv | excel | pdf (DTO allowlist).
+  format        String
+  /// The scope the caller exported: pay_period_id / from / to + the recorded rep_scope (null = all).
+  scope_filters Json
+  filename      String
+  generated_at  DateTime @default(now())
+
+  @@index([generated_by])
+  @@map("report_exports")
 }
 
 // ════════════════════════════════════════════════════════════════════════════════

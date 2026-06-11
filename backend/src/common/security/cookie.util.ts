@@ -34,11 +34,49 @@ export function newCsrfToken(): string {
   return randomBytes(24).toString('base64url');
 }
 
+/**
+ * EVERY value of a (possibly duplicated) cookie in a raw `Cookie` header. A browser legitimately holds
+ * multiple same-name cookies with different scopes (e.g. a stale HOST-ONLY `rw_csrf` set by a deploy that
+ * ran before COOKIE_DOMAIN/NODE_ENV were configured, alongside the current domain-scoped one) and sends
+ * them ALL; cookie-parser keeps only the FIRST, which made the CSRF guard compare a stale shadow value.
+ * — arch §security (CSRF, duplicate-cookie safety)
+ */
+export function allCookieValues(rawCookieHeader: string | undefined, name: string): string[] {
+  if (!rawCookieHeader) return [];
+  const values: string[] = [];
+  for (const pair of rawCookieHeader.split(';')) {
+    const eq = pair.indexOf('=');
+    if (eq < 0) continue;
+    if (pair.slice(0, eq).trim() !== name) continue;
+    const raw = pair.slice(eq + 1).trim();
+    try {
+      values.push(decodeURIComponent(raw));
+    } catch {
+      values.push(raw); // not percent-encoded — use as-is
+    }
+  }
+  return values;
+}
+
+/**
+ * Expire the HOST-ONLY variant of a cookie before issuing the domain-scoped one (prod + COOKIE_DOMAIN
+ * only). Heals browsers carrying a stale shadow cookie from a pre-COOKIE_DOMAIN deploy: the host-only
+ * cookie sorts FIRST in the Cookie header (older creation) and shadows the fresh domain cookie for
+ * cookie-parser. One extra Set-Cookie per issue; a no-op for browsers without the shadow.
+ */
+function clearHostOnlyVariant(res: Response, config: ConfigService, name: string, httpOnly: boolean): void {
+  const { domain, ...hostOnly } = baseOptions(config);
+  if (!domain) return; // dev / no COOKIE_DOMAIN → cookies are already host-only; nothing to heal
+  res.clearCookie(name, { ...hostOnly, httpOnly });
+}
+
 export function setRefreshCookie(res: Response, config: ConfigService, token: string, maxAgeMs: number): void {
+  clearHostOnlyVariant(res, config, REFRESH_COOKIE, true);
   res.cookie(REFRESH_COOKIE, token, { ...baseOptions(config), httpOnly: true, maxAge: maxAgeMs });
 }
 
 export function setCsrfCookie(res: Response, config: ConfigService, token: string, maxAgeMs: number): void {
+  clearHostOnlyVariant(res, config, CSRF_COOKIE, false);
   // readable by JS on purpose (double-submit): the SPA copies it into the X-CSRF-Token header.
   res.cookie(CSRF_COOKIE, token, { ...baseOptions(config), httpOnly: false, maxAge: maxAgeMs });
 }

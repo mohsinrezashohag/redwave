@@ -34,8 +34,8 @@ function pivot<T extends { period_number: number }>(
   return { data: [...byPeriod.values()], series: keys.sort().map((k) => ({ key: k, label: k })) };
 }
 
-export function BusinessTrends() {
-  const q = useBusinessTrends(6);
+export function BusinessTrends({ periods = 6 }: { periods?: number } = {}) {
+  const q = useBusinessTrends(periods);
   const t = q.data;
   const periodNums = (t?.periods ?? []).map((p) => p.period_number);
 

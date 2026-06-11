@@ -19,6 +19,13 @@
   methods for cookie-bearing sessions (safe methods, `@CsrfExempt` pre-auth routes, and Bearer/API requests
   with no `rw_csrf` cookie are skipped). SameSite=Lax + the in-memory access token already block CSRF on
   Bearer endpoints; this is defense-in-depth.
+  **Duplicate-cookie safe:** a browser can hold several `rw_csrf` cookies (e.g. a stale **host-only** one
+  from a deploy that ran before `COOKIE_DOMAIN`/`NODE_ENV` were configured, alongside the domain-scoped
+  one); the stale one sorts first and cookie-parser keeps only it, which 403'd every production mutation.
+  The guard therefore accepts a header matching **any** presented `rw_csrf` value (security-equivalent —
+  the caller still proves it can read a site cookie), and cookie ISSUE (`cookie.util.ts`) first **expires
+  the host-only variant** of both auth cookies when setting domain-scoped ones, so affected browsers heal
+  on their next login/refresh.
 - **Brute-force lockout** — `failed_login_attempts` / `locked_until` (default 5 attempts / 15 min,
   env-tunable). **Password policy** — ≥8 with upper+lower+digit.
 - **Active sessions / revoke** — `GET/DELETE /v1/auth/sessions` (self); `POST /v1/users/:id/revoke-sessions`

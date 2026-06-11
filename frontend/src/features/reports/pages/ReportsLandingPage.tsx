@@ -1,9 +1,10 @@
 /**
  * ReportsLandingPage — the Reports landing hub (unblocks the previously dead "Reports" nav tab). A
  * hub-of-cards (reusing AdminHubCard) that links to whichever dashboards the caller can see (Business /
- * Operations / Team / My / Leaderboard) plus "coming soon" cards for report exports + cross-period trends.
- * Each card is shown by an access predicate over the auth state (convenience; the server enforces each
- * target — a forbidden dashboard renders its own AccessDenied). No dead nav tab for a permitted role.
+ * Operations / Team / My / Leaderboard) plus on-demand report exports (/reports/exports, RPT-015) and
+ * cross-period trends (/reports/trends — the Batch-4 charts as a first-class report). Each card is shown
+ * by an access predicate over the auth state (convenience; the server enforces each target — a forbidden
+ * page renders its own AccessDenied). No dead nav tab for a permitted role.
  */
 import { BarChart3, LayoutDashboard, LineChart, Download, Trophy, UserCircle, Users2 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -69,15 +70,24 @@ const CARDS: ReportCard[] = [
   },
   {
     title: 'Report exports',
-    description: 'Scheduled and on-demand report exports.',
+    // On-demand only — scheduling is deferred (§12); the copy must not imply it.
+    description: 'Generate and download reports.',
     icon: <Download size={20} />,
-    show: () => true,
+    to: '/reports/exports',
+    // Shown when the caller may export ANY report type (the server enforces each type — RPT-015).
+    show: (a) =>
+      a.permissions.has('reports:business') ||
+      a.permissions.has('reports:view') ||
+      a.permissions.has('payrun:export') ||
+      a.permissions.has('expenses:export'),
   },
   {
     title: 'Cross-period trends',
     description: 'Revenue, payout, and activation trends over time.',
     icon: <LineChart size={20} />,
-    show: () => true,
+    to: '/reports/trends',
+    // Same permission as the Business dashboard (the trends endpoint is reports:business).
+    show: (a) => a.permissions.has('reports:business'),
   },
 ];
 

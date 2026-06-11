@@ -42,3 +42,51 @@ describe('CsrfGuard — double-submit on mutating cookie-session requests (arch 
     expect(guard.canActivate(context)).toBe(true);
   });
 });
+
+describe('CsrfGuard — DUPLICATE rw_csrf cookies (a stale host-only shadow + the fresh domain cookie)', () => {
+  // The production failure: a stale host-only rw_csrf (pre-COOKIE_DOMAIN deploy) sorts FIRST in the Cookie
+  // header; cookie-parser keeps only it, so the old guard compared stale-vs-fresh and 403'd every mutation.
+
+  it('passes when the header matches the SECOND (fresh domain) cookie — the production repro, fixed', () => {
+    const { guard, context } = ctx({
+      method: 'POST',
+      cookies: { rw_csrf: 'stale' }, // what cookie-parser yields (first-wins)
+      headers: { cookie: 'rw_csrf=stale; rw_csrf=fresh', 'x-csrf-token': 'fresh' },
+    });
+    expect(guard.canActivate(context)).toBe(true);
+  });
+
+  it('passes when the header matches the FIRST cookie', () => {
+    const { guard, context } = ctx({
+      method: 'POST',
+      cookies: { rw_csrf: 'stale' },
+      headers: { cookie: 'rw_csrf=stale; rw_csrf=fresh', 'x-csrf-token': 'stale' },
+    });
+    expect(guard.canActivate(context)).toBe(true);
+  });
+
+  it('REJECTS when the header matches NEITHER presented value', () => {
+    const { guard, context } = ctx({
+      method: 'POST',
+      cookies: { rw_csrf: 'stale' },
+      headers: { cookie: 'rw_csrf=stale; rw_csrf=fresh', 'x-csrf-token': 'forged' },
+    });
+    expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+  });
+
+  it('passes on a raw-header-only request (no parsed req.cookies) when the header matches', () => {
+    const { guard, context } = ctx({
+      method: 'POST',
+      headers: { cookie: 'other=1; rw_csrf=abc', 'x-csrf-token': 'abc' },
+    });
+    expect(guard.canActivate(context)).toBe(true);
+  });
+
+  it('still REJECTS a single-cookie request whose header is missing (raw header present)', () => {
+    const { guard, context } = ctx({
+      method: 'POST',
+      headers: { cookie: 'rw_csrf=abc' },
+    });
+    expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+  });
+});
