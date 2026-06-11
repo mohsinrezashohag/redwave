@@ -33,7 +33,10 @@
   notification `EMAIL_DISPATCHER` is rebound to Resend too. With no key it logs the intent (the build/flows
   still work); sends are best-effort (never break a user-create / forgot flow).
 - **Credentials (env):** `RESEND_API_KEY`, `EMAIL_FROM` (a verified Resend sender on the domain below),
-  `APP_URL` (the frontend base used to build the links). Optional: `LOCKOUT_MAX_ATTEMPTS`/`LOCKOUT_MINUTES`,
+  `APP_BASE_URL` (the frontend base every email link is built from — **REQUIRED in production**, e.g.
+  `https://app.redwavemarketing.ca`; dev defaults to `http://localhost:5173`; unset in production → the
+  backend logs a loud startup error and refuses to send link-bearing emails rather than emailing localhost
+  links; legacy `APP_URL` honored, deprecated). Optional: `LOCKOUT_MAX_ATTEMPTS`/`LOCKOUT_MINUTES`,
   `PASSWORD_RESET_TTL_MINUTES`/`INVITE_TOKEN_TTL_MINUTES`.
 - **DNS to add in Namecheap (Advanced DNS) for `app.redwavemarketing.ca`** — add the domain in the Resend
   dashboard, then copy the EXACT values it generates (the DKIM public key is unique per domain — I cannot
