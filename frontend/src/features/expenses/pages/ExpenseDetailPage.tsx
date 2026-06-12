@@ -4,12 +4,16 @@
  * Review (Approve/Reject/Send-back) shows for an approver while the item is submitted/sent_back. The server
  * is the real gate.
  */
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Breadcrumbs, Button, Card, PageHeader } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useAuth } from '../../../auth/useAuth';
 import { useCan } from '../../../auth/useCan';
-import { isForbidden } from '../../../lib/api/apiError';
+import { api } from '../../../api/client';
+import { unwrap } from '../../../lib/query/unwrap';
+import { isForbidden, useApiErrorToast } from '../../../lib/api/apiError';
+import type { ReceiptUrl } from '../expenses.types';
 import { displayDate } from '../../../lib/format/date';
 import { money } from '../../../lib/format/money';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
@@ -39,6 +43,24 @@ export default function ExpenseDetailPage() {
   const configs = useFieldConfigs();
   const reps = useReps(canViewReps);
   const clients = useClients(canViewClients);
+  const [openingReceipt, setOpeningReceipt] = useState(false);
+  const onReceiptError = useApiErrorToast('Couldn’t open the receipt. Please try again.');
+
+  // A fresh 60s signed URL is minted per view (the path itself is never a viewable URL). — security.md
+  const openReceipt = async () => {
+    if (!id || openingReceipt) return;
+    setOpeningReceipt(true);
+    try {
+      const { url } = await unwrap<ReceiptUrl>(
+        api.GET('/v1/expense-items/{id}/receipt-url', { params: { path: { id } } }),
+      );
+      window.open(url, '_blank', 'noopener');
+    } catch (err) {
+      onReceiptError(err);
+    } finally {
+      setOpeningReceipt(false);
+    }
+  };
 
   if (isForbidden(q.error)) return <AccessDenied message="You don’t have access to this expense item." />;
 
@@ -91,7 +113,15 @@ export default function ExpenseDetailPage() {
                   {!km && (
                     <>
                       <dt>Receipt</dt>
-                      <dd>{item.receipt_url ? <span className="mono">{item.receipt_url}</span> : '—'}</dd>
+                      <dd>
+                        {item.receipt_url ? (
+                          <Button variant="secondary" size="sm" loading={openingReceipt} onClick={() => void openReceipt()}>
+                            View receipt
+                          </Button>
+                        ) : (
+                          '—'
+                        )}
+                      </dd>
                     </>
                   )}
                   <dt>Submitted</dt>

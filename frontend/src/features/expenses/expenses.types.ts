@@ -58,4 +58,5 @@ export type BulkReviewResult = components['schemas']['BulkReviewResultResponse']
 export type CreateExportBody = components['schemas']['CreateExportDto'];
 export type ExpenseItemInput = components['schemas']['ExpenseItemInput'];
 export type KmLogInput = components['schemas']['KmLogInput'];
-export type ReceiptUpload = components['schemas']['ReceiptUploadResponse'];
+/** The 60s access-controlled receipt URL (GET /v1/expense-items/{id}/receipt-url). */
+export type ReceiptUrl = components['schemas']['ReceiptUrlResponse'];

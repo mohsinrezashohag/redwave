@@ -73,6 +73,7 @@ export type { Density, SortDirection } from './Table';
 export { Skeleton } from './Skeleton';
 export { Placeholder } from './Placeholder';
 export { FileUpload } from './FileUpload';
+export type { FileUploadProps, FileUploadState } from './FileUpload';
 export { Breadcrumbs } from './Breadcrumbs';
 export type { Crumb } from './Breadcrumbs';
 export { PageHeader } from './PageHeader';

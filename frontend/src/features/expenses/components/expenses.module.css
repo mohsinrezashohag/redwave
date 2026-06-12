@@ -23,6 +23,14 @@
   overflow-wrap: anywhere;
 }
 
+.receiptThumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
 /* ── Filter bar (Sales shape) ───────────────────────────────────────────── */
 .bar {
   display: flex;

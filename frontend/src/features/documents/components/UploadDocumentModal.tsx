@@ -1,11 +1,22 @@
 /**
- * UploadDocumentModal — create a document (documents:create) by uploading a REAL PDF. Multipart: a PDF
- * file + title + doc_type → the server stores the original to object storage and never mutates it (DOC-001).
- * PDF-only (the server 422s anything else; Word should be saved as PDF first). On success → the detail page.
+ * UploadDocumentModal — create a document (documents:create) from a REAL PDF through the unified upload
+ * pipeline: the file goes to POST /v1/files (purpose=document, with a per-file progress bar), then the
+ * JSON create CLAIMS the stored path (server-validated: own upload + PDF — DOC-001). The display name
+ * defaults to the title. The 10 MB pipeline cap applies. On success → the detail page.
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Banner, Button, FileUpload, FormField, Input, Modal, Select, useToast } from '../../../components/ui';
+import {
+  Banner,
+  Button,
+  FileUpload,
+  FormField,
+  Input,
+  Modal,
+  Select,
+  useToast,
+  type FileUploadState,
+} from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useUploadDocument } from '../api/useDocumentMutations';
 import { DOC_TYPE_LABELS } from '../documents.types';
@@ -20,20 +31,33 @@ export function UploadDocumentModal({ open, onClose }: { open: boolean; onClose:
   const onError = useApiErrorToast();
   const upload = useUploadDocument();
   const [title, setTitle] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [docType, setDocType] = useState<DocType>('compensation_agreement');
   const [file, setFile] = useState<File | null>(null);
+  const [progress, setProgress] = useState(0);
 
   const isPdf = !!file && file.type === 'application/pdf';
   const canSubmit = !!title.trim() && isPdf && !upload.isPending;
 
+  const uploadState: Record<string, FileUploadState> | undefined =
+    file && upload.isPending ? { [file.name]: { status: 'uploading', progress } } : undefined;
+
   const onSubmit = () => {
     if (!file || !title.trim()) return;
+    setProgress(0);
     upload.mutate(
-      { file, title: title.trim(), doc_type: docType },
+      {
+        file,
+        title: title.trim(),
+        doc_type: docType,
+        display_name: displayName.trim() || undefined, // server records the title when omitted (mutation default)
+        onProgress: setProgress,
+      },
       {
         onSuccess: (doc) => {
           toast({ title: 'Document uploaded', tone: 'success' });
           setTitle('');
+          setDisplayName('');
           setFile(null);
           onClose();
           navigate(`/documents/${doc.id}`);
@@ -63,11 +87,25 @@ export function UploadDocumentModal({ open, onClose }: { open: boolean; onClose:
         <FormField label="Title" required>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Compensation Agreement 2026" maxLength={200} />
         </FormField>
+        <FormField label="Display name" help="Shown in file listings; defaults to the title.">
+          <Input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder={title.trim() || 'Defaults to the title'}
+            maxLength={200}
+          />
+        </FormField>
         <FormField label="Type">
           <Select options={TYPE_OPTIONS} value={docType} onValueChange={(v) => setDocType(v as DocType)} />
         </FormField>
         <FormField label="PDF file" required help="PDF only. Save Word documents as PDF before uploading.">
-          <FileUpload accept="application/pdf" multiple={false} hint="PDF up to 25 MB" onFiles={(files) => setFile(files[0] ?? null)} />
+          <FileUpload
+            accept="application/pdf"
+            multiple={false}
+            hint="PDF up to 10 MB"
+            uploads={uploadState}
+            onFiles={(files) => setFile(files[0] ?? null)}
+          />
         </FormField>
         {file && !isPdf && (
           <Banner tone="warning" title="PDF required">

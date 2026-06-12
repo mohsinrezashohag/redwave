@@ -9,18 +9,29 @@ import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
 import { multipartPost } from '../../../lib/api/multipartUpload';
 import { documentKeys } from './keys';
+import { prepareForUpload } from '../../../lib/files/compressImage';
+import { uploadStoredFile } from '../../../lib/files/uploadStoredFile';
 import type { CreateDocumentBody, CreateSignatureRequestBody, Document, SignBody, SignatureRequest } from '../documents.types';
 
-/** Real multipart upload — a PDF + title + doc_type → POST /v1/documents (the original is stored once). */
+/**
+ * Create a document through the unified pipeline: the PDF uploads to POST /v1/files (purpose=document,
+ * with XHR progress), then the JSON create CLAIMS that stored path (server-validated: own upload + PDF).
+ * The original path is frozen once (DOC-001/004).
+ */
 export function useUploadDocument() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ file, title, doc_type }: CreateDocumentBody) => {
-      const form = new FormData();
-      form.append('file', file);
-      form.append('title', title);
-      form.append('doc_type', doc_type);
-      return multipartPost<Document>('/v1/documents', form);
+    mutationFn: async ({ file, title, doc_type, display_name, onProgress }: CreateDocumentBody) => {
+      const prepared = await prepareForUpload(file); // PDFs pass through untouched
+      const stored = await uploadStoredFile({
+        file: prepared,
+        purpose: 'document',
+        displayName: display_name || title,
+        onProgress,
+      });
+      return unwrap<Document>(
+        api.POST('/v1/documents', { body: { title, doc_type, file_path: stored.path } }),
+      );
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: documentKeys.all }),
   });

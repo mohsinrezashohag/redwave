@@ -27,12 +27,16 @@ export interface DocumentFilters {
   pending_signatures?: boolean;
 }
 
-// Request bodies. Upload is now MULTIPART (a real file + metadata) so it isn't a JSON schema component;
-// the rest are typed from the generated schema.
+// Request bodies. The PDF uploads via POST /v1/files first (with progress); the JSON create then claims
+// the stored path — so this body carries the local File + the metadata the two-step mutation needs.
 export interface CreateDocumentBody {
   file: File;
   title: string;
   doc_type: DocType;
+  /** Human-friendly name recorded on the stored file (defaults to the title). */
+  display_name?: string;
+  /** 0..100 upload progress for the modal's bar. */
+  onProgress?: (pct: number) => void;
 }
 export type CreateSignatureRequestBody = components['schemas']['CreateSignatureRequestDto'];
 export type SignBody = components['schemas']['SignDto'];
