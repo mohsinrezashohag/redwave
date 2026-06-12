@@ -404,6 +404,14 @@ Build new screens by copying its shape — don't invent a second pattern.
   gracefully when a permission is absent (e.g. the client column/dropdown only render with `clients:view`).
 - **Sidebar routing:** items with a `to` render as `NavLink` (active via a `match(location)` predicate for
   query-param presets); screens not yet built stay disabled placeholders.
+- **Breadcrumbs are GLOBAL + route-driven — NEW ROUTES MUST DECLARE CRUMB METADATA.** The shell renders ONE
+  `RouteBreadcrumbs` trail (routes/RouteBreadcrumbs.tsx) on every authenticated screen from the registry in
+  **`routes/crumbs.ts`** (label / dynamic entity kind / logical `parent` / optional permission per route
+  path — the router is flat, so hierarchy comes from `parent` pointers; `withCrumbs` injects `handle.crumb`
+  and WARNS in dev for a route without an entry). Adding a route = add its `crumbs.ts` entry; ad-hoc
+  per-page breadcrumbs are FORBIDDEN (`PageHeader` no longer takes a `breadcrumbs` prop). Dynamic detail
+  labels resolve via the page's OWN query hooks (same key → cache-shared, never a duplicate fetch;
+  skeleton → truncated-id fallback in routes/crumbLabels.tsx); unpermitted ancestors render as text (§5).
 - **Verified live** (seeded backend): full Sales write path 200/201 (create→`sale_date[-mpu]-client_code`,
   list+filters, get with derived pay period, greenfield toggle, single+bulk validate, soft-delete), 400 on
   a bad payload, and a **Sales-Rep token reads `/v1/clients` → 200** (the seed grant) with `/v1/sales`

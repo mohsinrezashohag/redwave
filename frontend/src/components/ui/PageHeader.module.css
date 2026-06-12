@@ -4,10 +4,6 @@
   gap: var(--space-3);
 }
 
-.crumbs {
-  margin-bottom: var(--space-1);
-}
-
 .row {
   display: flex;
   align-items: flex-start;

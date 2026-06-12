@@ -4,7 +4,7 @@
  * applies the same gate; the server is the real gate. PATCH replaces the item (the form rebuilds it).
  */
 import { useParams } from 'react-router-dom';
-import { Breadcrumbs, PageHeader } from '../../../components/ui';
+import { PageHeader } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useAuth } from '../../../auth/useAuth';
 import { useCan } from '../../../auth/useCan';
@@ -38,10 +38,7 @@ export default function ExpenseEditPage() {
   const clientOptions = (clients.data ?? []).map((c) => ({ value: c.id, label: c.name }));
   return (
     <div className={styles.page}>
-      <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Expenses', href: '/expenses' }, { label: 'Edit expense' }]} />}
-        title="Edit expense item"
-      />
+      <PageHeader title="Edit expense item" />
       <DataState
         isLoading={item.isLoading || configs.isLoading}
         isError={item.isError || configs.isError}

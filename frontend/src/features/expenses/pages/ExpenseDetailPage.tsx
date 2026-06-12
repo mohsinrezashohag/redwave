@@ -6,7 +6,7 @@
  */
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Breadcrumbs, Button, Card, PageHeader } from '../../../components/ui';
+import { Button, Card, PageHeader } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useAuth } from '../../../auth/useAuth';
 import { useCan } from '../../../auth/useCan';
@@ -74,10 +74,7 @@ export default function ExpenseDetailPage() {
 
   return (
     <div className={styles.page}>
-      <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Expenses', href: '/expenses' }, { label: 'Item' }]} />}
-        title="Expense item"
-      />
+      <PageHeader title="Expense item" />
       {isNotFound(q.error) ? (
         <Card>This expense item doesn’t exist or isn’t visible to you.</Card>
       ) : (

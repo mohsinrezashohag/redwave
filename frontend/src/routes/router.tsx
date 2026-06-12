@@ -10,6 +10,7 @@ import { RequireAuth } from '../auth/RequireAuth';
 import { RequirePasswordChange } from '../auth/RequirePasswordChange';
 import { RequireMfaEnrollment } from '../auth/RequireMfaEnrollment';
 import { RouteErrorBoundary } from './RouteErrorBoundary';
+import { withCrumbs } from './crumbs';
 import { LoadingSpinner } from '../components/ui';
 
 const LoginPage = lazy(() => import('../pages/login/LoginPage'));
@@ -99,7 +100,9 @@ export const router = createBrowserRouter([
       {
         path: '/',
         element: <AppShell />,
-        children: [
+        // withCrumbs injects each route's breadcrumb metadata (handle.crumb) from routes/crumbs.ts —
+        // the single declaration site. New routes MUST add an entry there (dev warns otherwise). §13
+        children: withCrumbs([
           {
             // A render error in any feature page bubbles here → the friendly panel renders INSIDE the shell
             // (sidebar/topbar preserved), never a white screen. — CLAUDE §13
@@ -161,7 +164,7 @@ export const router = createBrowserRouter([
           { path: '*', element: lazyEl(<NotFoundPage />) },
             ],
           },
-        ],
+        ]),
       },
         ],
       },

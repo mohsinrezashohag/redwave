@@ -13,6 +13,7 @@ import * as RDialog from '@radix-ui/react-dialog';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { Footer } from './Footer';
+import { RouteBreadcrumbs } from '../../routes/RouteBreadcrumbs';
 import { useIsMobile, useIsTablet } from '../../lib/useMediaQuery';
 import styles from './AppShell.module.css';
 
@@ -56,6 +57,10 @@ export function AppShell() {
         <TopBar onToggleSidebar={onToggleSidebar} isMobile={isMobile} />
         <main id="main-content" className={styles.content}>
           <div className={styles.inner}>
+            {/* The app-wide route-driven breadcrumb trail — below the top bar, above every page title. */}
+            <div className={styles.crumbs}>
+              <RouteBreadcrumbs />
+            </div>
             <Outlet />
           </div>
         </main>

@@ -5,7 +5,7 @@
  * matrix is too big for a modal, so this is a route (the playbook's detail pattern). — SRS AUTH-004
  */
 import { useParams } from 'react-router-dom';
-import { Breadcrumbs, PageHeader } from '../../../components/ui';
+import { PageHeader } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
 import { isForbidden } from '../../../lib/api/apiError';
@@ -42,7 +42,6 @@ export default function RoleEditorPage() {
   return (
     <div className={styles.page}>
       <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Roles', href: '/admin/roles' }, { label: roleName }]} />}
         title={
           <span className={styles.roleNameCell}>
             {roleName}

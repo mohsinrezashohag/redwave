@@ -263,7 +263,7 @@ Tables are the most-used surface (sales, expenses, clawbacks, ledger, imports). 
 
 - **Top bar:** global search, current pay-cycle indicator, notifications bell (in-app), user menu, environment badge (staging/prod).
 
-- **Breadcrumbs:** for nested detail pages.
+- **Breadcrumbs:** GLOBAL and route-driven — the shell renders one `<nav aria-label="Breadcrumb">` trail on every authenticated screen (below the top bar, above the page title), built from route metadata in `frontend/src/routes/crumbs.ts` (label + logical `parent` + optional permission per route path). A NEW ROUTE registers its crumb by adding an entry there (a dev console warning fires otherwise); pages never hand-assemble breadcrumbs. Detail routes resolve entity names from the page's own query cache (skeleton while loading, truncated id on failure); unpermitted ancestors render as text; long labels truncate with a title tooltip; narrow widths collapse middle segments to "…".
 
 - **Header (page):** title + primary action(s) + contextual tabs/filters.
 
