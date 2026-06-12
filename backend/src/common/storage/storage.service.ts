@@ -12,7 +12,7 @@
  *  - `StoredFile { url, stored }` — the legacy `uploadReceipt` returns a long-lived signed URL stored
  *    directly on the row (Batch-5 receipts; kept for backward compatibility).
  */
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
@@ -59,6 +59,31 @@ export class StorageService {
   /** True when a Supabase bucket is configured (so uploads are real + access-controlled). */
   isConfigured(): boolean {
     return this.client !== null;
+  }
+
+  /** The configured bucket name (recorded on stored_files rows). */
+  get bucketName(): string {
+    return this.bucket;
+  }
+
+  /**
+   * FAIL-SAFE gate for the unified file pipeline: unlike the legacy graceful `local://` fallback, the
+   * /v1/files endpoints REFUSE to run without storage — a clear 503, never a silent stub reference.
+   */
+  assertConfigured(): void {
+    if (!this.client) {
+      throw new ServiceUnavailableException('file storage not configured');
+    }
+  }
+
+  /**
+   * Store a buffer under an EXACT server-generated key (the /v1/files pipeline builds
+   * "{purpose}s/yyyy/mm/uuid.ext" itself — never a client-supplied or filename-derived path).
+   * Requires configured storage (assertConfigured) — no fallback reference here.
+   */
+  async uploadObject(path: string, buffer: Buffer, contentType: string): Promise<void> {
+    this.assertConfigured();
+    await this.putObject(path, buffer, contentType);
   }
 
   /** Store an uploaded file under `${folder}/${yyyy}/${uuid}-${name}`; returns the PATH (re-signed on read). */

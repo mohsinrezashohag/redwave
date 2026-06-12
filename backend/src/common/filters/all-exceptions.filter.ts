@@ -26,6 +26,7 @@ const CODE_BY_STATUS: Record<number, string> = {
   409: 'CONFLICT',
   422: 'UNPROCESSABLE_ENTITY',
   500: 'INTERNAL',
+  503: 'SERVICE_UNAVAILABLE', // file storage not configured (the /v1/files fail-safe)
 };
 
 interface Envelope {

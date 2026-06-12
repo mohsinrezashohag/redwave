@@ -309,6 +309,7 @@ model User {
   expense_field_configs_created ExpenseFieldConfig[]       @relation("ExpenseFieldConfigCreatedBy")
   expense_exports_generated     ExpenseExport[]            @relation("ExpenseExportGeneratedBy")
   report_exports_generated      ReportExport[]             @relation("ReportExportGeneratedBy")
+  stored_files_uploaded         StoredFile[]               @relation("StoredFileUploadedBy")
   statements_generated          ClientStatement[]          @relation("StatementGeneratedBy")
   invoices_generated            ClientInvoice[]            @relation("InvoiceGeneratedBy")
   billing_exports_generated     BillingExport[]            @relation("BillingExportGeneratedBy")
@@ -1052,6 +1053,28 @@ model ReportExport {
 
   @@index([generated_by])
   @@map("report_exports")
+}
+
+// Uploaded-file metadata — one row per user upload through the unified `POST /v1/files` pipeline
+// (receipts, document originals). The PATH is SERVER-generated ("{purpose}s/yyyy/mm/uuid.ext") and unique;
+// consumers CLAIM a path at use time (must exist here AND uploaded_by = caller, Admin/SA exempt), so a
+// foreign/unknown reference can never be attached to a record. Bytes live in the PRIVATE Supabase bucket;
+// access is only ever a short-TTL signed URL from an RBAC/visibility-gated endpoint. — arch §11, security.md
+model StoredFile {
+  id            String   @id @default(uuid()) @db.Uuid
+  bucket        String
+  path          String   @unique
+  original_name String
+  display_name  String?
+  mime          String
+  size_bytes    Int
+  sha256        String
+  uploaded_by   String   @db.Uuid
+  uploader      User     @relation("StoredFileUploadedBy", fields: [uploaded_by], references: [id])
+  created_at    DateTime @default(now())
+
+  @@index([uploaded_by])
+  @@map("stored_files")
 }
 
 // ════════════════════════════════════════════════════════════════════════════════

@@ -4220,6 +4220,68 @@ paths:
       summary: Upload an expense receipt
       tags:
         - Expenses
+  /v1/files:
+    post:
+      description: Authenticated. JPEG/PNG/PDF up to 10 MB. The storage path is
+        SERVER-generated; the response is the stored_files metadata row (no
+        signed URL — downloads are per-domain, RBAC-gated). 503 when file
+        storage is not configured.
+      operationId: FilesController_upload_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CreateFileDto"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoredFileResponse"
+        "400":
+          description: Bad Request — validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "401":
+          description: Unauthorized — missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "403":
+          description: Forbidden — RBAC denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "409":
+          description: Conflict — invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "422":
+          description: Unprocessable Entity — domain rule violated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+      security:
+        - bearer: []
+      summary: Upload a file (unified pipeline)
+      tags:
+        - Files
   /v1/pay-periods:
     get:
       description: Requires payrun:view. Pre-loaded 2026 schedule.
@@ -9638,6 +9700,59 @@ components:
       required:
         - url
         - stored
+    CreateFileDto:
+      type: object
+      properties:
+        purpose:
+          type: string
+          enum:
+            - receipt
+            - document
+          description: What the file is for — shapes the storage path prefix.
+        display_name:
+          type: string
+          maxLength: 200
+          description: Human-friendly name shown in the UI (defaults to none).
+      required:
+        - purpose
+    StoredFileResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        bucket:
+          type: string
+        path:
+          type: string
+          description: The server-generated object path — what consumers store and later
+            claim.
+        original_name:
+          type: string
+        display_name:
+          type: string
+          nullable: true
+        mime:
+          type: string
+        size_bytes:
+          type: number
+        sha256:
+          type: string
+        uploaded_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - bucket
+        - path
+        - original_name
+        - display_name
+        - mime
+        - size_bytes
+        - sha256
+        - uploaded_by
+        - created_at
     PayPeriodResponse:
       type: object
       properties:

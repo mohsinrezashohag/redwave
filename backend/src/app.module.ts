@@ -27,6 +27,7 @@ import { CommissionModule } from './modules/commission/commission.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { ClawbackModule } from './modules/clawback/clawback.module';
 import { ExpensesModule } from './modules/expenses/expenses.module';
+import { FilesModule } from './modules/files/files.module';
 import { PayRunModule } from './modules/payrun/payrun.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { DocumentsModule } from './modules/documents/documents.module';
@@ -54,6 +55,7 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
     SalesModule,
     ClawbackModule,
     ExpensesModule,
+    FilesModule,
     PayRunModule,
     BillingModule,
     DocumentsModule,
