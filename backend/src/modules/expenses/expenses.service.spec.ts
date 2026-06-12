@@ -1,4 +1,4 @@
-import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Decimal } from 'decimal.js';
 import { ExpensesService } from './expenses.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
@@ -59,9 +59,20 @@ function make() {
   const scope = { getRepScope: jest.fn().mockResolvedValue({ level: 'all' }) };
   // Maps OFF by default → km distance falls back to the client total_km (preserves the 130→70→31.50 case).
   const maps = { routeDistanceKm: jest.fn().mockResolvedValue(null), isConfigured: jest.fn().mockReturnValue(false) };
+  const storage = { assertConfigured: jest.fn(), signedUrl: jest.fn().mockResolvedValue('https://signed/receipt') };
+  // The unified-pipeline claim (FilesService mocked — the claim rules have their own spec).
+  const files = { claim: jest.fn().mockResolvedValue({ path: 'receipts/2026/06/r.jpg', uploaded_by: 'u1' }) };
   const emitter = { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() };
-  const service = new ExpensesService(prisma as never, audit as never, scope as never, maps as never, emitter as never);
-  return { service, prisma, audit, scope, maps, tx, emitter };
+  const service = new ExpensesService(
+    prisma as never,
+    audit as never,
+    scope as never,
+    maps as never,
+    storage as never,
+    files as never,
+    emitter as never,
+  );
+  return { service, prisma, audit, scope, maps, storage, files, tx, emitter };
 }
 
 const kmItem = (date = '2026-03-10', tripType: 'single' | 'round' = 'round'): ExpenseItemInput => ({
@@ -82,7 +93,7 @@ const mealItem = (receipt = true): ExpenseItemInput => ({
   expense_date: '2026-03-11',
   amount: '42.50',
   description: 'Lunch',
-  ...(receipt ? { receipt_url: 's3://r/1.png' } : {}),
+  ...(receipt ? { receipt_url: 'receipts/2026/06/r.jpg' } : {}),
 });
 
 const dto = (items: ExpenseItemInput[]): CreateExpenseItemsDto => ({ items });
@@ -267,6 +278,47 @@ describe('ExpensesService.editItem (edit-rights gating — EXP-007)', () => {
     const { service, prisma } = make();
     prisma.expenseItem.findFirst.mockResolvedValue(approved);
     await expect(service.editItem('i1', mealItem(true), superAdmin)).resolves.toBeDefined();
+  });
+});
+
+describe('ExpensesService — receipt claim + access-controlled receipt URL (security.md file storage)', () => {
+  it('a stored-path receipt is CLAIMED at create (must be the caller’s own upload)', async () => {
+    const { service, files } = make();
+    await service.createItems(dto([mealItem()]), user);
+    expect(files.claim).toHaveBeenCalledWith('receipts/2026/06/r.jpg', user, 'receipt');
+  });
+
+  it('a rejected claim (unknown/foreign path) blocks the create with 422', async () => {
+    const { service, files, tx } = make();
+    files.claim.mockRejectedValue(new UnprocessableEntityException('unknown receipt file reference'));
+    await expect(service.createItems(dto([mealItem()]), user)).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(tx.expenseItem.create).not.toHaveBeenCalled();
+  });
+
+  it('LEGACY values (http(s) URL from the pre-stored_files pipeline) skip the claim — old items stay editable', async () => {
+    const { service, files } = make();
+    await service.createItems(dto([{ ...mealItem(false), receipt_url: 'https://old.signed/url.jpg' }]), user);
+    expect(files.claim).not.toHaveBeenCalled();
+  });
+
+  it('receiptUrl signs the stored path for 60s + audits the issuance; no receipt → 404', async () => {
+    const { service, prisma, storage, audit } = make();
+    prisma.expenseItem.findFirst.mockResolvedValue({ id: 'i1', receipt_url: 'receipts/2026/06/r.jpg' });
+    const res = await service.receiptUrl('i1', user);
+    expect(storage.signedUrl).toHaveBeenCalledWith('receipts/2026/06/r.jpg', 60);
+    expect(res).toEqual({ url: 'https://signed/receipt' });
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'download', entityId: 'i1' }));
+
+    prisma.expenseItem.findFirst.mockResolvedValue({ id: 'i2', receipt_url: null });
+    await expect(service.receiptUrl('i2', user)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('a LEGACY stored URL passes through as-is (served as recorded)', async () => {
+    const { service, prisma, storage } = make();
+    prisma.expenseItem.findFirst.mockResolvedValue({ id: 'i1', receipt_url: 'https://old.signed/url.jpg' });
+    const res = await service.receiptUrl('i1', user);
+    expect(res.url).toBe('https://old.signed/url.jpg');
+    expect(storage.signedUrl).not.toHaveBeenCalled();
   });
 });
 

@@ -2,42 +2,17 @@
  * DocumentsController — /v1/documents and its nested signature-requests. — arch §6.10
  * Upload + request-signature require documents:create; reads require documents:view (visibility-scoped).
  */
-import {
-  Body,
-  Controller,
-  Get,
-  HttpStatus,
-  Param,
-  ParseFilePipeBuilder,
-  ParseUUIDPipe,
-  Post,
-  Query,
-  UnprocessableEntityException,
-  UploadedFile,
-  UseInterceptors,
-} from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import {
-  ApiBearerAuth,
-  ApiBody,
-  ApiConsumes,
-  ApiCreatedResponse,
-  ApiOkResponse,
-  ApiOperation,
-  ApiTags,
-} from '@nestjs/swagger';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiErrorResponses } from '../../common/errors/api-error-responses.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../../common/rbac/auth-user.type';
-import { UploadedFile as UploadedFileShape } from '../../common/storage/storage.service';
 import { DocumentsService } from './documents.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { CreateSignatureRequestDto } from './dto/create-signature-request.dto';
 import { ListDocumentsQuery } from './dto/list-documents.query';
 import { DocumentResponse, FileUrlResponse, SignatureRequestResponse } from './dto/document.response';
-
-const MAX_DOC_BYTES = 25 * 1024 * 1024; // 25 MB
 
 @ApiTags('Documents & E-Signature')
 @ApiBearerAuth()
@@ -48,41 +23,16 @@ export class DocumentsController {
 
   @Post()
   @RequirePermission('documents', 'create')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_DOC_BYTES } }))
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        file: { type: 'string', format: 'binary' },
-        title: { type: 'string' },
-        doc_type: { type: 'string' },
-      },
-    },
-  })
   @ApiOperation({
-    summary: 'Upload a document (PDF)',
+    summary: 'Create a document from an uploaded PDF',
     description:
-      'Requires documents:create. Multipart: a PDF file + title + doc_type. Stored to object storage ' +
-      '(the original is never mutated); status draft, owner = caller. Non-PDF → 422 (save as PDF first).',
+      'Requires documents:create. The PDF arrives via POST /v1/files (purpose=document); this CLAIMS that ' +
+      'stored path (own upload, PDF mime — else 422) and freezes it as the immutable original (DOC-001/004). ' +
+      'Status draft, owner = caller.',
   })
   @ApiCreatedResponse({ type: DocumentResponse })
-  upload(
-    @Body() dto: CreateDocumentDto,
-    @UploadedFile(
-      new ParseFilePipeBuilder()
-        .addFileTypeValidator({ fileType: 'application/pdf' })
-        .build({
-          fileIsRequired: true,
-          errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
-          exceptionFactory: () =>
-            new UnprocessableEntityException('a PDF file is required (save Word documents as PDF first)'),
-        }),
-    )
-    file: UploadedFileShape,
-    @CurrentUser() user: AuthUser,
-  ) {
-    return this.documents.upload(dto, file, user);
+  upload(@Body() dto: CreateDocumentDto, @CurrentUser() user: AuthUser) {
+    return this.documents.upload(dto, user);
   }
 
   @Get(':id/file-url')

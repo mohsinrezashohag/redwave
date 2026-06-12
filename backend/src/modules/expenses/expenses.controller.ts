@@ -9,19 +9,13 @@ import {
   Delete,
   Get,
   Param,
-  ParseFilePipeBuilder,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
-  UploadedFile,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
-  ApiBody,
-  ApiConsumes,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -31,7 +25,6 @@ import { ApiErrorResponses } from '../../common/errors/api-error-responses.decor
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../../common/rbac/auth-user.type';
-import { StorageService, UploadedFile as UploadedFileShape } from '../../common/storage/storage.service';
 import { ExpensesService } from './expenses.service';
 import { FieldConfigService } from './field-config.service';
 import { ExpenseExportService } from './expense-export.service';
@@ -48,10 +41,8 @@ import {
   ExpenseItemPageResponse,
   ExpenseItemResponse,
   FieldConfigResponse,
-  ReceiptUploadResponse,
+  ReceiptUrlResponse,
 } from './dto/expense.response';
-
-const MAX_RECEIPT_BYTES = 10 * 1024 * 1024; // 10 MB
 
 @ApiTags('Expenses')
 @ApiBearerAuth()
@@ -98,6 +89,19 @@ export class ExpenseItemsController {
   @ApiCreatedResponse({ type: BulkReviewResultResponse })
   bulkReview(@Body() dto: BulkReviewDto, @CurrentUser() user: AuthUser) {
     return this.expenses.bulkReview(dto, user);
+  }
+
+  @Get(':id/receipt-url')
+  @RequirePermission('expenses', 'view')
+  @ApiOperation({
+    summary: 'Get an access-controlled URL for the item’s receipt',
+    description:
+      'Requires expenses:view + the SAME item visibility as the detail GET. Returns a fresh 60s signed URL ' +
+      'for the stored receipt path; 404 when the item has no receipt; 503 when storage is not configured.',
+  })
+  @ApiOkResponse({ type: ReceiptUrlResponse })
+  receiptUrl(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.expenses.receiptUrl(id, user);
   }
 
   @Get(':id')
@@ -206,34 +210,6 @@ export class ExpenseExportsController {
   }
 }
 
-@ApiTags('Expenses')
-@ApiBearerAuth()
-@ApiErrorResponses()
-@Controller('expense-receipts')
-export class ExpenseReceiptsController {
-  constructor(private readonly storage: StorageService) {}
-
-  @Post()
-  @RequirePermission('expenses', 'create')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_RECEIPT_BYTES } }))
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
-  @ApiOperation({
-    summary: 'Upload an expense receipt',
-    description:
-      'Requires expenses:create. Uploads the file to object storage and returns an access-controlled URL ' +
-      'to store on the expense item. When storage is unconfigured, returns a selection-only reference ' +
-      '(graceful fallback). Max 10 MB; images or PDF.',
-  })
-  @ApiCreatedResponse({ type: ReceiptUploadResponse })
-  upload(
-    @UploadedFile(
-      new ParseFilePipeBuilder()
-        .addFileTypeValidator({ fileType: /^(image\/(png|jpe?g|gif|webp|heic)|application\/pdf)$/ })
-        .build({ fileIsRequired: true }),
-    )
-    file: UploadedFileShape,
-  ) {
-    return this.storage.uploadReceipt(file);
-  }
-}
+// NOTE: the legacy POST /v1/expense-receipts controller is GONE — receipts now upload through the unified
+// POST /v1/files pipeline (purpose=receipt): server-generated path, stored_files metadata, claim-validated
+// at item create/edit, served via GET /v1/expense-items/{id}/receipt-url (60s signed URL).

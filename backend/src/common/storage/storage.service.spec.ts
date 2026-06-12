@@ -1,3 +1,4 @@
+import { ServiceUnavailableException } from '@nestjs/common';
 import { StorageService, UploadedFile } from './storage.service';
 
 const file: UploadedFile = {
@@ -13,14 +14,13 @@ function make(env: Record<string, string | undefined>) {
 }
 
 describe('StorageService (env-gated, graceful)', () => {
-  it('is not configured + returns a selection-only reference when Supabase env is absent', async () => {
+  it('is not configured + the unified-pipeline gates FAIL 503 when Supabase env is absent', async () => {
     const storage = make({});
     expect(storage.isConfigured()).toBe(false);
-    const result = await storage.uploadReceipt(file);
-    expect(result.stored).toBe(false);
-    expect(result.url).toContain('local://receipts/');
-    // filename is sanitized (no spaces / unsafe chars), extension preserved
-    expect(result.url).toMatch(/My_Receipt__1\.jpg$/);
+    expect(() => storage.assertConfigured()).toThrow(ServiceUnavailableException);
+    await expect(storage.uploadObject('receipts/2026/06/x.jpg', file.buffer, file.mimetype)).rejects.toThrow(
+      ServiceUnavailableException,
+    );
   });
 
   it('reports configured when URL + service-role key are present', () => {

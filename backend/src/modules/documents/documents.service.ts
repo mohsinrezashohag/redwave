@@ -2,10 +2,11 @@
  * DocumentsService — upload, share/request-signature, list, and detail for documents.
  *
  * Sharing a document IS creating a signature request (the schema has no separate shares table); the
- * recipients become the document's "shared-with" set for visibility. The binary upload is STUBBED
- * (a `original_file_url` reference is minted; real object storage deferred, CLAUDE §12). Visibility is
- * scoped in the QUERY — a user sees only documents they own or are a recipient of (Admin/Super Admin
- * see all). Owns documents + signature_requests + document_signatures. — SRS DOC-001/002, §5
+ * recipients become the document's "shared-with" set for visibility. The PDF arrives via the unified
+ * POST /v1/files pipeline; create CLAIMS the stored path (own upload, PDF mime) and freezes it as the
+ * immutable original (DOC-001/004). Visibility is scoped in the QUERY — a user sees only documents they
+ * own or are a recipient of (Admin/Super Admin see all). Owns documents + signature_requests +
+ * document_signatures. — SRS DOC-001/002, §5
  */
 import {
   ForbiddenException,
@@ -19,7 +20,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { BUILTIN_ROLES } from '../../common/rbac/rbac.constants';
-import { StorageService, UploadedFile } from '../../common/storage/storage.service';
+import { StorageService } from '../../common/storage/storage.service';
+import { FilesService } from '../files/files.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { CreateSignatureRequestDto } from './dto/create-signature-request.dto';
 import { ListDocumentsQuery } from './dto/list-documents.query';
@@ -63,12 +65,15 @@ export class DocumentsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly storage: StorageService,
+    private readonly files: FilesService,
     @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
   ) {}
 
-  // ── Upload (real object storage; the original is never mutated, DOC-001/004) ──────────
-  async upload(dto: CreateDocumentDto, file: UploadedFile, user: AuthUser) {
-    const stored = await this.storage.upload('documents', file); // returns the object PATH (or local:// ref)
+  // ── Create from an uploaded PDF (claimed stored path; the original is never mutated, DOC-001/004) ──
+  async upload(dto: CreateDocumentDto, user: AuthUser) {
+    // CLAIM the uploaded path: must exist in stored_files, be the caller's own upload (Admin/SA exempt),
+    // and be a PDF (422 otherwise — the DOC-001 rule). — security.md (claim validation)
+    const stored = await this.files.claim(dto.file_path, user, 'document');
     const document = await this.prisma.document.create({
       data: {
         title: dto.title,
@@ -83,7 +88,7 @@ export class DocumentsService {
       entityType: 'documents',
       entityId: document.id,
       action: 'create',
-      after: { title: dto.title, doc_type: dto.doc_type, status: 'draft', stored: stored.stored },
+      after: { title: dto.title, doc_type: dto.doc_type, status: 'draft', file_path: stored.path },
     });
     return document;
   }
@@ -95,6 +100,14 @@ export class DocumentsService {
     if (!url) {
       throw new NotFoundException('the document file is not available (storage not configured)');
     }
+    // Signed-URL issuance is audited: who fetched which path, when. — security.md (file storage)
+    await this.audit.log({
+      actorId: user.id,
+      entityType: 'documents',
+      entityId: id,
+      action: 'download',
+      after: { path: doc.original_file_url },
+    });
     return { url, filename: `${slug(doc.title)}.pdf` };
   }
 
@@ -109,6 +122,13 @@ export class DocumentsService {
     if (!url) {
       throw new NotFoundException('no completed (all-signatures) copy is available yet');
     }
+    await this.audit.log({
+      actorId: user.id,
+      entityType: 'documents',
+      entityId: id,
+      action: 'download',
+      after: { path: req!.completed_file_path },
+    });
     return { url, filename: `${slug(doc.title)}-signed.pdf` };
   }
 

@@ -3,7 +3,6 @@ import {
   ExpenseItemsController,
   ExpenseFieldConfigsController,
   ExpenseExportsController,
-  ExpenseReceiptsController,
 } from './expenses.controller';
 import { RBAC_KEY } from '../../common/decorators/require-permission.decorator';
 
@@ -18,6 +17,8 @@ describe('Expenses RBAC metadata', () => {
     expect(meta(ExpenseItemsController, 'remove')).toEqual({ moduleKey: 'expenses', action: 'delete' });
     expect(meta(ExpenseItemsController, 'review')).toEqual({ moduleKey: 'expenses', action: 'approve' });
     expect(meta(ExpenseItemsController, 'bulkReview')).toEqual({ moduleKey: 'expenses', action: 'approve' });
+    // The receipt URL rides the same view gate as the detail (scoped in the service query).
+    expect(meta(ExpenseItemsController, 'receiptUrl')).toEqual({ moduleKey: 'expenses', action: 'view' });
   });
 
   it('field-configs require expenses:view to read and expenses:edit to configure', () => {
@@ -30,7 +31,6 @@ describe('Expenses RBAC metadata', () => {
     expect(meta(ExpenseExportsController, 'create')).toEqual({ moduleKey: 'expenses', action: 'export' });
   });
 
-  it('receipt upload requires expenses:create', () => {
-    expect(meta(ExpenseReceiptsController, 'upload')).toEqual({ moduleKey: 'expenses', action: 'create' });
-  });
+  // The legacy /v1/expense-receipts upload is GONE — receipts ride the unified POST /v1/files pipeline
+  // (authenticated; the claim at item create/edit is the consumer-side gate).
 });

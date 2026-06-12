@@ -314,6 +314,14 @@ export class SignaturesService {
     if (!url) {
       throw new NotFoundException('no signed copy is available');
     }
+    // Signed-URL issuance is audited: who fetched which path, when. — security.md (file storage)
+    await this.audit.log({
+      actorId: user.id,
+      entityType: 'document_signatures',
+      entityId: signatureId,
+      action: 'download',
+      after: { path: sig.signed_file_url },
+    });
     return { url, filename: 'signed-copy.pdf' };
   }
 

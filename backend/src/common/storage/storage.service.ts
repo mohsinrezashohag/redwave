@@ -5,12 +5,10 @@
  * upload), so callers work without storage configured and the operator lights it up later. The
  * service-role key is a server-only secret (never exposed to the browser). — arch §11 / CLAUDE §12
  *
- * Two shapes of result:
- *  - `StoredObject { path, stored }` — `upload`/`uploadBuffer` return the object PATH (the row stores the
- *    path; access goes through a freshly-signed short-TTL URL on each read via `signedUrl`). This is the
- *    "access-controlled, not public" model used by Documents/HRM.
- *  - `StoredFile { url, stored }` — the legacy `uploadReceipt` returns a long-lived signed URL stored
- *    directly on the row (Batch-5 receipts; kept for backward compatibility).
+ * Result shape: `StoredObject { path, stored }` — `upload`/`uploadBuffer` return the object PATH (the row
+ * stores the path; access goes through a freshly-signed short-TTL URL on each read via `signedUrl`). This
+ * is the "access-controlled, never public" model used everywhere. The unified /v1/files pipeline uses
+ * `uploadObject` (exact server-generated key) + `assertConfigured` (503 fail-safe — no `local://` stubs).
  */
 import { Injectable, InternalServerErrorException, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -33,13 +31,6 @@ export interface StoredObject {
   stored: boolean;
 }
 
-/** Legacy result — a viewable URL stored directly on the row (receipts). */
-export interface StoredFile {
-  url: string;
-  stored: boolean;
-}
-
-const SIGNED_URL_TTL_RECEIPT = 60 * 60 * 24 * 365; // 1 year — receipts store the URL directly (legacy)
 const SIGNED_URL_TTL_SHORT = 60 * 5; // 5 minutes — minted per access for path-backed files (documents/HRM)
 
 @Injectable()
@@ -128,22 +119,6 @@ export class StorageService {
       return null;
     }
     return data.signedUrl;
-  }
-
-  /**
-   * Legacy: upload a receipt and return a long-lived signed URL stored directly on the row. When storage
-   * is unconfigured, returns a selection-only reference (graceful fallback). — Batch 5
-   */
-  async uploadReceipt(file: UploadedFile): Promise<StoredFile> {
-    const obj = await this.upload('receipts', file);
-    if (!obj.stored) {
-      return { url: obj.path, stored: false };
-    }
-    const url = await this.signedUrl(obj.path, SIGNED_URL_TTL_RECEIPT);
-    if (!url) {
-      throw new InternalServerErrorException('failed to sign the receipt URL');
-    }
-    return { url, stored: true };
   }
 
   private async putObject(key: string, body: Buffer, contentType: string): Promise<void> {

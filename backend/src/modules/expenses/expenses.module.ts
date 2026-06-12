@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { EXPENSE_TOTAL_PROVIDER } from '../payrun/seams/expense-total.provider';
 import { StorageModule } from '../../common/storage/storage.module';
+import { FilesModule } from '../files/files.module';
 import {
   ExpenseItemsController,
   ExpenseFieldConfigsController,
   ExpenseExportsController,
-  ExpenseReceiptsController,
 } from './expenses.controller';
 import { ExpensesService } from './expenses.service';
 import { FieldConfigService } from './field-config.service';
@@ -14,12 +14,11 @@ import { ExpensePayrunProvider } from './expense-payrun.provider';
 import { MapsService } from './maps.service';
 
 @Module({
-  imports: [StorageModule],
+  imports: [StorageModule, FilesModule],
   controllers: [
     ExpenseItemsController,
     ExpenseFieldConfigsController,
     ExpenseExportsController,
-    ExpenseReceiptsController,
   ],
   providers: [
     ExpensesService,

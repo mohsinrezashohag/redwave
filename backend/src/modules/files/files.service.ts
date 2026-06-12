@@ -12,8 +12,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { StorageService, UploadedFile } from '../../common/storage/storage.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
-import { buildObjectPath, isAllowedMime, MAX_FILE_BYTES } from './stored-files.logic';
+import { BUILTIN_ROLES } from '../../common/rbac/rbac.constants';
+import { buildObjectPath, FilePurpose, isAllowedMime, MAX_FILE_BYTES, purposePrefix } from './stored-files.logic';
 import { CreateFileDto } from './dto/stored-file.dto';
+
+const isAdmin = (u: AuthUser): boolean => u.isSuperAdmin || u.roleNames.includes(BUILTIN_ROLES.ADMIN);
 
 @Injectable()
 export class FilesService {
@@ -57,6 +60,30 @@ export class FilesService {
       action: 'upload',
       after: { path, purpose: dto.purpose, mime: file.mimetype, size_bytes: file.size },
     });
+    return stored;
+  }
+
+  /**
+   * CLAIM a previously-uploaded path at use time (an expense item's receipt, a document's original): the
+   * path must exist in stored_files, carry the purpose's prefix, and have been uploaded BY THE CALLER
+   * (Admin/Super Admin exempt) — an unknown or foreign reference can never be attached to a record (422).
+   * One 'unknown reference' message for missing AND foreign paths: no existence leak. Document claims must
+   * be PDFs (preserves the DOC-001 422 rule). — security.md (file storage, claim validation)
+   */
+  async claim(path: string, user: AuthUser, purpose: FilePurpose) {
+    const unknown = () =>
+      new UnprocessableEntityException(`unknown ${purpose} file reference — upload it via POST /v1/files first`);
+
+    if (!path.startsWith(purposePrefix(purpose))) {
+      throw unknown();
+    }
+    const stored = await this.prisma.storedFile.findUnique({ where: { path } });
+    if (!stored || (stored.uploaded_by !== user.id && !isAdmin(user))) {
+      throw unknown();
+    }
+    if (purpose === 'document' && stored.mime !== 'application/pdf') {
+      throw new UnprocessableEntityException('a PDF file is required (save Word documents as PDF first)');
+    }
     return stored;
   }
 }

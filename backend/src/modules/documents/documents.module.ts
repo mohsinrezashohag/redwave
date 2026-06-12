@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../common/storage/storage.module';
+import { FilesModule } from '../files/files.module';
 import { DocumentsController } from './documents.controller';
 import { SignatureRequestsController, SignaturesController } from './signature-requests.controller';
 import { DocumentsService } from './documents.service';
@@ -13,7 +14,7 @@ import { StampService } from './stamp.service';
  * in-app notifications, DOC-006/RPT-009) is supplied by the @Global NotificationsModule — no import here.
  */
 @Module({
-  imports: [StorageModule],
+  imports: [StorageModule, FilesModule],
   controllers: [DocumentsController, SignatureRequestsController, SignaturesController],
   providers: [DocumentsService, SignaturesService, StampService],
 })

@@ -3877,6 +3877,34 @@ paths:
       security: *a153
       summary: Bulk review expense items
       tags: *a154
+  /v1/expense-items/{id}/receipt-url:
+    get:
+      description: Requires expenses:view + the SAME item visibility as the detail
+        GET. Returns a fresh 60s signed URL for the stored receipt path; 404
+        when the item has no receipt; 503 when storage is not configured.
+      operationId: ExpenseItemsController_receiptUrl_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptUrlResponse"
+        "400": *a147
+        "401": *a148
+        "403": *a149
+        "404": *a150
+        "409": *a151
+        "422": *a152
+      security: *a153
+      summary: Get an access-controlled URL for the item’s receipt
+      tags: *a154
   /v1/expense-items/{id}:
     get:
       description: Requires expenses:view (scoped).
@@ -4154,72 +4182,6 @@ paths:
       security: *a169
       summary: Generate an expense export
       tags: *a170
-  /v1/expense-receipts:
-    post:
-      description: Requires expenses:create. Uploads the file to object storage and
-        returns an access-controlled URL to store on the expense item. When
-        storage is unconfigured, returns a selection-only reference (graceful
-        fallback). Max 10 MB; images or PDF.
-      operationId: ExpenseReceiptsController_upload_v1
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                file:
-                  type: string
-                  format: binary
-      responses:
-        "201":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReceiptUploadResponse"
-        "400":
-          description: Bad Request — validation failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401":
-          description: Unauthorized — missing/invalid token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403":
-          description: Forbidden — RBAC denied
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404":
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409":
-          description: Conflict — invalid state transition
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422":
-          description: Unprocessable Entity — domain rule violated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security:
-        - bearer: []
-      summary: Upload an expense receipt
-      tags:
-        - Expenses
   /v1/files:
     post:
       description: Authenticated. JPEG/PNG/PDF up to 10 MB. The storage path is
@@ -5065,25 +5027,18 @@ paths:
       tags: *a202
   /v1/documents:
     post:
-      description: "Requires documents:create. Multipart: a PDF file + title +
-        doc_type. Stored to object storage (the original is never mutated);
-        status draft, owner = caller. Non-PDF → 422 (save as PDF first)."
+      description: Requires documents:create. The PDF arrives via POST /v1/files
+        (purpose=document); this CLAIMS that stored path (own upload, PDF mime —
+        else 422) and freezes it as the immutable original (DOC-001/004). Status
+        draft, owner = caller.
       operationId: DocumentsController_upload_v1
       parameters: []
       requestBody:
         required: true
         content:
-          multipart/form-data:
+          application/json:
             schema:
-              type: object
-              properties:
-                file:
-                  type: string
-                  format: binary
-                title:
-                  type: string
-                doc_type:
-                  type: string
+              $ref: "#/components/schemas/CreateDocumentDto"
       responses:
         "201":
           description: ""
@@ -5129,7 +5084,7 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
       security: &a209
         - bearer: []
-      summary: Upload a document (PDF)
+      summary: Create a document from an uploaded PDF
       tags: &a210
         - Documents & E-Signature
     get:
@@ -9540,6 +9495,14 @@ components:
       required:
         - reviewed
         - skipped
+    ReceiptUrlResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Short-TTL (60s) signed URL for the item’s receipt.
+      required:
+        - url
     UpdateExpenseItemDto:
       type: object
       properties:
@@ -9686,20 +9649,6 @@ components:
           description: Restrict to one pay period.
       required:
         - format
-    ReceiptUploadResponse:
-      type: object
-      properties:
-        url:
-          type: string
-          description: Access-controlled (signed) URL when stored; a reference in fallback
-            mode.
-        stored:
-          type: boolean
-          description: True when uploaded to object storage; false in selection-only
-            fallback mode.
-      required:
-        - url
-        - stored
     CreateFileDto:
       type: object
       properties:
@@ -10197,6 +10146,29 @@ components:
           example: excel
       required:
         - format
+    CreateDocumentDto:
+      type: object
+      properties:
+        title:
+          type: string
+          example: Compensation Agreement 2026
+        doc_type:
+          type: string
+          enum:
+            - compensation_agreement
+            - rate_notice
+            - equipment
+            - other
+          example: compensation_agreement
+        file_path:
+          type: string
+          example: documents/2026/06/3f2a….pdf
+          description: The stored_files path returned by POST /v1/files
+            (purpose=document). Claim-validated.
+      required:
+        - title
+        - doc_type
+        - file_path
     DocumentSignatureResponse:
       type: object
       properties:

@@ -15,7 +15,7 @@ const user = (over: Partial<AuthUser> = {}): AuthUser => ({
 });
 const admin = user({ id: 'admin', roleNames: ['Admin'] });
 
-const pdfFile = { buffer: Buffer.from('%PDF-1.4'), originalname: 'comp.pdf', mimetype: 'application/pdf', size: 8 };
+const CLAIMED_PATH = 'documents/2026/06/abc.pdf';
 
 function make() {
   const tx = {
@@ -40,25 +40,38 @@ function make() {
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   // Storage stores the object PATH; the original is never re-written (DOC-001/004).
   const storage = {
-    upload: jest.fn().mockResolvedValue({ path: 'documents/2026/abc-comp.pdf', stored: true }),
     signedUrl: jest.fn().mockResolvedValue('https://signed/x.pdf'),
   };
+  // The unified-pipeline claim (FilesService mocked — the claim rules have their own spec).
+  const files = {
+    claim: jest.fn().mockResolvedValue({ path: CLAIMED_PATH, mime: 'application/pdf', uploaded_by: 'u1' }),
+  };
   const emitter = { emit: jest.fn().mockResolvedValue(undefined) };
-  const service = new DocumentsService(prisma as never, audit as never, storage as never, emitter as never);
-  return { service, prisma, tx, audit, storage, emitter };
+  const service = new DocumentsService(prisma as never, audit as never, storage as never, files as never, emitter as never);
+  return { service, prisma, tx, audit, storage, files, emitter };
 }
 
-describe('DocumentsService.upload (DOC-001 — real storage, original never mutated)', () => {
-  it('stores the uploaded PDF and saves its object PATH (no second mutation of the original)', async () => {
-    const { service, prisma, storage, audit } = make();
-    await service.upload({ title: 'Comp Agreement', doc_type: 'compensation_agreement' }, pdfFile, user());
-    expect(storage.upload).toHaveBeenCalledWith('documents', pdfFile);
+describe('DocumentsService.upload (DOC-001 — claimed stored path, original never mutated)', () => {
+  it('CLAIMS the uploaded path (own upload, PDF) and freezes it as the immutable original', async () => {
+    const { service, prisma, files, audit } = make();
+    const u = user();
+    await service.upload({ title: 'Comp Agreement', doc_type: 'compensation_agreement', file_path: CLAIMED_PATH }, u);
+    expect(files.claim).toHaveBeenCalledWith(CLAIMED_PATH, u, 'document');
     const createData = (prisma.document.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
     expect(createData.owner_user_id).toBe('u1');
     expect(createData.status).toBe('draft');
-    expect(createData.original_file_url).toBe('documents/2026/abc-comp.pdf');
+    expect(createData.original_file_url).toBe(CLAIMED_PATH);
     expect(prisma.document.update).not.toHaveBeenCalled(); // the original is written once, never re-mutated
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'create', entityType: 'documents' }));
+  });
+
+  it('a failed claim (unknown/foreign/non-PDF path) → 422, nothing created', async () => {
+    const { service, prisma, files } = make();
+    files.claim.mockRejectedValue(new UnprocessableEntityException('unknown document file reference'));
+    await expect(
+      service.upload({ title: 'X', doc_type: 'other', file_path: 'documents/2026/06/foreign.pdf' }, user()),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(prisma.document.create).not.toHaveBeenCalled();
   });
 });
 

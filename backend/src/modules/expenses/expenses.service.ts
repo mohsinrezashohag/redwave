@@ -25,6 +25,8 @@ import { ScopeService } from '../../common/scope/scope.service';
 import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
+import { StorageService } from '../../common/storage/storage.service';
+import { FilesService } from '../files/files.service';
 import { MapsService } from './maps.service';
 import { CreateExpenseItemsDto } from './dto/create-items.dto';
 import { ExpenseItemInput } from './dto/expense-item.input';
@@ -36,6 +38,10 @@ import { computeKm, DEFAULT_RATE_PER_KM, TripType } from './km.logic';
 
 const dateOnly = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
 const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
+
+/** Pre-stored_files receipt values: a long-lived signed URL or a `local://` fallback ref (Batch 5). */
+const isLegacyReceiptRef = (value: string): boolean =>
+  value.startsWith('http://') || value.startsWith('https://') || value.startsWith('local://');
 
 const ITEM_INCLUDE = {
   km_log: { include: { stops: { orderBy: { stop_order: 'asc' } } } },
@@ -65,6 +71,8 @@ export class ExpensesService {
     private readonly audit: AuditService,
     private readonly scope: ScopeService,
     private readonly maps: MapsService,
+    private readonly storage: StorageService,
+    private readonly files: FilesService,
     @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
   ) {}
 
@@ -82,7 +90,7 @@ export class ExpensesService {
     const contents: ItemContent[] = [];
     for (const item of dto.items) {
       const payPeriodId = await this.resolvePayPeriodId(item.expense_date, periodCache);
-      contents.push(await this.buildItemContent(item, configs, payPeriodId));
+      contents.push(await this.buildItemContent(item, configs, payPeriodId, user));
     }
 
     const created = await this.prisma.$transaction((tx) =>
@@ -163,6 +171,39 @@ export class ExpensesService {
     return item;
   }
 
+  /**
+   * Access-controlled receipt URL: the SAME item visibility as the detail GET (scoped in the query), then
+   * a fresh 60s signed URL for the stored path. Legacy values (pre-stored_files long-lived URLs) pass
+   * through as-is; `local://` fallback refs are not servable. Issuance is audited (who/path/when).
+   */
+  async receiptUrl(id: string, user: AuthUser): Promise<{ url: string }> {
+    const item = await this.findOne(id, user); // 404 if not visible — no leak
+    if (!item.receipt_url) {
+      throw new NotFoundException('this item has no receipt');
+    }
+    let url: string;
+    if (item.receipt_url.startsWith('http://') || item.receipt_url.startsWith('https://')) {
+      url = item.receipt_url; // legacy stored signed URL (Batch 5) — served as recorded
+    } else if (item.receipt_url.startsWith('local://')) {
+      throw new NotFoundException('the receipt file is not available (storage was not configured at upload time)');
+    } else {
+      this.storage.assertConfigured(); // 503 — a stored path needs storage to sign
+      const signed = await this.storage.signedUrl(item.receipt_url, 60);
+      if (!signed) {
+        throw new NotFoundException('the receipt file is not available');
+      }
+      url = signed;
+    }
+    await this.audit.log({
+      actorId: user.id,
+      entityType: 'expense_items',
+      entityId: item.id,
+      action: 'download',
+      after: { path: item.receipt_url },
+    });
+    return { url };
+  }
+
   // ── Edit (gated, EXP-007) ──────────────────────────────────────────────────────────
   async editItem(id: string, dto: UpdateExpenseItemDto, user: AuthUser) {
     const item = await this.findOne(id, user); // also enforces scope
@@ -185,7 +226,7 @@ export class ExpensesService {
     }
     const periodCache = new Map<string, string | null>();
     const payPeriodId = await this.resolvePayPeriodId(dto.expense_date, periodCache);
-    const content = await this.buildItemContent(dto, configs, payPeriodId);
+    const content = await this.buildItemContent(dto, configs, payPeriodId, user);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       // Re-derive the km log/stops wholesale (delete old, create new) so an edit can switch category.
@@ -376,6 +417,7 @@ export class ExpensesService {
     item: ExpenseItemInput,
     configs: ConfigMap,
     payPeriodId: string | null,
+    user: AuthUser,
   ): Promise<ItemContent> {
     if (item.category === ExpenseCategory.km) {
       // km item: a km log is required; amount is COMPUTED (never trusted from the client). — EXP-004
@@ -432,6 +474,13 @@ export class ExpensesService {
     }
     if (config.requires_receipt && !item.receipt_url) {
       throw new UnprocessableEntityException(`a receipt is required for a ${item.category} item`);
+    }
+    // CLAIM the receipt path: must exist in stored_files AND be the caller's own upload (Admin/SA exempt)
+    // — an unknown/foreign reference is rejected (422). Legacy values (full URLs from the pre-stored_files
+    // pipeline, or local:// fallback refs) pass through unchanged so existing items stay editable.
+    // — security.md (file storage, claim validation)
+    if (item.receipt_url && !isLegacyReceiptRef(item.receipt_url)) {
+      await this.files.claim(item.receipt_url, user, 'receipt');
     }
     return {
       category: item.category,

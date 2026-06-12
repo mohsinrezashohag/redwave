@@ -3,9 +3,10 @@ import { DocumentType } from '@prisma/client';
 import { IsEnum, IsString, MaxLength, MinLength } from 'class-validator';
 
 /**
- * Upload a document. — SRS DOC-001
- * The binary upload is STUBBED (the service mints a `original_file_url` reference); the real
- * object-storage upload is deferred (CLAUDE §12), like HRM/Expenses/Billing.
+ * Create a document. — SRS DOC-001
+ * The PDF arrives through the unified upload pipeline (`POST /v1/files`, purpose=document); this create
+ * CLAIMS that stored path (must exist + be the caller's own upload, PDF mime — else 422) and freezes it
+ * as the immutable original (DOC-001/004).
  */
 export class CreateDocumentDto {
   @ApiProperty({ example: 'Compensation Agreement 2026' })
@@ -17,4 +18,13 @@ export class CreateDocumentDto {
   @ApiProperty({ enum: DocumentType, example: 'compensation_agreement' })
   @IsEnum(DocumentType)
   doc_type!: DocumentType;
+
+  @ApiProperty({
+    example: 'documents/2026/06/3f2a….pdf',
+    description: 'The stored_files path returned by POST /v1/files (purpose=document). Claim-validated.',
+  })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  file_path!: string;
 }
