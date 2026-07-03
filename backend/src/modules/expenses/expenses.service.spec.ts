@@ -59,6 +59,8 @@ function make() {
   const scope = { getRepScope: jest.fn().mockResolvedValue({ level: 'all' }) };
   // Maps OFF by default → km distance falls back to the client total_km (preserves the 130→70→31.50 case).
   const maps = { routeDistanceKm: jest.fn().mockResolvedValue(null), isConfigured: jest.fn().mockReturnValue(false) };
+  // KM rate resolves to the default $0.45 by default (preserves the 130→70→31.50 case).
+  const kmRates = { resolveRepRate: jest.fn().mockResolvedValue(new Decimal('0.450')) };
   const storage = { assertConfigured: jest.fn(), signedUrl: jest.fn().mockResolvedValue('https://signed/receipt') };
   // The unified-pipeline claim (FilesService mocked — the claim rules have their own spec).
   const files = { claim: jest.fn().mockResolvedValue({ path: 'receipts/2026/06/r.jpg', uploaded_by: 'u1' }) };
@@ -68,11 +70,12 @@ function make() {
     audit as never,
     scope as never,
     maps as never,
+    kmRates as never,
     storage as never,
     files as never,
     emitter as never,
   );
-  return { service, prisma, audit, scope, maps, storage, files, tx, emitter };
+  return { service, prisma, audit, scope, maps, kmRates, storage, files, tx, emitter };
 }
 
 const kmItem = (date = '2026-03-10', tripType: 'single' | 'round' = 'round'): ExpenseItemInput => ({

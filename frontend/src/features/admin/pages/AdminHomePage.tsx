@@ -9,6 +9,7 @@ import {
   Bell,
   Megaphone,
   Receipt,
+  Route,
   Scale,
   ScrollText,
   ShieldCheck,
@@ -55,6 +56,7 @@ const CARDS: HubCard[] = [
   { title: 'Product Types', description: 'The configurable product-type catalogue + commission behaviour.', icon: <Tags size={20} />, permission: 'commission:edit', to: '/admin/product-types' },
   { title: 'Clients', description: 'Partners, their products, and billing rates.', icon: <ShoppingBag size={20} />, permission: 'clients:view', to: '/admin/clients' },
   { title: 'Products', description: 'Every per-client product across all partners.', icon: <ShoppingCart size={20} />, permission: 'clients:view', to: '/admin/products' },
+  { title: 'KM rates', description: 'Per-client, effective-dated kilometre rate (rep reimbursement + client bill).', icon: <Route size={20} />, permission: 'expenses:view', to: '/admin/km-rates' },
   { title: 'Expense categories', description: 'Category catalogue and receipt requirements.', icon: <Receipt size={20} />, permission: 'expenses:edit' },
 ];
 

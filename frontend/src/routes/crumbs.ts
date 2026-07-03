@@ -81,6 +81,7 @@ export const CRUMBS: Record<string, CrumbMeta> = {
   '/admin/products': { label: 'Products', parent: '/admin', permission: 'clients:view' },
   '/admin/commission': { label: 'Commission Config', parent: '/admin', permission: 'commission:view' },
   '/admin/product-types': { label: 'Product types', parent: '/admin', permission: 'commission:view' },
+  '/admin/km-rates': { label: 'KM rates', parent: '/admin', permission: 'expenses:view' },
   '/admin/security': { label: 'Security', parent: '/admin', permission: 'settings:view' },
   '/admin/audit': { label: 'Audit log', parent: '/admin', permission: 'audit:view' },
   '/admin/reconciliation': { label: 'Reconciliation', parent: '/admin', permission: 'billing:view' },

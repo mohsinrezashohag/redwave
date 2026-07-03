@@ -172,6 +172,14 @@ enum TripType {
   round
 }
 
+// KM-rate stream — the two-stream separation (#3): `rep` is the reimbursement rate paid to the rep
+// (CAD); `client_bill` is what the client is charged for kilometres (Wave 2 client expense doc). The
+// two are NEVER combined. — SRS EXP-004 (Meeting 3)
+enum KmRateStream {
+  rep
+  client_bill
+}
+
 enum ExportFormat {
   pdf
   excel
@@ -308,6 +316,7 @@ model User {
   expense_items_approved        ExpenseItem[]              @relation("ExpenseItemApprovedBy")
   expense_field_configs_created ExpenseFieldConfig[]       @relation("ExpenseFieldConfigCreatedBy")
   expense_exports_generated     ExpenseExport[]            @relation("ExpenseExportGeneratedBy")
+  km_rate_configs_created       KmRateConfig[]             @relation("KmRateConfigCreatedBy")
   report_exports_generated      ReportExport[]             @relation("ReportExportGeneratedBy")
   stored_files_uploaded         StoredFile[]               @relation("StoredFileUploadedBy")
   statements_generated          ClientStatement[]          @relation("StatementGeneratedBy")
@@ -585,6 +594,7 @@ model Client {
   sales                 Sale[]
   expense_items         ExpenseItem[]
   expense_exports       ExpenseExport[]
+  km_rate_configs       KmRateConfig[]
   client_statements     ClientStatement[]
   client_invoices       ClientInvoice[]
   import_batches        ImportBatch[]
@@ -1018,6 +1028,27 @@ model ExpenseFieldConfig {
   creator          User    @relation("ExpenseFieldConfigCreatedBy", fields: [created_by], references: [id])
 
   @@map("expense_field_configs")
+}
+
+// KM-RATE CONFIG — per-client, effective-dated kilometre rate. TWO-STREAM (#3): a `rep` reimbursement
+// rate (CAD, drives the pay-run km amount) and a separate `client_bill` rate (Wave 2). A null client_id
+// is the GLOBAL default. Selection reuses common/effective-dating (selectEffectiveRate); a new future
+// row supersedes the scope's pending row and bounds the current (planSupersession); back-dating is
+// rejected. Falls back to the $0.45 constant when no row applies. — SRS EXP-004 (Meeting 3), CLAUDE §3 #10
+model KmRateConfig {
+  id             String       @id @default(uuid()) @db.Uuid
+  client_id      String?      @db.Uuid // null = global default
+  client         Client?      @relation(fields: [client_id], references: [id])
+  stream         KmRateStream
+  rate_per_km    Decimal      @db.Decimal(6, 3)
+  effective_from DateTime     @db.Date
+  effective_to   DateTime?    @db.Date
+  created_by     String       @db.Uuid
+  creator        User         @relation("KmRateConfigCreatedBy", fields: [created_by], references: [id])
+  created_at     DateTime     @default(now())
+
+  @@index([stream, client_id, effective_from]) // scope selection (rep-rate resolution at km submit)
+  @@map("km_rate_config")
 }
 
 model ExpenseExport {

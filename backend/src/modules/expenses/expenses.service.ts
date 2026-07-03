@@ -28,13 +28,14 @@ import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/p
 import { StorageService } from '../../common/storage/storage.service';
 import { FilesService } from '../files/files.service';
 import { MapsService } from './maps.service';
+import { KmRateService } from './km-rate.service';
 import { CreateExpenseItemsDto } from './dto/create-items.dto';
 import { ExpenseItemInput } from './dto/expense-item.input';
 import { UpdateExpenseItemDto } from './dto/update-item.dto';
 import { ReviewDto, ReviewDecision } from './dto/review.dto';
 import { BulkReviewDto } from './dto/bulk-review.dto';
 import { ListExpenseItemsQuery } from './dto/list-items.query';
-import { computeKm, DEFAULT_RATE_PER_KM, TripType } from './km.logic';
+import { computeKm, TripType } from './km.logic';
 
 const dateOnly = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
 const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
@@ -73,6 +74,7 @@ export class ExpensesService {
     private readonly audit: AuditService,
     private readonly scope: ScopeService,
     private readonly maps: MapsService,
+    private readonly kmRates: KmRateService,
     private readonly storage: StorageService,
     private readonly files: FilesService,
     @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
@@ -435,7 +437,10 @@ export class ExpensesService {
       // the −30/−60 deduction itself is unchanged (km.logic). — BRD §6.3 / SRS EXP-004
       const routeKm = await this.maps.routeDistanceKm(item.km.stops, { roundTrip: tripType === 'round' });
       const totalKm = routeKm ?? new Decimal(item.km.total_km);
-      const { deductionKm, billableKm, computedAmount } = computeKm(totalKm, tripType);
+      // Per-client, effective-dated REP reimbursement rate for the item's date (client-specific → global
+      // → the $0.45 default). Two-stream (#3); the amount is always computed server-side (#1). — EXP-004
+      const ratePerKm = await this.kmRates.resolveRepRate(item.client_id ?? null, dateOnly(item.expense_date));
+      const { deductionKm, billableKm, computedAmount } = computeKm(totalKm, tripType, ratePerKm);
       return {
         category: ExpenseCategory.km,
         client_id: item.client_id ?? null,
@@ -452,7 +457,7 @@ export class ExpensesService {
             total_km: totalKm.toFixed(2), // the server-derived (or fallback) authoritative distance
             deduction_km: deductionKm.toString(),
             billable_km: billableKm.toString(),
-            rate_per_km: DEFAULT_RATE_PER_KM.toString(),
+            rate_per_km: ratePerKm.toString(),
             computed_amount: computedAmount.toFixed(2),
             stops: {
               create: item.km.stops.map((s) => ({

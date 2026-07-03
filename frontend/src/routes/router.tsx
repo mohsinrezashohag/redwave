@@ -41,6 +41,7 @@ const ClientDetailPage = lazy(() => import('../features/clients/pages/ClientDeta
 const ProductsListPage = lazy(() => import('../features/products/pages/ProductsListPage'));
 const CommissionConfigPage = lazy(() => import('../features/commission/pages/CommissionConfigPage'));
 const ProductTypesPage = lazy(() => import('../features/productTypes/pages/ProductTypesPage'));
+const KmRatesPage = lazy(() => import('../features/kmRates/pages/KmRatesPage'));
 const PayRunListPage = lazy(() => import('../features/payrun/pages/PayRunListPage'));
 const PayRunDetailPage = lazy(() => import('../features/payrun/pages/PayRunDetailPage'));
 const ClawbackListPage = lazy(() => import('../features/clawback/pages/ClawbackListPage'));
@@ -154,6 +155,7 @@ export const router = createBrowserRouter([
           { path: 'admin/products', element: lazyEl(<ProductsListPage />) },
           { path: 'admin/commission', element: lazyEl(<CommissionConfigPage />) },
           { path: 'admin/product-types', element: lazyEl(<ProductTypesPage />) },
+          { path: 'admin/km-rates', element: lazyEl(<KmRatesPage />) },
           { path: 'admin/security', element: lazyEl(<SecuritySettingsPage />) },
           { path: 'admin/audit', element: lazyEl(<AuditLogPage />) },
           { path: 'admin/reconciliation', element: lazyEl(<ReconciliationPage />) },

@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   ShoppingCart,
+  Route,
   SlidersHorizontal,
   Tags,
   Sparkles,
@@ -212,6 +213,13 @@ const NAV: NavGroup[] = [
         to: '/admin/product-types',
         match: (l) => l.pathname.startsWith('/admin/product-types'),
         show: (a) => a.permissions.has('commission:edit'),
+      },
+      {
+        label: 'KM Rates',
+        icon: Route,
+        to: '/admin/km-rates',
+        match: (l) => l.pathname.startsWith('/admin/km-rates'),
+        show: (a) => a.permissions.has('expenses:view'),
       },
       {
         label: 'Import',
