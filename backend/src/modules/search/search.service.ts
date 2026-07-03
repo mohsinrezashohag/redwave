@@ -54,7 +54,16 @@ export class SearchService {
           AND: [
             scopeWhere, // scope in the query (§5)
             { status: { not: 'deleted' } },
-            { OR: [{ sale_code: like }, { customer_name: like }, { street: like }, { mpu_id: like }] },
+            // Sale ID / customer / address / MPU / REP name (CLAW-009: same address can have two reps).
+            {
+              OR: [
+                { sale_code: like },
+                { customer_name: like },
+                { street: like },
+                { mpu_id: like },
+                { rep: { full_name: like } },
+              ],
+            },
           ],
         },
         select: { id: true, sale_code: true, customer_name: true },
