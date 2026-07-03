@@ -26,10 +26,16 @@ import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
 import { productTypeLabel } from '../../../lib/format/productType';
+import { useProductTypes } from '../../productTypes/api/useProductTypes';
 import { useClientProducts, useClients, useReps } from '../api/useSales';
 import { useCreateSale } from '../api/useSaleMutations';
 import type { Sale } from '../sales.types';
 import styles from './SaleForm.module.css';
+
+// Internet is the mandatory base of a sale; TV/Home Phone/Protection Plan/Mesh/Speed-attach are add-ons
+// that can't be sold standalone. Base = a catalogue type whose behaviour is tiered or greenfield. The
+// server re-enforces this (422, SALE-001a) — this is the convenience gate. — CLAUDE §5
+const BASE_BEHAVIOURS = new Set(['tiered', 'greenfield']);
 
 const SELF = '__self__';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -60,6 +66,7 @@ export function SaleForm() {
   const create = useCreateSale();
   const clients = useClients(canViewClients);
   const reps = useReps(canSeeReps);
+  const productTypes = useProductTypes('all', canViewClients);
 
   const { control, register, handleSubmit, watch, setValue, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -82,10 +89,21 @@ export function SaleForm() {
   const clientId = watch('client_id');
   const saleDate = watch('sale_date');
   const mpuId = watch('mpu_id');
+  const selectedProductIds = watch('product_ids');
   const products = useClientProducts(clientId || undefined, canViewClients);
 
   const clientCode = clients.data?.find((c) => c.id === clientId)?.client_code;
   const saleIdPreview = [saleDate, mpuId, clientCode].filter((p) => p && p.trim()).join('-');
+
+  // Require an internet base among the selected products. Only enforce once the catalogue has loaded
+  // (otherwise a valid internet sale could be falsely blocked); until then the server is the gate.
+  const behaviourByKey = new Map((productTypes.data ?? []).map((t) => [t.key, t.behaviour]));
+  const hasInternetBase = selectedProductIds.some((id) => {
+    const type = products.data?.find((p) => p.id === id)?.product_type;
+    return type ? BASE_BEHAVIOURS.has(behaviourByKey.get(type) ?? '') : false;
+  });
+  const missingBase =
+    selectedProductIds.length > 0 && (productTypes.data?.length ?? 0) > 0 && !hasInternetBase;
 
   const onSubmit = (values: FormValues) => {
     create.mutate(
@@ -234,6 +252,13 @@ export function SaleForm() {
           )}
         />
 
+        {missingBase && (
+          <Banner tone="warning" title="Internet is required">
+            A sale must include an internet activation as its base — TV, Home Phone and other add-ons
+            can&rsquo;t be sold on their own. Add an internet product to continue.
+          </Banner>
+        )}
+
         <div className={styles.footer}>
           <span className={styles.preview}>
             Sale ID preview:{' '}
@@ -244,7 +269,7 @@ export function SaleForm() {
             <Button variant="secondary" type="button" onClick={() => navigate('/sales')}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit" loading={create.isPending}>
+            <Button variant="primary" type="submit" loading={create.isPending} disabled={missingBase}>
               Enter sale
             </Button>
           </div>

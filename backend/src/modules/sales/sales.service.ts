@@ -72,10 +72,16 @@ export class SalesService {
       throw new UnprocessableEntityException('client does not exist or is inactive');
     }
 
-    // Every product must belong to this client and be active; capture its product_type.
+    // Every product must belong to this client and be active; capture its product_type + catalogue
+    // behaviour (behaviour drives the internet-base rule below).
     const products = await this.prisma.product.findMany({
       where: { id: { in: dto.items.map((i) => i.product_id) }, client_id: client.id },
-      select: { id: true, product_type: true, is_active: true },
+      select: {
+        id: true,
+        product_type: true,
+        is_active: true,
+        product_type_ref: { select: { behaviour: true } },
+      },
     });
     const productById = new Map(products.map((p) => [p.id, p]));
     for (const item of dto.items) {
@@ -85,6 +91,20 @@ export class SalesService {
           `product ${item.product_id} does not belong to the client or is inactive`,
         );
       }
+    }
+
+    // Internet is the MANDATORY BASE of a sale; TV, Home Phone, Protection Plan, Mesh Extender and
+    // Speed-attach are add-ons and cannot be sold standalone. Base = a product whose catalogue
+    // behaviour is `tiered` (internet) or `greenfield`; a sale of only `standard_addon` items is
+    // rejected. This never touches commission/tally logic (#5/#9). — SRS SALE-001a (Meeting 3)
+    const hasInternetBase = dto.items.some((item) => {
+      const behaviour = productById.get(item.product_id)?.product_type_ref?.behaviour;
+      return behaviour === 'tiered' || behaviour === 'greenfield';
+    });
+    if (!hasInternetBase) {
+      throw new UnprocessableEntityException(
+        'a sale must include an internet activation (the mandatory base); add-ons cannot be sold standalone',
+      );
     }
 
     const saleDate = dto.sale_date ?? todayInWinnipeg();
