@@ -23,7 +23,7 @@ This Business Requirements Document defines the complete functional and non-func
 
 ### 1.2 Business Context
 
-Redwave Marketing Inc. is a telecom sales agency operating in Manitoba (Canada) and select US markets. Independent field sales representatives (“reps” / “distributors”) sell internet, TV, and home-phone services on behalf of program partners (“clients”): Valley Fiber (VF), RF Now (RF), and CTI. Redwave bills the clients for accepted activations and pays reps a tiered, commission-only compensation. Today this entire pipeline — sales capture, validation, commission calculation, the 70/30 holdback, clawbacks, expense reimbursement, client invoicing, and payroll — is run manually through Excel workbooks and WhatsApp. The objective of this project is to automate that pipeline end-to-end while keeping every business rule configurable by Redwave administrators.
+Redwave Marketing Inc. is a telecom sales agency operating in Manitoba (Canada) and select US markets. Independent field sales representatives (“reps” / “distributors”) sell internet, TV, and home-phone services on behalf of program partners (“clients”): Valley Fiber (VF), RF Now (RF), CTI, and VF Business. Redwave bills the clients for accepted activations and pays reps a tiered, commission-only compensation. Today this entire pipeline — sales capture, validation, commission calculation, the 70/30 holdback, clawbacks, expense reimbursement, client invoicing, and payroll — is run manually through Excel workbooks and WhatsApp. The objective of this project is to automate that pipeline end-to-end while keeping every business rule configurable by Redwave administrators.
 
 ### 1.3 Project Objectives
 
@@ -73,7 +73,7 @@ Out of Scope (this phase)
 
 - Automated email notifications for rate changes (system notification only, by deliberate choice).
 
-- B2B / business sales module (reserved for a later phase).
+- B2B / business sales module (reserved for a later phase). **Note:** *"VF Business"* is a distinct **program partner / client** (with its own product catalogue and billing rates) and is **in scope now** — it is not the deferred B2B sales line.
 
 ## 2. Users, Roles & Access Control
 
@@ -100,7 +100,7 @@ The data model is the foundation of the system. It is designed so that business 
 |----------------------------|----------------------------------------------|--------------------------------------------------------------------------------------------------|
 | Rep / Distributor          | A field salesperson and their HR record.     | 1 Rep → many Sales, Expenses, Pay-Run Lines, Equipment, Documents. Has 1 Field Manager (a User). |
 | User & Role                | Any system login; role drives module access. | 1 Role → many Users; Role ↔ Modules (many-to-many permissions).                                  |
-| Client (Program Partner)   | VF, RF, CTI, and future partners.            | 1 Client → many Products; 1 Client → many Sales; carries optional SA-defined custom fields.       |
+| Client (Program Partner)   | VF, RF, CTI, VF Business, and future partners. | 1 Client → many Products; 1 Client → many Sales; has its own billing **currency** (admin-managed); carries optional SA-defined custom fields. |
 | Product Type (catalogue)   | Configurable product types + commission behaviour (tiered/greenfield/standard add-on). | The SA adds types at runtime (always standard add-on); core types are locked.                     |
 | Product                    | An admin-created, per-client sellable item.  | Belongs to 1 Client; has a product type from the catalogue; referenced by Sales; has effective-dated client + rep rates. |
 | Sale                       | One customer/household activation.           | Belongs to Rep + Client + Product(s); has 1 unique Sale ID; spawns 0..1 Clawback.                |
@@ -146,6 +146,8 @@ Sale — stored fields
 
 > **This section reflects Schedule C v2 and reverses earlier rules**
 > **Three things changed from Schedule C v1:** (1) tier numbering is inverted — Tier 1 is now the highest; (2) tiers are calculated on the GROSS activation count, not net; (3) the “tier cascade” clawback is removed — a cancellation never re-tiers a period.
+
+> **The per-client rate grid is client-BILLING data, not rep pay (Meeting 3).** The `Product_Commission_grid.xlsx` figures (e.g. VF internet $350, RF $280–365, CTI $250, VF Business $400, and per-client add-on rates) are **what Redwave charges each client** — they live in `client_billing_rates`, per client × product, and are entered by the admin. **Rep commission is unchanged: the cross-client tiered Schedule C v2 below.** The two streams never mix (§8.2 / #3). Add-on rep commission is an admin-set flat rate that may be **zero (bill-only)**.
 
 ### 4.1 Internet Commission — Tiered (per Pay Period)
 
@@ -216,7 +218,7 @@ The $100 greenfield rate and exclusion from the internet tally apply only once a
 
 - Client — dropdown (VF / RF / CTI / future), no free text.
 
-- Product(s) — populated from the selected client’s admin-created catalogue; one or more per sale.
+- Product(s) — populated from the selected client’s admin-created catalogue; one or more per sale. **Internet is the mandatory base product of a sale**; TV, Home Phone, Protection Plan, Mesh Extender and Speed-attach are **add-ons that cannot be sold standalone** (enforced client- and server-side). Whether an add-on pays rep commission is an admin-set flat rate — including **zero (bill-only)**.
 
 - Customer name and address — duplicates permitted.
 
@@ -277,13 +279,13 @@ Per rep per cycle the pay run produces: 70% advance for the period, any 30% hold
 
 ## 7. Expense Module
 
-Expenses are captured **item-by-item** (the expense item is the atomic unit — there is no mandatory weekly report to fill in first; a user adds one or several items whenever they incur them). Each approved item follows the SAME pay cycle as the commission for the period **its own expense date falls in** — i.e. it pays out with that period's payday, not the next.
+> **Reversed in Meeting 3 — report-as-folder model (supersedes the earlier item-first / "list, not folders" decision).** Expenses are now captured in a **weekly report** (the business week) — a folder that holds many expense line items and is **submitted as one unit** for approval. Approval is per report: an approver **approves the whole report**, or **sends it back → the rep fixes → resubmits**. A report list shows name / date / status (Not Submitted / Submitted / Approved) / total / an **alert count**, plus a running reimbursable total. Report detail has **Details / Expenses / Receipts** tabs and a **Submit** action. Each approved report's items still follow the pay cycle of the period **their own expense date falls in** (same-cycle payout). (This reverses the v1.2 item-first rule; `expense_reports` becomes the live submission entity.)
 
 ### 7.1 Expense Categories (confirmed)
 
 | **Category** | **Rules**                                                                                                                                                                                                                                              |
 |--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Kilometres   | From / To with multi-stop (Google Maps Places autocomplete + “add stop”). ONE km log per day per rep. Rep selects Single Trip (‒30 km) or Round Trip (‒60 km). $0.45/km on billable distance, computed server-side. With a Maps key the route distance is derived automatically from the stops; otherwise the rep enters it manually. Origin is an open input, not a hardcoded office. Receipt NOT required. |
+| Kilometres   | From / To with multi-stop (Google Maps Places autocomplete + “add stop”). ONE km log per day per rep. Rep selects Single Trip (‒30 km) or Round Trip (‒60 km). Billable distance × the km rate, computed server-side. The km rate is **per-client and effective-dated** (default $0.45) and is **two-stream** — a rep-reimbursement rate (CAD) and a separate client-bill rate, never combined (§8.2 / #3). With a Maps key the route distance is derived automatically from the stops; otherwise the rep enters it manually. Origin is an open input, not a hardcoded office. Receipt NOT required. |
 | Meals        | Lunch $15, Dinner $30 (admin-configurable; may be lowered). Amount entered manually + place name. Receipt mandatory.                                                                                                                                 |
 | Hotel        | Name, location, date, amount. Receipt mandatory.                                                                                                                                                                                                       |
 | Flight       | Description, date, amount. Receipt mandatory.                                                                                                                                                                                                          |
@@ -293,6 +295,13 @@ Expenses are captured **item-by-item** (the expense item is the atomic unit — 
 
 > **Confirmed in Meeting 2**
 > **Receipts are mandatory for every category except the kilometre log.** The Super Admin can add new expense fields that then appear in the rep dropdown. Meal eligibility (“road trips only”) is handled manually by the validating manager, not enforced by the system — Redwave deliberately keeps these judgement calls manual rather than over-automating.
+
+> **Added in Meeting 3 (SAP-Concur-style workflow)**
+> - **Grouped, searchable expense-type picker** (with a most-recently-used shortcut) and **per-type field sets** — each type shows its own fields (e.g. Meals: amount, vendor, city, gratuity, attendees; Hotel/Flight/Parking: their own).
+> - **Personal / do-not-reimburse toggle** — an item flagged personal is **excluded** from the reimbursable total, the pay run, and any client-facing output.
+> - **Custom tags** — client/program and **channel** (Redwave's equivalent of the reference app's Title/Program/Store-Department).
+> - **Alert vs Warning validation** — a hard stop ("fix before saving") plus a soft "save anyway?" that flags the item; alerts/warnings **aggregate to the report header with a count**.
+> - **Receipts are retained for tax and are NEVER included in client-facing output.**
 
 ### 7.2 Submission, Approval & Visibility
 
@@ -314,6 +323,8 @@ Expenses are captured **item-by-item** (the expense item is the atomic unit — 
 
 - **Commission invoice (secondary).** An optional one-line PDF invoice showing only the total commission amount for the client.
 
+- **Client expense billing document (added Meeting 3).** A **separate**, gapless-numbered PDF per client — **kilometres + food, grouped by type, itemized per rep per day**, with **dynamic selection** of which reps / days / clients to include, rendered in the **client's currency**. It is generated and attached **separately** from the commission statement when invoicing. It contains **no receipts and no commission data** (§8.2 / #3). (An optional route-map image is deferred / out of scope for now.)
+
 > **Confirmed in Meeting 2**
 > **One line per customer — not one line per product.** A customer with Internet + TV + Home Phone is a single row with the combined total. This fixes a known defect in the current export, where three products produced three lines. **Remove the GST/PST portion entirely** — tax is handled in QuickBooks and varies, so it must not be hard-coded into the statement or invoice.
 
@@ -322,7 +333,7 @@ Expenses are captured **item-by-item** (the expense item is the atomic unit — 
 > **Architectural rule — do not violate**
 > **Client billing rates and rep commission rates are two completely separate calculation streams.** Mixing these two streams was the core defect of Redwave’s earlier system and is the single most important mistake to avoid in this clean-slate build. They live in separate configuration tables, are edited independently, and are never combined. (E.g. a VF internet activation may bill the client at one rate while paying the rep a tier rate — unrelated numbers.)
 
-Each client has its own product catalogue and its own billing rates, created and maintained by the admin. Bundle/triple-play pricing, where applicable, is configured per client.
+Each client has its own product catalogue and its own billing rates, created and maintained by the admin. **Bundles are admin-created and fully configurable** (the RF Now $35 HP+TV bundle is just one configured bundle via the `bundle_bonus` rate kind — there is no hard-coded/special-cased bundle logic). Billing rates are per client and are held in the **client's currency** (§8.3).
 
 ### 8.3 Numbering, Immutability, Reconciliation & Export (confirmed)
 
@@ -331,7 +342,7 @@ Each client has its own product catalogue and its own billing rates, created and
 - **Preview before issue.** The user previews the one-line-per-customer rows (combined total, no tax) before generating; generating then issues and renders the Excel.
 - **Reconciliation / tie-out (integrity safety net).** Finance can verify: each statement total = the sum of its customer lines = the sum of the underlying sales’ billing amounts; each pay-run total = the sum of its lines. Discrepancies are flagged clearly (e.g. a statement that has gone stale because sales changed after issue).
 - **QuickBooks-friendly export.** Because tax lives in QuickBooks, statements/invoices export as a CSV that maps cleanly into QuickBooks (no tax column), stored as a recorded artifact.
-- **Single currency: CAD (confirmed).** All clients, including US/CTI, are billed in **CAD** — there is no multi-currency or FX handling. Money is exact-decimal, formatted by one central rounding rule (2 dp, half-up) so a CAD figure is identical on screen, in the statement, the invoice, and every export.
+- **Multi-currency with a frozen FX snapshot (reversed in Meeting 3; supersedes the earlier CAD-only rule).** Amounts are incurred/billed in any currency (**USD + CAD** primary; the currency set is admin-configurable and extensible — never hard-coded). Each client has its own **billing currency** (e.g. CTI = USD, others = CAD). **Final reconciliation is in CAD.** When a non-CAD amount is converted, the system captures that day's **FX rate** and stores `{original amount, original currency, FX rate, rate date, converted CAD amount}`; the **rate + CAD value are frozen/immutable** (like every other snapshot — #2) and are **never re-converted**. Roll-ups and reconciliation read the stored CAD; the original currency + rate are retained for audit. **Capture moments:** client-bill FX freezes at **document issue** (statement/invoice/expense-doc — never on preview; a correction re-issues a new numbered doc with a fresh rate); rep-expense FX freezes at **approval**. The `fx_rate` is stored at high precision; the resulting `amount_cad` is rounded to **2 dp, half-up** (the central house rule, unchanged). **Rep pay (commission, pay run, holdback, clawback) is CAD-only.**
 
 ## 9. Dashboards, Leaderboard & Notifications
 
@@ -418,6 +429,10 @@ This log records decisions that reversed or materially refined earlier artifacts
 | Rate-change email       | Automated email                             | System notification only; manual comms                       |
 | Products                | Fixed catalogue                             | Admin-created per client                                     |
 | Rep code reuse          | Ambiguous in legacy data                    | Never reused going forward                                   |
+| Expense capture (M3)    | Item-first list, "not folders" (v1.2)       | Weekly **report-as-folder**, submitted as one unit           |
+| Currency (M3)           | Single-currency CAD (v1.2)                  | **Per-client currency + frozen FX snapshot**, reconciled in CAD |
+| Clients (M3)            | VF, RF, CTI                                 | + **VF Business** (4th program partner, in scope)            |
+| Commission grid (M3)    | (ambiguous "Commission" sheet)              | Confirmed **client-billing** data; Schedule C rep pay unchanged |
 
 ### 11.1 Remaining Items to Finalise
 
