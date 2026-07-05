@@ -26,10 +26,12 @@ export class InvoiceService {
    * ISSUE a commission invoice — a NEW gapless-numbered IMMUTABLE version; the prior current version is
    * marked `superseded` (metadata only). `total_commission` = the billing-stream statement total (#3).
    */
-  async generate(clientId: string, payPeriodId: string, actorId: string) {
+  async generate(clientId: string, payPeriodId: string, actorId: string, fxOverride?: string) {
     // Same billing-stream total as the statement (structurally identical — never re-derived). (#3)
-    const { draft } = await this.statements.priceClientPeriod(clientId, payPeriodId);
+    const { client, draft } = await this.statements.priceClientPeriod(clientId, payPeriodId);
     const total = formatMoney(draft.total_amount);
+    // Freeze the FX snapshot AT ISSUE (#12) — CAD → rate 1; total_commission is in the client's currency.
+    const fx = await this.statements.resolveIssueFx(client.currency, draft.total_amount, fxOverride);
 
     const invoice = await this.prisma.$transaction(async (tx) => {
       const invoice_number = await this.sequence.next(tx, 'invoice'); // gapless, row-locked
@@ -40,6 +42,10 @@ export class InvoiceService {
           client_id: clientId,
           pay_period_id: payPeriodId,
           total_commission: total,
+          currency: fx.currency,
+          fx_rate: fx.fx_rate,
+          fx_rate_date: fx.fx_rate_date,
+          amount_cad: fx.amount_cad,
           generated_by: actorId,
         },
       });

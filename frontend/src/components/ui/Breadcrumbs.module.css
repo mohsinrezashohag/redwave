@@ -1,23 +1,46 @@
 .nav {
   font-size: var(--text-sm);
+  min-width: 0;
 }
 
 .list {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .item {
   display: inline-flex;
+  min-width: 0;
+}
+
+.link,
+.text,
+.current {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .link {
   color: var(--text-secondary);
+  border-radius: var(--radius-sm);
 }
 
 .link:hover {
   color: var(--accent-600);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.text {
+  color: var(--text-secondary);
 }
 
 .current {
@@ -26,5 +49,6 @@
 }
 
 .sep {
+  flex-shrink: 0;
   color: var(--text-secondary);
 }

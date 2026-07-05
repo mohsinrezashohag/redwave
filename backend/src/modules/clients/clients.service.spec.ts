@@ -27,10 +27,19 @@ describe('ClientsService', () => {
         create: jest.fn(),
         update: jest.fn(),
       },
+      clientStatement: { findFirst: jest.fn().mockResolvedValue(null) },
+      clientInvoice: { findFirst: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
     };
     const audit = { log: jest.fn().mockResolvedValue(undefined) };
-    return { service: new ClientsService(prisma as never, audit as never), prisma, audit, tx };
+    const currencies = { assertSupported: jest.fn().mockResolvedValue(undefined) };
+    return {
+      service: new ClientsService(prisma as never, audit as never, currencies as never),
+      prisma,
+      audit,
+      currencies,
+      tx,
+    };
   }
 
   it('list(active) excludes inactive clients via where is_active:true, returning a {data,meta} page', async () => {
@@ -76,5 +85,47 @@ describe('ClientsService', () => {
     expect(tx.clientCustomField.createMany).toHaveBeenCalledWith({
       data: [{ field_name: 'AM', field_value: 'Jane', display_order: 0, client_id: 'c1' }],
     });
+  });
+
+  // ── Billing currency (Meeting 3, #12) ──────────────────────────────────────────────
+  it('create persists the billing currency (USD) after validating it is supported', async () => {
+    const { service, prisma, currencies } = make();
+    prisma.client.create.mockResolvedValue({ id: 'c1', currency: 'USD' });
+    await service.create(
+      { client_code: 'CTI', name: 'CTI', market: 'US', currency: 'USD', supplies_mpu_id: true },
+      'actor',
+    );
+    expect(currencies.assertSupported).toHaveBeenCalledWith('USD');
+    expect(prisma.client.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ currency: 'USD' }) }),
+    );
+  });
+
+  it('create defaults to CAD without a currency-support check', async () => {
+    const { service, prisma, currencies } = make();
+    prisma.client.create.mockResolvedValue({ id: 'c1', currency: 'CAD' });
+    await service.create({ client_code: 'VF', name: 'VF', market: 'CA', supplies_mpu_id: true }, 'actor');
+    expect(currencies.assertSupported).not.toHaveBeenCalled(); // CAD is the base — no fetch
+    expect(prisma.client.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ currency: 'CAD' }) }),
+    );
+  });
+
+  it('allows changing currency while the client has NO issued statement/invoice', async () => {
+    const { service, prisma, tx } = make();
+    prisma.client.findUnique.mockResolvedValue({ id: 'c1', is_active: true, currency: 'CAD' });
+    tx.client.update.mockResolvedValue({ id: 'c1', currency: 'USD' });
+    await service.update('c1', { currency: 'USD' }, 'actor');
+    expect(tx.client.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ currency: 'USD' }) }),
+    );
+  });
+
+  it('BLOCKS a currency change once an issued statement exists (frozen billing history, #12) → 422', async () => {
+    const { service, prisma } = make();
+    prisma.client.findUnique.mockResolvedValue({ id: 'c1', is_active: true, currency: 'CAD' });
+    prisma.clientStatement.findFirst.mockResolvedValue({ id: 'stmt-1' }); // a doc is frozen in CAD
+    await expect(service.update('c1', { currency: 'USD' }, 'actor')).rejects.toMatchObject({ status: 422 });
+    expect(prisma.$transaction).not.toHaveBeenCalled(); // never reaches the write
   });
 });

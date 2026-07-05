@@ -336,3 +336,9 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
+
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

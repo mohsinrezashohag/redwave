@@ -53,7 +53,7 @@ export class BillingGenerationController {
     @Body() dto: GenerateBillingDto,
     @CurrentUser('id') actorId: string,
   ) {
-    return this.statements.generate(clientId, dto.pay_period_id, actorId);
+    return this.statements.generate(clientId, dto.pay_period_id, actorId, dto.fx_rate);
   }
 
   @Post(':id/invoices')
@@ -70,6 +70,6 @@ export class BillingGenerationController {
     @Body() dto: GenerateBillingDto,
     @CurrentUser('id') actorId: string,
   ) {
-    return this.invoices.generate(clientId, dto.pay_period_id, actorId);
+    return this.invoices.generate(clientId, dto.pay_period_id, actorId, dto.fx_rate);
   }
 }

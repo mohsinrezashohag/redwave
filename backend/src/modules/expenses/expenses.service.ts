@@ -26,15 +26,19 @@ import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifica
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
 import { StorageService } from '../../common/storage/storage.service';
+import { winnipegDateOnly } from '../../common/timezone';
+import { FxRateService } from '../../common/fx/fx-rate.service';
+import { convertToCad } from '../../common/fx/fx.logic';
 import { FilesService } from '../files/files.service';
 import { MapsService } from './maps.service';
+import { KmRateService } from './km-rate.service';
 import { CreateExpenseItemsDto } from './dto/create-items.dto';
 import { ExpenseItemInput } from './dto/expense-item.input';
 import { UpdateExpenseItemDto } from './dto/update-item.dto';
 import { ReviewDto, ReviewDecision } from './dto/review.dto';
 import { BulkReviewDto } from './dto/bulk-review.dto';
 import { ListExpenseItemsQuery } from './dto/list-items.query';
-import { computeKm, DEFAULT_RATE_PER_KM, TripType } from './km.logic';
+import { computeKm, TripType } from './km.logic';
 
 const dateOnly = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
 const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
@@ -56,6 +60,12 @@ interface ItemContent {
   client_id: string | null;
   expense_date: Date;
   amount: string;
+  // Stored-FX (frozen at APPROVAL for foreign; CAD is frozen here at create). — #12
+  original_currency: string;
+  fx_rate: string | null; // '1' for CAD; null until frozen for foreign
+  amount_cad: string | null; // = amount for CAD; null until frozen for foreign
+  is_personal: boolean;
+  tags: string[];
   description: string;
   receipt_url: string | null;
   pay_period_id: string | null;
@@ -71,6 +81,8 @@ export class ExpensesService {
     private readonly audit: AuditService,
     private readonly scope: ScopeService,
     private readonly maps: MapsService,
+    private readonly kmRates: KmRateService,
+    private readonly fx: FxRateService,
     private readonly storage: StorageService,
     private readonly files: FilesService,
     @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
@@ -245,6 +257,11 @@ export class ExpensesService {
           client_id: content.client_id,
           expense_date: content.expense_date,
           amount: content.amount,
+          original_currency: content.original_currency,
+          fx_rate: content.fx_rate,
+          amount_cad: content.amount_cad,
+          is_personal: content.is_personal,
+          tags: content.tags,
           description: content.description,
           receipt_url: content.receipt_url,
           pay_period_id: content.pay_period_id,
@@ -293,7 +310,8 @@ export class ExpensesService {
   // ── Approval workflow (single) ─────────────────────────────────────────────────────
   async review(id: string, dto: ReviewDto, user: AuthUser) {
     const item = await this.findOne(id, user);
-    const updated = await this.transitionOne(item, dto.decision, dto.note ?? null, user);
+    // dto.fx_rate is the approver's FX override to freeze on a foreign item (else the FX source, else 422).
+    const updated = await this.transitionOne(item, dto.decision, dto.note ?? null, user, dto.fx_rate);
     if (!updated) {
       throw new UnprocessableEntityException(`cannot review an item in status '${item.status}'`);
     }
@@ -309,8 +327,13 @@ export class ExpensesService {
     });
     let reviewed = 0;
     for (const item of items) {
-      const updated = await this.transitionOne(item, dto.decision, dto.note ?? null, user);
-      if (updated) reviewed += 1;
+      try {
+        // Bulk carries NO per-item FX override — a foreign item needing a manual rate throws and is skipped.
+        const updated = await this.transitionOne(item, dto.decision, dto.note ?? null, user);
+        if (updated) reviewed += 1;
+      } catch {
+        // e.g. approving a foreign item with no override + FX source off → 422; skip it (reported below).
+      }
     }
     return { reviewed, skipped: dto.ids.length - reviewed };
   }
@@ -321,10 +344,20 @@ export class ExpensesService {
    * approve; clears them on reject/send_back. — SRS §11 state machine
    */
   private async transitionOne(
-    item: { id: string; status: string; submitted_by: string; expense_date: Date; pay_period_id: string | null },
+    item: {
+      id: string;
+      status: string;
+      submitted_by: string;
+      expense_date: Date;
+      pay_period_id: string | null;
+      amount: Prisma.Decimal;
+      original_currency: string;
+      amount_cad: Prisma.Decimal | null;
+    },
     decision: ReviewDecision,
     note: string | null,
     user: AuthUser,
+    fxOverride?: string,
   ) {
     if (item.status !== 'submitted' && item.status !== 'sent_back') {
       return null;
@@ -336,12 +369,30 @@ export class ExpensesService {
           ? 'rejected'
           : 'sent_back';
 
+    // Freeze FX at APPROVAL for a FOREIGN item not yet converted (#12; CAD was frozen at create). Resolve
+    // the rate: approver override → Bank of Canada Valet → 422 (never guess). Frozen once, never re-run.
+    const fxFreeze: { fx_rate?: string; fx_rate_date?: Date; amount_cad?: string } = {};
+    if (decision === ReviewDecision.approve && item.original_currency !== 'CAD' && item.amount_cad == null) {
+      const freezeDate = winnipegDateOnly();
+      const rate =
+        fxOverride != null ? new Decimal(fxOverride) : await this.fx.getRateToCad(item.original_currency, freezeDate);
+      if (rate == null) {
+        throw new UnprocessableEntityException(
+          `an FX rate is required to approve a ${item.original_currency} expense — provide fx_rate or enable the FX source`,
+        );
+      }
+      fxFreeze.fx_rate = rate.toFixed(8);
+      fxFreeze.fx_rate_date = freezeDate;
+      fxFreeze.amount_cad = convertToCad(item.amount.toString(), rate).toFixed(2);
+    }
+
     const updated = await this.prisma.expenseItem.update({
       where: { id: item.id },
       data: {
         status: nextStatus,
         approved_by: decision === ReviewDecision.approve ? user.id : null,
         approved_at: decision === ReviewDecision.approve ? new Date() : null,
+        ...fxFreeze,
       },
       include: ITEM_INCLUDE,
     });
@@ -431,12 +482,21 @@ export class ExpensesService {
       // the −30/−60 deduction itself is unchanged (km.logic). — BRD §6.3 / SRS EXP-004
       const routeKm = await this.maps.routeDistanceKm(item.km.stops, { roundTrip: tripType === 'round' });
       const totalKm = routeKm ?? new Decimal(item.km.total_km);
-      const { deductionKm, billableKm, computedAmount } = computeKm(totalKm, tripType);
+      // Per-client, effective-dated REP reimbursement rate for the item's date (client-specific → global
+      // → the $0.45 default). Two-stream (#3); the amount is always computed server-side (#1). — EXP-004
+      const ratePerKm = await this.kmRates.resolveRepRate(item.client_id ?? null, dateOnly(item.expense_date));
+      const { deductionKm, billableKm, computedAmount } = computeKm(totalKm, tripType, ratePerKm);
       return {
         category: ExpenseCategory.km,
         client_id: item.client_id ?? null,
         expense_date: dateOnly(item.expense_date),
         amount: computedAmount.toFixed(2),
+        // km is always CAD (the rep km rate is CAD) → frozen at create, no FX at approval.
+        original_currency: 'CAD',
+        fx_rate: '1',
+        amount_cad: computedAmount.toFixed(2),
+        is_personal: item.is_personal ?? false,
+        tags: item.tags ?? [],
         description: item.description,
         receipt_url: null, // km never requires a receipt
         pay_period_id: payPeriodId,
@@ -446,7 +506,7 @@ export class ExpensesService {
             total_km: totalKm.toFixed(2), // the server-derived (or fallback) authoritative distance
             deduction_km: deductionKm.toString(),
             billable_km: billableKm.toString(),
-            rate_per_km: DEFAULT_RATE_PER_KM.toString(),
+            rate_per_km: ratePerKm.toString(),
             computed_amount: computedAmount.toFixed(2),
             stops: {
               create: item.km.stops.map((s) => ({
@@ -482,15 +542,34 @@ export class ExpensesService {
     if (item.receipt_url && !isLegacyReceiptRef(item.receipt_url)) {
       await this.files.claim(item.receipt_url, user, 'receipt');
     }
+    // Currency (default CAD). CAD → freeze the identity conversion at create; a foreign amount freezes its
+    // FX rate + CAD value at APPROVAL (#12), so fx_rate/amount_cad stay null until then.
+    const currency = (item.currency ?? 'CAD').toUpperCase();
+    if (currency !== 'CAD') {
+      await this.assertCurrencySupported(currency);
+    }
     return {
       category: item.category,
       client_id: item.client_id ?? null,
       expense_date: dateOnly(item.expense_date),
       amount: item.amount,
+      original_currency: currency,
+      fx_rate: currency === 'CAD' ? '1' : null,
+      amount_cad: currency === 'CAD' ? item.amount : null,
+      is_personal: item.is_personal ?? false,
+      tags: item.tags ?? [],
       description: item.description,
       receipt_url: item.receipt_url ?? null,
       pay_period_id: payPeriodId,
     };
+  }
+
+  /** A non-CAD currency must exist + be active in the catalogue (else 422 — never a raw FK 500). */
+  private async assertCurrencySupported(code: string): Promise<void> {
+    const currency = await this.prisma.currency.findFirst({ where: { code, is_active: true }, select: { code: true } });
+    if (!currency) {
+      throw new UnprocessableEntityException(`currency '${code}' is not a supported active currency`);
+    }
   }
 
   /** Resolve the pay period whose [start,end] contains the item's expense_date (#7/EXP-009). */

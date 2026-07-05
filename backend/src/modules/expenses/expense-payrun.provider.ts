@@ -18,9 +18,14 @@ export class ExpensePayrunProvider implements ExpenseTotalProvider {
 
   async getApprovedExpenseTotal(repId: string, payPeriodId: string): Promise<Decimal> {
     const items = await this.prisma.expenseItem.findMany({
-      where: { rep_id: repId, pay_period_id: payPeriodId, status: 'approved' },
-      select: { amount: true },
+      // A personal (do-not-reimburse) item never reaches the pay run (#1 / EXP-012).
+      where: { rep_id: repId, pay_period_id: payPeriodId, status: 'approved', is_personal: false },
+      // Reimburse the FROZEN CAD value (#12): a foreign expense was converted at approval; CAD == amount.
+      select: { amount_cad: true },
     });
-    return items.reduce((sum, i) => sum.plus(new Decimal(i.amount.toString())), new Decimal(0));
+    return items.reduce(
+      (sum, i) => sum.plus(i.amount_cad ? new Decimal(i.amount_cad.toString()) : new Decimal(0)),
+      new Decimal(0),
+    );
   }
 }

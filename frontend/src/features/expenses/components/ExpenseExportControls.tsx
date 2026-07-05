@@ -46,7 +46,9 @@ export function ExpenseExportControls({ filters, groupMode, onGroupChange, confi
     ...(canViewReps ? [{ header: 'Rep', value: (it: ExpenseItem) => repName(it.rep_id) }] : []),
     ...(canViewClients ? [{ header: 'Client', value: (it: ExpenseItem) => clientName(it.client_id) }] : []),
     { header: 'Description', value: (it) => it.description },
+    { header: 'Tags', value: (it) => (it.tags ?? []).join('; ') },
     { header: 'Status', value: (it) => it.status },
+    { header: 'Personal', value: (it) => (it.is_personal ? 'Yes' : 'No') },
     { header: 'Amount', value: (it) => money(it.amount) },
   ];
 

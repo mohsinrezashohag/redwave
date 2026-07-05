@@ -24,7 +24,13 @@ export interface ItemValue {
   client_id?: string;
   description: string;
   amount?: string;
+  /** Currency of `amount` (ISO 4217; default CAD). km items are always CAD. Foreign freezes FX at approval (#12). */
+  currency?: string;
   receipt_url?: string;
+  /** Personal / do-not-reimburse (EXP-012) — excluded from reimbursable totals + pay run + client output. */
+  is_personal?: boolean;
+  /** Custom free-form tags (client + channel, EXP-002a). */
+  tags?: string[];
   trip_type?: TripType;
   total_km?: string;
   stops?: StopValue[];
@@ -43,7 +49,10 @@ export function makeExpenseSchema(requiresReceipt: (category: string) => boolean
       client_id: z.string().optional(),
       description: z.string().min(1, 'Required').max(255),
       amount: z.string().optional(),
+      currency: z.string().optional(),
       receipt_url: z.string().optional(),
+      is_personal: z.boolean().optional(),
+      tags: z.array(z.string()).optional(),
       trip_type: z.enum(['single', 'round']).optional(),
       total_km: z.string().optional(),
       stops: z
@@ -81,6 +90,10 @@ function toItemInput(it: ItemValue): ExpenseItemInput {
     client_id: it.client_id || undefined,
     expense_date: it.expense_date,
     description: it.description,
+    // km is always CAD (server-forced); for others send the picked currency (CAD → omit, server default).
+    currency: it.category === 'km' ? undefined : it.currency && it.currency !== 'CAD' ? it.currency : undefined,
+    is_personal: it.is_personal || undefined,
+    tags: it.tags && it.tags.length ? it.tags : undefined,
   };
   if (it.category === 'km') {
     return {
@@ -110,7 +123,7 @@ export function buildItemBody(values: ExpenseFormValues): UpdateItemBody {
 /** A fresh blank item for a given category (km gets a trip type + two empty stops). */
 export function blankItem(category: string, expense_date: string): ItemValue {
   if (category === 'km') {
-    return { category, expense_date, description: '', trip_type: 'round', total_km: '', stops: [{ address: '' }, { address: '' }] };
+    return { category, expense_date, description: '', currency: 'CAD', is_personal: false, tags: [], trip_type: 'round', total_km: '', stops: [{ address: '' }, { address: '' }] };
   }
-  return { category, expense_date, description: '', amount: '', receipt_url: undefined };
+  return { category, expense_date, description: '', amount: '', currency: 'CAD', receipt_url: undefined, is_personal: false, tags: [] };
 }

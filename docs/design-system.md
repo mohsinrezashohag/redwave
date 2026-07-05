@@ -150,6 +150,16 @@ Two families. A characterful humanist sans for all UI text, and a tabular monosp
 
 - **Never centre long text;** left-align body and table text. Right-align numeric columns (money, counts).
 
+### 4.2 Money & currency format (multi-currency, #12)
+
+Money is exact-decimal, mono, tabular, right-aligned — formatted only at the display boundary via `lib/format/money.ts#money(value, currency?)` (never float math). Currency labelling follows one convention so a figure is never ambiguous:
+
+- **CAD (the platform base) → a bare `$`** — `$1,234.50`. No code.
+- **Any non-CAD amount → a leading ISO code, no symbol** — `USD 250.00`. Because non-CAD **always** carries its code, a bare `$` reliably means CAD (USD and CAD both use `$`, so the symbol alone is ambiguous — the code disambiguates).
+- **Never mix** a symbol and a code on the same figure (`$340.50 CAD` is wrong — pick `$340.50`).
+- **Anywhere a foreign amount can appear** (per-client billing rate cards, the expense list + detail, the FX-approval preview) MUST pass the record's currency to `money()`. Foreign rows in a **table** also carry a small currency **badge** (amber) so they're scannable and their special handling — e.g. a per-item FX rate at approval — is discoverable.
+- **CAD reconciliation value.** A frozen `amount_cad` (a foreign record's converted value) renders as CAD (bare `$`); it is a display of a stored, immutable figure — never recomputed on screen (#12).
+
 ## 5. Foundations — Spacing, Grid, Radius, Elevation, Motion
 
 ### 5.1 Spacing scale (4px base)
@@ -263,7 +273,7 @@ Tables are the most-used surface (sales, expenses, clawbacks, ledger, imports). 
 
 - **Top bar:** global search, current pay-cycle indicator, notifications bell (in-app), user menu, environment badge (staging/prod).
 
-- **Breadcrumbs:** for nested detail pages.
+- **Breadcrumbs:** GLOBAL and route-driven — the shell renders one `<nav aria-label="Breadcrumb">` trail on every authenticated screen (below the top bar, above the page title), built from route metadata in `frontend/src/routes/crumbs.ts` (label + logical `parent` + optional permission per route path). A NEW ROUTE registers its crumb by adding an entry there (a dev console warning fires otherwise); pages never hand-assemble breadcrumbs. Detail routes resolve entity names from the page's own query cache (skeleton while loading, truncated id on failure); unpermitted ancestors render as text; long labels truncate with a title tooltip; narrow widths collapse middle segments to "…".
 
 - **Header (page):** title + primary action(s) + contextual tabs/filters.
 

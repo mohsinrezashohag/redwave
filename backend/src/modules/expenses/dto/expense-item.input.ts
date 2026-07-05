@@ -7,8 +7,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ExpenseCategory, TripType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -84,11 +86,39 @@ export class ExpenseItemInput {
 
   @ApiPropertyOptional({
     example: '42.50',
-    description: 'Amount (decimal string). Required for non-km items; ignored for km (server-computed).',
+    description: 'Amount (decimal string) in `currency`. Required for non-km items; ignored for km (server-computed, CAD).',
   })
   @IsOptional()
   @Matches(MONEY, { message: 'amount must be a decimal string with up to 2 decimal places' })
   amount?: string;
+
+  @ApiPropertyOptional({
+    example: 'CAD',
+    description:
+      'Currency the amount is in (ISO 4217; default CAD). A foreign amount freezes its FX rate + CAD value at APPROVAL (#12). km items are always CAD.',
+  })
+  @IsOptional()
+  @Matches(/^[A-Z]{3}$/, { message: 'currency must be a 3-letter ISO 4217 code' })
+  currency?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Personal / do-not-reimburse (EXP-012). Excluded from the reimbursable total, the pay run, and all client output. Default false.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  is_personal?: boolean;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Custom free-form tags (client + channel, EXP-002a). Up to 20 tags, ≤50 chars each.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(50, { each: true })
+  tags?: string[];
 
   @ApiProperty({ example: 'Lunch with client' })
   @IsString()

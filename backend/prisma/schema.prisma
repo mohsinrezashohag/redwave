@@ -172,6 +172,14 @@ enum TripType {
   round
 }
 
+// KM-rate stream — the two-stream separation (#3): `rep` is the reimbursement rate paid to the rep
+// (CAD); `client_bill` is what the client is charged for kilometres (Wave 2 client expense doc). The
+// two are NEVER combined. — SRS EXP-004 (Meeting 3)
+enum KmRateStream {
+  rep
+  client_bill
+}
+
 enum ExportFormat {
   pdf
   excel
@@ -308,6 +316,7 @@ model User {
   expense_items_approved        ExpenseItem[]              @relation("ExpenseItemApprovedBy")
   expense_field_configs_created ExpenseFieldConfig[]       @relation("ExpenseFieldConfigCreatedBy")
   expense_exports_generated     ExpenseExport[]            @relation("ExpenseExportGeneratedBy")
+  km_rate_configs_created       KmRateConfig[]             @relation("KmRateConfigCreatedBy")
   report_exports_generated      ReportExport[]             @relation("ReportExportGeneratedBy")
   stored_files_uploaded         StoredFile[]               @relation("StoredFileUploadedBy")
   statements_generated          ClientStatement[]          @relation("StatementGeneratedBy")
@@ -569,11 +578,31 @@ model RepEquipment {
 // MODULE 3 — Clients & Products
 // ════════════════════════════════════════════════════════════════════════════════
 
+// CURRENCY CATALOGUE — the admin-configurable set of allowed currencies (USD + CAD primary; extensible,
+// never hard-coded). Referenced by clients.currency, expense_items.original_currency, and every billing
+// artifact's currency. A new currency needs no migration (FK varchar, not an enum). — Meeting 3, CLAUDE §3 #12
+model Currency {
+  code       String   @id // ISO 4217 (CAD, USD)
+  name       String
+  symbol     String
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+
+  clients          Client[]
+  expense_items    ExpenseItem[]
+  statements       ClientStatement[]
+  invoices         ClientInvoice[]
+
+  @@map("currencies")
+}
+
 model Client {
   id              String   @id @default(uuid()) @db.Uuid
   client_code     String   @unique
   name            String
   market          Market
+  currency        String   @default("CAD") // billing currency (FK → currencies.code); rolls up to CAD via frozen FX (#12)
+  currency_ref    Currency @relation(fields: [currency], references: [code])
   supplies_mpu_id Boolean
   is_active       Boolean
   created_at      DateTime @default(now())
@@ -585,6 +614,7 @@ model Client {
   sales                 Sale[]
   expense_items         ExpenseItem[]
   expense_exports       ExpenseExport[]
+  km_rate_configs       KmRateConfig[]
   client_statements     ClientStatement[]
   client_invoices       ClientInvoice[]
   import_batches        ImportBatch[]
@@ -958,7 +988,16 @@ model ExpenseItem {
   client_id         String?             @db.Uuid
   client            Client?             @relation(fields: [client_id], references: [id])
   expense_date      DateTime            @db.Date
-  amount            Decimal             @db.Decimal(12, 2)
+  amount            Decimal             @db.Decimal(12, 2) // in original_currency (CAD for existing rows)
+  is_personal       Boolean             @default(false) // do-not-reimburse: excluded from reimbursable total + pay run + client output (EXP-012)
+  tags              Json? // custom free-form tags (client + channel), a string[] (EXP-002a)
+  // Stored-FX fieldset (frozen at APPROVAL; CAD → fx_rate=1 at create; never re-converted, #12). The pay
+  // run reads amount_cad. — Meeting 3, CLAUDE §3 #12
+  original_currency String              @default("CAD") // FK → currencies.code
+  currency_ref      Currency            @relation(fields: [original_currency], references: [code])
+  fx_rate           Decimal?            @db.Decimal(18, 8) // original → CAD; null until frozen; 1 for CAD
+  fx_rate_date      DateTime?           @db.Date
+  amount_cad        Decimal?            @db.Decimal(12, 2) // = roundHalfUp(amount × fx_rate); the reimbursable CAD
   description       String
   receipt_url       String? // mandatory except km
   status            ExpenseReportStatus
@@ -1016,6 +1055,27 @@ model ExpenseFieldConfig {
   creator          User    @relation("ExpenseFieldConfigCreatedBy", fields: [created_by], references: [id])
 
   @@map("expense_field_configs")
+}
+
+// KM-RATE CONFIG — per-client, effective-dated kilometre rate. TWO-STREAM (#3): a `rep` reimbursement
+// rate (CAD, drives the pay-run km amount) and a separate `client_bill` rate (Wave 2). A null client_id
+// is the GLOBAL default. Selection reuses common/effective-dating (selectEffectiveRate); a new future
+// row supersedes the scope's pending row and bounds the current (planSupersession); back-dating is
+// rejected. Falls back to the $0.45 constant when no row applies. — SRS EXP-004 (Meeting 3), CLAUDE §3 #10
+model KmRateConfig {
+  id             String       @id @default(uuid()) @db.Uuid
+  client_id      String?      @db.Uuid // null = global default
+  client         Client?      @relation(fields: [client_id], references: [id])
+  stream         KmRateStream
+  rate_per_km    Decimal      @db.Decimal(6, 3)
+  effective_from DateTime     @db.Date
+  effective_to   DateTime?    @db.Date
+  created_by     String       @db.Uuid
+  creator        User         @relation("KmRateConfigCreatedBy", fields: [created_by], references: [id])
+  created_at     DateTime     @default(now())
+
+  @@index([stream, client_id, effective_from]) // scope selection (rep-rate resolution at km submit)
+  @@map("km_rate_config")
 }
 
 model ExpenseExport {
@@ -1097,7 +1157,13 @@ model ClientStatement {
   client           Client           @relation(fields: [client_id], references: [id])
   pay_period_id    String           @db.Uuid
   pay_period       PayPeriod        @relation(fields: [pay_period_id], references: [id])
-  total_amount     Decimal          @db.Decimal(12, 2)
+  total_amount     Decimal          @db.Decimal(12, 2) // in `currency`
+  // Stored-FX (frozen at ISSUE; CAD → fx_rate=1; never re-converted, #12). — Meeting 3
+  currency         String           @default("CAD") // FK → currencies.code (= the client's currency at issue)
+  currency_ref     Currency         @relation(fields: [currency], references: [code])
+  fx_rate          Decimal          @default(1) @db.Decimal(18, 8) // currency → CAD
+  fx_rate_date     DateTime?        @db.Date
+  amount_cad       Decimal?         @db.Decimal(12, 2) // = roundHalfUp(total_amount × fx_rate)
   file_url         String? // optional — the Excel artifact is rendered on demand (download) / recorded in billing_exports
   generated_by     String           @db.Uuid
   generator        User             @relation("StatementGeneratedBy", fields: [generated_by], references: [id])
@@ -1134,7 +1200,13 @@ model ClientInvoice {
   client           Client           @relation(fields: [client_id], references: [id])
   pay_period_id    String           @db.Uuid
   pay_period       PayPeriod        @relation(fields: [pay_period_id], references: [id])
-  total_commission Decimal          @db.Decimal(12, 2)
+  total_commission Decimal          @db.Decimal(12, 2) // in `currency`
+  // Stored-FX (frozen at ISSUE; CAD → fx_rate=1; never re-converted, #12). — Meeting 3
+  currency         String           @default("CAD") // FK → currencies.code
+  currency_ref     Currency         @relation(fields: [currency], references: [code])
+  fx_rate          Decimal          @default(1) @db.Decimal(18, 8)
+  fx_rate_date     DateTime?        @db.Date
+  amount_cad       Decimal?         @db.Decimal(12, 2) // = roundHalfUp(total_commission × fx_rate)
   file_url         String? // optional — the PDF is rendered on demand / recorded in billing_exports
   generated_by     String?          @db.Uuid
   generator        User?            @relation("InvoiceGeneratedBy", fields: [generated_by], references: [id])

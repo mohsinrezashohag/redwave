@@ -2,11 +2,17 @@
  * ClientsService — program-partner CRUD with soft-deactivate. — SRS CLNT-001/006
  * Reuses the Auth patterns: PrismaService + explicit AuditService logging on mutations.
  */
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
+import { CurrenciesService } from '../currencies/currencies.service';
 import { ClientCustomFieldInput, CreateClientDto, ListClientsQuery, UpdateClientDto } from './dto/client.dto';
 
 /** Prisma nested-create rows for a client's custom fields, ordered as supplied. */
@@ -40,6 +46,7 @@ export class ClientsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly currencies: CurrenciesService,
   ) {}
 
   async findAll(query: ListClientsQuery) {
@@ -75,12 +82,18 @@ export class ClientsService {
   }
 
   async create(dto: CreateClientDto, actorId: string) {
+    // Billing currency (default CAD). A non-CAD code must be a supported active currency (else 422, #12).
+    const currency = dto.currency ?? 'CAD';
+    if (currency !== 'CAD') {
+      await this.currencies.assertSupported(currency);
+    }
     try {
       const client = await this.prisma.client.create({
         data: {
           client_code: dto.client_code,
           name: dto.name,
           market: dto.market,
+          currency,
           supplies_mpu_id: dto.supplies_mpu_id,
           is_active: true,
           custom_fields: { create: customFieldRows(dto.custom_fields) },
@@ -105,6 +118,21 @@ export class ClientsService {
 
   async update(id: string, dto: UpdateClientDto, actorId: string) {
     const before = await this.findOne(id);
+    // Billing-currency change is guarded: a supported active code, AND only while NO statement/invoice has
+    // been ISSUED (a document's total_amount + amount_cad are frozen in the client's currency, #12 — changing
+    // it afterward would reinterpret the frozen history). Before any doc exists it is freely editable.
+    if (dto.currency !== undefined && dto.currency !== before.currency) {
+      await this.currencies.assertSupported(dto.currency);
+      const [issuedStatement, issuedInvoice] = await Promise.all([
+        this.prisma.clientStatement.findFirst({ where: { client_id: id }, select: { id: true } }),
+        this.prisma.clientInvoice.findFirst({ where: { client_id: id }, select: { id: true } }),
+      ]);
+      if (issuedStatement || issuedInvoice) {
+        throw new UnprocessableEntityException(
+          'cannot change billing currency: this client already has an issued statement/invoice frozen in its currency',
+        );
+      }
+    }
     try {
       const updated = await this.prisma.$transaction(async (tx) => {
         // Replace-in-place: when custom_fields is provided, the whole set is rewritten (omit = leave as-is).
@@ -120,6 +148,7 @@ export class ClientsService {
             client_code: dto.client_code,
             name: dto.name,
             market: dto.market,
+            currency: dto.currency,
             supplies_mpu_id: dto.supplies_mpu_id,
             is_active: dto.is_active,
           },

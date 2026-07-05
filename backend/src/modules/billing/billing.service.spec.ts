@@ -1,4 +1,5 @@
 import { UnprocessableEntityException, NotFoundException } from '@nestjs/common';
+import { Decimal } from 'decimal.js';
 import { StatementService } from './statement.service';
 
 const d = (s: string) => new Date(`${s}T00:00:00.000Z`);
@@ -45,7 +46,7 @@ function make(opts: {
     clientStatementLine: { deleteMany: jest.fn() },
   };
   const prisma = {
-    client: { findUnique: jest.fn().mockResolvedValue({ id: 'c1', client_code: 'VF' }) },
+    client: { findUnique: jest.fn().mockResolvedValue({ id: 'c1', client_code: 'VF', currency: 'CAD' }) },
     payPeriod: {
       findUnique: jest.fn().mockResolvedValue({
         id: 'P1',
@@ -59,8 +60,10 @@ function make(opts: {
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
-  const service = new StatementService(prisma as never, audit as never, seqStub() as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
-  return { service, prisma, tx, audit };
+  // FX source OFF by default (CAD client → resolveIssueFx short-circuits to rate 1 without calling it).
+  const fx = { getRateToCad: jest.fn().mockResolvedValue(null), isAutoEnabled: jest.fn().mockReturnValue(false) };
+  const service = new StatementService(prisma as never, audit as never, seqStub() as never, fx as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
+  return { service, prisma, tx, audit, fx };
 }
 
 const createData = (tx: ReturnType<typeof make>['tx']) =>
@@ -170,5 +173,84 @@ describe('StatementService.generate (SRS §12 — immutable, gapless)', () => {
     const { service, prisma } = make({ sales: [], rates: [] });
     prisma.client.findUnique.mockResolvedValueOnce(null);
     await expect(service.generate('nope', 'P1', 'admin')).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('StatementService.generate — FX frozen at ISSUE (#12)', () => {
+  const fxData = (tx: ReturnType<typeof make>['tx']) =>
+    (tx.clientStatement.create.mock.calls[0][0] as { data: { currency: string; fx_rate: string; amount_cad: string; total_amount: string } }).data;
+
+  it('CAD client → currency CAD, fx_rate 1, amount_cad = total (NO FX fetch)', async () => {
+    const { service, tx, fx } = make({
+      sales: [sale('s1', 'Jane', '2026-01-10', [{ product_id: 'p', name: 'Internet' }])],
+      rates: [rate('p', '2026-01-01', null, '60.00')],
+    });
+    await service.generate('c1', 'P1', 'admin');
+    const data = fxData(tx);
+    expect(data.currency).toBe('CAD');
+    expect(data.fx_rate).toBe('1.00000000');
+    expect(data.amount_cad).toBe('60.00');
+    expect(fx.getRateToCad).not.toHaveBeenCalled();
+  });
+
+  // The FIRST real source-driven conversion: a USD client, NO override → resolveIssueFx pulls the rate from
+  // the FX source (Bank of Canada). 250 USD × 1.365 = 341.25 CAD frozen at issue. — Meeting 3 rate-grid track
+  it('USD client + FX SOURCE (no override) → freezes the source rate + amount_cad = total × rate', async () => {
+    const { service, tx, prisma, fx } = make({
+      sales: [sale('s1', 'CTI-Cust', '2026-01-10', [{ product_id: 'p', name: 'Internet' }])],
+      rates: [rate('p', '2026-01-01', null, '250.00')],
+    });
+    prisma.client.findUnique.mockResolvedValueOnce({ id: 'c1', client_code: 'CTI', currency: 'USD' });
+    fx.getRateToCad.mockResolvedValue(new Decimal('1.365'));
+    await service.generate('c1', 'P1', 'admin'); // NO override → the source supplies the rate
+    expect(fx.getRateToCad).toHaveBeenCalledWith('USD', expect.any(Date));
+    const data = fxData(tx);
+    expect(data.currency).toBe('USD');
+    expect(data.fx_rate).toBe('1.36500000');
+    expect(data.total_amount).toBe('250.00'); // in USD
+    expect(data.amount_cad).toBe('341.25'); // 250 × 1.365, frozen
+  });
+
+  it('USD client + override → freezes currency USD, the override rate, and amount_cad', async () => {
+    const { service, tx, prisma } = make({
+      sales: [sale('s1', 'Jane', '2026-01-10', [{ product_id: 'p', name: 'Internet' }])],
+      rates: [rate('p', '2026-01-01', null, '100.00')],
+    });
+    prisma.client.findUnique.mockResolvedValueOnce({ id: 'c1', client_code: 'CTI', currency: 'USD' });
+    await service.generate('c1', 'P1', 'admin', '1.36500000');
+    const data = fxData(tx);
+    expect(data.currency).toBe('USD');
+    expect(data.fx_rate).toBe('1.36500000');
+    expect(data.total_amount).toBe('100.00'); // in USD (the client's currency)
+    expect(data.amount_cad).toBe('136.50'); // frozen CAD = 100 × 1.365
+  });
+
+  // Rounding-boundary on ISSUE: 10.00 USD × 1.3625 = 13.625 → 13.63 HALF-UP (not 13.62 half-even).
+  it('freezes amount_cad HALF-UP at a .xx5 boundary (10.00 × 1.3625 = 13.625 → 13.63)', async () => {
+    const { service, tx, prisma } = make({
+      sales: [sale('s1', 'Jane', '2026-01-10', [{ product_id: 'p', name: 'Internet' }])],
+      rates: [rate('p', '2026-01-01', null, '10.00')],
+    });
+    prisma.client.findUnique.mockResolvedValueOnce({ id: 'c1', client_code: 'CTI', currency: 'USD' });
+    await service.generate('c1', 'P1', 'admin', '1.3625');
+    expect(fxData(tx).amount_cad).toBe('13.63');
+  });
+
+  it('USD client, NO override + FX source OFF → 422 (never guess a rate)', async () => {
+    const { service, prisma } = make({
+      sales: [sale('s1', 'Jane', '2026-01-10', [{ product_id: 'p', name: 'Internet' }])],
+      rates: [rate('p', '2026-01-01', null, '100.00')],
+    });
+    prisma.client.findUnique.mockResolvedValueOnce({ id: 'c1', client_code: 'CTI', currency: 'USD' });
+    await expect(service.generate('c1', 'P1', 'admin')).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('preview freezes NOTHING (no create, no number, no rate)', async () => {
+    const { service, tx } = make({
+      sales: [sale('s1', 'Jane', '2026-01-10', [{ product_id: 'p', name: 'Internet' }])],
+      rates: [rate('p', '2026-01-01', null, '60.00')],
+    });
+    await service.preview('c1', 'P1');
+    expect(tx.clientStatement.create).not.toHaveBeenCalled();
   });
 });

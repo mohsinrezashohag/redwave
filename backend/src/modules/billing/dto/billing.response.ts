@@ -44,8 +44,20 @@ export class ClientStatementResponse {
   @ApiProperty()
   pay_period_id!: string;
 
-  @ApiProperty({ type: String, example: '140.00', description: 'Decimal string. Server-computed statement total (CAD, no GST).' })
+  @ApiProperty({ type: String, example: '140.00', description: 'Decimal string. Server-computed statement total in `currency`, no GST.' })
   total_amount!: string;
+
+  @ApiProperty({ type: String, example: 'CAD', description: 'Billing currency (the client’s currency at issue).' })
+  currency!: string;
+
+  @ApiProperty({ type: String, example: '1.00000000', description: 'Frozen currency→CAD rate (8 dp); 1 for CAD; never re-converted (#12).' })
+  fx_rate!: string;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'The frozen rate’s day (audit).' })
+  fx_rate_date!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '140.00', description: 'Frozen CAD value (= total_amount × fx_rate); reconciliation reads THIS.' })
+  amount_cad!: string | null;
 
   @ApiProperty({ type: String, nullable: true, description: 'Storage object path of a rendered artifact (or null — rendered on demand).' })
   file_url!: string | null;
@@ -82,8 +94,20 @@ export class ClientInvoiceResponse {
   @ApiProperty()
   pay_period_id!: string;
 
-  @ApiProperty({ type: String, example: '140.00', description: 'Decimal string = the billing-stream statement total (CAD, #3).' })
+  @ApiProperty({ type: String, example: '140.00', description: 'Decimal string = the billing-stream statement total in `currency` (#3).' })
   total_commission!: string;
+
+  @ApiProperty({ type: String, example: 'CAD', description: 'Billing currency (the client’s currency at issue).' })
+  currency!: string;
+
+  @ApiProperty({ type: String, example: '1.00000000', description: 'Frozen currency→CAD rate (8 dp); 1 for CAD; never re-converted (#12).' })
+  fx_rate!: string;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'The frozen rate’s day (audit).' })
+  fx_rate_date!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '140.00', description: 'Frozen CAD value (= total_commission × fx_rate).' })
+  amount_cad!: string | null;
 
   @ApiProperty({ type: String, nullable: true })
   file_url!: string | null;

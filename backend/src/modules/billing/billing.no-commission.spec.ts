@@ -32,11 +32,13 @@ describe('Billing #3 — structural separation', () => {
     expect(src).not.toMatch(FORBIDDEN_DELEGATE);
   });
 
-  it('StatementService deps are only cross-cutting seams (prisma, audit, sequence, notification-emitter) — no engine/commission dependency', () => {
-    // Arity 4: prisma, audit, the gapless-number sequence service, the notification emitter — all neutral
-    // common seams, NOT commission/engine deps. The #3 separation is asserted by the source-scan above + the
-    // behavioural spec below (a commission Prisma delegate THROWS if touched, yet generation succeeds).
-    expect(StatementService.length).toBe(4);
+  it('StatementService deps are only cross-cutting seams (prisma, audit, sequence, fx, notification-emitter) — no engine/commission dependency', () => {
+    // Arity 5: prisma, audit, the gapless-number sequence service, the FX rate source (common/fx), and the
+    // notification emitter — all neutral common seams, NOT commission/engine deps. The #3 separation is
+    // asserted by the source-scan above + the behavioural spec below (a commission Prisma delegate THROWS if
+    // touched, yet generation succeeds). The FX seam converts the billing-stream total to CAD (#12), never
+    // reads commission.
+    expect(StatementService.length).toBe(5);
   });
 });
 
@@ -87,7 +89,7 @@ function makePrisma() {
     },
   };
   const prisma = {
-    client: { findUnique: jest.fn().mockResolvedValue({ id: 'c1', client_code: 'VF' }) },
+    client: { findUnique: jest.fn().mockResolvedValue({ id: 'c1', client_code: 'VF', currency: 'CAD' }) },
     payPeriod: {
       findUnique: jest.fn().mockResolvedValue({
         id: 'P1',
@@ -122,7 +124,8 @@ function makePrisma() {
 describe('Billing #3 — behavioral + equivalence', () => {
   it('statement generation reads client_billing_rates and NEVER the commission stream', async () => {
     const { prisma, audit } = makePrisma();
-    const service = new StatementService(prisma as never, audit as never, seqStub() as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
+    const fx = { getRateToCad: jest.fn().mockResolvedValue(null), isAutoEnabled: jest.fn() };
+    const service = new StatementService(prisma as never, audit as never, seqStub() as never, fx as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
     await expect(service.generate('c1', 'P1', 'admin')).resolves.toBeDefined();
     expect(prisma.clientBillingRate.findMany).toHaveBeenCalled(); // billing stream IS used
     // (commission traps would have thrown if touched; success already proves they weren't.)
@@ -130,7 +133,8 @@ describe('Billing #3 — behavioral + equivalence', () => {
 
   it('invoice total_commission == statement total_amount (both from the billing stream)', async () => {
     const { prisma, audit } = makePrisma();
-    const statements = new StatementService(prisma as never, audit as never, seqStub() as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
+    const fx = { getRateToCad: jest.fn().mockResolvedValue(null), isAutoEnabled: jest.fn() };
+    const statements = new StatementService(prisma as never, audit as never, seqStub() as never, fx as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
     const invoices = new InvoiceService(prisma as never, audit as never, seqStub() as never, statements);
 
     const stmt = (await statements.generate('c1', 'P1', 'admin')) as unknown as {

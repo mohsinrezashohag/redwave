@@ -91,6 +91,19 @@
 - **Money invariant:** the KM amount is **always** computed server-side (single −30 / round −60, floor 0,
   × $0.45). Maps only affects how the *distance* is obtained, never the amount math.
 
+## 4c. FX rate source (multi-currency, stored-FX) — OPTIONAL (only if a non-CAD client/expense exists)
+- **For:** the daily currency→CAD rate frozen onto a foreign expense (at approval) or a foreign client
+  billing document (at issue). **WIRED + env-gated, graceful** (mirrors Maps). CAD-only deployments can
+  ignore this — CAD → rate `1`, no fetch, nothing to configure.
+- **Provider:** **Bank of Canada Valet API** — public, free, **no API key**. The gate is a flag:
+  - `FX_RATE_SOURCE="bank_of_canada"` → the server pre-fills the day's rate from the Valet series
+    `FX{CUR}CAD` (e.g. `FXUSDCAD`), taking the most recent observation on/before the date.
+  - unset / `"manual"` (DEFAULT) → no auto rate; the approver/issuer supplies a **manual override**. If a
+    foreign record has neither an override nor an auto rate, the action is **rejected (422)** — the system
+    never guesses a rate. `FX_HTTP_TIMEOUT_MS` (default 8000) bounds the lookup.
+- **Money invariant:** the confirmed rate + its CAD conversion are **frozen once** (never re-converted, #12);
+  the `amount_cad` is rounded 2 dp **half-up**. Rep pay stays CAD-only. No DNS/keys to provision.
+
 ## 5. Production PostgreSQL — REQUIRED (the DB itself, not an external API)
 - **For:** the live database. Dev uses local Postgres with password `7654321` (dev-only — never prod).
 - **Provider options:** AWS RDS · Google Cloud SQL · Azure Database · Supabase · Neon · Render · self-host.

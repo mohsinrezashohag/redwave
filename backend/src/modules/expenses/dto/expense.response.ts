@@ -82,8 +82,26 @@ export class ExpenseItemResponse {
   @ApiProperty({ type: String, format: 'date-time' })
   expense_date!: string;
 
-  @ApiProperty({ type: String, example: '45.00', description: 'Decimal string. For km, the server computes it.' })
+  @ApiProperty({ type: String, example: '45.00', description: 'Decimal string in `original_currency`. For km, the server computes it (CAD).' })
   amount!: string;
+
+  @ApiProperty({ type: String, example: 'CAD', description: 'Currency of `amount` (ISO 4217).' })
+  original_currency!: string;
+
+  @ApiProperty({ type: String, nullable: true, example: '1.00000000', description: 'Frozen original→CAD rate (8 dp); null until an approved foreign item is converted; 1 for CAD.' })
+  fx_rate!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'The frozen rate’s day (audit).' })
+  fx_rate_date!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '45.00', description: 'Frozen CAD value (= amount × fx_rate); the pay run reads THIS (#12).' })
+  amount_cad!: string | null;
+
+  @ApiProperty({ description: 'Personal / do-not-reimburse — excluded from reimbursable total + pay run + client output (EXP-012).' })
+  is_personal!: boolean;
+
+  @ApiProperty({ type: [String], nullable: true, description: 'Custom free-form tags (client + channel, EXP-002a). Null on legacy rows.' })
+  tags!: string[] | null;
 
   @ApiProperty()
   description!: string;

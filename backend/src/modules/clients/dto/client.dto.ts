@@ -9,6 +9,7 @@ import {
   IsIn,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
   ValidateNested,
@@ -46,6 +47,14 @@ export class CreateClientDto {
   @IsEnum(Market)
   market!: Market;
 
+  @ApiPropertyOptional({
+    example: 'CAD',
+    description: 'Billing currency (ISO 4217; default CAD). All of this client’s billing rates + documents are in it; rolls up to CAD via frozen FX (#12).',
+  })
+  @IsOptional()
+  @Matches(/^[A-Z]{3}$/, { message: 'currency must be a 3-letter ISO 4217 code' })
+  currency?: string;
+
   @ApiProperty({ description: 'Whether the partner supplies per-house MPU IDs.' })
   @IsBoolean()
   supplies_mpu_id!: boolean;
@@ -78,6 +87,14 @@ export class UpdateClientDto {
   @IsOptional()
   @IsEnum(Market)
   market?: Market;
+
+  @ApiPropertyOptional({
+    example: 'USD',
+    description: 'Billing currency (ISO 4217). Editable only while the client has no ISSUED statement/invoice (then locked to keep frozen billing history coherent, #12).',
+  })
+  @IsOptional()
+  @Matches(/^[A-Z]{3}$/, { message: 'currency must be a 3-letter ISO 4217 code' })
+  currency?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

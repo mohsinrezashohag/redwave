@@ -7,7 +7,6 @@
  */
 import { Injectable } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
-import { CURRENCY } from '../../../common/money/money';
 import { statementNo } from '../doc-number';
 
 export interface StatementForExport {
@@ -18,6 +17,8 @@ export interface StatementForExport {
   period_start: string; // 'YYYY-MM-DD'
   period_end: string; // 'YYYY-MM-DD'
   generated_at: string;
+  currency: string; // the document's billing currency (#12)
+  amount_cad: string | null; // frozen CAD equivalent (null on legacy rows)
   lines: { customer_name: string; products_summary: string; line_total: string }[];
   total_amount: string;
 }
@@ -35,10 +36,10 @@ export class StatementExcelRenderer {
     ws.addRow([statementNo(s.statement_number)]);
     ws.addRow([`Client: ${s.client_name} (${s.client_code})`]);
     ws.addRow([`Pay period ${s.period_number}: ${s.period_start} → ${s.period_end}`]);
-    ws.addRow([`Currency: ${CURRENCY}`]);
+    ws.addRow([`Currency: ${s.currency}`]);
     ws.addRow([]);
 
-    const header = ws.addRow(['Customer', 'Products', `Amount (${CURRENCY})`]);
+    const header = ws.addRow(['Customer', 'Products', `Amount (${s.currency})`]);
     header.font = { bold: true };
     header.eachCell((c) => {
       c.border = { bottom: { style: 'thin' } };
@@ -52,9 +53,15 @@ export class StatementExcelRenderer {
     }
 
     ws.addRow([]);
-    const total = ws.addRow(['', `TOTAL (${CURRENCY})`, Number(s.total_amount)]);
+    const total = ws.addRow(['', `TOTAL (${s.currency})`, Number(s.total_amount)]);
     total.font = { bold: true };
     total.getCell(3).numFmt = '#,##0.00';
+
+    // For a foreign document show the frozen CAD equivalent (reconciliation figure, #12).
+    if (s.currency !== 'CAD' && s.amount_cad) {
+      const cad = ws.addRow(['', 'CAD equivalent', Number(s.amount_cad)]);
+      cad.getCell(3).numFmt = '#,##0.00';
+    }
 
     return Buffer.from(await wb.xlsx.writeBuffer());
   }

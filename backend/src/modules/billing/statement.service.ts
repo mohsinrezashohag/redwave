@@ -18,9 +18,20 @@ import { AuditService } from '../../common/audit/audit.service';
 import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 import { selectEffectiveRate } from '../../common/effective-dating';
 import { formatMoney } from '../../common/money/money';
+import { winnipegDateOnly } from '../../common/timezone';
+import { FxRateService } from '../../common/fx/fx-rate.service';
+import { convertToCad } from '../../common/fx/fx.logic';
 import { SequenceService } from '../../common/sequence/sequence.service';
 import { statementNo } from './doc-number';
 import { buildStatement, SaleInput, StatementDraft } from './statement.logic';
+
+/** The FX snapshot frozen onto a billing document AT ISSUE (#12). */
+export interface IssueFx {
+  currency: string;
+  fx_rate: string; // 8-dp decimal string; '1.00000000' for CAD
+  fx_rate_date: Date;
+  amount_cad: string; // = roundHalfUp(total × fx_rate)
+}
 
 /** Prisma.Decimal → decimal.js (billing stream only; never the commission engine's path, #3). */
 const toDecimal = (value: Prisma.Decimal): Decimal => new Decimal(value.toString());
@@ -34,7 +45,7 @@ interface BillingRateRow {
 }
 
 interface PricedContext {
-  client: { id: string; client_code: string };
+  client: { id: string; client_code: string; currency: string };
   period: { id: string; period_number: number };
   draft: StatementDraft;
 }
@@ -47,8 +58,36 @@ export class StatementService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly sequence: SequenceService,
+    private readonly fx: FxRateService,
     @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
   ) {}
+
+  /**
+   * The FX snapshot to freeze on a document AT ISSUE (#12). CAD → rate 1 (no fetch). Foreign → the issuer's
+   * override, else the Bank of Canada rate, else 422 (never guess). Reused by statement + invoice generate.
+   */
+  async resolveIssueFx(currency: string, total: Decimal, fxOverride?: string): Promise<IssueFx> {
+    const freezeDate = winnipegDateOnly();
+    let rate: Decimal;
+    if (currency === 'CAD') {
+      rate = new Decimal(1);
+    } else {
+      const resolved =
+        fxOverride != null ? new Decimal(fxOverride) : await this.fx.getRateToCad(currency, freezeDate);
+      if (resolved === null) {
+        throw new UnprocessableEntityException(
+          `cannot issue a ${currency} document without an FX rate — provide fx_rate or enable the FX source`,
+        );
+      }
+      rate = resolved;
+    }
+    return {
+      currency,
+      fx_rate: rate.toFixed(8),
+      fx_rate_date: freezeDate,
+      amount_cad: convertToCad(total.toString(), rate).toFixed(2),
+    };
+  }
 
   /**
    * Fetch the client's confirmed sales for the period, price each item from `client_billing_rates`
@@ -58,7 +97,7 @@ export class StatementService {
   async priceClientPeriod(clientId: string, payPeriodId: string): Promise<PricedContext> {
     const client = await this.prisma.client.findUnique({
       where: { id: clientId },
-      select: { id: true, client_code: true },
+      select: { id: true, client_code: true, currency: true },
     });
     if (!client) {
       throw new NotFoundException('Client not found');
@@ -169,7 +208,7 @@ export class StatementService {
    * A correction is just another generate → a NEW numbered document. Gapless under concurrency: the number
    * is minted inside the SAME transaction (sequence row lock). — BRD §8 (numbering + immutability)
    */
-  async generate(clientId: string, payPeriodId: string, actorId: string) {
+  async generate(clientId: string, payPeriodId: string, actorId: string, fxOverride?: string) {
     const { client, period, draft } = await this.priceClientPeriod(clientId, payPeriodId);
 
     const lineData = draft.lines.map((l) => ({
@@ -178,6 +217,9 @@ export class StatementService {
       products_summary: l.products_summary,
       line_total: formatMoney(l.line_total),
     }));
+
+    // Freeze the FX snapshot AT ISSUE (#12) — CAD → rate 1; the total_amount is in the client's currency.
+    const fx = await this.resolveIssueFx(client.currency, draft.total_amount, fxOverride);
 
     const statement = await this.prisma.$transaction(async (tx) => {
       const statement_number = await this.sequence.next(tx, 'statement'); // gapless, row-locked
@@ -188,6 +230,10 @@ export class StatementService {
           client_id: clientId,
           pay_period_id: payPeriodId,
           total_amount: formatMoney(draft.total_amount),
+          currency: fx.currency,
+          fx_rate: fx.fx_rate,
+          fx_rate_date: fx.fx_rate_date,
+          amount_cad: fx.amount_cad,
           generated_by: actorId,
           lines: { create: lineData },
         },

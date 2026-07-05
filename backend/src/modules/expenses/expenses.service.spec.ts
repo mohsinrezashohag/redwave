@@ -59,6 +59,10 @@ function make() {
   const scope = { getRepScope: jest.fn().mockResolvedValue({ level: 'all' }) };
   // Maps OFF by default → km distance falls back to the client total_km (preserves the 130→70→31.50 case).
   const maps = { routeDistanceKm: jest.fn().mockResolvedValue(null), isConfigured: jest.fn().mockReturnValue(false) };
+  // KM rate resolves to the default $0.45 by default (preserves the 130→70→31.50 case).
+  const kmRates = { resolveRepRate: jest.fn().mockResolvedValue(new Decimal('0.450')) };
+  // FX source OFF by default (manual) → foreign approvals need an override (CAD items never call it).
+  const fx = { getRateToCad: jest.fn().mockResolvedValue(null), isAutoEnabled: jest.fn().mockReturnValue(false) };
   const storage = { assertConfigured: jest.fn(), signedUrl: jest.fn().mockResolvedValue('https://signed/receipt') };
   // The unified-pipeline claim (FilesService mocked — the claim rules have their own spec).
   const files = { claim: jest.fn().mockResolvedValue({ path: 'receipts/2026/06/r.jpg', uploaded_by: 'u1' }) };
@@ -68,11 +72,13 @@ function make() {
     audit as never,
     scope as never,
     maps as never,
+    kmRates as never,
+    fx as never,
     storage as never,
     files as never,
     emitter as never,
   );
-  return { service, prisma, audit, scope, maps, storage, files, tx, emitter };
+  return { service, prisma, audit, scope, maps, kmRates, fx, storage, files, tx, emitter };
 }
 
 const kmItem = (date = '2026-03-10', tripType: 'single' | 'round' = 'round'): ExpenseItemInput => ({
@@ -202,18 +208,80 @@ describe('ExpensesService.createItems (SRS §11, item-first)', () => {
 });
 
 describe('ExpensesService.review (per-item approval workflow)', () => {
-  const pending = { id: 'i1', status: 'submitted', submitted_by: 'u1', expense_date: new Date('2026-03-10T00:00:00.000Z'), pay_period_id: 'P1' };
+  // A CAD item — amount_cad was frozen at create, so approving it triggers NO FX freeze.
+  const pending = {
+    id: 'i1',
+    status: 'submitted',
+    submitted_by: 'u1',
+    expense_date: new Date('2026-03-10T00:00:00.000Z'),
+    pay_period_id: 'P1',
+    amount: new Decimal('42.50'),
+    original_currency: 'CAD',
+    amount_cad: new Decimal('42.50'),
+  };
+  // A foreign (USD) item — amount_cad null until it freezes at approval.
+  const foreign = { ...pending, id: 'iu', amount: new Decimal('10.00'), original_currency: 'USD', amount_cad: null };
 
-  it('approve → status approved + approved_by/at set', async () => {
-    const { service, prisma } = make();
+  it('approve → status approved + approved_by/at set; a CAD item freezes NO FX', async () => {
+    const { service, prisma, fx } = make();
     prisma.expenseItem.findFirst.mockResolvedValue(pending);
     await service.review('i1', { decision: ReviewDecision.approve }, superAdmin);
     const data = (prisma.expenseItem.update.mock.calls[0][0] as {
-      data: { status: string; approved_by: string | null; approved_at: Date | null };
+      data: { status: string; approved_by: string | null; approved_at: Date | null; fx_rate?: string };
     }).data;
     expect(data.status).toBe('approved');
     expect(data.approved_by).toBe('sa');
     expect(data.approved_at).toBeInstanceOf(Date);
+    expect(data.fx_rate).toBeUndefined(); // CAD → no re-conversion at approval
+    expect(fx.getRateToCad).not.toHaveBeenCalled();
+  });
+
+  it('approving a FOREIGN item with an override → freezes fx_rate, fx_rate_date, amount_cad (#12)', async () => {
+    const { service, prisma } = make();
+    prisma.expenseItem.findFirst.mockResolvedValue(foreign);
+    await service.review('iu', { decision: ReviewDecision.approve, fx_rate: '1.36500000' }, superAdmin);
+    const data = (prisma.expenseItem.update.mock.calls[0][0] as {
+      data: { fx_rate: string; fx_rate_date: Date; amount_cad: string };
+    }).data;
+    expect(data.fx_rate).toBe('1.36500000');
+    expect(data.fx_rate_date).toBeInstanceOf(Date);
+    expect(data.amount_cad).toBe('13.65'); // 10.00 × 1.365
+  });
+
+  it('approving a FOREIGN item uses the FX source when no override is given', async () => {
+    const { service, prisma, fx } = make();
+    fx.getRateToCad.mockResolvedValue(new Decimal('1.40000000'));
+    prisma.expenseItem.findFirst.mockResolvedValue(foreign);
+    await service.review('iu', { decision: ReviewDecision.approve }, superAdmin);
+    expect(fx.getRateToCad).toHaveBeenCalledWith('USD', expect.any(Date));
+    const data = (prisma.expenseItem.update.mock.calls[0][0] as { data: { amount_cad: string } }).data;
+    expect(data.amount_cad).toBe('14.00'); // 10.00 × 1.40
+  });
+
+  // Rounding-boundary on APPROVAL: 10.00 USD × 1.3625 = 13.625 → 13.63 HALF-UP (not 13.62 half-even).
+  it('freezes amount_cad HALF-UP at a .xx5 boundary (10.00 × 1.3625 = 13.625 → 13.63)', async () => {
+    const { service, prisma } = make();
+    prisma.expenseItem.findFirst.mockResolvedValue(foreign);
+    await service.review('iu', { decision: ReviewDecision.approve, fx_rate: '1.3625' }, superAdmin);
+    expect((prisma.expenseItem.update.mock.calls[0][0] as { data: { amount_cad: string } }).data.amount_cad).toBe('13.63');
+  });
+
+  it('approving a FOREIGN item with NO override + FX source OFF → 422 (never guess)', async () => {
+    const { service, prisma } = make(); // fx.getRateToCad returns null by default
+    prisma.expenseItem.findFirst.mockResolvedValue(foreign);
+    await expect(
+      service.review('iu', { decision: ReviewDecision.approve }, superAdmin),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(prisma.expenseItem.update).not.toHaveBeenCalled();
+  });
+
+  it('a re-approval never re-converts (already-approved item is not reviewable → 422)', async () => {
+    const { service, prisma } = make();
+    prisma.expenseItem.findFirst.mockResolvedValue({ ...foreign, status: 'approved', amount_cad: new Decimal('14.00') });
+    await expect(
+      service.review('iu', { decision: ReviewDecision.approve, fx_rate: '99' }, superAdmin),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(prisma.expenseItem.update).not.toHaveBeenCalled();
   });
 
   it('reject → status rejected, approved_by null', async () => {
@@ -247,8 +315,8 @@ describe('ExpensesService.bulkReview', () => {
   it('transitions reviewable items and skips the rest', async () => {
     const { service, prisma } = make();
     prisma.expenseItem.findMany.mockResolvedValue([
-      { id: 'i1', status: 'submitted', submitted_by: 'u1', expense_date: new Date('2026-03-10T00:00:00.000Z'), pay_period_id: 'P1' },
-      { id: 'i2', status: 'approved', submitted_by: 'u1', expense_date: new Date('2026-03-10T00:00:00.000Z'), pay_period_id: 'P1' },
+      { id: 'i1', status: 'submitted', submitted_by: 'u1', expense_date: new Date('2026-03-10T00:00:00.000Z'), pay_period_id: 'P1', amount: new Decimal('42.50'), original_currency: 'CAD', amount_cad: new Decimal('42.50') },
+      { id: 'i2', status: 'approved', submitted_by: 'u1', expense_date: new Date('2026-03-10T00:00:00.000Z'), pay_period_id: 'P1', amount: new Decimal('10.00'), original_currency: 'CAD', amount_cad: new Decimal('10.00') },
     ]);
     const result = await service.bulkReview(
       { ids: ['i1', 'i2'], decision: ReviewDecision.approve },

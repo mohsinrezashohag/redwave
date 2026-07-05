@@ -69,6 +69,9 @@ export function ExpenseItemsTable({ filters, canReview }: { filters: ExpenseFilt
           <span className={styles.categoryCell}>
             {categoryLabel(it.category, configs.data)}
             {it.km_log && <Badge tone="info">KM</Badge>}
+            {it.is_personal && <Badge tone="neutral">Personal</Badge>}
+            {/* A foreign item is marked (its amount shows the currency + it can't be bulk-approved). */}
+            {it.original_currency !== 'CAD' && <Badge tone="warning">{it.original_currency}</Badge>}
           </span>
         ),
       },
@@ -78,7 +81,8 @@ export function ExpenseItemsTable({ filters, canReview }: { filters: ExpenseFilt
     cols.push(
       { id: 'description', header: 'Description', render: (it) => it.description },
       { id: 'status', header: 'Status', sortKey: 'status', render: (it) => <ExpenseStatusBadge status={it.status} /> },
-      { id: 'amount', header: 'Amount', sortKey: 'amount', numeric: true, render: (it) => money(it.amount) },
+      // Amount in its own currency (a USD item reads "USD 250.00", never a bare "$" — consistent with detail).
+      { id: 'amount', header: 'Amount', sortKey: 'amount', numeric: true, render: (it) => money(it.amount, it.original_currency) },
     );
     return cols;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,7 +95,11 @@ export function ExpenseItemsTable({ filters, canReview }: { filters: ExpenseFilt
       else s.delete(id);
       return s;
     });
-  const selectableRows = list.rows.filter((r) => REVIEWABLE.has(r.status));
+  // A FOREIGN, not-yet-converted item can't be bulk-approved (bulk carries no FX override → it would be
+  // skipped server-side). Exclude it from selection so the approver opens it for the per-item FX dialog.
+  const bulkSelectable = (it: ExpenseItem) =>
+    REVIEWABLE.has(it.status) && !(it.original_currency !== 'CAD' && it.amount_cad == null);
+  const selectableRows = list.rows.filter(bulkSelectable);
   const allSelected = selectableRows.length > 0 && selectableRows.every((r) => selected.has(r.id));
   const toggleAll = () =>
     setSelected((prev) => {
@@ -127,7 +135,7 @@ export function ExpenseItemsTable({ filters, canReview }: { filters: ExpenseFilt
         onPageChange={list.setPage}
         selectedIds={canReview ? selected : undefined}
         onSelect={canReview ? toggle : undefined}
-        isRowSelectable={(it) => REVIEWABLE.has(it.status)}
+        isRowSelectable={bulkSelectable}
         onToggleAll={canReview ? toggleAll : undefined}
         allSelectableSelected={allSelected}
         bulkActions={canReview ? <BulkReviewBar ids={[...selected]} onDone={() => setSelected(new Set())} /> : undefined}

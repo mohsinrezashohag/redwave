@@ -3,7 +3,7 @@
  * configs (the dynamic categories + receipt rule) and clients (optional tagging) before rendering the form.
  * 403 → AccessDenied.
  */
-import { Breadcrumbs, PageHeader } from '../../../components/ui';
+import { PageHeader } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
 import { isForbidden } from '../../../lib/api/apiError';
@@ -27,7 +27,6 @@ export default function ExpenseEntryPage() {
   return (
     <div className={styles.page}>
       <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Expenses', href: '/expenses' }, { label: 'Add expense' }]} />}
         title="Add expense"
         subtitle="Pick a category and fill in the details. Add several at once — the km amount is computed on submit."
       />

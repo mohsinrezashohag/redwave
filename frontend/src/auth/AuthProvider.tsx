@@ -5,7 +5,7 @@
  * gate (CLAUDE §5). The refresh token is an httpOnly cookie (never in JS); CSRF rides a readable cookie the
  * client echoes. — SRS §4, arch §security
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api } from '../api/client';
 import { queryClient } from '../lib/query/queryClient';
 import { useTheme } from '../theme/useTheme';
@@ -33,7 +33,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [repId, setRepId] = useState<string | null>(null);
   const [mfaEnrollmentRequired, setMfaEnrollmentRequired] = useState(false);
-  const booted = useRef(false);
 
   const clearLocal = useCallback(() => {
     setUser(null);
@@ -63,9 +62,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setPreference]);
 
   // ── Boot: restore an existing session (the refresh cookie, if any) ────────────────
+  // No `booted` ref guard: under React StrictMode (dev) the effect runs setup→cleanup→setup, and a ref
+  // guard would let cleanup #1 cancel the FIRST run while the guard blocks the SECOND from completing —
+  // leaving `status` stuck on 'loading' forever (a dev-only deadlock). Instead each run has its OWN
+  // `cancelled` flag: the cleaned-up run discards, the live run finishes and sets `status`. The network
+  // is deduped by the single-flight `refreshAccessToken()` (session.ts), so the double-invoke still makes
+  // ONE /auth/refresh (+ one /me). deps are stable (loadMe/clearLocal are useCallback) → runs once on mount.
   useEffect(() => {
-    if (booted.current) return; // guard StrictMode double-mount
-    booted.current = true;
     let cancelled = false;
     const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     (async () => {

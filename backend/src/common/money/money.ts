@@ -1,8 +1,12 @@
 /**
  * Central money policy — the SINGLE rounding/formatting authority for every presentation + export path
  * (statements, invoices, QuickBooks CSV, reconciliation). The rule: keep EXACT decimal in storage and
- * arithmetic; round to 2 dp HALF_UP ONLY at the presentation boundary. Single-currency CAD (no FX). So a
- * CAD figure is identical on screen, in the statement, the invoice, and every export. — BRD §8.2, CLAUDE §1
+ * arithmetic; round to 2 dp HALF_UP ONLY at the presentation boundary. This half-up rule is also the ONE
+ * used to compute a frozen `amount_cad` (see `common/fx`). — BRD §8.2, CLAUDE §1
+ *
+ * Multi-currency with a frozen FX snapshot (Meeting 3, #12): documents bill in a client's currency and
+ * roll up to CAD via a rate captured once at issue/approval. **CAD is the reconciliation/base currency** —
+ * every CAD roll-up reads the frozen `amount_cad`; the original currency + rate are retained for audit.
  *
  * (The isolated Commission Engine carries its own identical `roundMoneyHalfUp` to preserve its
  * zero-dependency purity — §6; it is the SAME rule, a different stream — #3.)
@@ -13,7 +17,7 @@ import { Decimal } from 'decimal.js';
 export const MONEY_DP = 2;
 export const MONEY_ROUNDING = Decimal.ROUND_HALF_UP;
 
-/** ISO currency for the whole platform — single-currency CAD (confirmed; no multi-currency / FX). */
+/** The reconciliation/base currency for CAD roll-ups (documents may bill in another currency, #12). */
 export const CURRENCY = 'CAD';
 
 export const ZERO = new Decimal(0);

@@ -117,6 +117,8 @@ export class BillingExportService {
       period_start: dateOnly(s.pay_period.start_date),
       period_end: dateOnly(s.pay_period.end_date),
       generated_at: s.generated_at.toISOString(),
+      currency: s.currency,
+      amount_cad: s.amount_cad?.toString() ?? null,
       lines: s.lines.map((l) => ({ customer_name: l.customer_name, products_summary: l.products_summary, line_total: l.line_total.toString() })),
       total_amount: s.total_amount.toString(),
     };
@@ -139,6 +141,8 @@ export class BillingExportService {
       period_start: dateOnly(inv.pay_period.start_date),
       period_end: dateOnly(inv.pay_period.end_date),
       generated_at: inv.generated_at.toISOString(),
+      currency: inv.currency,
+      amount_cad: inv.amount_cad?.toString() ?? null,
       total_commission: inv.total_commission.toString(),
     };
   }

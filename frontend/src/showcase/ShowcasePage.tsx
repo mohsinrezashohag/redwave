@@ -5,7 +5,7 @@
  * screens — this proves the design system renders correctly in light and dark. — design-system §6/§7
  */
 import { Plus } from 'lucide-react';
-import { Banner, Breadcrumbs, Button, PageHeader } from '../components/ui';
+import { Banner, Button, PageHeader } from '../components/ui';
 import { Interactive } from './Interactive';
 import { ShowcaseSection } from './ShowcaseSection';
 import { StaticGallery } from './StaticGallery';
@@ -16,7 +16,6 @@ export default function ShowcasePage() {
   return (
     <div className={styles.page}>
       <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Internal', href: '#' }, { label: 'Design System' }]} />}
         title="Component Showcase"
         subtitle="Design tokens + the core component library, in light and dark. The foundation every screen is built from."
         actions={<Button variant="primary" leftIcon={<Plus size={16} />}>Primary action</Button>}

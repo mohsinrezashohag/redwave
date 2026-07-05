@@ -55,12 +55,15 @@ export function BillingRateFormModal({
   open,
   clientId,
   products,
+  currency,
   rate,
   onClose,
 }: {
   open: boolean;
   clientId: string;
   products: Product[];
+  /** The client's billing currency — the amount is entered in it (#12). */
+  currency: string;
   /** When provided, the modal edits this PENDING rate (scope is fixed); otherwise it adds a new rate. */
   rate?: BillingRate;
   onClose: () => void;
@@ -161,8 +164,8 @@ export function BillingRateFormModal({
           />
         )}
 
-        <FormField label="Amount" required error={errors.amount?.message}>
-          <MoneyInput {...register('amount')} placeholder="0.00" />
+        <FormField label={`Amount (${currency})`} required error={errors.amount?.message} help={`What this client is charged, in ${currency}.`}>
+          <MoneyInput {...register('amount')} placeholder="0.00" currency={currency === 'CAD' ? undefined : `${currency} `} />
         </FormField>
 
         <Controller

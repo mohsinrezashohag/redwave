@@ -15,6 +15,8 @@
 > **How this document maps to the diagram**
 > The diagram has two pages: **Module Map** (the big picture — modules and their dependencies) and **Full ERD** (every entity with its fields, colour-coded by module, with relationship lines). This document is the data dictionary for that ERD: it explains each module, each entity, every field, the keys, and the design rules the schema enforces.
 
+> **Meeting-3 additions (spec ahead of the built schema — pending migration).** This dictionary now records the Meeting-3 deltas: the **stored-FX money fieldset** `{original_amount, original_currency, fx_rate, fx_rate_date, amount_cad}` on every foreign-capable record (`expense_items` + the billing artifacts), new config entities **`currencies`** and **`km_rate_config`** (per-client, two-stream), a new billing artifact **`client_expense_documents`**, `clients.currency`, `expense_items.is_personal` + `tags`, and the promotion of **`expense_reports`** back to the live weekly submission unit. Captured `fx_rate`/`amount_cad` are frozen like snapshots (#2) — never re-converted. Rep pay (commission/pay-run/holdback/clawback) stays CAD-only.
+
 ## 1. Design Principles
 
 The schema is engineered around a single non-negotiable property: every dollar ever paid must be reconstructable from immutable records. The following principles flow from that and from the locked BRD.
@@ -247,17 +249,44 @@ Program partners and their admin-created product catalogues. CLIENT BILLING RATE
 
 #### `clients`
 
-*A program partner (VF, RF, CTI, future).*
+*A program partner (VF, RF, CTI, VF Business, future). Meeting 3 added VF Business as the 4th partner.*
 
 | **Field**           | **Type**  | **Key** | **Notes**                                           |
 |---------------------|-----------|---------|-----------------------------------------------------|
 | **id**              | uuid      | **PK**  |                                                     |
-| **client_code**     | varchar   | **UQ**  | VF / RF / CTI. Enforced via dropdown, no free text. |
+| **client_code**     | varchar   | **UQ**  | VF / RF / CTI / VFB. Enforced via dropdown, no free text. |
 | **name**            | varchar   | —       |                                                     |
 | **market**          | enum      | —       | CA / US.                                            |
+| **currency**        | varchar   | **FK**  | -> currencies.code. The client's **billing currency** (CTI = USD, others = CAD; Meeting 3). All billing rates/documents are in this currency; roll-ups convert to CAD (frozen-FX, BILL-011). Default CAD. |
 | **supplies_mpu_id** | bool      | —       | Whether the partner provides per-house MPU IDs.     |
 | **is_active**       | bool      | —       |                                                     |
 | **created_at**      | timestamp | —       |                                                     |
+
+#### `currencies`
+
+*The admin-configurable set of allowed currencies (USD + CAD primary; extensible — never hard-coded, Meeting 3). Referenced by `clients.currency`, `expense_items.original_currency`, and every billing artifact's `original_currency`.*
+
+| **Field**     | **Type**  | **Key** | **Notes**                                    |
+|---------------|-----------|---------|----------------------------------------------|
+| **code**      | varchar   | **PK**  | ISO 4217 (e.g. CAD, USD).                     |
+| **name**      | varchar   | —       | Display name.                                 |
+| **symbol**    | varchar   | —       | e.g. `$`.                                     |
+| **is_active** | bool      | —       |                                               |
+| **created_at**| timestamp | —       |                                               |
+
+#### `km_rate_config`
+
+*Per-client, effective-dated kilometre rate — **two-stream** (#3): a `rep` reimbursement rate (CAD) and a separate `client_bill` rate, never combined. Reuses the effective-dating supersession pattern. Default $0.45 when no row.*
+
+| **Field**          | **Type**  | **Key** | **Notes**                                          |
+|--------------------|-----------|---------|----------------------------------------------------|
+| **id**             | uuid      | **PK**  |                                                    |
+| **client_id**      | uuid      | **FK**  | -> clients.id (nullable = global default).          |
+| **stream**         | enum      | —       | rep (reimbursement, CAD) / client_bill.             |
+| **rate_per_km**    | decimal   | —       | `Decimal(6,3)`.                                     |
+| **effective_from** | date      | —       | Supersession-dated; back-dating rejected (#10).     |
+| **effective_to**   | date      | —       | Nullable (open-ended current row).                  |
+| **created_at**     | timestamp | —       |                                                    |
 
 #### `client_custom_fields`
 
@@ -300,7 +329,7 @@ Program partners and their admin-created product catalogues. CLIENT BILLING RATE
 
 #### `client_billing_rates`
 
-*What Redwave charges the CLIENT. Effective-dated.*
+*What Redwave charges the CLIENT. Effective-dated. Interpreted in the client's `currency`; **bundles are just configured `bundle_bonus` rows** (e.g. RF Now HP+TV $35), not special-cased (Meeting 3).*
 
 | **Field**          | **Type** | **Key** | **Notes**                                             |
 |--------------------|----------|---------|-------------------------------------------------------|
@@ -308,7 +337,7 @@ Program partners and their admin-created product catalogues. CLIENT BILLING RATE
 | **client_id**      | uuid     | **FK**  | -> clients.id                                        |
 | **product_id**     | uuid     | **FK**  | -> products.id (nullable for add-on kinds).          |
 | **rate_kind**      | enum     | —       | product / tv_addon / hp_addon / bundle_bonus / spiff. |
-| **amount**         | decimal  | —       |                                                       |
+| **amount**         | decimal  | —       | In the client's `currency` (#3 — never combined with commission). |
 | **effective_from** | date     | —       |                                                       |
 | **effective_to**   | date     | —       | Nullable = open-ended.                                |
 | **created_by**     | uuid     | **FK**  | -> users.id                                          |
@@ -343,13 +372,13 @@ REP commission rules (Schedule C v2): the tier table, flat rates, holdback split
 
 #### `commission_flat_rates`
 
-*Flat (non-tiered) product rates.*
+*Flat (non-tiered) REP-commission rates. CAD (rep pay is CAD-only). New `standard_addon` types (Wireless, Protection Plan, Mesh Extender, Speed-attach — Meeting 3) are priced here.*
 
 | **Field**          | **Type** | **Key** | **Notes**                              |
 |--------------------|----------|---------|----------------------------------------|
 | **id**             | uuid     | **PK**  |                                        |
 | **product_type**   | varchar  | **FK**  | -> product_type_catalogue.key (non-tiered types). |
-| **amount**         | decimal  | —       | $100 / $30 / $30.                   |
+| **amount**         | decimal  | —       | e.g. $100 / $30 / $30; **may be $0 (bill-only add-on — a rep earns no commission on it, but it may still bill the client, Meeting 3)**. |
 | **effective_from** | date     | —       |                                        |
 | **effective_to**   | date     | —       | Nullable.                              |
 | **created_by**     | uuid     | **FK**  | -> users.id                           |
@@ -536,40 +565,51 @@ A cancellation recovery. No in-system date math: Redwave inputs a clawback when 
 
 #### `expense_items`
 
-*One expense (item-first). Carries its own lifecycle; the report wrapper is optional.*
+*One expense line item inside a weekly report (report-as-folder, Meeting 3). Carries its own lifecycle, a personal toggle, custom tags, and a frozen stored-FX fieldset for foreign amounts.*
 
 | **Field**             | **Type**  | **Key** | **Notes**                                                                |
 |-----------------------|-----------|---------|--------------------------------------------------------------------------|
 | **id**                | uuid      | **PK**  |                                                                          |
-| **expense_report_id** | uuid      | **FK**  | -> expense_reports.id (**nullable** — optional grouping/history).        |
+| **expense_report_id** | uuid      | **FK**  | -> expense_reports.id (nullable during migration; the **weekly report** the item belongs to — the report is the submission unit, EXP-001). |
 | **rep_id**            | uuid      | **FK**  | -> reps.id (nullable; the rep this item is for).                         |
 | **submitted_by**      | uuid      | **FK**  | -> users.id (the submitter).                                             |
-| **category**          | enum      | —       | km / meals / hotel / flight / rental / gas / other.                      |
+| **category**          | enum      | —       | km / meals / hotel / flight / rental / gas / other (per-type field sets, EXP-002a; catalogue-extensible). |
 | **client_id**         | uuid      | **FK**  | -> clients.id (nullable; which program).                                 |
 | **expense_date**      | date      | —       | Governs the payout pay period (EXP-009).                                 |
-| **amount**            | decimal   | —       | For km, computed server-side.                                            |
+| **amount**            | decimal   | —       | The reimbursable amount in `original_currency`; for km, computed server-side. |
+| **is_personal**       | boolean   | —       | Personal / do-not-reimburse (EXP-012); excluded from the reimbursable total, the pay-run seam, and all client output. Default false. |
+| **tags**              | jsonb     | —       | Custom tags (client + channel, EXP-002a). |
+| **original_amount**   | decimal   | —       | **Stored-FX (frozen).** The amount as incurred, in `original_currency`.  |
+| **original_currency** | varchar   | **FK**  | -> currencies.code (USD/CAD + extensible). Default CAD.                   |
+| **fx_rate**           | decimal   | —       | **Frozen at APPROVAL.** original→CAD rate, high precision `Decimal(18,8)`; nullable until approved; 1.0 when already CAD. Never re-converted (#2). |
+| **fx_rate_date**      | date      | —       | The rate's day (audit).                                                  |
+| **amount_cad**        | decimal   | —       | **Frozen.** `original_amount × fx_rate`, 2 dp half-up. The pay run / reimbursement reads THIS. |
 | **description**       | varchar   | —       |                                                                          |
-| **receipt_url**       | varchar   | —       | Mandatory except km (nullable); access-controlled storage URL.          |
+| **receipt_url**       | varchar   | —       | Mandatory except km (nullable); access-controlled storage URL. **Never shared with the client** (EXP-003/014). |
 | **status**            | enum      | —       | draft / submitted / approved / rejected / sent_back.                     |
 | **approved_by**       | uuid      | **FK**  | -> users.id (nullable).                                                  |
 | **approved_at**       | timestamp | —       | Nullable.                                                                |
 | **pay_period_id**     | uuid      | **FK**  | -> pay_periods.id (nullable; **derived from `expense_date`** at create). |
 | **created_at**        | timestamp | —       |                                                                          |
 
-Indexes: `(rep_id, pay_period_id, status)` (the Pay Run aggregation), `(submitted_by)`, `(status)`, `(expense_date)`.
+Indexes: `(rep_id, pay_period_id, status)` (the Pay Run aggregation), `(expense_report_id)`, `(submitted_by)`, `(status)`, `(expense_date)`. Money `Decimal(12,2)`; `fx_rate` `Decimal(18,8)`.
 
 #### `expense_reports`
 
-*Legacy weekly submission wrapper — RETAINED for history/optional grouping; new items are created report-less.*
+*The LIVE weekly submission unit (report-as-folder, Meeting 3 — EXP-001). A folder of `expense_items` for one business week; the whole report is submitted, approved, or sent back as one unit. Report-level status + aggregated alert count.*
 
 | **Field**         | **Type**  | **Key** | **Notes**                                            |
 |-------------------|-----------|---------|------------------------------------------------------|
 | **id**            | uuid      | **PK**  |                                                      |
+| **name**          | varchar   | —       | Report label (shown in the report list).            |
 | **submitted_by**  | uuid      | **FK**  | -> users.id (any user).                             |
 | **rep_id**        | uuid      | **FK**  | -> reps.id (nullable; for rep reporting).           |
-| **week_start**    | date      | —       |                                                      |
+| **week_start**    | date      | —       | Business-week start (Sun/Mon confirmed at build).    |
 | **week_end**      | date      | —       |                                                      |
-| **status**        | enum      | —       | draft / submitted / approved / rejected / sent_back. |
+| **status**        | enum      | —       | not_submitted / submitted / approved / sent_back (report-level, EXP-001a). |
+| **submitted_at**  | timestamp | —       | Nullable; set when the report is submitted as one unit. |
+| **alert_count**   | int       | —       | Aggregated Alert/Warning count across items (EXP-013); shown on the header. |
+| **reimbursable_total** | decimal | —     | Running Σ `amount_cad` of non-personal items (display; not a money source of truth). |
 | **approved_by**   | uuid      | **FK**  | -> users.id (nullable).                             |
 | **approved_at**   | timestamp | —       | Nullable.                                            |
 | **pay_period_id** | uuid      | **FK**  | -> pay_periods.id (cycle it pays in).               |
@@ -587,7 +627,7 @@ Indexes: `(rep_id, pay_period_id, status)` (the Pay Run aggregation), `(submitte
 | **total_km**        | decimal  | —       | Sum of stop legs.               |
 | **deduction_km**    | decimal  | —       | 30 or 60.                       |
 | **billable_km**     | decimal  | —       | total - deduction.              |
-| **rate_per_km**     | decimal  | —       | $0.45 (configurable).          |
+| **rate_per_km**     | decimal  | —       | Snapshot of the applied REP-reimbursement rate ($0.45 default), sourced from the per-client effective-dated `km_rate_config` (two-stream, #3; the client-bill rate is separate). `Decimal(6,3)`. |
 | **computed_amount** | decimal  | —       |                                 |
 
 #### `expense_km_stops`
@@ -633,7 +673,7 @@ Indexes: `(rep_id, pay_period_id, status)` (the Pay Run aggregation), `(submitte
 
 ## 11. Billing & Statements
 
-Per-client, per-period output. The statement recreates the Excel Redwave sends clients: ONE line per customer/household with all products on that line. GST is excluded (handled in QuickBooks). The invoice is an optional one-line PDF of total commission.
+Per-client, per-period output. The statement recreates the Excel Redwave sends clients: ONE line per customer/household with all products on that line. GST is excluded (handled in QuickBooks). The invoice is an optional one-line PDF of total commission. **Meeting 3:** documents bill in the **client's currency** and freeze a CAD conversion at issue (stored-FX, BILL-011); the client **expense** billing document is a separate numbered artifact (`client_expense_documents`).
 
 #### `client_statements`
 
@@ -646,7 +686,11 @@ Per-client, per-period output. The statement recreates the Excel Redwave sends c
 | **status**           | enum      | —       | `issued` (current) \| `superseded` (`BillingDocStatus`). |
 | **client_id**        | uuid      | **FK**  | -> clients.id                                          |
 | **pay_period_id**    | uuid      | **FK**  | -> pay_periods.id                                      |
-| **total_amount**     | decimal   | —       | CAD, no GST.                                            |
+| **currency**         | varchar   | **FK**  | -> currencies.code — the client's billing currency (Meeting 3). |
+| **total_amount**     | decimal   | —       | In `currency`, no GST.                                  |
+| **fx_rate**          | decimal   | —       | **Frozen at ISSUE.** currency→CAD, `Decimal(18,8)`; 1.0 when already CAD; never re-converted (#2). |
+| **fx_rate_date**     | date      | —       | The rate's day (audit).                                |
+| **amount_cad**       | decimal   | —       | **Frozen.** `total_amount × fx_rate`, 2 dp half-up. Reconciliation reads THIS. |
 | **file_url**         | varchar?  | —       | Nullable — the Excel is rendered on demand / recorded in billing_exports. |
 | **generated_by**     | uuid      | **FK**  | -> users.id                                            |
 | **generated_at**     | timestamp | —       |                                                        |
@@ -676,11 +720,39 @@ Per-client, per-period output. The statement recreates the Excel Redwave sends c
 | **status**           | enum      | —       | `issued` \| `superseded`.                                  |
 | **client_id**        | uuid      | **FK**  | -> clients.id                                              |
 | **pay_period_id**    | uuid      | **FK**  | -> pay_periods.id                                          |
-| **total_commission** | decimal   | —       | CAD; = the billing-stream statement total. No GST.         |
+| **currency**         | varchar   | **FK**  | -> currencies.code — the client's billing currency (Meeting 3). |
+| **total_commission** | decimal   | —       | In `currency`; = the billing-stream statement total. No GST. |
+| **fx_rate**          | decimal   | —       | **Frozen at ISSUE.** currency→CAD, `Decimal(18,8)`; 1.0 when CAD; never re-converted. |
+| **fx_rate_date**     | date      | —       | The rate's day (audit).                                    |
+| **amount_cad**       | decimal   | —       | **Frozen.** `total_commission × fx_rate`, 2 dp half-up.    |
 | **file_url**         | varchar?  | —       | Nullable — PDF rendered on demand.                         |
 | **generated_by**     | uuid?     | **FK**  | -> users.id                                                |
 | **generated_at**     | timestamp | —       |                                                            |
 | **superseded_by_id** | uuid?     | **FK**  | -> client_invoices.id.                                     |
+
+#### `client_expense_documents`  *(Meeting 3 — split billing, BILL-012 / EXP-014)*
+
+*The per-client expense billing document — kilometres + food grouped by type, itemized per rep per day. Gapless-numbered + immutable like statements; rendered in the client's currency; **no receipts, no commission data (#3)**. Priced from the client-bill km rate + food only. Separate PDF, attached separately when invoicing.*
+
+| **Field**             | **Type**  | **Key** | **Notes**                                              |
+|-----------------------|-----------|---------|--------------------------------------------------------|
+| **id**                | uuid      | **PK**  |                                                        |
+| **document_number**   | int       | **UQ**  | Gapless, global per type (CEXP-00001); minted on issue. |
+| **status**            | enum      | —       | `issued` \| `superseded`.                              |
+| **client_id**         | uuid      | **FK**  | -> clients.id                                          |
+| **pay_period_id**     | uuid      | **FK**  | -> pay_periods.id                                      |
+| **selection_filters** | jsonb     | —       | The chosen reps / days / clients (dynamic selection, EXP-014). |
+| **currency**          | varchar   | **FK**  | -> currencies.code (client's currency).                |
+| **total_amount**      | decimal   | —       | In `currency`; km (client-bill rate) + food.           |
+| **fx_rate**           | decimal   | —       | **Frozen at ISSUE.** currency→CAD, `Decimal(18,8)`; never re-converted. |
+| **fx_rate_date**      | date      | —       | The rate's day (audit).                                |
+| **amount_cad**        | decimal   | —       | **Frozen.** `total_amount × fx_rate`, 2 dp half-up.    |
+| **file_url**          | varchar?  | —       | Nullable — PDF rendered on demand.                     |
+| **generated_by**      | uuid      | **FK**  | -> users.id                                            |
+| **generated_at**      | timestamp | —       |                                                        |
+| **superseded_by_id**  | uuid?     | **FK**  | -> client_expense_documents.id.                        |
+
+*(Line detail is grouped by expense type × rep × day; the source is the approved non-personal `expense_items` in scope. Receipts are never referenced here.)*
 
 #### `document_sequences`  *(Billing batch)*
 
@@ -688,7 +760,7 @@ Per-client, per-period output. The statement recreates the Excel Redwave sends c
 
 | **Field**         | **Type** | **Key** | **Notes**                          |
 |-------------------|----------|---------|------------------------------------|
-| **key**           | varchar  | **PK**  | `statement` \| `invoice`.          |
+| **key**           | varchar  | **PK**  | `statement` \| `invoice` \| `client_expense`. |
 | **current_value** | int      | —       | Highest number issued so far (next = +1). |
 
 #### `billing_exports`  *(Billing batch)*
@@ -944,6 +1016,8 @@ Key foreign-key relationships across the model (cardinality shown from the child
 | **reps**                        | 1:N       | users                   | field_mgr    |
 | **rep_documents**               | 1:N       | reps                    |              |
 | **rep_equipment**               | 1:N       | reps                    |              |
+| **clients**                     | N:1       | currencies              | billing currency |
+| **km_rate_config**              | 1:N       | clients                 | nullable = global |
 | **products**                    | 1:N       | clients                 |              |
 | **products**                    | N:1       | product_type_catalogue  | product_type → key |
 | **client_custom_fields**        | 1:N       | clients                 |              |
@@ -974,11 +1048,12 @@ Key foreign-key relationships across the model (cardinality shown from the child
 | **expense_reports**             | 1:N       | users                   | submitted_by |
 | **expense_reports**             | 1:N       | reps                    |              |
 | **expense_reports**             | 1:N       | pay_periods             |              |
-| **expense_items**               | 1:N       | expense_reports         | nullable (optional grouping) |
+| **expense_items**               | 1:N       | expense_reports         | the weekly report folder (submission unit) |
 | **expense_items**               | 1:N       | reps                    |              |
 | **expense_items**               | 1:N       | users                   | submitted_by / approved_by |
 | **expense_items**               | 1:N       | pay_periods             | derived from expense_date |
 | **expense_items**               | 1:N       | clients                 |              |
+| **expense_items**               | N:1       | currencies              | original_currency |
 | **expense_km_logs**             | 1:1       | expense_items           |              |
 | **expense_km_stops**            | 1:N       | expense_km_logs         |              |
 | **expense_exports**             | 1:N       | users                   | generated_by |
@@ -1000,10 +1075,15 @@ Key foreign-key relationships across the model (cardinality shown from the child
 | **import_rows**                 | 1:N       | import_batches          |              |
 | **client_statements**           | 1:N       | clients                 |              |
 | **client_statements**           | 1:N       | pay_periods             |              |
+| **client_statements**           | N:1       | currencies              | billing currency |
 | **client_statement_lines**      | 1:N       | client_statements       |              |
 | **client_statement_lines**      | 1:N       | sales                   |              |
 | **client_invoices**             | 1:N       | clients                 |              |
 | **client_invoices**             | 1:N       | pay_periods             |              |
+| **client_invoices**             | N:1       | currencies              | billing currency |
+| **client_expense_documents**    | 1:N       | clients                 |              |
+| **client_expense_documents**    | 1:N       | pay_periods             |              |
+| **client_expense_documents**    | N:1       | currencies              | billing currency |
 | **sales_targets**               | 1:N       | reps                    |              |
 | **notifications**               | 1:N       | users                   |              |
 | **chatbot_conversations**       | 1:N       | users                   |              |

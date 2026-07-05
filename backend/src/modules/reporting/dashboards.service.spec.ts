@@ -105,7 +105,7 @@ describe('DashboardsService.business (Super Admin only — RPT-003)', () => {
 
   it('a Super Admin gets company-wide figures (net margin = revenue − payout) + the rich KPI shape', async () => {
     const { service, prisma } = make('all');
-    prisma.clientStatement.aggregate.mockResolvedValue({ _sum: { total_amount: '1000.00' } });
+    prisma.clientStatement.aggregate.mockResolvedValue({ _sum: { amount_cad: '1000.00' } }); // CAD-consolidated (#12)
     prisma.payRunLine.aggregate.mockResolvedValue({ _sum: { net_payout: '600.00', commission_70: '500.00', holdback_release_30: '200.00' } });
     prisma.clawback.aggregate.mockResolvedValue({ _sum: { amount: '50.00' } });
     const result = await service.business(user({ isSuperAdmin: true }), {});
@@ -121,9 +121,21 @@ describe('DashboardsService.business (Super Admin only — RPT-003)', () => {
     expect(Array.isArray(result.tier_distribution)).toBe(true);
   });
 
+  it('business revenue reads amount_cad (CAD-consolidated) — a USD statement contributes its CAD equivalent (#12)', async () => {
+    const { service, prisma } = make('all');
+    // A USD statement (amount_cad 341.25) + a CAD statement (amount_cad 100.00) → SUM(amount_cad) = 441.25.
+    prisma.clientStatement.aggregate.mockResolvedValue({ _sum: { amount_cad: '441.25' } });
+    const result = await service.business(user({ isSuperAdmin: true }), {});
+    // The revenue aggregate must sum the FROZEN CAD field, never the raw (currency-varying) total_amount.
+    expect(prisma.clientStatement.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({ _sum: { amount_cad: true } }),
+    );
+    expect(result.revenue).toBe('441.25');
+  });
+
   it('HISTORICAL sales blend into the business view ONLY: revenue + activations + product mix', async () => {
     const { service, prisma } = make('all');
-    prisma.clientStatement.aggregate.mockResolvedValue({ _sum: { total_amount: '1000.00' } });
+    prisma.clientStatement.aggregate.mockResolvedValue({ _sum: { amount_cad: '1000.00' } }); // CAD-consolidated (#12)
     // 1st saleItem.findMany = confirmed items (none); 2nd = historical items (blended)
     prisma.saleItem.findMany
       .mockResolvedValueOnce([])

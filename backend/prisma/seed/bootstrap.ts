@@ -226,6 +226,20 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
     create: { user_id: superAdminUser.id, role_id: superAdminRole.id },
   });
 
+  // 5a2. Currency catalogue — the allowed set (USD + CAD primary; admin-extensible). Idempotent; never
+  // clobbers is_active. FK target for clients.currency + expense/billing FX columns. — Meeting 3, CLAUDE §12
+  const CURRENCIES = [
+    { code: 'CAD', name: 'Canadian Dollar', symbol: '$' },
+    { code: 'USD', name: 'US Dollar', symbol: '$' },
+  ];
+  for (const c of CURRENCIES) {
+    await prisma.currency.upsert({
+      where: { code: c.code },
+      update: { name: c.name, symbol: c.symbol },
+      create: { code: c.code, name: c.name, symbol: c.symbol, is_active: true },
+    });
+  }
+
   // 5b. Product-type catalogue — the 4 core types with their LOCKED commission behaviour (#5/#9).
   // is_system=true → behaviour immutable, non-deletable, non-deactivatable. New SA types are standard_addon.
   const CORE_PRODUCT_TYPES = [

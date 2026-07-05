@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { Trash2 } from 'lucide-react';
 import { Button, FormField, IconButton, Input, Modal, Select, Switch, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
+import { useCurrencies } from '../../currencies/api/useCurrencies';
 import { useClient } from '../api/useClients';
 import { useCreateClient, useUpdateClient } from '../api/useClientMutations';
 import type { Client } from '../clients.types';
@@ -21,6 +22,7 @@ const schema = z.object({
   client_code: z.string().min(1, 'Required').max(50),
   name: z.string().min(1, 'Required').max(150),
   market: z.enum(['CA', 'US']),
+  currency: z.string().regex(/^[A-Z]{3}$/, 'Pick a currency'),
   supplies_mpu_id: z.boolean(),
   custom_fields: z.array(z.object({ field_name: z.string().min(1, 'Name required').max(100), field_value: z.string().max(500) })),
 });
@@ -38,10 +40,20 @@ export function ClientFormModal({ state, onClose }: { state: ClientFormState; on
   const onError = useApiErrorToast();
   const create = useCreateClient();
   const update = useUpdateClient();
+  const currencies = useCurrencies();
   // When editing, load the DETAIL so existing custom_fields are present before a save (avoids wiping them).
   const detail = useClient(editingId);
   const editing = state?.mode === 'edit' ? detail.data ?? state.client : null;
   const fieldsLoaded = !editingId || detail.isSuccess;
+
+  // Always include CAD (the base) + the client's PERSISTED currency, so a USD client's value still renders
+  // even while the catalogue is loading or if the fetch fails — never collapse to a CAD-only list (H1).
+  const currencyOptions = (() => {
+    const opts = new Map<string, string>([['CAD', 'CAD · Canadian Dollar']]);
+    for (const c of currencies.data ?? []) opts.set(c.code, `${c.code} · ${c.name}`);
+    if (editing?.currency && !opts.has(editing.currency)) opts.set(editing.currency, editing.currency);
+    return [...opts].map(([value, label]) => ({ value, label }));
+  })();
 
   const { control, register, handleSubmit, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -49,6 +61,7 @@ export function ClientFormModal({ state, onClose }: { state: ClientFormState; on
       client_code: editing?.client_code ?? '',
       name: editing?.name ?? '',
       market: editing?.market ?? 'CA',
+      currency: editing?.currency ?? 'CAD',
       supplies_mpu_id: editing?.supplies_mpu_id ?? false,
       custom_fields: (editing?.custom_fields ?? []).map((f) => ({ field_name: f.field_name, field_value: f.field_value })),
     },
@@ -85,6 +98,20 @@ export function ClientFormModal({ state, onClose }: { state: ClientFormState; on
           render={({ field }) => (
             <FormField label="Market" required error={errors.market?.message}>
               <Select options={MARKET_OPTIONS} value={field.value} onValueChange={field.onChange} />
+            </FormField>
+          )}
+        />
+        <Controller
+          control={control}
+          name="currency"
+          render={({ field }) => (
+            <FormField
+              label="Billing currency"
+              required
+              error={errors.currency?.message}
+              help="All this client's billing rates + documents are in it; rolls up to CAD. Locks once a statement/invoice is issued."
+            >
+              <Select options={currencyOptions} value={field.value} onValueChange={field.onChange} disabled={currencies.isLoading} />
             </FormField>
           )}
         />

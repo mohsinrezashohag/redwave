@@ -23,8 +23,10 @@ export function BulkReviewBar({ ids, onDone }: { ids: string[]; onDone: () => vo
       {
         onSuccess: (res) => {
           toast({
+            // Foreign-currency items are excluded from selection (they need a per-item FX rate); any other
+            // skip (not pending / out of scope) is reviewed by opening the item individually.
             title: `Reviewed ${res.reviewed} item(s)`,
-            description: res.skipped ? `${res.skipped} skipped (not pending).` : undefined,
+            description: res.skipped ? `${res.skipped} skipped — open them to review individually.` : undefined,
             tone: res.skipped ? 'warning' : 'success',
           });
           setNoteFor(null);

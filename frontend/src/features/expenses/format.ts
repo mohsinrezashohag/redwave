@@ -19,7 +19,7 @@ export interface ExpenseGroup {
   key: string;
   label: string;
   count: number;
-  /** Exact-decimal total ("X.YY") of the bucket's item amounts. */
+  /** Exact-decimal REIMBURSABLE total ("X.YY") — sums non-personal item amounts only (EXP-012). */
   total: string;
   items: ExpenseItem[];
 }
@@ -58,6 +58,11 @@ export function groupItems(items: ExpenseItem[], mode: Exclude<GroupMode, 'none'
     g.count += 1;
     map.set(key, g);
   }
-  const groups = [...map.values()].map((g) => ({ ...g, total: sumMoney(g.items.map((i) => i.amount)) }));
+  // The bucket total is REIMBURSABLE — personal (do-not-reimburse) items are captured in the bucket but
+  // never counted toward money owed (EXP-012). The count still reflects every item in the bucket.
+  const groups = [...map.values()].map((g) => ({
+    ...g,
+    total: sumMoney(g.items.filter((i) => !i.is_personal).map((i) => i.amount)),
+  }));
   return groups.sort((a, b) => (a.key < b.key ? 1 : -1));
 }

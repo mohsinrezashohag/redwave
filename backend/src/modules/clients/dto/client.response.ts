@@ -36,6 +36,9 @@ export class ClientResponse {
   @ApiProperty({ enum: Market })
   market!: Market;
 
+  @ApiProperty({ example: 'CAD', description: 'Billing currency (ISO 4217). All billing rates/documents are in it; rolls up to CAD via frozen FX (#12).' })
+  currency!: string;
+
   @ApiProperty()
   supplies_mpu_id!: boolean;
 

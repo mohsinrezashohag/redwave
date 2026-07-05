@@ -33,7 +33,16 @@ const STATUS_OPTIONS = [
   { value: 'past', label: 'Past' },
 ];
 
-export function BillingRatesPanel({ clientId, products }: { clientId: string; products: Product[] }) {
+export function BillingRatesPanel({
+  clientId,
+  products,
+  currency,
+}: {
+  clientId: string;
+  products: Product[];
+  /** The client's billing currency — rate amounts are in it (#12). */
+  currency: string;
+}) {
   const canView = useCan('billing_rates:view');
   const canCreate = useCan('billing_rates:create');
   const canEdit = useCan('billing_rates:edit');
@@ -62,7 +71,7 @@ export function BillingRatesPanel({ clientId, products }: { clientId: string; pr
   const columns: EffectiveColumn<BillingRate>[] = [
     { header: 'Rate kind', render: (r) => RATE_KIND_LABEL[r.rate_kind] },
     { header: 'Product', render: (r) => productName(r.product_id) },
-    { header: 'Amount', align: 'right', render: (r) => money(r.amount) },
+    { header: `Amount (${currency})`, align: 'right', render: (r) => money(r.amount, currency) },
   ];
 
   const onConfirmDelete = () => {
@@ -139,9 +148,9 @@ export function BillingRatesPanel({ clientId, products }: { clientId: string; pr
         />
       </DataState>
 
-      {canCreate && <BillingRateFormModal open={addOpen} clientId={clientId} products={products} onClose={() => setAddOpen(false)} />}
+      {canCreate && <BillingRateFormModal open={addOpen} clientId={clientId} products={products} currency={currency} onClose={() => setAddOpen(false)} />}
       {editRate && (
-        <BillingRateFormModal open clientId={clientId} products={products} rate={editRate} onClose={() => setEditRate(null)} />
+        <BillingRateFormModal open clientId={clientId} products={products} currency={currency} rate={editRate} onClose={() => setEditRate(null)} />
       )}
       <ConfirmDialog
         open={!!deleteRate}

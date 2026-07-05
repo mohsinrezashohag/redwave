@@ -5,7 +5,7 @@
  */
 import { Fragment, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Breadcrumbs, Button, Card, PageHeader } from '../../../components/ui';
+import { Button, Card, PageHeader } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
 import { isForbidden } from '../../../lib/api/apiError';
@@ -37,10 +37,7 @@ export default function ClientDetailPage() {
   const c = client.data;
   return (
     <div className={styles.page}>
-      <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Clients', href: '/admin/clients' }, { label: c?.name ?? 'Client' }]} />}
-        title={c?.name ?? 'Client'}
-      />
+      <PageHeader title={c?.name ?? 'Client'} />
       <DataState isLoading={client.isLoading} isError={client.isError} isEmpty={false} onRetry={() => client.refetch()}>
         {c && (
           <>
@@ -55,6 +52,8 @@ export default function ClientDetailPage() {
               <dl className={styles.dl} style={{ marginTop: 'var(--space-3)' }}>
                 <dt>Market</dt>
                 <dd>{c.market}</dd>
+                <dt>Billing currency</dt>
+                <dd className="mono">{c.currency}</dd>
                 <dt>Supplies MPU IDs</dt>
                 <dd>{c.supplies_mpu_id ? 'Yes' : 'No'}</dd>
                 <dt>Created</dt>
@@ -84,7 +83,7 @@ export default function ClientDetailPage() {
             </Card>
 
             <Card title="Billing rates">
-              <BillingRatesPanel clientId={c.id} products={productRows} />
+              <BillingRatesPanel clientId={c.id} products={productRows} currency={c.currency} />
             </Card>
           </>
         )}

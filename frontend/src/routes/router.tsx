@@ -10,6 +10,7 @@ import { RequireAuth } from '../auth/RequireAuth';
 import { RequirePasswordChange } from '../auth/RequirePasswordChange';
 import { RequireMfaEnrollment } from '../auth/RequireMfaEnrollment';
 import { RouteErrorBoundary } from './RouteErrorBoundary';
+import { withCrumbs } from './crumbs';
 import { LoadingSpinner } from '../components/ui';
 
 const LoginPage = lazy(() => import('../pages/login/LoginPage'));
@@ -40,6 +41,7 @@ const ClientDetailPage = lazy(() => import('../features/clients/pages/ClientDeta
 const ProductsListPage = lazy(() => import('../features/products/pages/ProductsListPage'));
 const CommissionConfigPage = lazy(() => import('../features/commission/pages/CommissionConfigPage'));
 const ProductTypesPage = lazy(() => import('../features/productTypes/pages/ProductTypesPage'));
+const KmRatesPage = lazy(() => import('../features/kmRates/pages/KmRatesPage'));
 const PayRunListPage = lazy(() => import('../features/payrun/pages/PayRunListPage'));
 const PayRunDetailPage = lazy(() => import('../features/payrun/pages/PayRunDetailPage'));
 const ClawbackListPage = lazy(() => import('../features/clawback/pages/ClawbackListPage'));
@@ -99,7 +101,9 @@ export const router = createBrowserRouter([
       {
         path: '/',
         element: <AppShell />,
-        children: [
+        // withCrumbs injects each route's breadcrumb metadata (handle.crumb) from routes/crumbs.ts —
+        // the single declaration site. New routes MUST add an entry there (dev warns otherwise). §13
+        children: withCrumbs([
           {
             // A render error in any feature page bubbles here → the friendly panel renders INSIDE the shell
             // (sidebar/topbar preserved), never a white screen. — CLAUDE §13
@@ -151,6 +155,7 @@ export const router = createBrowserRouter([
           { path: 'admin/products', element: lazyEl(<ProductsListPage />) },
           { path: 'admin/commission', element: lazyEl(<CommissionConfigPage />) },
           { path: 'admin/product-types', element: lazyEl(<ProductTypesPage />) },
+          { path: 'admin/km-rates', element: lazyEl(<KmRatesPage />) },
           { path: 'admin/security', element: lazyEl(<SecuritySettingsPage />) },
           { path: 'admin/audit', element: lazyEl(<AuditLogPage />) },
           { path: 'admin/reconciliation', element: lazyEl(<ReconciliationPage />) },
@@ -161,7 +166,7 @@ export const router = createBrowserRouter([
           { path: '*', element: lazyEl(<NotFoundPage />) },
             ],
           },
-        ],
+        ]),
       },
         ],
       },

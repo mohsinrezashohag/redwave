@@ -10,6 +10,8 @@ const statement: StatementForExport = {
   period_start: '2026-01-01',
   period_end: '2026-01-31',
   generated_at: '2026-02-01T00:00:00.000Z',
+  currency: 'CAD',
+  amount_cad: '145.00',
   lines: [
     { customer_name: 'Jane Doe', products_summary: 'Internet, TV', line_total: '85.00' },
     { customer_name: 'Bob Roe', products_summary: 'Internet', line_total: '60.00' },
@@ -25,6 +27,8 @@ const invoice: InvoiceForExport = {
   period_start: '2026-01-01',
   period_end: '2026-01-31',
   generated_at: '2026-02-01T00:00:00.000Z',
+  currency: 'CAD',
+  amount_cad: '145.00',
   total_commission: '145.00',
 };
 

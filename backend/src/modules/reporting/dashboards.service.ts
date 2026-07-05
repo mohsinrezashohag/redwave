@@ -191,7 +191,9 @@ export class DashboardsService {
 
     // ── Money (frozen reads) ──
     const [revAgg, payAgg, heldAgg, schedAgg, clawAgg, expenseGroups] = await Promise.all([
-      this.prisma.clientStatement.aggregate({ where: periodStmt, _sum: { total_amount: true } }),
+      // Revenue is CONSOLIDATED in CAD across clients (a USD client bills USD but rolls up via its frozen
+      // amount_cad, #12). — Meeting 3
+      this.prisma.clientStatement.aggregate({ where: periodStmt, _sum: { amount_cad: true } }),
       this.prisma.payRunLine.aggregate({
         where: period ? { pay_run: { pay_period_id: period.id } } : {},
         _sum: { net_payout: true, commission_70: true, holdback_release_30: true },
@@ -205,14 +207,14 @@ export class DashboardsService {
       this.prisma.expenseItem.groupBy({
         by: ['category'],
         where: { status: 'approved', ...periodStmt }, // item-first: status + pay_period live on the item
-        _sum: { amount: true },
+        _sum: { amount_cad: true }, // frozen CAD (a foreign expense was converted at approval, #12)
       }),
     ]);
-    const stmtRev = dec(revAgg._sum.total_amount); // confirmed client-statement revenue (billing stream)
+    const stmtRev = dec(revAgg._sum.amount_cad); // confirmed client-statement revenue, CONSOLIDATED in CAD
     const payout = dec(payAgg._sum.net_payout);
     const commission70 = dec(payAgg._sum.commission_70);
-    const expenseTotal = expenseGroups.reduce((a, g) => a.plus(dec(g._sum.amount)), new Decimal(0));
-    const expenseKm = expenseGroups.filter((g) => g.category === 'km').reduce((a, g) => a.plus(dec(g._sum.amount)), new Decimal(0));
+    const expenseTotal = expenseGroups.reduce((a, g) => a.plus(dec(g._sum.amount_cad)), new Decimal(0));
+    const expenseKm = expenseGroups.filter((g) => g.category === 'km').reduce((a, g) => a.plus(dec(g._sum.amount_cad)), new Decimal(0));
 
     // ── Activations — one confirmed-items pass, reduced in JS (bounded by the period). ──
     const items = await this.prisma.saleItem.findMany({
@@ -261,7 +263,7 @@ export class DashboardsService {
       this.effectiveTierBrackets(),
       this.prisma.client.findMany({ select: { id: true, client_code: true, name: true } }),
       this.prisma.productTypeCatalogue.findMany({ select: { key: true, label: true } }),
-      this.prisma.clientStatement.groupBy({ by: ['client_id'], where: periodStmt, _sum: { total_amount: true } }),
+      this.prisma.clientStatement.groupBy({ by: ['client_id'], where: periodStmt, _sum: { amount_cad: true } }), // CAD-consolidated
       this.prisma.sale.groupBy({ by: ['status'], where: { ...saleDateIn(period) }, _count: { _all: true } }),
     ]);
     const tierCounts = new Map<number, number>();
@@ -273,7 +275,7 @@ export class DashboardsService {
     // ── Client mix + labels ──
     const clientById = new Map(clients.map((c) => [c.id, c]));
     const typeLabel = new Map(catalogue.map((t) => [t.key, t.label]));
-    const revByClient = new Map(revByClientRows.map((r) => [r.client_id, dec(r._sum.total_amount)]));
+    const revByClient = new Map(revByClientRows.map((r) => [r.client_id, dec(r._sum.amount_cad)]));
     for (const [cid, amt] of histRevByClient) revByClient.set(cid, (revByClient.get(cid) ?? new Decimal(0)).plus(amt));
     const totalVolume = items.length + histItems.length;
     const clientMix = clients
@@ -296,7 +298,7 @@ export class DashboardsService {
 
     // ── Period-over-period growth ──
     const [revPrevAgg, actPrev, histPrevAgg] = await Promise.all([
-      prev ? this.prisma.clientStatement.aggregate({ where: { pay_period_id: prev.id }, _sum: { total_amount: true } }) : Promise.resolve(null),
+      prev ? this.prisma.clientStatement.aggregate({ where: { pay_period_id: prev.id }, _sum: { amount_cad: true } }) : Promise.resolve(null),
       prev
         ? this.prisma.saleItem.count({ where: { sale: { status: { in: CONFIRMED }, sale_date: { gte: prev.start_date, lte: prev.end_date } } } })
         : Promise.resolve(0),
@@ -304,7 +306,7 @@ export class DashboardsService {
         ? this.prisma.saleItem.aggregate({ where: { sale: { status: 'historical', sale_date: { gte: prev.start_date, lte: prev.end_date } } }, _sum: { historical_billed_amount: true } })
         : Promise.resolve(null),
     ]);
-    const revPrev = dec(revPrevAgg?._sum.total_amount).plus(dec(histPrevAgg?._sum.historical_billed_amount)); // blend historical (apples-to-apples)
+    const revPrev = dec(revPrevAgg?._sum.amount_cad).plus(dec(histPrevAgg?._sum.historical_billed_amount)); // CAD-consolidated + blend historical
     const growthPct = (cur: Decimal | number, prv: Decimal | number): string | null => {
       const c = new Decimal(cur.toString());
       const p = new Decimal(prv.toString());
@@ -371,7 +373,7 @@ export class DashboardsService {
       periods.find((p) => p.start_date.getTime() <= d.getTime() && p.end_date.getTime() >= d.getTime()) ?? null;
 
     const [statements, lines, claws, clients, brackets, activeReps, items, histItems] = await Promise.all([
-      this.prisma.clientStatement.findMany({ where: { pay_period_id: { in: periodIds } }, select: { pay_period_id: true, client_id: true, total_amount: true } }),
+      this.prisma.clientStatement.findMany({ where: { pay_period_id: { in: periodIds } }, select: { pay_period_id: true, client_id: true, amount_cad: true } }), // CAD-consolidated
       this.prisma.payRunLine.findMany({ where: { pay_run: { pay_period_id: { in: periodIds } } }, select: { net_payout: true, holdback_release_30: true, pay_run: { select: { pay_period_id: true } } } }),
       this.prisma.clawback.findMany({ where: { applied_in_pay_run: { pay_period_id: { in: periodIds } } }, select: { amount: true, applied_in_pay_run: { select: { pay_period_id: true } } } }),
       this.prisma.client.findMany({ select: { id: true, client_code: true } }),
@@ -396,10 +398,10 @@ export class DashboardsService {
     const tallyByPeriodRep = new Map<string, Map<string, number>>();
 
     for (const s of statements) {
-      perPeriod.get(s.pay_period_id)!.revenue = perPeriod.get(s.pay_period_id)!.revenue.plus(dec(s.total_amount));
+      perPeriod.get(s.pay_period_id)!.revenue = perPeriod.get(s.pay_period_id)!.revenue.plus(dec(s.amount_cad));
       const code = clientCode.get(s.client_id) ?? s.client_id;
       const m = revByPeriodClient.get(s.pay_period_id) ?? new Map<string, Decimal>();
-      m.set(code, (m.get(code) ?? new Decimal(0)).plus(dec(s.total_amount)));
+      m.set(code, (m.get(code) ?? new Decimal(0)).plus(dec(s.amount_cad)));
       revByPeriodClient.set(s.pay_period_id, m);
     }
     for (const l of lines) {

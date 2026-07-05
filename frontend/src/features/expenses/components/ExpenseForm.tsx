@@ -38,6 +38,9 @@ function itemToValues(item: ExpenseItem): ExpenseFormValues {
     expense_date: item.expense_date.slice(0, 10),
     client_id: item.client_id ?? undefined,
     description: item.description,
+    currency: item.original_currency ?? 'CAD',
+    is_personal: item.is_personal,
+    tags: item.tags ?? [],
   };
   const value: ItemValue =
     item.category === 'km' && item.km_log

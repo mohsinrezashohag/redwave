@@ -23,6 +23,11 @@
   padding: var(--space-5) var(--space-6);
 }
 
+/* The global breadcrumb row (route-driven) — collapses to nothing on crumb-less routes. */
+.crumbs:not(:empty) {
+  margin-bottom: var(--space-3);
+}
+
 /* Tighter gutters on phones so dense screens use the full width. (mobile < 640px — §8) */
 @media (max-width: 639.98px) {
   .inner {

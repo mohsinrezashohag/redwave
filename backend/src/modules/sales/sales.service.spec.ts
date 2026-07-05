@@ -80,7 +80,7 @@ describe('SalesService.create', () => {
     prisma.rep.findUnique.mockResolvedValue({ status: 'active' });
     prisma.client.findUnique.mockResolvedValue({ id: 'c1', is_active: true, client_code: 'VF' });
     prisma.product.findMany.mockResolvedValue([
-      { id: 'p1', product_type: 'internet', is_active: true },
+      { id: 'p1', product_type: 'internet', is_active: true, product_type_ref: { behaviour: 'tiered' } },
     ]);
     prisma.sale.create.mockResolvedValue({ id: 's1', sale_code: 'x', sale_items: [] });
 
@@ -105,6 +105,38 @@ describe('SalesService.create', () => {
     expect(item).not.toHaveProperty('commission_paid');
     expect(item).not.toHaveProperty('tier_at_payment');
     expect(item).not.toHaveProperty('incentive_amount');
+  });
+
+  it('rejects a standalone add-on sale (no internet base) with 422 — SALE-001a', async () => {
+    const { service, prisma } = make(SELF);
+    prisma.rep.findUnique.mockResolvedValue({ status: 'active' });
+    prisma.client.findUnique.mockResolvedValue({ id: 'c1', is_active: true, client_code: 'VF' });
+    // Only a TV add-on (standard_addon) — no tiered/greenfield internet base.
+    prisma.product.findMany.mockResolvedValue([
+      { id: 'p1', product_type: 'tv', is_active: true, product_type_ref: { behaviour: 'standard_addon' } },
+    ]);
+
+    await expect(service.create(createDto, authUser('rep-self'))).rejects.toMatchObject({
+      status: 422,
+    });
+    expect(prisma.sale.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts an add-on ALONGSIDE an internet base — SALE-001a', async () => {
+    const { service, prisma } = make(SELF);
+    prisma.rep.findUnique.mockResolvedValue({ status: 'active' });
+    prisma.client.findUnique.mockResolvedValue({ id: 'c1', is_active: true, client_code: 'VF' });
+    prisma.product.findMany.mockResolvedValue([
+      { id: 'p1', product_type: 'internet', is_active: true, product_type_ref: { behaviour: 'tiered' } },
+      { id: 'p2', product_type: 'tv', is_active: true, product_type_ref: { behaviour: 'standard_addon' } },
+    ]);
+    prisma.sale.create.mockResolvedValue({ id: 's1', sale_code: 'x', sale_items: [] });
+
+    await service.create(
+      { ...createDto, items: [{ product_id: 'p1' }, { product_id: 'p2' }] },
+      authUser('rep-self'),
+    );
+    expect(prisma.sale.create).toHaveBeenCalled();
   });
 });
 

@@ -5,7 +5,6 @@
  */
 import { Injectable } from '@nestjs/common';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { CURRENCY } from '../../../common/money/money';
 import { invoiceNo } from '../doc-number';
 
 export interface InvoiceForExport {
@@ -16,6 +15,8 @@ export interface InvoiceForExport {
   period_start: string;
   period_end: string;
   generated_at: string;
+  currency: string; // the document's billing currency (#12)
+  amount_cad: string | null; // frozen CAD equivalent (null on legacy rows)
   total_commission: string;
 }
 
@@ -47,9 +48,14 @@ export class InvoicePdfRenderer {
     // The single commission amount — no tax.
     page.drawRectangle({ x: left, y: y - 30, width: 500, height: 40, color: rgb(0.96, 0.97, 0.99) });
     page.drawText('Total commission', { x: left + 12, y: y - 14, size: 12, font: bold, color: navy });
-    page.drawText(`${CURRENCY} ${inv.total_commission}`, { x: left + 360, y: y - 14, size: 12, font: bold, color: navy });
+    page.drawText(`${inv.currency} ${inv.total_commission}`, { x: left + 360, y: y - 14, size: 12, font: bold, color: navy });
     y -= 64;
-    line(`All amounts in ${CURRENCY}. No GST/PST (tax handled in QuickBooks).`, 9, font, rgb(0.4, 0.4, 0.4));
+    // For a foreign invoice show the frozen CAD equivalent (reconciliation figure, #12).
+    if (inv.currency !== 'CAD' && inv.amount_cad) {
+      line(`CAD equivalent: CAD ${inv.amount_cad}`, 11, bold, navy);
+      y -= 4;
+    }
+    line(`All amounts in ${inv.currency}. No GST/PST (tax handled in QuickBooks).`, 9, font, rgb(0.4, 0.4, 0.4));
 
     return Buffer.from(await pdf.save());
   }

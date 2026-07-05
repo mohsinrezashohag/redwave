@@ -3,7 +3,7 @@
  * SaleDetailView (which fetches, gates actions, and handles loading/error/not-found). — SALE-004
  */
 import { useParams } from 'react-router-dom';
-import { Breadcrumbs, PageHeader } from '../../../components/ui';
+import { PageHeader } from '../../../components/ui';
 import { SaleDetailView } from '../components/SaleDetailView';
 
 export default function SaleDetailPage() {
@@ -11,10 +11,7 @@ export default function SaleDetailPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-      <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Sales', href: '/sales' }, { label: 'Sale detail' }]} />}
-        title="Sale detail"
-      />
+      <PageHeader title="Sale detail" />
       <SaleDetailView id={id} />
     </div>
   );

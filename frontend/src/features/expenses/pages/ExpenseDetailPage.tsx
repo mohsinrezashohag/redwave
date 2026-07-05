@@ -6,7 +6,7 @@
  */
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Breadcrumbs, Button, Card, PageHeader } from '../../../components/ui';
+import { Badge, Button, Card, PageHeader } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useAuth } from '../../../auth/useAuth';
 import { useCan } from '../../../auth/useCan';
@@ -74,10 +74,7 @@ export default function ExpenseDetailPage() {
 
   return (
     <div className={styles.page}>
-      <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Expenses', href: '/expenses' }, { label: 'Item' }]} />}
-        title="Expense item"
-      />
+      <PageHeader title="Expense item" />
       {isNotFound(q.error) ? (
         <Card>This expense item doesn’t exist or isn’t visible to you.</Card>
       ) : (
@@ -87,15 +84,43 @@ export default function ExpenseDetailPage() {
               <Card title="Details">
                 <div className={styles.detailHead}>
                   <ExpenseStatusBadge status={item.status} />
-                  <strong className="mono">{money(item.amount)}</strong>
+                  <strong className="mono">{money(item.amount, item.original_currency)}</strong>
                 </div>
                 <dl className={styles.dl} style={{ marginTop: 'var(--space-3)' }}>
                   <dt>Category</dt>
                   <dd>{categoryLabel(item.category, configs.data)}</dd>
+                  {item.original_currency !== 'CAD' && (
+                    <>
+                      <dt>CAD value</dt>
+                      <dd className="mono">
+                        {item.amount_cad ? `${money(item.amount_cad)} (rate ${item.fx_rate})` : 'Will freeze at approval'}
+                      </dd>
+                    </>
+                  )}
                   <dt>Date</dt>
                   <dd className="mono">{displayDate(item.expense_date)}</dd>
                   <dt>Description</dt>
                   <dd>{item.description}</dd>
+                  {item.tags && item.tags.length > 0 && (
+                    <>
+                      <dt>Tags</dt>
+                      <dd className={styles.tagList}>
+                        {item.tags.map((t) => (
+                          <Badge key={t} tone="info">
+                            {t}
+                          </Badge>
+                        ))}
+                      </dd>
+                    </>
+                  )}
+                  {item.is_personal && (
+                    <>
+                      <dt>Personal</dt>
+                      <dd>
+                        <Badge tone="neutral">Do not reimburse</Badge>
+                      </dd>
+                    </>
+                  )}
                   {canViewReps && (
                     <>
                       <dt>Rep</dt>
@@ -159,7 +184,7 @@ export default function ExpenseDetailPage() {
                     Edit
                   </Button>
                 )}
-                {reviewable && <ReviewActions itemId={item.id} onDone={() => q.refetch()} />}
+                {reviewable && <ReviewActions item={item} onDone={() => q.refetch()} />}
                 <Button variant="tertiary" onClick={() => navigate('/expenses')}>
                   Back to expenses
                 </Button>
