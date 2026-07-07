@@ -21,7 +21,9 @@ import { useExpenseItem, useFieldConfigs } from '../api/useExpenseItems';
 import { useClients, useReps } from '../api/useLookups';
 import { categoryLabel } from '../format';
 import { ExpenseStatusBadge } from '../components/ExpenseStatusBadge';
+import { ExpenseValidationBadge } from '../components/ExpenseValidationBadge';
 import { ReviewActions } from '../components/ReviewActions';
+import { Banner } from '../../../components/ui';
 import styles from '../components/expenses.module.css';
 
 const REVIEWABLE = new Set(['submitted', 'sent_back']);
@@ -71,6 +73,9 @@ export default function ExpenseDetailPage() {
   const editable = item ? (item.status === 'approved' ? isSuperAdmin : canEdit) : false;
   const reviewable = !!item && canApprove && REVIEWABLE.has(item.status);
   const km = item?.km_log ?? null;
+  // Per-type capture fields to show (label from the category schema; only non-empty values). — EXP-002a
+  const cfg = item ? configs.data?.find((c) => c.category_key === item.category) : undefined;
+  const capturedFields = (cfg?.fields ?? []).filter((def) => item?.field_values?.[def.key]);
 
   return (
     <div className={styles.page}>
@@ -84,6 +89,7 @@ export default function ExpenseDetailPage() {
               <Card title="Details">
                 <div className={styles.detailHead}>
                   <ExpenseStatusBadge status={item.status} />
+                  <ExpenseValidationBadge validation={item.validation} />
                   <strong className="mono">{money(item.amount, item.original_currency)}</strong>
                 </div>
                 <dl className={styles.dl} style={{ marginTop: 'var(--space-3)' }}>
@@ -101,6 +107,12 @@ export default function ExpenseDetailPage() {
                   <dd className="mono">{displayDate(item.expense_date)}</dd>
                   <dt>Description</dt>
                   <dd>{item.description}</dd>
+                  {capturedFields.map((def) => (
+                    <div key={def.key} style={{ display: 'contents' }}>
+                      <dt>{def.label}</dt>
+                      <dd>{def.type === 'money' ? money(item.field_values?.[def.key]) : item.field_values?.[def.key]}</dd>
+                    </div>
+                  ))}
                   {item.tags && item.tags.length > 0 && (
                     <>
                       <dt>Tags</dt>
@@ -159,6 +171,26 @@ export default function ExpenseDetailPage() {
                   )}
                 </dl>
               </Card>
+
+              {/* Derived Alert/Warning validation (EXP-013) — Alerts must be fixed before this item is clean. */}
+              {item.validation && item.validation.alert_count > 0 && (
+                <Banner tone="danger" title={`${item.validation.alert_count} alert(s) — must be fixed`}>
+                  <ul className={styles.warnList}>
+                    {item.validation.alerts.map((r) => (
+                      <li key={r.code + (r.field ?? '')}>{r.message}</li>
+                    ))}
+                  </ul>
+                </Banner>
+              )}
+              {item.validation && item.validation.warning_count > 0 && (
+                <Banner tone="warning" title={`${item.validation.warning_count} warning(s)`}>
+                  <ul className={styles.warnList}>
+                    {item.validation.warnings.map((r) => (
+                      <li key={r.code + (r.field ?? '')}>{r.message}</li>
+                    ))}
+                  </ul>
+                </Banner>
+              )}
 
               {km && (
                 <Card title="Kilometre details (server-computed)">

@@ -107,7 +107,10 @@ function makePrisma() {
       ]),
     },
     clientBillingRate: {
-      findMany: jest.fn().mockResolvedValue([rate('int', '60.00'), rate('tv', '25.00')]),
+      // product rates for the product query; no bundles (rate_kind='bundle_bonus' → []).
+      findMany: jest.fn().mockImplementation(({ where }: { where: { rate_kind?: string } }) =>
+        Promise.resolve(where.rate_kind === 'bundle_bonus' ? [] : [rate('int', '60.00'), rate('tv', '25.00')]),
+      ),
     },
     // The commission stream — every access throws.
     commissionTierConfig: trap('commissionTierConfig'),

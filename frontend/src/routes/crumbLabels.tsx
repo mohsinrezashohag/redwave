@@ -13,6 +13,8 @@ import { usePayRun } from '../features/payrun/api/usePayRun';
 import { useDocument } from '../features/documents/api/useDocuments';
 import { useExpenseItem } from '../features/expenses/api/useExpenseItems';
 import { useStatement } from '../features/billing/api/useBilling';
+import { useExpenseDoc } from '../features/expenseDocs/api/useExpenseDocs';
+import { expenseDocNo } from '../features/expenseDocs/expenseDocs.download';
 import { useRole } from '../features/admin/api/useRoles';
 import { useImportBatch } from '../features/import/api/useImports';
 import { categoryLabel } from '../features/expenses/format';
@@ -59,6 +61,10 @@ function StatementCrumb({ id }: { id: string }) {
     />
   );
 }
+function ExpenseDocCrumb({ id }: { id: string }) {
+  const q = useExpenseDoc(id);
+  return <Resolved label={q.data != null ? expenseDocNo(q.data.document_number) : undefined} isLoading={q.isLoading} id={id} />;
+}
 function RoleCrumb({ id }: { id: string }) {
   const q = useRole(id);
   return <Resolved label={q.data?.name} isLoading={q.isLoading} id={id} />;
@@ -76,6 +82,7 @@ export const DYNAMIC_CRUMBS: Record<DynamicKind, ComponentType<{ id: string }>> 
   document: DocumentCrumb,
   expenseItem: ExpenseItemCrumb,
   statement: StatementCrumb,
+  expenseDoc: ExpenseDocCrumb,
   role: RoleCrumb,
   importBatch: ImportBatchCrumb,
 };

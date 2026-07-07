@@ -9,3 +9,6 @@ export const statementNo = (n: number | null | undefined): string => `STMT-${pad
 
 /** e.g. 1 → "INV-00001". */
 export const invoiceNo = (n: number | null | undefined): string => `INV-${pad5(n)}`;
+
+/** The client EXPENSE billing document (BILL-012). e.g. 1 → "CEXP-00001". */
+export const expenseDocNo = (n: number | null | undefined): string => `CEXP-${pad5(n)}`;

@@ -16,6 +16,7 @@ import { currentPeriod, usePayPeriods } from '../api/useLookups';
 import { useAllExpenseItems, useFieldConfigs } from '../api/useExpenseItems';
 import { ExpenseFilterBar } from '../components/ExpenseFilterBar';
 import { ExpenseItemsTable } from '../components/ExpenseItemsTable';
+import { ValidationSummaryBanner } from '../components/ValidationSummaryBanner';
 import { ExpenseExportControls } from '../components/ExpenseExportControls';
 import { GroupedSummary } from '../components/GroupedSummary';
 import { ExportModal } from '../components/ExportModal';
@@ -113,6 +114,7 @@ export default function ExpensesListPage() {
         }
       />
       <ExpenseFilterBar filters={filters} onChange={onChange} />
+      {canApprove && <ValidationSummaryBanner filters={filters} />}
       {groupMode !== 'none' && grouped.data && <GroupedSummary items={grouped.data} mode={groupMode} />}
       <ExpenseItemsTable filters={filters} canReview={canApprove} />
       <ExportModal open={exportOpen} onOpenChange={setExportOpen} />

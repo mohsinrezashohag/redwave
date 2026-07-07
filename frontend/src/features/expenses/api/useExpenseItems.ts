@@ -17,6 +17,7 @@ import type {
   ExpenseListParams,
   ExpenseSortKey,
   FieldConfig,
+  ValidationSummary,
 } from '../expenses.types';
 
 const LIMIT = 20;
@@ -63,6 +64,15 @@ export async function fetchAllExpenseItems(filters: ExpenseFilters): Promise<Exp
     if (page >= (res.meta.pageCount || 1)) break;
   }
   return out;
+}
+
+/** Aggregated Alert/Warning flag counts over the current filter (the approvals/list header). — EXP-013 */
+export function useValidationSummary(filters: ExpenseFilters, enabled = true) {
+  return useQuery({
+    queryKey: [...expenseItemsKeys.all, 'validation-summary', filters],
+    queryFn: () => unwrap<ValidationSummary>(api.GET('/v1/expense-items/validation-summary', { params: { query: filters } })),
+    enabled,
+  });
 }
 
 /** The category catalogue — drives the dynamic category selector + the per-category receipt rule. */

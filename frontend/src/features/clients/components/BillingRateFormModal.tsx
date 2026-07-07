@@ -8,11 +8,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
-import { Badge, Banner, Button, FormField, Modal, MoneyInput, Select, useToast } from '../../../components/ui';
+import { Badge, Banner, Button, FormField, Modal, MoneyInput, MultiSelect, Select, useToast } from '../../../components/ui';
 import { PayPeriodSelect } from '../../../components/data/PayPeriodSelect';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
 import { productTypeLabel } from '../../../lib/format/productType';
+import { useProductTypes } from '../../productTypes/api/useProductTypes';
 import { useCreateBillingRate, useUpdateBillingRate } from '../api/useClientMutations';
 import type { BillingRate, Product, RateKind } from '../clients.types';
 import styles from './clients.module.css';
@@ -34,6 +35,8 @@ const schema = z
   .object({
     rate_kind: z.enum(['product', 'tv_addon', 'hp_addon', 'bundle_bonus', 'spiff']),
     product_id: z.string().optional(),
+    // For rate_kind='bundle_bonus' only: the trigger product types that must ALL be on a sale. — BILL-013
+    bundle_product_types: z.array(z.string()).optional(),
     amount: z.string().regex(MONEY, 'Enter an amount (max 2 dp)'),
     effective_from: z.string().regex(DATE, 'Date required'),
     effective_to: z.string().optional(),
@@ -41,6 +44,9 @@ const schema = z
   .superRefine((val, ctx) => {
     if (val.rate_kind === 'product' && !val.product_id) {
       ctx.addIssue({ code: 'custom', path: ['product_id'], message: 'A product is required for a product rate' });
+    }
+    if (val.rate_kind === 'bundle_bonus' && new Set(val.bundle_product_types ?? []).size < 2) {
+      ctx.addIssue({ code: 'custom', path: ['bundle_product_types'], message: 'Pick at least 2 trigger product types' });
     }
     if (val.effective_from < todayIso()) {
       ctx.addIssue({ code: 'custom', path: ['effective_from'], message: 'Must be today or later (no back-dating)' });
@@ -73,6 +79,8 @@ export function BillingRateFormModal({
   const onError = useApiErrorToast();
   const create = useCreateBillingRate();
   const update = useUpdateBillingRate();
+  // The trigger catalogue — only fetched while adding a bundle (edit keeps the scope fixed). — BILL-013
+  const productTypes = useProductTypes('active', open && !isEdit);
 
   const { control, register, handleSubmit, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -80,11 +88,12 @@ export function BillingRateFormModal({
       ? {
           rate_kind: rate.rate_kind,
           product_id: rate.product_id ?? undefined,
+          bundle_product_types: rate.bundle_product_types ?? [],
           amount: rate.amount,
           effective_from: dateOnly(rate.effective_from),
           effective_to: dateOnly(rate.effective_to),
         }
-      : { rate_kind: 'product', product_id: undefined, amount: '', effective_from: '', effective_to: '' },
+      : { rate_kind: 'product', product_id: undefined, bundle_product_types: [], amount: '', effective_from: '', effective_to: '' },
   });
   const errors = formState.errors;
   const rateKind = useWatch({ control, name: 'rate_kind' });
@@ -103,6 +112,7 @@ export function BillingRateFormModal({
         body: {
           rate_kind: values.rate_kind,
           product_id: values.rate_kind === 'product' ? values.product_id : undefined,
+          bundle_product_types: values.rate_kind === 'bundle_bonus' ? values.bundle_product_types : undefined,
           amount: values.amount,
           effective_from: values.effective_from,
           effective_to: values.effective_to || undefined,
@@ -133,6 +143,10 @@ export function BillingRateFormModal({
             <span className={styles.readonlyType}>
               <Badge tone="neutral">{RATE_KIND_OPTIONS.find((o) => o.value === rate!.rate_kind)?.label}</Badge>
               {rate!.rate_kind === 'product' && <Badge tone="neutral">{productName(rate!.product_id)}</Badge>}
+              {rate!.rate_kind === 'bundle_bonus' &&
+                rate!.bundle_product_types.map((t) => (
+                  <Badge tone="neutral" key={t}>{productTypeLabel(t)}</Badge>
+                ))}
             </span>
           </FormField>
         ) : (
@@ -158,6 +172,28 @@ export function BillingRateFormModal({
                   options={products.map((p) => ({ value: p.id, label: `${p.name} · ${productTypeLabel(p.product_type)}` }))}
                   value={field.value || undefined}
                   onValueChange={field.onChange}
+                />
+              </FormField>
+            )}
+          />
+        )}
+
+        {!isEdit && rateKind === 'bundle_bonus' && (
+          <Controller
+            control={control}
+            name="bundle_product_types"
+            render={({ field }) => (
+              <FormField
+                label="Trigger product types"
+                required
+                error={errors.bundle_product_types?.message}
+                help="The bundle applies to a sale that has ALL of these product types (client-wide — pick at least 2)."
+              >
+                <MultiSelect
+                  placeholder="Add a product type…"
+                  options={(productTypes.data ?? []).map((t) => ({ value: t.key, label: t.label }))}
+                  value={field.value ?? []}
+                  onChange={field.onChange}
                 />
               </FormField>
             )}

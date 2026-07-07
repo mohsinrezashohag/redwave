@@ -1,6 +1,7 @@
 import { StatementExcelRenderer, StatementForExport } from './statement-excel.renderer';
 import { InvoicePdfRenderer, InvoiceForExport } from './invoice-pdf.renderer';
 import { QuickbooksCsvRenderer } from './quickbooks-csv.renderer';
+import { ExpenseDocForExport, ExpenseDocPdfRenderer } from './expense-doc-pdf.renderer';
 
 const statement: StatementForExport = {
   statement_number: 7,
@@ -44,6 +45,36 @@ describe('InvoicePdfRenderer', () => {
   it('produces a non-empty PDF (%PDF header) — SRS BILL-003', async () => {
     const buf = await new InvoicePdfRenderer().render(invoice);
     expect(buf.length).toBeGreaterThan(0);
+    expect(buf.slice(0, 4).toString('latin1')).toBe('%PDF');
+  });
+});
+
+const expenseDoc: ExpenseDocForExport = {
+  document_number: 1,
+  client_name: 'CTI',
+  client_code: 'CTI',
+  period_number: 3,
+  period_start: '2026-01-01',
+  period_end: '2026-01-31',
+  generated_at: '2026-02-01T00:00:00.000Z',
+  currency: 'USD',
+  amount_cad: '136.50',
+  total_amount: '100.00',
+  lines: [
+    { type: 'km', rep_name: 'Alice', date: '2026-01-10', description: '100.00 km', amount: '60.00' },
+    { type: 'meals', rep_name: 'Alice', date: '2026-01-10', description: 'Dinner', amount: '40.00' },
+  ],
+};
+
+describe('ExpenseDocPdfRenderer — km + food, grouped, no receipts (BILL-012)', () => {
+  it('produces a non-empty PDF (%PDF header)', async () => {
+    const buf = await new ExpenseDocPdfRenderer().render(expenseDoc);
+    expect(buf.length).toBeGreaterThan(0);
+    expect(buf.slice(0, 4).toString('latin1')).toBe('%PDF');
+  });
+
+  it('renders an empty document gracefully (no lines)', async () => {
+    const buf = await new ExpenseDocPdfRenderer().render({ ...expenseDoc, lines: [], total_amount: '0.00' });
     expect(buf.slice(0, 4).toString('latin1')).toBe('%PDF');
   });
 });

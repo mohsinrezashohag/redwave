@@ -48,6 +48,8 @@ const ClawbackListPage = lazy(() => import('../features/clawback/pages/ClawbackL
 const ClawbackEntryPage = lazy(() => import('../features/clawback/pages/ClawbackEntryPage'));
 const BillingListPage = lazy(() => import('../features/billing/pages/BillingListPage'));
 const StatementDetailPage = lazy(() => import('../features/billing/pages/StatementDetailPage'));
+const ExpenseDocsListPage = lazy(() => import('../features/expenseDocs/pages/ExpenseDocsListPage'));
+const ExpenseDocDetailPage = lazy(() => import('../features/expenseDocs/pages/ExpenseDocDetailPage'));
 const ReconciliationPage = lazy(() => import('../features/reconciliation/pages/ReconciliationPage'));
 const DocumentsListPage = lazy(() => import('../features/documents/pages/DocumentsListPage'));
 const DocumentDetailPage = lazy(() => import('../features/documents/pages/DocumentDetailPage'));
@@ -130,6 +132,8 @@ export const router = createBrowserRouter([
           { path: 'clawbacks/new', element: lazyEl(<ClawbackEntryPage />) },
           { path: 'billing', element: lazyEl(<BillingListPage />) },
           { path: 'billing/statements/:id', element: lazyEl(<StatementDetailPage />) },
+          { path: 'billing/expense-documents', element: lazyEl(<ExpenseDocsListPage />) },
+          { path: 'billing/expense-documents/:id', element: lazyEl(<ExpenseDocDetailPage />) },
           { path: 'documents', element: lazyEl(<DocumentsListPage />) },
           { path: 'documents/:id', element: lazyEl(<DocumentDetailPage />) },
           { path: 'import', element: lazyEl(<ImportListPage />) },

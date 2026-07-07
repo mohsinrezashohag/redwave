@@ -4,17 +4,18 @@ import { StatementService } from './statement.service';
 
 const d = (s: string) => new Date(`${s}T00:00:00.000Z`);
 
-// A sale row as returned by the service's findMany select.
+// A sale row as returned by the service's findMany select. product_type drives bundle matching (defaults
+// to the product_id so a sale without explicit types matches no bundle).
 const sale = (
   id: string,
   customer: string,
   saleDate: string,
-  items: { product_id: string; name: string }[],
+  items: { product_id: string; name: string; product_type?: string }[],
 ) => ({
   id,
   customer_name: customer,
   sale_date: d(saleDate),
-  sale_items: items.map((i) => ({ product_id: i.product_id, product: { name: i.name } })),
+  sale_items: items.map((i) => ({ product_id: i.product_id, product_type: i.product_type ?? i.product_id, product: { name: i.name } })),
 });
 
 const rate = (productId: string, from: string, to: string | null, amount: string) => ({
@@ -23,6 +24,15 @@ const rate = (productId: string, from: string, to: string | null, amount: string
   effective_from: d(from),
   effective_to: to ? d(to) : null,
   amount: { toString: () => amount },
+});
+
+// A bundle_bonus rate (client-wide, product_id null) with its trigger product-type set.
+const bundle = (triggerTypes: string[], from: string, to: string | null, amount: string) => ({
+  id: `b-${triggerTypes.join('_')}-${from}`,
+  effective_from: d(from),
+  effective_to: to ? d(to) : null,
+  amount: { toString: () => amount },
+  bundle_product_types: triggerTypes,
 });
 
 /** Sequence stub — mints 1, 2, 3 … (the real one row-locks document_sequences inside the tx). */
@@ -34,6 +44,7 @@ const seqStub = () => {
 function make(opts: {
   sales: ReturnType<typeof sale>[];
   rates: ReturnType<typeof rate>[];
+  bundles?: ReturnType<typeof bundle>[];
   priorStatementId?: string | null;
 }) {
   const tx = {
@@ -56,7 +67,19 @@ function make(opts: {
       }),
     },
     sale: { findMany: jest.fn().mockResolvedValue(opts.sales) },
-    clientBillingRate: { findMany: jest.fn().mockResolvedValue(opts.rates) },
+    // priceClientPeriod queries product rates then bundle rates — return each by rate_kind.
+    clientBillingRate: {
+      findMany: jest.fn().mockImplementation(({ where }: { where: { rate_kind?: string } }) =>
+        Promise.resolve(where.rate_kind === 'bundle_bonus' ? (opts.bundles ?? []) : opts.rates),
+      ),
+    },
+    productTypeCatalogue: {
+      findMany: jest.fn().mockResolvedValue([
+        { key: 'internet', label: 'Internet' },
+        { key: 'home_phone', label: 'Home Phone' },
+        { key: 'tv', label: 'TV' },
+      ]),
+    },
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
@@ -252,5 +275,81 @@ describe('StatementService.generate — FX frozen at ISSUE (#12)', () => {
     });
     await service.preview('c1', 'P1');
     expect(tx.clientStatement.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('StatementService — bundle_bonus applied to line totals (BILL-013)', () => {
+  const bundleData = (tx: ReturnType<typeof make>['tx']) =>
+    (tx.clientStatement.create.mock.calls[0][0] as {
+      data: { total_amount: string; amount_cad: string; currency: string; fx_rate: string; lines: { create: { line_total: string; products_summary: string }[] } };
+    }).data;
+
+  const hpTv = (id: string, saleDate = '2026-01-10') =>
+    sale(id, 'Jane', saleDate, [
+      { product_id: 'hp', name: 'Home Phone', product_type: 'home_phone' },
+      { product_id: 'tv', name: 'TV', product_type: 'tv' },
+    ]);
+  const hpTvRates = [rate('hp', '2026-01-01', null, '90.00'), rate('tv', '2026-01-01', null, '100.00')];
+
+  it('a sale with HP+TV → the bundle is added to the line total + shown in the summary', async () => {
+    const { service, tx } = make({ sales: [hpTv('s1')], rates: hpTvRates, bundles: [bundle(['home_phone', 'tv'], '2026-01-01', null, '35.00')] });
+    await service.generate('c1', 'P1', 'admin');
+    const data = bundleData(tx);
+    expect(data.total_amount).toBe('225.00'); // 90 + 100 + 35
+    expect(data.lines.create[0].line_total).toBe('225.00');
+    expect(data.lines.create[0].products_summary).toContain('Home Phone + TV bundle');
+  });
+
+  it('a sale with only HP (no TV) → the bundle does NOT apply', async () => {
+    const { service, tx } = make({
+      sales: [sale('s1', 'Jane', '2026-01-10', [{ product_id: 'hp', name: 'Home Phone', product_type: 'home_phone' }])],
+      rates: [rate('hp', '2026-01-01', null, '90.00')],
+      bundles: [bundle(['home_phone', 'tv'], '2026-01-01', null, '35.00')],
+    });
+    await service.generate('c1', 'P1', 'admin');
+    expect(bundleData(tx).total_amount).toBe('90.00');
+  });
+
+  it('applies the bundle ONCE for internet+HP+TV', async () => {
+    const { service, tx } = make({
+      sales: [sale('s1', 'Jane', '2026-01-10', [
+        { product_id: 'int', name: 'Internet', product_type: 'internet' },
+        { product_id: 'hp', name: 'Home Phone', product_type: 'home_phone' },
+        { product_id: 'tv', name: 'TV', product_type: 'tv' },
+      ])],
+      rates: [rate('int', '2026-01-01', null, '280.00'), ...hpTvRates],
+      bundles: [bundle(['home_phone', 'tv'], '2026-01-01', null, '35.00')],
+    });
+    await service.generate('c1', 'P1', 'admin');
+    const data = bundleData(tx);
+    expect(data.total_amount).toBe('505.00'); // 280 + 90 + 100 + 35
+    expect(data.lines.create[0].products_summary.match(/bundle/g)?.length).toBe(1);
+  });
+
+  it('bundle effective-dating: a future-dated bundle is NOT applied to an earlier sale', async () => {
+    const { service, tx } = make({ sales: [hpTv('s1')], rates: hpTvRates, bundles: [bundle(['home_phone', 'tv'], '2026-02-01', null, '35.00')] });
+    await service.generate('c1', 'P1', 'admin');
+    expect(bundleData(tx).total_amount).toBe('190.00'); // bundle not yet effective on 2026-01-10
+  });
+
+  // The requested end-to-end: a USD client whose total includes an add-on AND a bundle, frozen to CAD at issue.
+  it('USD statement total includes add-on + bundle → frozen amount_cad (BILL-013 × #12)', async () => {
+    const { service, tx, prisma, fx } = make({
+      sales: [sale('s1', 'CTI-Cust', '2026-01-10', [
+        { product_id: 'int', name: 'Internet', product_type: 'internet' },
+        { product_id: 'hp', name: 'Home Phone', product_type: 'home_phone' },
+        { product_id: 'tv', name: 'TV', product_type: 'tv' },
+      ])],
+      rates: [rate('int', '2026-01-01', null, '250.00'), rate('hp', '2026-01-01', null, '50.00'), rate('tv', '2026-01-01', null, '50.00')],
+      bundles: [bundle(['home_phone', 'tv'], '2026-01-01', null, '35.00')],
+    });
+    prisma.client.findUnique.mockResolvedValueOnce({ id: 'c1', client_code: 'CTI', currency: 'USD' });
+    fx.getRateToCad.mockResolvedValue(new Decimal('1.365')); // FX source supplies the rate
+    await service.generate('c1', 'P1', 'admin');
+    const data = bundleData(tx);
+    expect(data.currency).toBe('USD');
+    expect(data.total_amount).toBe('385.00'); // 250 + 50 + 50 + 35 USD
+    expect(data.fx_rate).toBe('1.36500000');
+    expect(data.amount_cad).toBe('525.53'); // 385 × 1.365 = 525.525 → half-up
   });
 });

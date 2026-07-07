@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RateKind } from '@prisma/client';
-import { IsEnum, IsIn, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 
 const MONEY = /^\d+(\.\d{1,2})?$/; // exact decimal STRING, max 2 dp — never a JS float (#1)
 const DATE = /^\d{4}-\d{2}-\d{2}$/; // 'YYYY-MM-DD' date-only
@@ -14,6 +14,18 @@ export class CreateBillingRateDto {
   @ApiProperty({ enum: RateKind })
   @IsEnum(RateKind)
   rate_kind!: RateKind;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['home_phone', 'tv'],
+    description:
+      'For rate_kind=bundle_bonus ONLY: the product-type keys a sale must ALL contain for this bundle to apply (≥2, no product_id). Must be empty/omitted for other kinds.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  bundle_product_types?: string[];
 
   @ApiProperty({ example: '49.99', description: 'Exact decimal STRING (≤2 dp). Never a float.' })
   @IsString()

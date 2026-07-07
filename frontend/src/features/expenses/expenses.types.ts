@@ -22,8 +22,15 @@ export type KmLog = components['schemas']['KmLogResponse'];
 export type ExpenseItem = components['schemas']['ExpenseItemResponse'];
 export type ExpenseItemPage = components['schemas']['ExpenseItemPageResponse'];
 
-/** A category config row — drives the dynamic category list + the receipt rule. */
+/** A category config row — drives the dynamic category list, the receipt rule, and the per-type field schema. */
 export type FieldConfig = components['schemas']['FieldConfigResponse'];
+/** One per-type capture field definition (EXP-002a). */
+export type ExpenseFieldDef = components['schemas']['ExpenseFieldDefResponse'];
+/** Derived Alert/Warning validation attached to each item (EXP-013). */
+export type ItemValidation = components['schemas']['ItemValidationResponse'];
+export type ValidationRule = components['schemas']['ValidationRuleResponse'];
+/** Aggregated flagged counts across a scoped set (the approvals/list header). */
+export type ValidationSummary = components['schemas']['ValidationSummaryResponse'];
 
 export type ExpenseExport = components['schemas']['ExpenseExportResponse'];
 

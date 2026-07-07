@@ -58,6 +58,10 @@ export class BillingRatesService {
       }
     }
 
+    // bundle_bonus carries a trigger set (≥2 active catalogue types, client-wide); other kinds carry none.
+    // The set is stored SORTED so it keys the effective-dating scope deterministically. — SRS BILL-013
+    const bundleTypes = await this.resolveBundleTypes(dto.rate_kind, productId, dto.bundle_product_types);
+
     const effectiveFrom = dateOnly(dto.effective_from);
     const effectiveTo = dto.effective_to ? dateOnly(dto.effective_to) : null;
     const today = winnipegDateOnly(); // canonical Winnipeg "today" — CLAUDE §11
@@ -68,9 +72,15 @@ export class BillingRatesService {
       throw new UnprocessableEntityException('effective_to cannot be before effective_from');
     }
 
-    // Existing rows for the SAME scope (client + product + rate_kind). product_id null → IS NULL.
+    // Existing rows for the SAME scope (client + product + rate_kind, + the bundle trigger for bundles so
+    // DISTINCT bundles don't supersede each other). product_id null → IS NULL.
     const existing = await this.prisma.clientBillingRate.findMany({
-      where: { client_id: clientId, product_id: productId, rate_kind: dto.rate_kind },
+      where: {
+        client_id: clientId,
+        product_id: productId,
+        rate_kind: dto.rate_kind,
+        ...(dto.rate_kind === 'bundle_bonus' ? { bundle_product_types: { equals: bundleTypes } } : {}),
+      },
       select: { id: true, effective_from: true, effective_to: true },
     });
     const plan = planSupersession(existing, effectiveFrom, today);
@@ -91,6 +101,7 @@ export class BillingRatesService {
           product_id: productId,
           rate_kind: dto.rate_kind,
           amount: dto.amount, // decimal STRING → Prisma Decimal (exact; never float)
+          bundle_product_types: bundleTypes, // sorted; [] for non-bundle kinds
           effective_from: effectiveFrom,
           effective_to: effectiveTo,
           created_by: actorId,
@@ -161,9 +172,16 @@ export class BillingRatesService {
       throw new UnprocessableEntityException('effective_to cannot be before effective_from');
     }
 
-    // Re-run supersession against the scope's OTHER rows (this row is being repositioned).
+    // Re-run supersession against the scope's OTHER rows (this row is being repositioned). For a bundle,
+    // the scope includes its (immutable) trigger set so it only re-bounds its OWN bundle's history.
     const others = await this.prisma.clientBillingRate.findMany({
-      where: { client_id: clientId, product_id: rate.product_id, rate_kind: rate.rate_kind, id: { not: rateId } },
+      where: {
+        client_id: clientId,
+        product_id: rate.product_id,
+        rate_kind: rate.rate_kind,
+        id: { not: rateId },
+        ...(rate.rate_kind === 'bundle_bonus' ? { bundle_product_types: { equals: rate.bundle_product_types } } : {}),
+      },
       select: { id: true, effective_from: true, effective_to: true },
     });
     const plan = planSupersession(others, from, today);
@@ -219,6 +237,7 @@ export class BillingRatesService {
           product_id: rate.product_id,
           rate_kind: rate.rate_kind,
           effective_to: predecessorEnd,
+          ...(rate.rate_kind === 'bundle_bonus' ? { bundle_product_types: { equals: rate.bundle_product_types } } : {}),
         },
         data: { effective_to: null },
       });
@@ -267,11 +286,13 @@ export class BillingRatesService {
     return annotated;
   }
 
-  /** Group rates by scope key (product_id + rate_kind) so selection is per-scope. */
+  /** Group rates by scope key (product_id + rate_kind, + the sorted bundle trigger for bundles) so
+   *  selection is per-scope and DISTINCT bundles are separate scopes. */
   private groupByScope(rates: ClientBillingRate[]): Map<string, ClientBillingRate[]> {
     const groups = new Map<string, ClientBillingRate[]>();
     for (const rate of rates) {
-      const key = `${rate.product_id ?? 'null'}|${rate.rate_kind}`;
+      const trigger = rate.rate_kind === 'bundle_bonus' ? rate.bundle_product_types.join(',') : '';
+      const key = `${rate.product_id ?? 'null'}|${rate.rate_kind}|${trigger}`;
       const bucket = groups.get(key);
       if (bucket) {
         bucket.push(rate);
@@ -280,6 +301,41 @@ export class BillingRatesService {
       }
     }
     return groups;
+  }
+
+  /**
+   * Validate + normalize a rate's bundle trigger. A `bundle_bonus` is client-wide (no product_id) and needs
+   * ≥2 DISTINCT active catalogue product types; the returned set is SORTED (deterministic scope key). Any
+   * other kind must carry no trigger. — SRS CLNT-003/BILL-013, #3 (client-bill only)
+   */
+  private async resolveBundleTypes(
+    rateKind: ClientBillingRate['rate_kind'],
+    productId: string | null,
+    raw: string[] | undefined,
+  ): Promise<string[]> {
+    if (rateKind !== 'bundle_bonus') {
+      if (raw && raw.length > 0) {
+        throw new UnprocessableEntityException('bundle_product_types is only valid for rate_kind "bundle_bonus"');
+      }
+      return [];
+    }
+    if (productId) {
+      throw new UnprocessableEntityException('a bundle_bonus rate is client-wide — it must not target a product_id');
+    }
+    const types = [...new Set((raw ?? []).map((t) => t.trim()).filter(Boolean))];
+    if (types.length < 2) {
+      throw new UnprocessableEntityException('a bundle_bonus needs at least 2 distinct product types');
+    }
+    const found = await this.prisma.productTypeCatalogue.findMany({
+      where: { key: { in: types }, is_active: true },
+      select: { key: true },
+    });
+    const known = new Set(found.map((f) => f.key));
+    const missing = types.filter((t) => !known.has(t));
+    if (missing.length > 0) {
+      throw new UnprocessableEntityException(`unknown or inactive product type(s): ${missing.join(', ')}`);
+    }
+    return types.sort();
   }
 
   private async assertClientExists(clientId: string): Promise<void> {

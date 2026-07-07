@@ -15,7 +15,8 @@
 import { Decimal } from 'decimal.js';
 
 export interface PricedItem {
-  product_id: string;
+  /** The product's id, or null for a synthetic BUNDLE charge (a bundle is not a product). */
+  product_id: string | null;
   product_name: string;
   /** The client_billing_rate amount in force on the sale's sale_date, or null if none is configured. */
   rate: Decimal | null;

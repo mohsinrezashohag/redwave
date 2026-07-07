@@ -60,6 +60,36 @@ export class KmLogResponse {
   stops!: KmStopResponse[];
 }
 
+/** One Alert/Warning rule fired for an item (derived; EXP-013). */
+export class ValidationRuleResponse {
+  @ApiProperty({ example: 'field_required' })
+  code!: string;
+
+  @ApiProperty({ enum: ['alert', 'warning'] })
+  severity!: 'alert' | 'warning';
+
+  @ApiProperty({ type: String, nullable: true, example: 'vendor', description: 'The field/key the rule targets.' })
+  field!: string | null;
+
+  @ApiProperty({ example: 'Vendor is required' })
+  message!: string;
+}
+
+/** The DERIVED validation for an item — Alerts (block save) + Warnings (flag), recomputed on read. */
+export class ItemValidationResponse {
+  @ApiProperty({ example: 0 })
+  alert_count!: number;
+
+  @ApiProperty({ example: 1 })
+  warning_count!: number;
+
+  @ApiProperty({ type: () => [ValidationRuleResponse] })
+  alerts!: ValidationRuleResponse[];
+
+  @ApiProperty({ type: () => [ValidationRuleResponse] })
+  warnings!: ValidationRuleResponse[];
+}
+
 export class ExpenseItemResponse {
   @ApiProperty()
   id!: string;
@@ -103,6 +133,14 @@ export class ExpenseItemResponse {
   @ApiProperty({ type: [String], nullable: true, description: 'Custom free-form tags (client + channel, EXP-002a). Null on legacy rows.' })
   tags!: string[] | null;
 
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    nullable: true,
+    description: 'Per-type CAPTURE fields ({key:value}) keyed by the category schema (EXP-002a). Metadata only — never summed (#1).',
+  })
+  field_values!: Record<string, string> | null;
+
   @ApiProperty()
   description!: string;
 
@@ -126,6 +164,9 @@ export class ExpenseItemResponse {
 
   @ApiProperty({ type: () => KmLogResponse, nullable: true, description: 'Present only on km items.' })
   km_log!: KmLogResponse | null;
+
+  @ApiProperty({ type: () => ItemValidationResponse, description: 'Derived Alert/Warning validation (EXP-013).' })
+  validation!: ItemValidationResponse;
 }
 
 /** Paginated list envelope (arch §5.1) — one page of expense items + the meta. */
@@ -152,6 +193,27 @@ export class ReceiptUrlResponse {
   url!: string;
 }
 
+/** One per-type field definition on a category config (EXP-002a). */
+export class ExpenseFieldDefResponse {
+  @ApiProperty({ example: 'vendor' })
+  key!: string;
+
+  @ApiProperty({ example: 'Vendor' })
+  label!: string;
+
+  @ApiProperty({ enum: ['text', 'textarea', 'number', 'money', 'date', 'select'] })
+  type!: string;
+
+  @ApiProperty()
+  required!: boolean;
+
+  @ApiProperty({ type: [String], required: false, description: 'Options for a select field.' })
+  options?: string[];
+
+  @ApiProperty({ type: String, required: false, example: '20.00', description: 'Numeric/money soft cap → Warning.' })
+  soft_cap?: string;
+}
+
 export class FieldConfigResponse {
   @ApiProperty()
   id!: string;
@@ -168,8 +230,35 @@ export class FieldConfigResponse {
   @ApiProperty()
   is_active!: boolean;
 
+  @ApiProperty({ type: () => [ExpenseFieldDefResponse], description: 'The per-type capture fields (EXP-002a).' })
+  fields!: ExpenseFieldDefResponse[];
+
+  @ApiProperty({ type: String, nullable: true, example: '30.00', description: 'Category-level amount soft cap → Warning (EXP-013).' })
+  amount_soft_cap!: string | null;
+
   @ApiProperty()
   created_by!: string;
+}
+
+/** Aggregated Alert/Warning counts across a scoped, filtered set (the approvals queue). — EXP-013 */
+export class ValidationSummaryResponse {
+  @ApiProperty({ example: 12, description: 'Items in scope.' })
+  total!: number;
+
+  @ApiProperty({ example: 3, description: 'Items with any alert or warning.' })
+  flagged!: number;
+
+  @ApiProperty({ example: 1, description: 'Items with ≥1 alert.' })
+  alert_items!: number;
+
+  @ApiProperty({ example: 2, description: 'Items with ≥1 warning.' })
+  warning_items!: number;
+
+  @ApiProperty({ example: 1, description: 'Total alerts across items.' })
+  alert_count!: number;
+
+  @ApiProperty({ example: 2, description: 'Total warnings across items.' })
+  warning_count!: number;
 }
 
 export class ExpenseExportResponse {

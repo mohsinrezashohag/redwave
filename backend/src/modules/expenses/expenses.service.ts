@@ -39,6 +39,8 @@ import { ReviewDto, ReviewDecision } from './dto/review.dto';
 import { BulkReviewDto } from './dto/bulk-review.dto';
 import { ListExpenseItemsQuery } from './dto/list-items.query';
 import { computeKm, TripType } from './km.logic';
+import { CategorySchema, parseFieldDefs } from './field-schema.logic';
+import { validateExpenseItem, ValidatableItem, ValidationResult } from './validation.logic';
 
 const dateOnly = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
 const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
@@ -66,13 +68,24 @@ interface ItemContent {
   amount_cad: string | null; // = amount for CAD; null until frozen for foreign
   is_personal: boolean;
   tags: string[];
+  field_values: Prisma.InputJsonValue; // per-type capture values ({key:value}); METADATA ONLY (#1)
   description: string;
   receipt_url: string | null;
   pay_period_id: string | null;
   km_log?: { create: Prisma.ExpenseKmLogUncheckedCreateWithoutExpense_itemInput };
 }
 
-type ConfigMap = Map<string, { requires_receipt: boolean; is_active: boolean }>;
+/** Category key → its resolved field schema (per-type fields + soft caps), for validation. — EXP-002a/013 */
+type ConfigMap = Map<string, CategorySchema>;
+
+/** A validatable Prisma-row shape (km_log optionally included). */
+type ItemForValidation = {
+  category: ExpenseCategory;
+  amount: Prisma.Decimal;
+  receipt_url: string | null;
+  field_values: Prisma.JsonValue;
+  km_log?: { billable_km: Prisma.Decimal } | null;
+};
 
 @Injectable()
 export class ExpensesService {
@@ -165,14 +178,53 @@ export class ExpensesService {
     const where: Prisma.ExpenseItemWhereInput = { AND: and };
     const { skip, take, page, limit } = toSkipTake(query);
     const orderBy = resolveOrderBy(query.sort, SORTABLE, { expense_date: 'desc' });
-    const [data, total] = await Promise.all([
+    const [data, total, configs] = await Promise.all([
       this.prisma.expenseItem.findMany({ where, include: ITEM_INCLUDE, orderBy, skip, take }),
       this.prisma.expenseItem.count({ where }),
+      this.loadConfigs(),
     ]);
-    return buildPage(data, total, page, limit);
+    // Attach the DERIVED validation (alerts + warnings + counts) to each item. — EXP-013
+    return buildPage(data.map((item) => this.withValidation(item, configs)), total, page, limit);
   }
 
-  async findOne(id: string, user: AuthUser) {
+  /**
+   * Aggregate the validation flags across a scoped, filtered set (the approvals queue / list) — the interim
+   * home for the report-header count until the report-as-folder rework lands. — EXP-013 / EXP-001a
+   */
+  async validationSummary(query: ListExpenseItemsQuery, user: AuthUser) {
+    const and: Prisma.ExpenseItemWhereInput[] = [await this.scopeWhere(user)];
+    if (query.status) and.push({ status: query.status });
+    if (query.category) and.push({ category: query.category });
+    if (query.rep_id) and.push({ rep_id: query.rep_id });
+    if (query.client_id) and.push({ client_id: query.client_id });
+    if (query.pay_period_id) and.push({ pay_period_id: query.pay_period_id });
+    if (query.from) and.push({ expense_date: { gte: dateOnly(query.from) } });
+    if (query.to) and.push({ expense_date: { lte: dateOnly(query.to) } });
+    if (query.search) and.push({ description: { contains: query.search, mode: 'insensitive' } });
+
+    const [items, configs] = await Promise.all([
+      this.prisma.expenseItem.findMany({
+        where: { AND: and },
+        select: { category: true, amount: true, receipt_url: true, field_values: true, km_log: { select: { billable_km: true } } },
+      }),
+      this.loadConfigs(),
+    ]);
+    let alert_count = 0;
+    let warning_count = 0;
+    let alert_items = 0;
+    let warning_items = 0;
+    for (const item of items) {
+      const v = this.itemValidation(item, configs);
+      alert_count += v.alert_count;
+      warning_count += v.warning_count;
+      if (v.alert_count > 0) alert_items += 1;
+      if (v.warning_count > 0) warning_items += 1;
+    }
+    return { total: items.length, flagged: alert_items + warning_items, alert_items, warning_items, alert_count, warning_count };
+  }
+
+  /** Raw item fetch (scoped) — used internally by edit/review/receipt (no validation block). */
+  private async findOneRaw(id: string, user: AuthUser) {
     const item = await this.prisma.expenseItem.findFirst({
       where: { AND: [{ id }, await this.scopeWhere(user)] },
       include: ITEM_INCLUDE,
@@ -183,13 +235,19 @@ export class ExpensesService {
     return item;
   }
 
+  /** Detail read — the raw item + its DERIVED validation block. */
+  async findOne(id: string, user: AuthUser) {
+    const item = await this.findOneRaw(id, user);
+    return this.withValidation(item, await this.loadConfigs());
+  }
+
   /**
    * Access-controlled receipt URL: the SAME item visibility as the detail GET (scoped in the query), then
    * a fresh 60s signed URL for the stored path. Legacy values (pre-stored_files long-lived URLs) pass
    * through as-is; `local://` fallback refs are not servable. Issuance is audited (who/path/when).
    */
   async receiptUrl(id: string, user: AuthUser): Promise<{ url: string }> {
-    const item = await this.findOne(id, user); // 404 if not visible — no leak
+    const item = await this.findOneRaw(id, user); // 404 if not visible — no leak
     if (!item.receipt_url) {
       throw new NotFoundException('this item has no receipt');
     }
@@ -218,7 +276,7 @@ export class ExpensesService {
 
   // ── Edit (gated, EXP-007) ──────────────────────────────────────────────────────────
   async editItem(id: string, dto: UpdateExpenseItemDto, user: AuthUser) {
-    const item = await this.findOne(id, user); // also enforces scope
+    const item = await this.findOneRaw(id, user); // also enforces scope
 
     // Once approved, only a Super Admin may edit; otherwise the controller's expenses:edit suffices.
     if (item.status === 'approved' && !user.isSuperAdmin) {
@@ -262,6 +320,7 @@ export class ExpensesService {
           amount_cad: content.amount_cad,
           is_personal: content.is_personal,
           tags: content.tags,
+          field_values: content.field_values,
           description: content.description,
           receipt_url: content.receipt_url,
           pay_period_id: content.pay_period_id,
@@ -284,7 +343,7 @@ export class ExpensesService {
 
   // ── Delete (draft/sent_back, own) ─────────────────────────────────────────────────
   async deleteItem(id: string, user: AuthUser) {
-    const item = await this.findOne(id, user);
+    const item = await this.findOneRaw(id, user);
     // Only a not-yet-approved item may be removed; approved items are preserved (ledger). — EXP-007
     if (item.status === 'approved') {
       throw new UnprocessableEntityException('an approved expense item cannot be deleted');
@@ -309,7 +368,7 @@ export class ExpensesService {
 
   // ── Approval workflow (single) ─────────────────────────────────────────────────────
   async review(id: string, dto: ReviewDto, user: AuthUser) {
-    const item = await this.findOne(id, user);
+    const item = await this.findOneRaw(id, user);
     // dto.fx_rate is the approver's FX override to freeze on a foreign item (else the FX source, else 422).
     const updated = await this.transitionOne(item, dto.decision, dto.note ?? null, user, dto.fx_rate);
     if (!updated) {
@@ -486,6 +545,12 @@ export class ExpensesService {
       // → the $0.45 default). Two-stream (#3); the amount is always computed server-side (#1). — EXP-004
       const ratePerKm = await this.kmRates.resolveRepRate(item.client_id ?? null, dateOnly(item.expense_date));
       const { deductionKm, billableKm, computedAmount } = computeKm(totalKm, tripType, ratePerKm);
+      const fieldValues = this.pickFieldValues(item.field_values, configs.get(ExpenseCategory.km));
+      // Alerts block save (e.g. an SA-added required km field). km has no amount/receipt alert (computed). — EXP-013
+      this.assertNoAlerts(
+        { category: 'km', amount: computedAmount.toFixed(2), receipt_url: null, field_values: item.field_values ?? null, km: { billable_km: billableKm.toString() } },
+        configs.get(ExpenseCategory.km),
+      );
       return {
         category: ExpenseCategory.km,
         client_id: item.client_id ?? null,
@@ -497,6 +562,7 @@ export class ExpensesService {
         amount_cad: computedAmount.toFixed(2),
         is_personal: item.is_personal ?? false,
         tags: item.tags ?? [],
+        field_values: fieldValues,
         description: item.description,
         receipt_url: null, // km never requires a receipt
         pay_period_id: payPeriodId,
@@ -521,20 +587,19 @@ export class ExpensesService {
       };
     }
 
-    // non-km item: no km log; amount required; receipt mandatory per the category config.
+    // non-km item: no km log; the Alert engine enforces amount + receipt + required per-type fields (EXP-013).
     if (item.km) {
       throw new UnprocessableEntityException('a km log is only valid on a km item');
-    }
-    if (!item.amount) {
-      throw new UnprocessableEntityException(`amount is required for a ${item.category} item`);
     }
     const config = configs.get(item.category);
     if (!config || !config.is_active) {
       throw new UnprocessableEntityException(`expense category '${item.category}' is not available`);
     }
-    if (config.requires_receipt && !item.receipt_url) {
-      throw new UnprocessableEntityException(`a receipt is required for a ${item.category} item`);
-    }
+    // Blocking validation: missing amount / required receipt / required per-type field → 422 with alerts[].
+    this.assertNoAlerts(
+      { category: item.category, amount: item.amount ?? null, receipt_url: item.receipt_url ?? null, field_values: item.field_values ?? null, km: null },
+      config,
+    );
     // CLAIM the receipt path: must exist in stored_files AND be the caller's own upload (Admin/SA exempt)
     // — an unknown/foreign reference is rejected (422). Legacy values (full URLs from the pre-stored_files
     // pipeline, or local:// fallback refs) pass through unchanged so existing items stay editable.
@@ -552,12 +617,13 @@ export class ExpensesService {
       category: item.category,
       client_id: item.client_id ?? null,
       expense_date: dateOnly(item.expense_date),
-      amount: item.amount,
+      amount: item.amount as string, // the Alert engine already asserted it is present
       original_currency: currency,
       fx_rate: currency === 'CAD' ? '1' : null,
-      amount_cad: currency === 'CAD' ? item.amount : null,
+      amount_cad: currency === 'CAD' ? (item.amount as string) : null,
       is_personal: item.is_personal ?? false,
       tags: item.tags ?? [],
+      field_values: this.pickFieldValues(item.field_values, config),
       description: item.description,
       receipt_url: item.receipt_url ?? null,
       pay_period_id: payPeriodId,
@@ -586,9 +652,58 @@ export class ExpensesService {
 
   private async loadConfigs(): Promise<ConfigMap> {
     const rows = await this.prisma.expenseFieldConfig.findMany({
-      select: { category_key: true, requires_receipt: true, is_active: true },
+      select: { category_key: true, requires_receipt: true, is_active: true, fields: true, amount_soft_cap: true },
     });
-    return new Map(rows.map((r) => [r.category_key, r]));
+    return new Map(
+      rows.map((r) => [
+        r.category_key,
+        {
+          category_key: r.category_key,
+          requires_receipt: r.requires_receipt,
+          is_active: r.is_active,
+          amount_soft_cap: r.amount_soft_cap?.toString() ?? null,
+          fields: parseFieldDefs(r.fields),
+        } satisfies CategorySchema,
+      ]),
+    );
+  }
+
+  /** Keep only the schema's declared field keys with non-blank string values (drop unknown/blank). #1 metadata. */
+  private pickFieldValues(raw: Record<string, unknown> | undefined | null, schema: CategorySchema | undefined): Prisma.InputJsonValue {
+    if (!raw || !schema) return {};
+    const out: Record<string, string> = {};
+    for (const def of schema.fields) {
+      const v = raw[def.key];
+      if (typeof v === 'string' && v.trim() !== '') out[def.key] = v;
+      else if (typeof v === 'number') out[def.key] = String(v);
+    }
+    return out;
+  }
+
+  /** Run the Alert/Warning engine on an item + its schema; throw 422 with the alerts if any BLOCK save. — EXP-013 */
+  private assertNoAlerts(input: ValidatableItem, schema: CategorySchema | undefined): void {
+    const { alerts } = validateExpenseItem(input, schema);
+    if (alerts.length > 0) {
+      throw new UnprocessableEntityException({ message: 'this expense item has validation alerts that must be fixed', alerts });
+    }
+  }
+
+  /** Compute the derived validation (alerts + warnings + counts) for a stored item, from the loaded configs. */
+  private itemValidation(item: ItemForValidation, configs: ConfigMap): ValidationResult & { alert_count: number; warning_count: number } {
+    const input: ValidatableItem = {
+      category: item.category,
+      amount: item.amount?.toString() ?? null,
+      receipt_url: item.receipt_url,
+      field_values: (item.field_values ?? null) as Record<string, unknown> | null,
+      km: item.km_log ? { billable_km: item.km_log.billable_km.toString() } : null,
+    };
+    const result = validateExpenseItem(input, configs.get(item.category));
+    return { ...result, alert_count: result.alerts.length, warning_count: result.warnings.length };
+  }
+
+  /** Attach the derived `validation` block to an item response (read paths). */
+  private withValidation<T extends ItemForValidation>(item: T, configs: ConfigMap): T & { validation: ReturnType<ExpensesService['itemValidation']> } {
+    return { ...item, validation: this.itemValidation(item, configs) };
   }
 
   /** Scope fragment: own (submitted_by) or roster (rep_id) items; Super Admin/Admin → all. — §5 */

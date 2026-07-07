@@ -335,8 +335,9 @@ Program partners and their admin-created product catalogues. CLIENT BILLING RATE
 |--------------------|----------|---------|-------------------------------------------------------|
 | **id**             | uuid     | **PK**  |                                                       |
 | **client_id**      | uuid     | **FK**  | -> clients.id                                        |
-| **product_id**     | uuid     | **FK**  | -> products.id (nullable for add-on kinds).          |
+| **product_id**     | uuid     | **FK**  | -> products.id (nullable for add-on / bundle kinds).  |
 | **rate_kind**      | enum     | —       | product / tv_addon / hp_addon / bundle_bonus / spiff. |
+| **bundle_product_types** | text[] | —    | For `bundle_bonus` ONLY: the product-type catalogue keys a sale must ALL contain for the bundle to apply to its billed line total (e.g. {home_phone,tv}). Stored SORTED (keys the effective-dating scope so distinct bundles don't collide). Empty `{}` for every other kind. — BILL-013 |
 | **amount**         | decimal  | —       | In the client's `currency` (#3 — never combined with commission). |
 | **effective_from** | date     | —       |                                                       |
 | **effective_to**   | date     | —       | Nullable = open-ended.                                |
@@ -579,6 +580,7 @@ A cancellation recovery. No in-system date math: Redwave inputs a clawback when 
 | **amount**            | decimal   | —       | The reimbursable amount in `original_currency`; for km, computed server-side. |
 | **is_personal**       | boolean   | —       | Personal / do-not-reimburse (EXP-012); excluded from the reimbursable total, the pay-run seam, and all client output. Default false. |
 | **tags**              | jsonb     | —       | Custom tags (client + channel, EXP-002a). |
+| **field_values**      | jsonb?    | —       | Per-type CAPTURE values `{key: value}` keyed by the category's `fields` schema (EXP-002a). **METADATA ONLY** — never summed into `amount` (#1). |
 | **original_amount**   | decimal   | —       | **Stored-FX (frozen).** The amount as incurred, in `original_currency`.  |
 | **original_currency** | varchar   | **FK**  | -> currencies.code (USD/CAD + extensible). Default CAD.                   |
 | **fx_rate**           | decimal   | —       | **Frozen at APPROVAL.** original→CAD rate, high precision `Decimal(18,8)`; nullable until approved; 1.0 when already CAD. Never re-converted (#2). |
@@ -645,7 +647,7 @@ Indexes: `(rep_id, pay_period_id, status)` (the Pay Run aggregation), `(expense_
 
 #### `expense_field_configs`
 
-*Super-Admin-defined expense categories/fields.*
+*Super-Admin-defined expense categories + per-type field schema (EXP-002a) and soft caps (EXP-013). SA-editable via PATCH.*
 
 | **Field**            | **Type** | **Key** | **Notes**    |
 |----------------------|----------|---------|--------------|
@@ -654,6 +656,8 @@ Indexes: `(rep_id, pay_period_id, status)` (the Pay Run aggregation), `(expense_
 | **label**            | varchar  | —       |              |
 | **requires_receipt** | bool     | —       |              |
 | **is_active**        | bool     | —       |              |
+| **fields**           | jsonb    | —       | Per-type CAPTURE field schema: array of `{key, label, type (text/textarea/number/money/date/select), required, options?, soft_cap?}` (EXP-002a). Config-driven, not hardcoded; `[]` when none. |
+| **amount_soft_cap**  | decimal? | —       | Category-level soft cap on the item amount → a Warning when exceeded (EXP-013). |
 | **created_by**       | uuid     | **FK**  | -> users.id |
 
 #### `expense_exports`
@@ -741,7 +745,8 @@ Per-client, per-period output. The statement recreates the Excel Redwave sends c
 | **status**            | enum      | —       | `issued` \| `superseded`.                              |
 | **client_id**         | uuid      | **FK**  | -> clients.id                                          |
 | **pay_period_id**     | uuid      | **FK**  | -> pay_periods.id                                      |
-| **selection_filters** | jsonb     | —       | The chosen reps / days / clients (dynamic selection, EXP-014). |
+| **selection_filters** | jsonb     | —       | The chosen reps / days (dynamic selection, EXP-014), frozen. |
+| **line_detail**       | jsonb     | —       | The **FROZEN** grouped snapshot `[{type, rep_id, rep_name, date, description, amount}]` (one per type × rep × day). No separate line sub-table — frozen here so a re-render is byte-stable. |
 | **currency**          | varchar   | **FK**  | -> currencies.code (client's currency).                |
 | **total_amount**      | decimal   | —       | In `currency`; km (client-bill rate) + food.           |
 | **fx_rate**           | decimal   | —       | **Frozen at ISSUE.** currency→CAD, `Decimal(18,8)`; never re-converted. |
@@ -752,7 +757,7 @@ Per-client, per-period output. The statement recreates the Excel Redwave sends c
 | **generated_at**      | timestamp | —       |                                                        |
 | **superseded_by_id**  | uuid?     | **FK**  | -> client_expense_documents.id.                        |
 
-*(Line detail is grouped by expense type × rep × day; the source is the approved non-personal `expense_items` in scope. Receipts are never referenced here.)*
+*(Line detail is grouped by expense type × rep × day and FROZEN into `line_detail` jsonb at issue; the source is the approved non-personal `expense_items` in scope — km re-priced from the client-bill km rate, food billed native-currency. Receipts are never referenced here. `billing_exports` carries a `client_expense_document_id` FK; `document_sequences` has the `client_expense` counter key.)*
 
 #### `document_sequences`  *(Billing batch)*
 

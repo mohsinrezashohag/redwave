@@ -10,10 +10,11 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { StorageService } from '../../common/storage/storage.service';
-import { statementNo, invoiceNo } from './doc-number';
+import { statementNo, invoiceNo, expenseDocNo } from './doc-number';
 import { StatementExcelRenderer, StatementForExport } from './renderers/statement-excel.renderer';
 import { InvoicePdfRenderer, InvoiceForExport } from './renderers/invoice-pdf.renderer';
 import { QuickbooksCsvRenderer } from './renderers/quickbooks-csv.renderer';
+import { ExpenseDocForExport, ExpenseDocLineForExport, ExpenseDocPdfRenderer } from './renderers/expense-doc-pdf.renderer';
 
 export type StatementFormat = 'excel' | 'quickbooks';
 export type InvoiceFormat = 'pdf';
@@ -35,6 +36,7 @@ export class BillingExportService {
     private readonly excel: StatementExcelRenderer,
     private readonly pdf: InvoicePdfRenderer,
     private readonly qb: QuickbooksCsvRenderer,
+    private readonly expensePdf: ExpenseDocPdfRenderer,
   ) {}
 
   // ── Render (from the frozen record) ─────────────────────────────────────────────────────────────
@@ -55,6 +57,11 @@ export class BillingExportService {
     return { filename: `${invoiceNo(data.invoice_number)}.pdf`, contentType: 'application/pdf', bytes: await this.pdf.render(data) };
   }
 
+  async renderExpenseDoc(id: string): Promise<RenderedFile> {
+    const data = await this.expenseDocForExport(id);
+    return { filename: `${expenseDocNo(data.document_number)}.pdf`, contentType: 'application/pdf', bytes: await this.expensePdf.render(data) };
+  }
+
   // ── Export (render + record + optional upload) ──────────────────────────────────────────────────
   async exportStatement(id: string, format: StatementFormat, actorId: string): Promise<RenderedFile & { file_path: string | null }> {
     const file = await this.renderStatement(id, format);
@@ -71,12 +78,20 @@ export class BillingExportService {
     return { ...file, file_path };
   }
 
+  async exportExpenseDoc(id: string, actorId: string): Promise<RenderedFile & { file_path: string | null }> {
+    const file = await this.renderExpenseDoc(id);
+    const file_path = await this.record({ kind: 'expense_bill', format: 'pdf', client_expense_document_id: id, file, actorId });
+    await this.audit.log({ actorId, entityType: 'client_expense_documents', entityId: id, action: 'export', after: { format: 'pdf', file_path } });
+    return { ...file, file_path };
+  }
+
   /** Upload (when storage is configured) + record a billing_exports row. Returns the stored path or null. */
   private async record(args: {
     kind: string;
     format: string;
     statement_id?: string;
     invoice_id?: string;
+    client_expense_document_id?: string;
     file: RenderedFile;
     actorId: string;
   }): Promise<string | null> {
@@ -91,6 +106,7 @@ export class BillingExportService {
         format: args.format,
         statement_id: args.statement_id ?? null,
         invoice_id: args.invoice_id ?? null,
+        client_expense_document_id: args.client_expense_document_id ?? null,
         file_path: path ?? `pending://${args.file.filename}`,
         generated_by: args.actorId,
       },
@@ -144,6 +160,32 @@ export class BillingExportService {
       currency: inv.currency,
       amount_cad: inv.amount_cad?.toString() ?? null,
       total_commission: inv.total_commission.toString(),
+    };
+  }
+
+  private async expenseDocForExport(id: string): Promise<ExpenseDocForExport> {
+    const doc = await this.prisma.clientExpenseDocument.findUnique({
+      where: { id },
+      include: {
+        client: { select: { name: true, client_code: true } },
+        pay_period: { select: { period_number: true, start_date: true, end_date: true } },
+      },
+    });
+    if (!doc) throw new NotFoundException('Expense document not found');
+    // line_detail is the FROZEN grouped snapshot (already sorted km → meals → rep → date), money as strings.
+    const lines = (doc.line_detail as unknown as ExpenseDocLineForExport[]) ?? [];
+    return {
+      document_number: doc.document_number,
+      client_name: doc.client.name,
+      client_code: doc.client.client_code,
+      period_number: doc.pay_period.period_number,
+      period_start: dateOnly(doc.pay_period.start_date),
+      period_end: dateOnly(doc.pay_period.end_date),
+      generated_at: doc.generated_at.toISOString(),
+      currency: doc.currency,
+      amount_cad: doc.amount_cad?.toString() ?? null,
+      total_amount: doc.total_amount.toString(),
+      lines: lines.map((l) => ({ type: l.type, rep_name: l.rep_name, date: l.date, description: l.description, amount: l.amount })),
     };
   }
 }

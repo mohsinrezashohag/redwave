@@ -297,7 +297,7 @@ Per rep per cycle the pay run produces: 70% advance for the period, any 30% hold
 > **Receipts are mandatory for every category except the kilometre log.** The Super Admin can add new expense fields that then appear in the rep dropdown. Meal eligibility (“road trips only”) is handled manually by the validating manager, not enforced by the system — Redwave deliberately keeps these judgement calls manual rather than over-automating.
 
 > **Added in Meeting 3 (SAP-Concur-style workflow)**
-> - **Grouped, searchable expense-type picker** (with a most-recently-used shortcut) and **per-type field sets** — each type shows its own fields (e.g. Meals: amount, vendor, city, gratuity, attendees; Hotel/Flight/Parking: their own).
+> - **Grouped, searchable expense-type picker** (with a most-recently-used shortcut) and **per-type field sets** — each type shows its own fields (e.g. Meals: amount, vendor, city, gratuity, attendees; Hotel/Flight/Parking: their own). The per-type fields are **captured metadata** (shown to the approver / on the client document) — they do **not** change the reimbursable amount (the rep enters the total; gratuity is a breakdown, not an add-on). The field sets are admin-configurable, not hardcoded.
 > - **Personal / do-not-reimburse toggle** — an item flagged personal is **excluded** from the reimbursable total, the pay run, and any client-facing output.
 > - **Custom tags** — client/program and **channel** (Redwave's equivalent of the reference app's Title/Program/Store-Department).
 > - **Alert vs Warning validation** — a hard stop ("fix before saving") plus a soft "save anyway?" that flags the item; alerts/warnings **aggregate to the report header with a count**.
@@ -323,7 +323,7 @@ Per rep per cycle the pay run produces: 70% advance for the period, any 30% hold
 
 - **Commission invoice (secondary).** An optional one-line PDF invoice showing only the total commission amount for the client.
 
-- **Client expense billing document (added Meeting 3).** A **separate**, gapless-numbered PDF per client — **kilometres + food, grouped by type, itemized per rep per day**, with **dynamic selection** of which reps / days / clients to include, rendered in the **client's currency**. It is generated and attached **separately** from the commission statement when invoicing. It contains **no receipts and no commission data** (§8.2 / #3). (An optional route-map image is deferred / out of scope for now.)
+- **Client expense billing document (added Meeting 3).** A **separate**, gapless-numbered PDF per client — **kilometres + food, grouped by type, itemized per rep per day**, with **dynamic selection** of which reps / days / clients to include, rendered in the **client's currency**. Kilometres are billed at the **client-bill km rate** (the separate client-billing stream — never the rep-reimbursement rate); food is billed at its native amount in the client's currency. It is generated and attached **separately** from the commission statement when invoicing. It contains **no receipts and no commission data** (§8.2 / #3). (An optional route-map image is deferred / out of scope for now.)
 
 > **Confirmed in Meeting 2**
 > **One line per customer — not one line per product.** A customer with Internet + TV + Home Phone is a single row with the combined total. This fixes a known defect in the current export, where three products produced three lines. **Remove the GST/PST portion entirely** — tax is handled in QuickBooks and varies, so it must not be hard-coded into the statement or invoice.
@@ -333,7 +333,7 @@ Per rep per cycle the pay run produces: 70% advance for the period, any 30% hold
 > **Architectural rule — do not violate**
 > **Client billing rates and rep commission rates are two completely separate calculation streams.** Mixing these two streams was the core defect of Redwave’s earlier system and is the single most important mistake to avoid in this clean-slate build. They live in separate configuration tables, are edited independently, and are never combined. (E.g. a VF internet activation may bill the client at one rate while paying the rep a tier rate — unrelated numbers.)
 
-Each client has its own product catalogue and its own billing rates, created and maintained by the admin. **Bundles are admin-created and fully configurable** (the RF Now $35 HP+TV bundle is just one configured bundle via the `bundle_bonus` rate kind — there is no hard-coded/special-cased bundle logic). Billing rates are per client and are held in the **client's currency** (§8.3).
+Each client has its own product catalogue and its own billing rates, created and maintained by the admin. **Bundles are admin-created and fully configurable** (the RF Now $35 HP+TV bundle is just one configured bundle via the `bundle_bonus` rate kind — there is no hard-coded/special-cased bundle logic). A configured bundle carries a **trigger set** of product types; when a customer/household has all of them on a sale, the bundle amount is **applied to that customer's billed line total** (once, in the client's currency), still purely on the client-billing stream — never combined with rep commission. Billing rates are per client and are held in the **client's currency** (§8.3).
 
 ### 8.3 Numbering, Immutability, Reconciliation & Export (confirmed)
 

@@ -11,6 +11,7 @@ import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { money } from '../../../lib/format/money';
+import { productTypeLabel } from '../../../lib/format/productType';
 import { useClientBillingRates } from '../api/useClients';
 import { useDeleteBillingRate } from '../api/useClientMutations';
 import { EffectiveDatedTable, type EffectiveColumn } from '../../../components/ui';
@@ -67,10 +68,13 @@ export function BillingRatesPanel({
   }
 
   const productName = (id: string | null) => (id ? products.find((p) => p.id === id)?.name ?? '—' : '—');
+  // A bundle targets a trigger SET, not a product — show the trigger types (e.g. "Home Phone + TV"). — BILL-013
+  const targetOf = (r: BillingRate) =>
+    r.rate_kind === 'bundle_bonus' ? r.bundle_product_types.map(productTypeLabel).join(' + ') || '—' : productName(r.product_id);
 
   const columns: EffectiveColumn<BillingRate>[] = [
     { header: 'Rate kind', render: (r) => RATE_KIND_LABEL[r.rate_kind] },
-    { header: 'Product', render: (r) => productName(r.product_id) },
+    { header: 'Product / trigger', render: targetOf },
     { header: `Amount (${currency})`, align: 'right', render: (r) => money(r.amount, currency) },
   ];
 

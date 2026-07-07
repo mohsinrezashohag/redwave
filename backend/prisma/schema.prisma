@@ -321,6 +321,7 @@ model User {
   stored_files_uploaded         StoredFile[]               @relation("StoredFileUploadedBy")
   statements_generated          ClientStatement[]          @relation("StatementGeneratedBy")
   invoices_generated            ClientInvoice[]            @relation("InvoiceGeneratedBy")
+  expense_docs_generated        ClientExpenseDocument[]    @relation("ExpenseDocGeneratedBy")
   billing_exports_generated     BillingExport[]            @relation("BillingExportGeneratedBy")
   documents_owned               Document[]                 @relation("DocumentOwner")
   signature_requests_sent       SignatureRequest[]         @relation("SignatureRequestedBy")
@@ -588,10 +589,11 @@ model Currency {
   is_active  Boolean  @default(true)
   created_at DateTime @default(now())
 
-  clients          Client[]
-  expense_items    ExpenseItem[]
-  statements       ClientStatement[]
-  invoices         ClientInvoice[]
+  clients       Client[]
+  expense_items ExpenseItem[]
+  statements    ClientStatement[]
+  invoices      ClientInvoice[]
+  expense_docs  ClientExpenseDocument[]
 
   @@map("currencies")
 }
@@ -617,6 +619,7 @@ model Client {
   km_rate_configs       KmRateConfig[]
   client_statements     ClientStatement[]
   client_invoices       ClientInvoice[]
+  client_expense_docs   ClientExpenseDocument[]
   import_batches        ImportBatch[]
   import_field_mappings ImportFieldMapping[]
 
@@ -660,14 +663,14 @@ model ProductTypeCatalogue {
 }
 
 model Product {
-  id                String               @id @default(uuid()) @db.Uuid
-  client_id         String               @db.Uuid
-  client            Client               @relation(fields: [client_id], references: [id])
-  name              String
-  product_type      String // FK → product_type_catalogue.key
-  product_type_ref  ProductTypeCatalogue @relation(fields: [product_type], references: [key])
-  is_active         Boolean
-  created_at        DateTime             @default(now())
+  id               String               @id @default(uuid()) @db.Uuid
+  client_id        String               @db.Uuid
+  client           Client               @relation(fields: [client_id], references: [id])
+  name             String
+  product_type     String // FK → product_type_catalogue.key
+  product_type_ref ProductTypeCatalogue @relation(fields: [product_type], references: [key])
+  is_active        Boolean
+  created_at       DateTime             @default(now())
 
   client_billing_rates ClientBillingRate[]
   sale_items           SaleItem[]
@@ -680,17 +683,21 @@ model Product {
 // CLIENT BILLING RATE — what Redwave charges the CLIENT. Separate stream from
 // commission_* and never joined with it. — CLAUDE.md §3 #3
 model ClientBillingRate {
-  id             String    @id @default(uuid()) @db.Uuid
-  client_id      String    @db.Uuid
-  client         Client    @relation(fields: [client_id], references: [id])
-  product_id     String?   @db.Uuid
-  product        Product?  @relation(fields: [product_id], references: [id])
-  rate_kind      RateKind
-  amount         Decimal   @db.Decimal(12, 2)
-  effective_from DateTime  @db.Date
-  effective_to   DateTime? @db.Date
-  created_by     String    @db.Uuid
-  creator        User      @relation("BillingRateCreatedBy", fields: [created_by], references: [id])
+  id                   String    @id @default(uuid()) @db.Uuid
+  client_id            String    @db.Uuid
+  client               Client    @relation(fields: [client_id], references: [id])
+  product_id           String?   @db.Uuid
+  product              Product?  @relation(fields: [product_id], references: [id])
+  rate_kind            RateKind
+  amount               Decimal   @db.Decimal(12, 2)
+  // For rate_kind='bundle_bonus' ONLY: the product-type catalogue keys that must ALL be present on a sale
+  // for the bundle to apply (e.g. ['home_phone','tv']). Stored SORTED (deterministic scope key). Empty for
+  // every other kind. — Meeting 3 (configurable bundles, not special-cased), SRS CLNT-003/BILL-013
+  bundle_product_types String[]  @default([])
+  effective_from       DateTime  @db.Date
+  effective_to         DateTime? @db.Date
+  created_by           String    @db.Uuid
+  creator              User      @relation("BillingRateCreatedBy", fields: [created_by], references: [id])
 
   @@map("client_billing_rates")
 }
@@ -757,20 +764,20 @@ model HoldbackReleaseSetting {
 }
 
 model Incentive {
-  id                 String              @id @default(uuid()) @db.Uuid
+  id                     String                @id @default(uuid()) @db.Uuid
   name                   String
   scope_client_id        String?               @db.Uuid
   scope_client           Client?               @relation(fields: [scope_client_id], references: [id])
   scope_product_type     String? // FK → product_type_catalogue.key (null = all types)
   scope_product_type_ref ProductTypeCatalogue? @relation(fields: [scope_product_type], references: [key])
   target_type            IncentiveTargetType
-  target_count       Int?
-  window_start       DateTime            @db.Date
-  window_end         DateTime            @db.Date
-  amount             Decimal             @db.Decimal(12, 2)
-  status             IncentiveStatus
-  created_by         String              @db.Uuid
-  creator            User                @relation("IncentiveCreatedBy", fields: [created_by], references: [id])
+  target_count           Int?
+  window_start           DateTime              @db.Date
+  window_end             DateTime              @db.Date
+  amount                 Decimal               @db.Decimal(12, 2)
+  status                 IncentiveStatus
+  created_by             String                @db.Uuid
+  creator                User                  @relation("IncentiveCreatedBy", fields: [created_by], references: [id])
 
   sale_items SaleItem[]
 
@@ -821,22 +828,22 @@ model Sale {
 // SALE ITEM — carries the IMMUTABLE pay snapshot. tier_at_payment / rate_applied /
 // commission_paid / incentive_amount are frozen at payment and never updated. — §3 #2
 model SaleItem {
-  id                  String         @id @default(uuid()) @db.Uuid
-  sale_id             String         @db.Uuid
-  sale                Sale           @relation(fields: [sale_id], references: [id])
-  product_id          String         @db.Uuid
-  product             Product        @relation(fields: [product_id], references: [id])
-  product_type        String // frozen snapshot (no FK — #2 immutable)
-  counts_toward_tally Boolean
-  tier_at_payment     Int? // SNAPSHOT (internet only; null until paid)
-  rate_applied        Decimal?       @db.Decimal(12, 2) // SNAPSHOT
-  commission_paid     Decimal?       @db.Decimal(12, 2) // SNAPSHOT
-  incentive_id        String?        @db.Uuid
-  incentive           Incentive?     @relation(fields: [incentive_id], references: [id])
-  incentive_amount    Decimal?       @db.Decimal(12, 2) // SNAPSHOT
-  historical_billed_amount Decimal?  @db.Decimal(12, 2) // historical sales only — the source-file BILLED amount
+  id                       String         @id @default(uuid()) @db.Uuid
+  sale_id                  String         @db.Uuid
+  sale                     Sale           @relation(fields: [sale_id], references: [id])
+  product_id               String         @db.Uuid
+  product                  Product        @relation(fields: [product_id], references: [id])
+  product_type             String // frozen snapshot (no FK — #2 immutable)
+  counts_toward_tally      Boolean
+  tier_at_payment          Int? // SNAPSHOT (internet only; null until paid)
+  rate_applied             Decimal?       @db.Decimal(12, 2) // SNAPSHOT
+  commission_paid          Decimal?       @db.Decimal(12, 2) // SNAPSHOT
+  incentive_id             String?        @db.Uuid
+  incentive                Incentive?     @relation(fields: [incentive_id], references: [id])
+  incentive_amount         Decimal?       @db.Decimal(12, 2) // SNAPSHOT
+  historical_billed_amount Decimal?       @db.Decimal(12, 2) // historical sales only — the source-file BILLED amount
   // (a billing-stream reference for business aggregations; NOT commission, never joined to commission_*, #3)
-  item_status         SaleItemStatus
+  item_status              SaleItemStatus
 
   clawbacks Clawback[]
 
@@ -855,14 +862,15 @@ model PayPeriod {
   payday        DateTime        @db.Date
   status        PayPeriodStatus
 
-  pay_runs           PayRun[]
-  holdback_origin    HoldbackLedger[]  @relation("HoldbackOrigin")
-  holdback_scheduled HoldbackLedger[]  @relation("HoldbackScheduledRelease")
-  expense_reports    ExpenseReport[]
-  expense_items      ExpenseItem[]
-  expense_exports    ExpenseExport[]
-  client_statements  ClientStatement[]
-  client_invoices    ClientInvoice[]
+  pay_runs            PayRun[]
+  holdback_origin     HoldbackLedger[]        @relation("HoldbackOrigin")
+  holdback_scheduled  HoldbackLedger[]        @relation("HoldbackScheduledRelease")
+  expense_reports     ExpenseReport[]
+  expense_items       ExpenseItem[]
+  expense_exports     ExpenseExport[]
+  client_statements   ClientStatement[]
+  client_invoices     ClientInvoice[]
+  client_expense_docs ClientExpenseDocument[]
 
   @@map("pay_periods")
 }
@@ -991,6 +999,10 @@ model ExpenseItem {
   amount            Decimal             @db.Decimal(12, 2) // in original_currency (CAD for existing rows)
   is_personal       Boolean             @default(false) // do-not-reimburse: excluded from reimbursable total + pay run + client output (EXP-012)
   tags              Json? // custom free-form tags (client + channel), a string[] (EXP-002a)
+  // Per-type CAPTURE fields (vendor/city/gratuity/attendees/…), a { key: value } object keyed by the
+  // category's field schema (expense_field_configs.fields). METADATA ONLY — never summed into amount (#1),
+  // never shared unless the client doc chooses to. — EXP-002a (Meeting 3)
+  field_values      Json?
   // Stored-FX fieldset (frozen at APPROVAL; CAD → fx_rate=1 at create; never re-converted, #12). The pay
   // run reads amount_cad. — Meeting 3, CLAUDE §3 #12
   original_currency String              @default("CAD") // FK → currencies.code
@@ -1046,13 +1058,19 @@ model ExpenseKmStop {
 }
 
 model ExpenseFieldConfig {
-  id               String  @id @default(uuid()) @db.Uuid
-  category_key     String  @unique
+  id               String   @id @default(uuid()) @db.Uuid
+  category_key     String   @unique
   label            String
   requires_receipt Boolean
   is_active        Boolean
-  created_by       String  @db.Uuid
-  creator          User    @relation("ExpenseFieldConfigCreatedBy", fields: [created_by], references: [id])
+  // Per-type FIELD SCHEMA (EXP-002a): the fields this category captures — an array of field defs
+  // { key, label, type, required, options?, soft_cap? }. Config-driven (SA-editable via PATCH), NOT
+  // hardcoded. A `required` field missing → Alert (blocks save); a `soft_cap` exceeded → Warning (EXP-013).
+  fields           Json     @default("[]")
+  // Category-level soft cap on the item AMOUNT → a Warning when exceeded (e.g. the $30 meal cap). — EXP-013
+  amount_soft_cap  Decimal? @db.Decimal(12, 2)
+  created_by       String   @db.Uuid
+  creator          User     @relation("ExpenseFieldConfigCreatedBy", fields: [created_by], references: [id])
 
   @@map("expense_field_configs")
 }
@@ -1171,9 +1189,9 @@ model ClientStatement {
   superseded_by_id String?          @db.Uuid
   superseded_by    ClientStatement? @relation("StatementSupersede", fields: [superseded_by_id], references: [id])
 
-  lines       ClientStatementLine[]
-  supersedes  ClientStatement[]     @relation("StatementSupersede")
-  exports     BillingExport[]
+  lines      ClientStatementLine[]
+  supersedes ClientStatement[]     @relation("StatementSupersede")
+  exports    BillingExport[]
 
   @@index([client_id, pay_period_id, status])
   @@map("client_statements")
@@ -1221,10 +1239,46 @@ model ClientInvoice {
   @@map("client_invoices")
 }
 
-// A monotonic counter per document type ('statement' | 'invoice'). Incremented atomically INSIDE the issue
-// transaction (row lock) so numbers are gapless under concurrency. — BRD §8 (gapless numbering)
+// The per-client EXPENSE billing document (km + food only) — SEPARATE from the commission statement/invoice
+// (BILL-012 / EXP-014, Meeting 3). Gapless-numbered (CEXP-) + immutable like statements; rendered in the
+// client's currency with FX frozen at ISSUE (#12); NO receipts, NO commission data (#3). Priced from the
+// CLIENT-BILL km rate + native-currency food. `line_detail` is the FROZEN grouped snapshot (type × rep × day)
+// — the spec keeps line detail grouped/derived (no sub-table), but it is frozen here so a re-render is stable.
+model ClientExpenseDocument {
+  id                String                 @id @default(uuid()) @db.Uuid
+  document_number   Int?                   @unique // gapless, global per type (CEXP-); minted on issue
+  status            BillingDocStatus       @default(issued)
+  client_id         String                 @db.Uuid
+  client            Client                 @relation(fields: [client_id], references: [id])
+  pay_period_id     String                 @db.Uuid
+  pay_period        PayPeriod              @relation(fields: [pay_period_id], references: [id])
+  selection_filters Json                   @default("{}") // chosen reps/days (dynamic selection, EXP-014), frozen
+  line_detail       Json // frozen grouped snapshot: [{ type, rep_id, rep_name, date, description, amount }]
+  total_amount      Decimal                @db.Decimal(12, 2) // in `currency` = km (client-bill) + native food
+  // Stored-FX (frozen at ISSUE; CAD → fx_rate=1; never re-converted, #12). — Meeting 3
+  currency          String                 @default("CAD") // FK → currencies.code (= the client's currency at issue)
+  currency_ref      Currency               @relation(fields: [currency], references: [code])
+  fx_rate           Decimal                @default(1) @db.Decimal(18, 8) // currency → CAD
+  fx_rate_date      DateTime?              @db.Date
+  amount_cad        Decimal?               @db.Decimal(12, 2) // = roundHalfUp(total_amount × fx_rate)
+  file_url          String? // optional — the PDF is rendered on demand / recorded in billing_exports
+  generated_by      String                 @db.Uuid
+  generator         User                   @relation("ExpenseDocGeneratedBy", fields: [generated_by], references: [id])
+  generated_at      DateTime               @default(now())
+  superseded_by_id  String?                @db.Uuid
+  superseded_by     ClientExpenseDocument? @relation("ExpenseDocSupersede", fields: [superseded_by_id], references: [id])
+
+  supersedes ClientExpenseDocument[] @relation("ExpenseDocSupersede")
+  exports    BillingExport[]
+
+  @@index([client_id, pay_period_id, status])
+  @@map("client_expense_documents")
+}
+
+// A monotonic counter per document type ('statement' | 'invoice' | 'client_expense'). Incremented atomically
+// INSIDE the issue transaction (row lock) so numbers are gapless under concurrency. — BRD §8 (gapless numbering)
 model DocumentSequence {
-  key           String @id // 'statement' | 'invoice'
+  key           String @id // 'statement' | 'invoice' | 'client_expense'
   current_value Int    @default(0) // highest number issued so far; next() atomically +1 and returns the new value
 
   @@map("document_sequences")
@@ -1234,22 +1288,25 @@ model DocumentSequence {
 // path — like expense_exports. The download endpoints render on demand; configured storage also persists +
 // records here. — arch §6.9
 model BillingExport {
-  id            String           @id @default(uuid()) @db.Uuid
-  kind          String // statement | invoice | summary | quickbooks
-  format        String // excel | pdf | csv
-  statement_id  String?          @db.Uuid
-  statement     ClientStatement? @relation(fields: [statement_id], references: [id])
-  invoice_id    String?          @db.Uuid
-  invoice       ClientInvoice?   @relation(fields: [invoice_id], references: [id])
-  client_id     String?          @db.Uuid
-  pay_period_id String?          @db.Uuid
-  file_path     String
-  generated_by  String           @db.Uuid
-  generator     User             @relation("BillingExportGeneratedBy", fields: [generated_by], references: [id])
-  generated_at  DateTime         @default(now())
+  id                         String                 @id @default(uuid()) @db.Uuid
+  kind                       String // statement | invoice | summary | quickbooks | expense_bill
+  format                     String // excel | pdf | csv
+  statement_id               String?                @db.Uuid
+  statement                  ClientStatement?       @relation(fields: [statement_id], references: [id])
+  invoice_id                 String?                @db.Uuid
+  invoice                    ClientInvoice?         @relation(fields: [invoice_id], references: [id])
+  client_expense_document_id String?                @db.Uuid
+  client_expense_document    ClientExpenseDocument? @relation(fields: [client_expense_document_id], references: [id])
+  client_id                  String?                @db.Uuid
+  pay_period_id              String?                @db.Uuid
+  file_path                  String
+  generated_by               String                 @db.Uuid
+  generator                  User                   @relation("BillingExportGeneratedBy", fields: [generated_by], references: [id])
+  generated_at               DateTime               @default(now())
 
   @@index([statement_id])
   @@index([invoice_id])
+  @@index([client_expense_document_id])
   @@map("billing_exports")
 }
 

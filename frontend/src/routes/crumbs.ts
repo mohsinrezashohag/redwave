@@ -16,6 +16,7 @@ export type DynamicKind =
   | 'document'
   | 'expenseItem'
   | 'statement'
+  | 'expenseDoc'
   | 'role'
   | 'importBatch';
 
@@ -61,6 +62,8 @@ export const CRUMBS: Record<string, CrumbMeta> = {
   '/clawbacks/new': { label: 'New clawback', parent: '/clawbacks' },
   '/billing': { label: 'Billing' },
   '/billing/statements/:id': { dynamic: 'statement', parent: '/billing' },
+  '/billing/expense-documents': { label: 'Expense documents', parent: '/billing', permission: 'billing:view' },
+  '/billing/expense-documents/:id': { dynamic: 'expenseDoc', parent: '/billing/expense-documents' },
 
   // ── People / documents ─────────────────────────────────────────────────────────────
   '/documents': { label: 'Documents' },

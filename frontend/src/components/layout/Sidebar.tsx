@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Megaphone,
   Receipt,
+  ReceiptText,
   Scale,
   ScrollText,
   Settings,
@@ -140,7 +141,14 @@ const NAV: NavGroup[] = [
         label: 'Billing',
         icon: FileText,
         to: '/billing',
-        match: (l) => l.pathname.startsWith('/billing'),
+        match: (l) => l.pathname.startsWith('/billing') && !l.pathname.startsWith('/billing/expense-documents'),
+        show: (a) => a.permissions.has('billing:view'),
+      },
+      {
+        label: 'Expense Docs',
+        icon: ReceiptText,
+        to: '/billing/expense-documents',
+        match: (l) => l.pathname.startsWith('/billing/expense-documents'),
         show: (a) => a.permissions.has('billing:view'),
       },
       {

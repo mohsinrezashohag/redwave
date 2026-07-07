@@ -408,3 +408,63 @@ describe('ExpensesService.list (scoping — §5)', () => {
     expect(page.meta).toEqual({ total: 0, page: 1, limit: 20, pageCount: 0 });
   });
 });
+
+// ── Per-type fields + Alert/Warning validation (EXP-002a / EXP-013) ────────────────────────────
+const RICH_MEALS = {
+  category_key: 'meals',
+  requires_receipt: true,
+  is_active: true,
+  amount_soft_cap: { toString: () => '30.00' },
+  fields: [
+    { key: 'vendor', label: 'Vendor', type: 'text', required: true },
+    { key: 'gratuity', label: 'Gratuity', type: 'money', required: false, soft_cap: '20.00' },
+  ],
+};
+const dec = (s: string) => ({ toString: () => s });
+
+describe('ExpensesService — per-type fields + Alert/Warning (EXP-013)', () => {
+  it('ALERT blocks save: a meals item missing the required vendor field → 422', async () => {
+    const { service, prisma } = make();
+    prisma.expenseFieldConfig.findMany.mockResolvedValue([RICH_MEALS]);
+    await expect(service.createItems(dto([mealItem(true)]), user)).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('persists field_values FILTERED to the schema keys (unknown keys dropped)', async () => {
+    const { service, tx, prisma } = make();
+    prisma.expenseFieldConfig.findMany.mockResolvedValue([RICH_MEALS]);
+    const item = { ...mealItem(true), field_values: { vendor: 'Tim Hortons', gratuity: '5.00', junk: 'x' } } as ExpenseItemInput;
+    await service.createItems(dto([item]), user);
+    expect((createdItems(tx)[0] as { field_values: Record<string, string> }).field_values).toEqual({ vendor: 'Tim Hortons', gratuity: '5.00' });
+  });
+
+  it('WARNING does not block: an over-soft-cap meal saves, and gratuity NEVER changes the amount (#1)', async () => {
+    const { service, tx, prisma } = make();
+    prisma.expenseFieldConfig.findMany.mockResolvedValue([RICH_MEALS]);
+    const item = { ...mealItem(true), amount: '45.00', field_values: { vendor: 'X', gratuity: '10.00' } } as ExpenseItemInput;
+    await service.createItems(dto([item]), user);
+    const created = createdItems(tx)[0] as { amount: string; amount_cad: string };
+    expect(created.amount).toBe('45.00'); // gratuity not added
+    expect(created.amount_cad).toBe('45.00'); // reimbursable CAD unchanged by the per-type field
+  });
+
+  it('attaches derived validation on read (findOne) — vendor missing → an alert', async () => {
+    const { service, prisma } = make();
+    prisma.expenseFieldConfig.findMany.mockResolvedValue([RICH_MEALS]);
+    prisma.expenseItem.findFirst.mockResolvedValue({ id: 'i1', category: 'meals', amount: dec('45.00'), receipt_url: 'r', field_values: {}, km_log: null, status: 'submitted' });
+    const item = (await service.findOne('i1', superAdmin)) as unknown as { validation: { alert_count: number; warning_count: number } };
+    expect(item.validation.alert_count).toBe(1); // vendor missing
+    expect(item.validation.warning_count).toBe(1); // 45 > 30 soft cap
+  });
+
+  it('validationSummary aggregates alerts + warnings across the scoped set', async () => {
+    const { service, prisma } = make();
+    prisma.expenseFieldConfig.findMany.mockResolvedValue([RICH_MEALS]);
+    prisma.expenseItem.findMany.mockResolvedValue([
+      { category: 'meals', amount: dec('20.00'), receipt_url: 'r', field_values: {}, km_log: null }, // alert (no vendor)
+      { category: 'meals', amount: dec('45.00'), receipt_url: 'r', field_values: { vendor: 'X' }, km_log: null }, // warning (over cap)
+      { category: 'meals', amount: dec('20.00'), receipt_url: 'r', field_values: { vendor: 'X' }, km_log: null }, // clean
+    ]);
+    const summary = await service.validationSummary({}, superAdmin);
+    expect(summary).toMatchObject({ total: 3, alert_items: 1, warning_items: 1, flagged: 2, alert_count: 1, warning_count: 1 });
+  });
+});

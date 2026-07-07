@@ -7,7 +7,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
-export type SequenceKey = 'statement' | 'invoice';
+export type SequenceKey = 'statement' | 'invoice' | 'client_expense';
 
 @Injectable()
 export class SequenceService {

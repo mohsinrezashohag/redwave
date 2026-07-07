@@ -103,6 +103,9 @@ export class BillingRateResponse {
   @ApiProperty({ enum: RateKind })
   rate_kind!: RateKind;
 
+  @ApiProperty({ type: [String], example: ['home_phone', 'tv'], description: 'bundle_bonus trigger product types (sorted); empty for other kinds.' })
+  bundle_product_types!: string[];
+
   @ApiProperty({ type: String, example: '50.00', description: 'Decimal string — what we charge the client.' })
   amount!: string;
 

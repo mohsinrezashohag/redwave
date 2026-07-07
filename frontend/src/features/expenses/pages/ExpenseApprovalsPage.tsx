@@ -8,6 +8,7 @@ import { PageHeader } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { ExpenseItemsTable } from '../components/ExpenseItemsTable';
+import { ValidationSummaryBanner } from '../components/ValidationSummaryBanner';
 import type { ExpenseFilters } from '../expenses.types';
 import styles from '../components/expenses.module.css';
 
@@ -26,6 +27,7 @@ export default function ExpenseApprovalsPage() {
         title="Expense approvals"
         subtitle="Items submitted for your review. Approve, reject, or send back — select several to act in bulk."
       />
+      <ValidationSummaryBanner filters={SUBMITTED} />
       <ExpenseItemsTable filters={SUBMITTED} canReview />
     </div>
   );

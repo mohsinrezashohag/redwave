@@ -6,7 +6,7 @@
  * Receipt-required is config-driven (passed in). One module so the form + nested fields share the types.
  */
 import { z } from 'zod';
-import type { CreateItemsBody, ExpenseItemInput, TripType, UpdateItemBody } from '../expenses.types';
+import type { CreateItemsBody, ExpenseItemInput, FieldConfig, TripType, UpdateItemBody } from '../expenses.types';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONEY = /^\d+(\.\d{1,2})?$/;
@@ -31,6 +31,8 @@ export interface ItemValue {
   is_personal?: boolean;
   /** Custom free-form tags (client + channel, EXP-002a). */
   tags?: string[];
+  /** Per-type CAPTURE fields ({key:value}), keyed by the category schema (EXP-002a). Metadata only (#1). */
+  field_values?: Record<string, string>;
   trip_type?: TripType;
   total_km?: string;
   stops?: StopValue[];
@@ -40,8 +42,9 @@ export interface ExpenseFormValues {
   items: ItemValue[];
 }
 
-/** Build the zod schema; `requiresReceipt(category)` comes from the field configs (dynamic). */
-export function makeExpenseSchema(requiresReceipt: (category: string) => boolean) {
+/** Build the zod schema, driven by the field configs (dynamic per-type receipt rule + required fields). */
+export function makeExpenseSchema(configs: FieldConfig[]) {
+  const configFor = (category: string) => configs.find((c) => c.category_key === category);
   const item = z
     .object({
       category: z.string().min(1, 'Pick a category'),
@@ -53,6 +56,7 @@ export function makeExpenseSchema(requiresReceipt: (category: string) => boolean
       receipt_url: z.string().optional(),
       is_personal: z.boolean().optional(),
       tags: z.array(z.string()).optional(),
+      field_values: z.record(z.string(), z.string()).optional(),
       trip_type: z.enum(['single', 'round']).optional(),
       total_km: z.string().optional(),
       stops: z
@@ -65,8 +69,15 @@ export function makeExpenseSchema(requiresReceipt: (category: string) => boolean
         if (!val.total_km || !KM.test(val.total_km)) ctx.addIssue({ code: 'custom', path: ['total_km'], message: 'Enter the total km' });
         if (!val.stops || val.stops.length < 2) ctx.addIssue({ code: 'custom', path: ['stops'], message: 'Add at least 2 stops' });
       } else {
+        const cfg = configFor(val.category);
         if (!val.amount || !MONEY.test(val.amount)) ctx.addIssue({ code: 'custom', path: ['amount'], message: 'Enter an amount' });
-        if (requiresReceipt(val.category) && !val.receipt_url) ctx.addIssue({ code: 'custom', path: ['receipt_url'], message: 'Receipt required for this category' });
+        if (cfg?.requires_receipt && !val.receipt_url) ctx.addIssue({ code: 'custom', path: ['receipt_url'], message: 'Receipt required for this category' });
+        // Required per-type capture fields → an Alert that blocks submit (EXP-013). Server re-validates.
+        for (const def of cfg?.fields ?? []) {
+          if (def.required && !val.field_values?.[def.key]?.trim()) {
+            ctx.addIssue({ code: 'custom', path: ['field_values', def.key], message: `${def.label} is required` });
+          }
+        }
       }
     });
 
@@ -83,6 +94,14 @@ export function makeExpenseSchema(requiresReceipt: (category: string) => boolean
     });
 }
 
+/** Keep only non-blank field values; undefined when empty (so the payload omits an empty object). */
+function pickNonBlank(values: Record<string, string> | undefined): Record<string, string> | undefined {
+  if (!values) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(values)) if (typeof v === 'string' && v.trim() !== '') out[k] = v;
+  return Object.keys(out).length ? out : undefined;
+}
+
 /** Build ONE item payload from a validated form item (km amount omitted — server computes it). */
 function toItemInput(it: ItemValue): ExpenseItemInput {
   const base = {
@@ -94,6 +113,8 @@ function toItemInput(it: ItemValue): ExpenseItemInput {
     currency: it.category === 'km' ? undefined : it.currency && it.currency !== 'CAD' ? it.currency : undefined,
     is_personal: it.is_personal || undefined,
     tags: it.tags && it.tags.length ? it.tags : undefined,
+    // Per-type capture values — send only non-blank entries; the server drops unknown keys. Metadata (#1).
+    field_values: pickNonBlank(it.field_values),
   };
   if (it.category === 'km') {
     return {
@@ -123,7 +144,7 @@ export function buildItemBody(values: ExpenseFormValues): UpdateItemBody {
 /** A fresh blank item for a given category (km gets a trip type + two empty stops). */
 export function blankItem(category: string, expense_date: string): ItemValue {
   if (category === 'km') {
-    return { category, expense_date, description: '', currency: 'CAD', is_personal: false, tags: [], trip_type: 'round', total_km: '', stops: [{ address: '' }, { address: '' }] };
+    return { category, expense_date, description: '', currency: 'CAD', is_personal: false, tags: [], field_values: {}, trip_type: 'round', total_km: '', stops: [{ address: '' }, { address: '' }] };
   }
-  return { category, expense_date, description: '', amount: '', currency: 'CAD', receipt_url: undefined, is_personal: false, tags: [] };
+  return { category, expense_date, description: '', amount: '', currency: 'CAD', receipt_url: undefined, is_personal: false, tags: [], field_values: {} };
 }

@@ -10,6 +10,12 @@ function make() {
     client: { findUnique: jest.fn().mockResolvedValue({ id: 'c1' }) },
     product: { findFirst: jest.fn() },
     clientBillingRate: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn() },
+    // Every requested key is a known active catalogue type by default; a test overrides to simulate unknowns.
+    productTypeCatalogue: {
+      findMany: jest.fn().mockImplementation(({ where }: { where: { key: { in: string[] } } }) =>
+        Promise.resolve(where.key.in.map((key) => ({ key }))),
+      ),
+    },
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
@@ -110,6 +116,51 @@ describe('BillingRatesService.create', () => {
       expect.objectContaining({ where: { id: 'cur' } }),
     );
     expect(tx.clientBillingRate.create).toHaveBeenCalled();
+  });
+});
+
+describe('BillingRatesService.create — bundle_bonus trigger (BILL-013)', () => {
+  const from = () => iso(monthsFromToday(1));
+  const bundleDto = (over: Record<string, unknown> = {}) =>
+    ({ rate_kind: 'bundle_bonus' as never, amount: '35.00', effective_from: from(), bundle_product_types: ['tv', 'home_phone'], ...over });
+
+  it('rejects a bundle_bonus with fewer than 2 distinct types (422)', async () => {
+    const { service } = make();
+    await expect(service.create('c1', bundleDto({ bundle_product_types: ['home_phone'] }), 'actor')).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(service.create('c1', bundleDto({ bundle_product_types: ['tv', 'tv'] }), 'actor')).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('rejects a bundle_bonus referencing an unknown/inactive product type (422)', async () => {
+    const { service, prisma } = make();
+    prisma.productTypeCatalogue.findMany.mockResolvedValue([{ key: 'tv' }]); // 'home_phone' not returned → inactive/unknown
+    await expect(service.create('c1', bundleDto(), 'actor')).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('rejects a bundle_bonus that targets a product_id (must be client-wide) (422)', async () => {
+    const { service, prisma } = make();
+    prisma.product.findFirst.mockResolvedValue({ id: 'p1' });
+    await expect(service.create('c1', bundleDto({ product_id: 'p1' }), 'actor')).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('rejects bundle_product_types on a non-bundle kind (422)', async () => {
+    const { service } = make();
+    await expect(
+      service.create('c1', { rate_kind: 'tv_addon' as never, amount: '10.00', effective_from: from(), bundle_product_types: ['tv', 'home_phone'] }, 'actor'),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('persists the trigger SORTED + scopes supersession to that trigger set (distinct bundles do not collide)', async () => {
+    const { service, prisma, tx } = make();
+    tx.clientBillingRate.create.mockResolvedValue({ id: 'r1', amount: '35.00', bundle_product_types: ['home_phone', 'tv'], effective_from: dateOnly(from()), effective_to: null });
+    await service.create('c1', bundleDto({ bundle_product_types: ['tv', 'home_phone'] }), 'actor'); // unsorted in
+
+    // The scope query for existing rows is narrowed to THIS bundle's (sorted) trigger set.
+    expect(prisma.clientBillingRate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ rate_kind: 'bundle_bonus', bundle_product_types: { equals: ['home_phone', 'tv'] } }) }),
+    );
+    // Stored sorted.
+    const data = (tx.clientBillingRate.create.mock.calls[0][0] as { data: { bundle_product_types: string[] } }).data;
+    expect(data.bundle_product_types).toEqual(['home_phone', 'tv']);
   });
 });
 

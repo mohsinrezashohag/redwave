@@ -23,7 +23,7 @@ import { FxRateService } from '../../common/fx/fx-rate.service';
 import { convertToCad } from '../../common/fx/fx.logic';
 import { SequenceService } from '../../common/sequence/sequence.service';
 import { statementNo } from './doc-number';
-import { buildStatement, SaleInput, StatementDraft } from './statement.logic';
+import { buildStatement, PricedItem, SaleInput, StatementDraft } from './statement.logic';
 
 /** The FX snapshot frozen onto a billing document AT ISSUE (#12). */
 export interface IssueFx {
@@ -35,6 +35,12 @@ export interface IssueFx {
 
 /** Prisma.Decimal → decimal.js (billing stream only; never the commission engine's path, #3). */
 const toDecimal = (value: Prisma.Decimal): Decimal => new Decimal(value.toString());
+
+/** A bundle's line name from its (sorted) trigger types' catalogue labels — e.g. "Home Phone + TV bundle". */
+function bundleLabel(trigger: string[], labels: Map<string, string>): string {
+  const parts = trigger.map((k) => labels.get(k) ?? k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()));
+  return `${parts.join(' + ')} bundle`;
+}
 
 interface BillingRateRow {
   id: string;
@@ -124,7 +130,7 @@ export class StatementService {
         sale_date: true,
         sale_items: {
           where: { item_status: { not: 'clawed_back' } },
-          select: { product_id: true, product: { select: { name: true } } },
+          select: { product_id: true, product_type: true, product: { select: { name: true } } },
         },
       },
       orderBy: [{ sale_date: 'asc' }, { sale_code: 'asc' }],
@@ -143,6 +149,29 @@ export class StatementService {
       if (bucket) bucket.push(rate);
       else ratesByProduct.set(rate.product_id, [rate]);
     }
+
+    // BUNDLES: a `bundle_bonus` applies to a sale's line when the sale contains ALL of its trigger product
+    // types (config-driven via bundle_product_types — NOT special-cased). Grouped by trigger set; the
+    // effective rate is selected on the sale_date like product rates. Bundles are ADDITIVE (a missing
+    // bundle rate is simply not applied — no 422). — SRS BILL-013 / CLAUDE §3 #3 (client-bill only)
+    const bundleRates = await this.prisma.clientBillingRate.findMany({
+      where: { client_id: clientId, rate_kind: 'bundle_bonus' },
+      select: { id: true, effective_from: true, effective_to: true, amount: true, bundle_product_types: true },
+    });
+    const bundleGroups = new Map<string, { trigger: string[]; rows: BillingRateRow[] }>();
+    for (const b of bundleRates) {
+      const key = b.bundle_product_types.join(',');
+      const group = bundleGroups.get(key);
+      if (group) group.rows.push({ id: b.id, product_id: null, effective_from: b.effective_from, effective_to: b.effective_to, amount: b.amount });
+      else bundleGroups.set(key, { trigger: b.bundle_product_types, rows: [{ id: b.id, product_id: null, effective_from: b.effective_from, effective_to: b.effective_to, amount: b.amount }] });
+    }
+    // Catalogue labels for the bundle line name (e.g. "Home Phone + TV bundle"); loaded only if bundles exist.
+    const typeLabels =
+      bundleGroups.size > 0
+        ? new Map(
+            (await this.prisma.productTypeCatalogue.findMany({ select: { key: true, label: true } })).map((t) => [t.key, t.label]),
+          )
+        : new Map<string, string>();
 
     const unpriced: { product_id: string; product_name: string; sale_date: string }[] = [];
     const saleInputs: SaleInput[] = [];
@@ -164,7 +193,19 @@ export class StatementService {
           rate: rate ? toDecimal(rate.amount) : null,
         };
       });
-      saleInputs.push({ sale_id: sale.id, customer_name: sale.customer_name, items });
+
+      // Append a synthetic line item per bundle whose trigger types are ALL present on this sale (once per
+      // bundle). buildStatement sums it into the line/total — in the client's currency, frozen to CAD at issue.
+      const saleTypes = new Set(sale.sale_items.map((i) => i.product_type));
+      const bundleItems: PricedItem[] = [];
+      for (const { trigger, rows } of bundleGroups.values()) {
+        if (!trigger.every((t) => saleTypes.has(t))) continue; // all trigger types must be present
+        const bundleRate = selectEffectiveRate(rows, sale.sale_date); // effective on the sale_date (#10)
+        if (!bundleRate) continue; // no bundle rate in force on this date → not applied (additive, no 422)
+        bundleItems.push({ product_id: null, product_name: bundleLabel(trigger, typeLabels), rate: toDecimal(bundleRate.amount) });
+      }
+
+      saleInputs.push({ sale_id: sale.id, customer_name: sale.customer_name, items: [...items, ...bundleItems] });
     }
 
     // Never silently under-bill: a sold product with no effective rate aborts generation. — decision #2

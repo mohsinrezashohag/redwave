@@ -9,7 +9,7 @@
  *   • Genesis Schedule C v2 commission config (tiers, flat rates, holdback split, release setting).
  *   • The 2026 bi-weekly pay periods, expense-category catalogue, notification settings, chatbot config.
  */
-import { PrismaClient, PermissionAction } from '@prisma/client';
+import { PrismaClient, PermissionAction, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import {
   ALL_ACTIONS,
@@ -90,14 +90,49 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
   [BUILTIN_ROLES.SALES_REP]: 'Own sales and expenses; view documents.',
 };
 
-const EXPENSE_FIELD_CONFIGS: { category_key: string; label: string; requires_receipt: boolean }[] = [
-  { category_key: 'km', label: 'Kilometres', requires_receipt: false },
-  { category_key: 'meals', label: 'Meals', requires_receipt: true },
-  { category_key: 'hotel', label: 'Hotel', requires_receipt: true },
-  { category_key: 'flight', label: 'Flight', requires_receipt: true },
-  { category_key: 'rental', label: 'Rental', requires_receipt: true },
-  { category_key: 'gas', label: 'Gas', requires_receipt: true },
-  { category_key: 'other', label: 'Other', requires_receipt: true },
+// Per-type field schema (EXP-002a) + soft caps (EXP-013). Seeded as the DEFAULT; SA-editable via PATCH.
+type SeedFieldDef = { key: string; label: string; type: string; required: boolean; options?: string[]; soft_cap?: string };
+const EXPENSE_FIELD_CONFIGS: {
+  category_key: string;
+  label: string;
+  requires_receipt: boolean;
+  fields: SeedFieldDef[];
+  amount_soft_cap?: string;
+}[] = [
+  { category_key: 'km', label: 'Kilometres', requires_receipt: false, fields: [] },
+  {
+    category_key: 'meals',
+    label: 'Meals',
+    requires_receipt: true,
+    amount_soft_cap: '30.00', // over $30 → a soft Warning (BRD §7.1 dinner cap)
+    fields: [
+      { key: 'vendor', label: 'Vendor', type: 'text', required: true },
+      { key: 'city', label: 'City of purchase', type: 'text', required: false },
+      { key: 'gratuity', label: 'Gratuity', type: 'money', required: false },
+      { key: 'attendees', label: 'Attendees', type: 'text', required: false },
+    ],
+  },
+  {
+    category_key: 'hotel',
+    label: 'Hotel',
+    requires_receipt: true,
+    fields: [
+      { key: 'hotel_name', label: 'Hotel name', type: 'text', required: true },
+      { key: 'location', label: 'Location', type: 'text', required: false },
+    ],
+  },
+  {
+    category_key: 'flight',
+    label: 'Flight',
+    requires_receipt: true,
+    fields: [
+      { key: 'airline', label: 'Airline', type: 'text', required: false },
+      { key: 'route', label: 'Route', type: 'text', required: false },
+    ],
+  },
+  { category_key: 'rental', label: 'Rental', requires_receipt: true, fields: [] },
+  { category_key: 'gas', label: 'Gas', requires_receipt: true, fields: [] },
+  { category_key: 'other', label: 'Other', requires_receipt: true, fields: [] },
 ];
 
 // The COMPREHENSIVE event catalogue (RPT-009 / SRS §14). Each carries a display label + title/body templates
@@ -313,12 +348,30 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
     }
   }
 
-  // 8. Expense-category catalogue — idempotent by category_key. — EXP-009
+  // 8. Expense-category catalogue + per-type field schema — idempotent by category_key. — EXP-002a/009/013
+  //    The default `fields`/`amount_soft_cap` are populated on first seed (empty → set) but NEVER clobber an
+  //    SA-customized field schema (like the notification channel toggles below). label/requires_receipt refresh.
   for (const cfg of EXPENSE_FIELD_CONFIGS) {
+    const existing = await prisma.expenseFieldConfig.findUnique({
+      where: { category_key: cfg.category_key },
+      select: { fields: true },
+    });
+    const alreadyCustomized = Array.isArray(existing?.fields) && (existing!.fields as unknown[]).length > 0;
+    const seedSchema = alreadyCustomized
+      ? {}
+      : { fields: cfg.fields as unknown as Prisma.InputJsonValue, amount_soft_cap: cfg.amount_soft_cap ?? null };
     await prisma.expenseFieldConfig.upsert({
       where: { category_key: cfg.category_key },
-      update: { label: cfg.label, requires_receipt: cfg.requires_receipt },
-      create: { category_key: cfg.category_key, label: cfg.label, requires_receipt: cfg.requires_receipt, is_active: true, created_by: superAdminUser.id },
+      update: { label: cfg.label, requires_receipt: cfg.requires_receipt, ...seedSchema },
+      create: {
+        category_key: cfg.category_key,
+        label: cfg.label,
+        requires_receipt: cfg.requires_receipt,
+        is_active: true,
+        fields: cfg.fields as unknown as Prisma.InputJsonValue,
+        amount_soft_cap: cfg.amount_soft_cap ?? null,
+        created_by: superAdminUser.id,
+      },
     });
   }
 
@@ -340,9 +393,9 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
     });
   }
 
-  // 9b. Document sequences — the gapless statement/invoice counters. Idempotent: NEVER reset an existing
-  //     counter (that would repeat/gap numbers); only create it if missing. — BRD §8 (gapless numbering)
-  for (const key of ['statement', 'invoice']) {
+  // 9b. Document sequences — the gapless statement/invoice/client-expense-doc counters. Idempotent: NEVER
+  //     reset an existing counter (that would repeat/gap numbers); only create it if missing. — BRD §8
+  for (const key of ['statement', 'invoice', 'client_expense']) {
     await prisma.documentSequence.upsert({
       where: { key },
       update: {}, // preserve the current value on re-seed
