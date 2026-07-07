@@ -3904,6 +3904,117 @@ paths:
       security: *a153
       summary: List expense items
       tags: *a154
+  /v1/expense-items/validation-summary:
+    get:
+      description: Requires expenses:view (scoped). Returns the flagged/alert/warning
+        counts over the same filters as the list (e.g. the approvals queue) —
+        the interim home for the report-header count until the report rework
+        (EXP-013).
+      operationId: ExpenseItemsController_validationSummary_v1
+      parameters:
+        - name: page
+          required: false
+          in: query
+          description: 1-based page number.
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: limit
+          required: false
+          in: query
+          description: Rows per page (max 100).
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 20
+            type: number
+        - name: sort
+          required: false
+          in: query
+          description: Sort as `field:dir` (e.g. `sale_date:desc`). Unknown fields fall
+            back to the default sort.
+          schema:
+            example: sale_date:desc
+            type: string
+        - name: search
+          required: false
+          in: query
+          description: Case-insensitive free-text search across the entity’s key columns.
+          schema:
+            type: string
+        - name: status
+          required: false
+          in: query
+          schema:
+            type: string
+            enum:
+              - draft
+              - submitted
+              - approved
+              - rejected
+              - sent_back
+        - name: category
+          required: false
+          in: query
+          schema:
+            type: string
+            enum:
+              - km
+              - meals
+              - hotel
+              - flight
+              - rental
+              - gas
+              - other
+        - name: rep_id
+          required: false
+          in: query
+          description: Filter by rep.
+          schema:
+            type: string
+        - name: client_id
+          required: false
+          in: query
+          description: Filter by the client tagged on the item.
+          schema:
+            type: string
+        - name: pay_period_id
+          required: false
+          in: query
+          description: Filter by pay period.
+          schema:
+            type: string
+        - name: from
+          required: false
+          in: query
+          description: Items whose expense_date ≥ this date.
+          schema:
+            example: 2026-03-01
+            type: string
+        - name: to
+          required: false
+          in: query
+          description: Items whose expense_date ≤ this date.
+          schema:
+            example: 2026-03-31
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationSummaryResponse"
+        "400": *a147
+        "401": *a148
+        "403": *a149
+        "404": *a150
+        "409": *a151
+        "422": *a152
+      security: *a153
+      summary: Aggregate Alert/Warning flags across a scoped, filtered set
+      tags: *a154
   /v1/expense-items/bulk-review:
     post:
       description: Requires expenses:approve. Applies one decision (approve | reject |
@@ -4155,6 +4266,40 @@ paths:
         "422": *a160
       security: *a161
       summary: Add / configure an expense category
+      tags: *a162
+  /v1/expense-field-configs/{key}:
+    patch:
+      description: Requires expenses:edit. The category_key is immutable; sends only
+        the changed properties.
+      operationId: ExpenseFieldConfigsController_update_v1
+      parameters:
+        - name: key
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFieldConfigDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FieldConfigResponse"
+        "400": *a155
+        "401": *a156
+        "403": *a157
+        "404": *a158
+        "409": *a159
+        "422": *a160
+      security: *a161
+      summary: Update an expense category config (label / receipt rule / active /
+        per-type fields / soft cap)
       tags: *a162
   /v1/expense-exports:
     get:
@@ -9768,6 +9913,16 @@ components:
         description:
           type: string
           example: Lunch with client
+        field_values:
+          type: object
+          additionalProperties: &a309
+            type: string
+          example: &a310
+            vendor: Tim Hortons
+            city: Winnipeg
+          description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
+            category schema (EXP-002a). METADATA ONLY — never summed into the
+            amount (#1). Unknown keys are dropped server-side."
         receipt_url:
           type: string
           description: Object-storage reference (from the receipt upload); mandatory per
@@ -9866,6 +10021,52 @@ components:
         - rate_per_km
         - computed_amount
         - stops
+    ValidationRuleResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: field_required
+        severity:
+          type: string
+          enum:
+            - alert
+            - warning
+        field:
+          type: string
+          nullable: true
+          example: vendor
+          description: The field/key the rule targets.
+        message:
+          type: string
+          example: Vendor is required
+      required:
+        - code
+        - severity
+        - field
+        - message
+    ItemValidationResponse:
+      type: object
+      properties:
+        alert_count:
+          type: number
+          example: 0
+        warning_count:
+          type: number
+          example: 1
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationRuleResponse"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationRuleResponse"
+      required:
+        - alert_count
+        - warning_count
+        - alerts
+        - warnings
     ExpenseItemResponse:
       type: object
       properties:
@@ -9933,6 +10134,13 @@ components:
           type: array
           items:
             type: string
+        field_values:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
+          description: Per-type CAPTURE fields ({key:value}) keyed by the category schema
+            (EXP-002a). Metadata only — never summed (#1).
         description:
           type: string
         receipt_url:
@@ -9968,6 +10176,10 @@ components:
           type: object
           allOf:
             - $ref: "#/components/schemas/KmLogResponse"
+        validation:
+          description: Derived Alert/Warning validation (EXP-013).
+          allOf:
+            - $ref: "#/components/schemas/ItemValidationResponse"
       required:
         - id
         - expense_report_id
@@ -9983,6 +10195,7 @@ components:
         - amount_cad
         - is_personal
         - tags
+        - field_values
         - description
         - receipt_url
         - status
@@ -9991,6 +10204,7 @@ components:
         - pay_period_id
         - created_at
         - km_log
+        - validation
     ExpenseItemPageResponse:
       type: object
       properties:
@@ -10003,6 +10217,40 @@ components:
       required:
         - data
         - meta
+    ValidationSummaryResponse:
+      type: object
+      properties:
+        total:
+          type: number
+          example: 12
+          description: Items in scope.
+        flagged:
+          type: number
+          example: 3
+          description: Items with any alert or warning.
+        alert_items:
+          type: number
+          example: 1
+          description: Items with ≥1 alert.
+        warning_items:
+          type: number
+          example: 2
+          description: Items with ≥1 warning.
+        alert_count:
+          type: number
+          example: 1
+          description: Total alerts across items.
+        warning_count:
+          type: number
+          example: 2
+          description: Total warnings across items.
+      required:
+        - total
+        - flagged
+        - alert_items
+        - warning_items
+        - alert_count
+        - warning_count
     BulkReviewDto:
       type: object
       properties:
@@ -10084,6 +10332,13 @@ components:
         description:
           type: string
           example: Lunch with client
+        field_values:
+          type: object
+          additionalProperties: *a309
+          example: *a310
+          description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
+            category schema (EXP-002a). METADATA ONLY — never summed into the
+            amount (#1). Unknown keys are dropped server-side."
         receipt_url:
           type: string
           description: Object-storage reference (from the receipt upload); mandatory per
@@ -10117,6 +10372,40 @@ components:
             approving a foreign item is rejected (422). Ignored for CAD items."
       required:
         - decision
+    ExpenseFieldDefResponse:
+      type: object
+      properties:
+        key:
+          type: string
+          example: vendor
+        label:
+          type: string
+          example: Vendor
+        type:
+          type: string
+          enum:
+            - text
+            - textarea
+            - number
+            - money
+            - date
+            - select
+        required:
+          type: boolean
+        options:
+          description: Options for a select field.
+          type: array
+          items:
+            type: string
+        soft_cap:
+          type: string
+          example: "20.00"
+          description: Numeric/money soft cap → Warning.
+      required:
+        - key
+        - label
+        - type
+        - required
     FieldConfigResponse:
       type: object
       properties:
@@ -10131,6 +10420,16 @@ components:
           type: boolean
         is_active:
           type: boolean
+        fields:
+          description: The per-type capture fields (EXP-002a).
+          type: array
+          items:
+            $ref: "#/components/schemas/ExpenseFieldDefResponse"
+        amount_soft_cap:
+          type: string
+          nullable: true
+          example: "30.00"
+          description: Category-level amount soft cap → Warning (EXP-013).
         created_by:
           type: string
       required:
@@ -10139,7 +10438,47 @@ components:
         - label
         - requires_receipt
         - is_active
+        - fields
+        - amount_soft_cap
         - created_by
+    ExpenseFieldDefDto:
+      type: object
+      properties:
+        key:
+          type: string
+          example: vendor
+          description: Snake_case field key (unique within the category).
+        label:
+          type: string
+          example: Vendor
+        type:
+          type: string
+          enum:
+            - text
+            - textarea
+            - number
+            - money
+            - date
+            - select
+          example: text
+        required:
+          type: boolean
+          example: true
+          description: Missing on save → Alert (blocks save).
+        options:
+          description: Options for a select field.
+          type: array
+          items:
+            type: string
+        soft_cap:
+          type: string
+          example: "20.00"
+          description: Numeric/money soft cap → Warning when exceeded (EXP-013).
+      required:
+        - key
+        - label
+        - type
+        - required
     CreateFieldConfigDto:
       type: object
       properties:
@@ -10158,10 +10497,38 @@ components:
           type: boolean
           example: true
           default: true
+        fields:
+          description: The per-type capture fields (EXP-002a).
+          type: array
+          items:
+            $ref: "#/components/schemas/ExpenseFieldDefDto"
+        amount_soft_cap:
+          type: string
+          example: "30.00"
+          description: Category-level soft cap on the item amount → Warning (EXP-013).
       required:
         - category_key
         - label
         - requires_receipt
+    UpdateFieldConfigDto:
+      type: object
+      properties:
+        label:
+          type: string
+          example: Meals
+        requires_receipt:
+          type: boolean
+        is_active:
+          type: boolean
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExpenseFieldDefDto"
+        amount_soft_cap:
+          type: object
+          example: "30.00"
+          nullable: true
+          description: A decimal string, or null to clear the cap.
     ExpenseExportResponse:
       type: object
       properties:
@@ -10385,7 +10752,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: &a309
+          enum: &a311
             - draft
             - finalized
             - exported
@@ -10493,7 +10860,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: *a309
+          enum: *a311
         executed_by:
           type: string
         created_at:
@@ -11441,13 +11808,13 @@ components:
           type: string
         source_type:
           type: string
-          enum: &a310
+          enum: &a312
             - client_report
             - master_migration
             - balance_migration
         import_type:
           type: string
-          enum: &a311
+          enum: &a313
             - reps
             - clients
             - products
@@ -11464,7 +11831,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: &a312
+          enum: &a314
             - staged
             - committed
             - failed
@@ -11485,7 +11852,7 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: &a313
+          additionalProperties: &a315
             type: number
           nullable: true
           description: Counts by classification (matched/unmatched/...).
@@ -11538,10 +11905,10 @@ components:
           type: string
         source_type:
           type: string
-          enum: *a310
+          enum: *a312
         import_type:
           type: string
-          enum: *a311
+          enum: *a313
         client_id:
           type: string
           nullable: true
@@ -11550,7 +11917,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: *a312
+          enum: *a314
         total_rows:
           type: number
           example: 3
@@ -11567,7 +11934,7 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: *a313
+          additionalProperties: *a315
           nullable: true
           description: Counts by classification (matched/unmatched/...).
         run_by:
@@ -12459,14 +12826,14 @@ components:
           type: string
         report_type:
           type: string
-          enum: &a314
+          enum: &a316
             - business_summary
             - leaderboard
             - payrun_summary
             - expense_summary
         format:
           type: string
-          enum: &a315
+          enum: &a317
             - csv
             - excel
             - pdf
@@ -12492,11 +12859,11 @@ components:
       properties:
         report_type:
           type: string
-          enum: *a314
+          enum: *a316
           description: Which report was generated.
         format:
           type: string
-          enum: *a315
+          enum: *a317
         filename:
           type: string
           maxLength: 200

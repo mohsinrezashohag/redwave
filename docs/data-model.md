@@ -580,6 +580,7 @@ A cancellation recovery. No in-system date math: Redwave inputs a clawback when 
 | **amount**            | decimal   | —       | The reimbursable amount in `original_currency`; for km, computed server-side. |
 | **is_personal**       | boolean   | —       | Personal / do-not-reimburse (EXP-012); excluded from the reimbursable total, the pay-run seam, and all client output. Default false. |
 | **tags**              | jsonb     | —       | Custom tags (client + channel, EXP-002a). |
+| **field_values**      | jsonb?    | —       | Per-type CAPTURE values `{key: value}` keyed by the category's `fields` schema (EXP-002a). **METADATA ONLY** — never summed into `amount` (#1). |
 | **original_amount**   | decimal   | —       | **Stored-FX (frozen).** The amount as incurred, in `original_currency`.  |
 | **original_currency** | varchar   | **FK**  | -> currencies.code (USD/CAD + extensible). Default CAD.                   |
 | **fx_rate**           | decimal   | —       | **Frozen at APPROVAL.** original→CAD rate, high precision `Decimal(18,8)`; nullable until approved; 1.0 when already CAD. Never re-converted (#2). |
@@ -646,7 +647,7 @@ Indexes: `(rep_id, pay_period_id, status)` (the Pay Run aggregation), `(expense_
 
 #### `expense_field_configs`
 
-*Super-Admin-defined expense categories/fields.*
+*Super-Admin-defined expense categories + per-type field schema (EXP-002a) and soft caps (EXP-013). SA-editable via PATCH.*
 
 | **Field**            | **Type** | **Key** | **Notes**    |
 |----------------------|----------|---------|--------------|
@@ -655,6 +656,8 @@ Indexes: `(rep_id, pay_period_id, status)` (the Pay Run aggregation), `(expense_
 | **label**            | varchar  | —       |              |
 | **requires_receipt** | bool     | —       |              |
 | **is_active**        | bool     | —       |              |
+| **fields**           | jsonb    | —       | Per-type CAPTURE field schema: array of `{key, label, type (text/textarea/number/money/date/select), required, options?, soft_cap?}` (EXP-002a). Config-driven, not hardcoded; `[]` when none. |
+| **amount_soft_cap**  | decimal? | —       | Category-level soft cap on the item amount → a Warning when exceeded (EXP-013). |
 | **created_by**       | uuid     | **FK**  | -> users.id |
 
 #### `expense_exports`

@@ -297,7 +297,7 @@ Per rep per cycle the pay run produces: 70% advance for the period, any 30% hold
 > **Receipts are mandatory for every category except the kilometre log.** The Super Admin can add new expense fields that then appear in the rep dropdown. Meal eligibility (“road trips only”) is handled manually by the validating manager, not enforced by the system — Redwave deliberately keeps these judgement calls manual rather than over-automating.
 
 > **Added in Meeting 3 (SAP-Concur-style workflow)**
-> - **Grouped, searchable expense-type picker** (with a most-recently-used shortcut) and **per-type field sets** — each type shows its own fields (e.g. Meals: amount, vendor, city, gratuity, attendees; Hotel/Flight/Parking: their own).
+> - **Grouped, searchable expense-type picker** (with a most-recently-used shortcut) and **per-type field sets** — each type shows its own fields (e.g. Meals: amount, vendor, city, gratuity, attendees; Hotel/Flight/Parking: their own). The per-type fields are **captured metadata** (shown to the approver / on the client document) — they do **not** change the reimbursable amount (the rep enters the total; gratuity is a breakdown, not an add-on). The field sets are admin-configurable, not hardcoded.
 > - **Personal / do-not-reimburse toggle** — an item flagged personal is **excluded** from the reimbursable total, the pay run, and any client-facing output.
 > - **Custom tags** — client/program and **channel** (Redwave's equivalent of the reference app's Title/Program/Store-Department).
 > - **Alert vs Warning validation** — a hard stop ("fix before saving") plus a soft "save anyway?" that flags the item; alerts/warnings **aggregate to the report header with a count**.

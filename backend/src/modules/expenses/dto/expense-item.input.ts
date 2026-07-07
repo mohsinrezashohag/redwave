@@ -13,6 +13,7 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -125,6 +126,17 @@ export class ExpenseItemInput {
   @MinLength(1)
   @MaxLength(255)
   description!: string;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    example: { vendor: 'Tim Hortons', city: 'Winnipeg' },
+    description:
+      'Per-type CAPTURE fields as a { key: value } object, keyed by the category schema (EXP-002a). METADATA ONLY — never summed into the amount (#1). Unknown keys are dropped server-side.',
+  })
+  @IsOptional()
+  @IsObject()
+  field_values?: Record<string, string>;
 
   @ApiPropertyOptional({ description: 'Object-storage reference (from the receipt upload); mandatory per the category config.' })
   @IsOptional()

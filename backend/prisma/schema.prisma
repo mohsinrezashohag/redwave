@@ -999,6 +999,10 @@ model ExpenseItem {
   amount            Decimal             @db.Decimal(12, 2) // in original_currency (CAD for existing rows)
   is_personal       Boolean             @default(false) // do-not-reimburse: excluded from reimbursable total + pay run + client output (EXP-012)
   tags              Json? // custom free-form tags (client + channel), a string[] (EXP-002a)
+  // Per-type CAPTURE fields (vendor/city/gratuity/attendees/…), a { key: value } object keyed by the
+  // category's field schema (expense_field_configs.fields). METADATA ONLY — never summed into amount (#1),
+  // never shared unless the client doc chooses to. — EXP-002a (Meeting 3)
+  field_values      Json?
   // Stored-FX fieldset (frozen at APPROVAL; CAD → fx_rate=1 at create; never re-converted, #12). The pay
   // run reads amount_cad. — Meeting 3, CLAUDE §3 #12
   original_currency String              @default("CAD") // FK → currencies.code
@@ -1054,13 +1058,19 @@ model ExpenseKmStop {
 }
 
 model ExpenseFieldConfig {
-  id               String  @id @default(uuid()) @db.Uuid
-  category_key     String  @unique
+  id               String   @id @default(uuid()) @db.Uuid
+  category_key     String   @unique
   label            String
   requires_receipt Boolean
   is_active        Boolean
-  created_by       String  @db.Uuid
-  creator          User    @relation("ExpenseFieldConfigCreatedBy", fields: [created_by], references: [id])
+  // Per-type FIELD SCHEMA (EXP-002a): the fields this category captures — an array of field defs
+  // { key, label, type, required, options?, soft_cap? }. Config-driven (SA-editable via PATCH), NOT
+  // hardcoded. A `required` field missing → Alert (blocks save); a `soft_cap` exceeded → Warning (EXP-013).
+  fields           Json     @default("[]")
+  // Category-level soft cap on the item AMOUNT → a Warning when exceeded (e.g. the $30 meal cap). — EXP-013
+  amount_soft_cap  Decimal? @db.Decimal(12, 2)
+  created_by       String   @db.Uuid
+  creator          User     @relation("ExpenseFieldConfigCreatedBy", fields: [created_by], references: [id])
 
   @@map("expense_field_configs")
 }

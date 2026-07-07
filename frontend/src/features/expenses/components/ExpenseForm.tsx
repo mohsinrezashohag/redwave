@@ -41,6 +41,7 @@ function itemToValues(item: ExpenseItem): ExpenseFormValues {
     currency: item.original_currency ?? 'CAD',
     is_personal: item.is_personal,
     tags: item.tags ?? [],
+    field_values: item.field_values ?? {},
   };
   const value: ItemValue =
     item.category === 'km' && item.km_log
@@ -75,16 +76,14 @@ export function ExpenseForm({
   const create = useCreateItems();
   const update = useUpdateItem();
 
-  const requiresReceipt = useMemo(() => {
-    const map = new Map(configs.map((c) => [c.category_key, c.requires_receipt]));
-    return (category: string) => map.get(category) ?? false;
-  }, [configs]);
+  // The schema is driven by the field configs (the dynamic receipt rule + required per-type fields, EXP-013).
+  const resolver = useMemo(() => zodResolver(makeExpenseSchema(configs)), [configs]);
 
   const defaults: ExpenseFormValues =
     mode === 'edit' && item ? itemToValues(item) : { rep_id: '', items: [blankItem('', todayIso())] };
 
   const methods = useForm<ExpenseFormValues>({
-    resolver: zodResolver(makeExpenseSchema(requiresReceipt)),
+    resolver,
     defaultValues: defaults,
   });
   const { control, handleSubmit, formState } = methods;

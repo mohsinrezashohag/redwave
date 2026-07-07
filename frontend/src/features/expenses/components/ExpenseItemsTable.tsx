@@ -20,6 +20,7 @@ import { useDeleteItem } from '../api/useExpenseMutations';
 import { useClients, useReps } from '../api/useLookups';
 import { categoryLabel } from '../format';
 import { ExpenseStatusBadge } from './ExpenseStatusBadge';
+import { ExpenseValidationBadge } from './ExpenseValidationBadge';
 import { BulkReviewBar } from './BulkReviewBar';
 import type { ExpenseItem, ExpenseFilters, ExpenseSortKey } from '../expenses.types';
 import styles from './expenses.module.css';
@@ -72,6 +73,8 @@ export function ExpenseItemsTable({ filters, canReview }: { filters: ExpenseFilt
             {it.is_personal && <Badge tone="neutral">Personal</Badge>}
             {/* A foreign item is marked (its amount shows the currency + it can't be bulk-approved). */}
             {it.original_currency !== 'CAD' && <Badge tone="warning">{it.original_currency}</Badge>}
+            {/* Derived Alert/Warning flag (EXP-013). */}
+            <ExpenseValidationBadge validation={it.validation} />
           </span>
         ),
       },

@@ -5,14 +5,22 @@
  */
 import { Trash2 } from 'lucide-react';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
-import { FormField, IconButton, Input, Select, Switch } from '../../../components/ui';
+import { Banner, FormField, IconButton, Input, Select, Switch } from '../../../components/ui';
 import { todayIso } from '../../../lib/format/date';
 import { useCurrencies } from '../../currencies/api/useCurrencies';
 import { KmItemFields } from './KmItemFields';
 import { StandardItemFields } from './StandardItemFields';
+import { DynamicFields } from './DynamicFields';
 import { blankItem, type ExpenseFormValues } from './expenseForm.schema';
+import { validateFormItem } from '../validation';
 import type { FieldConfig } from '../expenses.types';
 import styles from './expenses.module.css';
+
+/** Billable km from the entered total + trip type (single −30 / round −60, floored at 0) — for the live warning. */
+function billableKm(totalKm: string | undefined, tripType: string | undefined): number | null {
+  if (!totalKm || !/^\d+(\.\d+)?$/.test(totalKm)) return null;
+  return Math.max(Number(totalKm) - (tripType === 'round' ? 60 : 30), 0);
+}
 
 export function ExpenseItemRow({
   index,
@@ -29,8 +37,21 @@ export function ExpenseItemRow({
 }) {
   const { control, getValues, setValue } = useFormContext<ExpenseFormValues>();
   const category = useWatch({ control, name: `items.${index}.category` });
-  const requiresReceipt = !!configs.find((c) => c.category_key === category)?.requires_receipt;
+  const cfg = configs.find((c) => c.category_key === category);
+  const requiresReceipt = !!cfg?.requires_receipt;
   const categoryOptions = configs.filter((c) => c.is_active).map((c) => ({ value: c.category_key, label: c.label }));
+  // Live WARNINGS (non-blocking; server re-validates). Watch the item's driving values (EXP-013).
+  const itemValues = useWatch({ control, name: `items.${index}` });
+  const warnings = validateFormItem(
+    {
+      category,
+      amount: itemValues?.amount,
+      receipt_url: itemValues?.receipt_url,
+      field_values: itemValues?.field_values,
+      billable_km: category === 'km' ? billableKm(itemValues?.total_km, itemValues?.trip_type) : null,
+    },
+    cfg,
+  ).warnings;
   // Per-item currency (km is always CAD server-side → the picker is locked for km).
   const currencies = useCurrencies();
   const isKm = category === 'km';
@@ -77,7 +98,21 @@ export function ExpenseItemRow({
       {category === 'km' ? (
         <KmItemFields index={index} />
       ) : (
-        <StandardItemFields index={index} requiresReceipt={requiresReceipt} clientOptions={clientOptions} />
+        <>
+          <StandardItemFields index={index} requiresReceipt={requiresReceipt} clientOptions={clientOptions} />
+          {/* Per-type CAPTURE fields (EXP-002a), config-driven; metadata only (#1). */}
+          <DynamicFields index={index} fields={cfg?.fields ?? []} />
+        </>
+      )}
+
+      {warnings.length > 0 && (
+        <Banner tone="warning" title="Warnings (you can still save)">
+          <ul className={styles.warnList}>
+            {warnings.map((w) => (
+              <li key={w.code + (w.field ?? '')}>{w.message}</li>
+            ))}
+          </ul>
+        </Banner>
       )}
 
       {/* Common fields (all categories): currency (#12) + custom tags (EXP-002a) + personal toggle (EXP-012). */}

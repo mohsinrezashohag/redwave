@@ -33,7 +33,7 @@ import { UpdateExpenseItemDto } from './dto/update-item.dto';
 import { ReviewDto } from './dto/review.dto';
 import { BulkReviewDto } from './dto/bulk-review.dto';
 import { ListExpenseItemsQuery } from './dto/list-items.query';
-import { CreateFieldConfigDto } from './dto/field-config.dto';
+import { CreateFieldConfigDto, UpdateFieldConfigDto } from './dto/field-config.dto';
 import { CreateExportDto } from './dto/export.dto';
 import {
   BulkReviewResultResponse,
@@ -42,6 +42,7 @@ import {
   ExpenseItemResponse,
   FieldConfigResponse,
   ReceiptUrlResponse,
+  ValidationSummaryResponse,
 } from './dto/expense.response';
 
 @ApiTags('Expenses')
@@ -76,6 +77,19 @@ export class ExpenseItemsController {
   @ApiOkResponse({ type: ExpenseItemPageResponse })
   list(@Query() query: ListExpenseItemsQuery, @CurrentUser() user: AuthUser) {
     return this.expenses.list(query, user);
+  }
+
+  @Get('validation-summary')
+  @RequirePermission('expenses', 'view')
+  @ApiOperation({
+    summary: 'Aggregate Alert/Warning flags across a scoped, filtered set',
+    description:
+      'Requires expenses:view (scoped). Returns the flagged/alert/warning counts over the same filters as the ' +
+      'list (e.g. the approvals queue) — the interim home for the report-header count until the report rework (EXP-013).',
+  })
+  @ApiOkResponse({ type: ValidationSummaryResponse })
+  validationSummary(@Query() query: ListExpenseItemsQuery, @CurrentUser() user: AuthUser) {
+    return this.expenses.validationSummary(query, user);
   }
 
   @Post('bulk-review')
@@ -180,6 +194,17 @@ export class ExpenseFieldConfigsController {
   @ApiCreatedResponse({ type: FieldConfigResponse })
   create(@Body() dto: CreateFieldConfigDto, @CurrentUser() user: AuthUser) {
     return this.configs.create(dto, user);
+  }
+
+  @Patch(':key')
+  @RequirePermission('expenses', 'edit')
+  @ApiOperation({
+    summary: 'Update an expense category config (label / receipt rule / active / per-type fields / soft cap)',
+    description: 'Requires expenses:edit. The category_key is immutable; sends only the changed properties.',
+  })
+  @ApiOkResponse({ type: FieldConfigResponse })
+  update(@Param('key') key: string, @Body() dto: UpdateFieldConfigDto, @CurrentUser() user: AuthUser) {
+    return this.configs.update(key, dto, user);
   }
 }
 
