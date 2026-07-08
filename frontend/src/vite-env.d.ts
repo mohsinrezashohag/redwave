@@ -19,3 +19,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/** Short git commit the bundle was built from (injected by vite.config `define`). Shown in the footer. */
+declare const __BUILD_SHA__: string;

@@ -1,6 +1,8 @@
+/* height:100% matches #root's real height rather than the raw viewport (100vh ignores a document scrollbar /
+   dynamic mobile chrome and would leave the shell taller than the visible area). — single-scroller app shell */
 .shell {
   display: flex;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
   background-color: var(--surface-1);
 }

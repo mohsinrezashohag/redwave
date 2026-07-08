@@ -13,6 +13,9 @@ export function Footer() {
       <span className="mono">v0.1.0</span>
       <span className={styles.sep}>·</span>
       <span>{env}</span>
+      <span className={styles.sep}>·</span>
+      {/* Build commit — lets you confirm at a glance which build a deploy is actually serving. */}
+      <span className="mono" title="build commit">{__BUILD_SHA__}</span>
       <a className={styles.support} href="mailto:support@redwave.local">
         Support
       </a>

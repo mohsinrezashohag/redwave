@@ -1,9 +1,7 @@
-/* A self-contained scroll pane: the wide/tall grid scrolls WITHIN itself (both axes) so the sticky header
-   (top:0) + frozen first column (left:0) anchor here and actually work, and the app footer is never pushed
-   or overlapped. Capped to the viewport so it always leaves the footer visible. — double-scroll fix */
+/* Horizontal-only scroll for the wide grid; vertical scrolling is the PAGE's job (<main>), so the Roles
+   editor is a single scroller with the footer pinned — no nested scroll pane. — single-scroller app shell */
 .scroll {
-  overflow: auto;
-  max-height: 72vh;
+  overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }

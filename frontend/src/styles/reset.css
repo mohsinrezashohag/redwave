@@ -9,10 +9,14 @@
   margin: 0;
 }
 
+/* The document is a fixed-height, non-scrolling frame: the app shell's <main> (and each public page's own
+   container) are the ONLY scrollers. Without overflow:hidden here, any discrepancy vs the 100%-height shell
+   leaves the document scrollable into empty space below it. — single-scroller app shell */
 html,
 body,
 #root {
   height: 100%;
+  overflow: hidden;
 }
 
 body {

@@ -77,9 +77,9 @@ export interface DataTableProps<Row, SortKey extends string = string> {
 
   density?: 'comfortable' | 'dense';
   /**
-   * Cap the table into a self-scrolling pane (default '72vh') so a long/wide list scrolls WITHIN itself —
-   * sticky header works and the app footer is never overlapped (no page-vs-inner double scroll). Short
-   * lists stay under the cap → unchanged. Pass a different length to tune, or '' to disable. — double-scroll fix
+   * OPT-IN: cap the table into a self-scrolling pane (e.g. '72vh'). Default is '' (OFF) so the list renders
+   * at natural height and the PAGE (<main>) is the single scroller with the footer pinned — no nested scroll
+   * pane. Only pass a value for a genuinely huge table that benefits from a frozen header. — single-scroller
    */
   stickyMaxHeight?: string;
   'aria-label'?: string;
@@ -110,7 +110,7 @@ export function DataTable<Row, SortKey extends string = string>({
   emptyNode,
   forbiddenMessage = 'You don’t have permission to view this list. The server enforces access regardless of navigation.',
   density = 'comfortable',
-  stickyMaxHeight = '72vh',
+  stickyMaxHeight = '',
   'aria-label': ariaLabel,
 }: DataTableProps<Row, SortKey>) {
   // A 403 is not a failure to surface as "Failed to load" — show a friendly forbidden panel (§5).

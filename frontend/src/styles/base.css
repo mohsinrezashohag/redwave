@@ -132,9 +132,11 @@ samp {
     visibility: hidden !important;
   }
 
+  /* Undo the app's document overflow:hidden + fixed height for print, else content is clipped to one page. */
   html,
   body {
     height: auto !important;
+    overflow: visible !important;
     background: white !important;
   }
 }
