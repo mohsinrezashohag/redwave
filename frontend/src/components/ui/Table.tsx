@@ -18,13 +18,21 @@ export function Table({
   children,
   density = 'comfortable',
   className,
+  maxHeight,
 }: {
   children: ReactNode;
   density?: Density;
   className?: string;
+  /**
+   * When set, the scroll wrapper becomes a bounded, self-scrolling PANE (any CSS length, e.g. '72vh'): the
+   * table scrolls WITHIN itself so its sticky header anchors here and works, and the app footer is never
+   * pushed or overlapped on a tall/wide table. Omit (default) → the wrapper grows to content height (the
+   * page is the scroller) — correct for tables embedded in modals/cards. — double-scroll fix
+   */
+  maxHeight?: string;
 }) {
   return (
-    <div className={styles.scroll}>
+    <div className={cx(styles.scroll, maxHeight && styles.pane)} style={maxHeight ? { maxHeight } : undefined}>
       <table className={cx(styles.table, styles[density], className)}>{children}</table>
     </div>
   );

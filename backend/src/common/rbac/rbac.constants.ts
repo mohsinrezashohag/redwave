@@ -14,10 +14,12 @@ export const MODULE_KEYS = [
   'clients',
   'billing_rates', // sensitive partner billing rate cards — view/manage gated separately (Super Admin only)
   'commission',
+  'product_types', // the configurable product-type catalogue (engine-config); own row so it's independently grantable
   'sales',
   'payrun',
   'clawback',
   'expenses',
+  'km_rates', // per-client effective-dated kilometre rate config (rep reimbursement + client bill); own row
   'billing',
   'documents',
   'import',

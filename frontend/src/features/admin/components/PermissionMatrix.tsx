@@ -2,8 +2,11 @@
  * PermissionMatrix — the role builder's module × action grid (SRS AUTH-004). Rows = modules, columns =
  * the 6 actions, cells = a Checkbox per existing (module, action) permission (looked up by id). Not every
  * module has every action → an empty cell where no permission exists. Row + column headers carry a
- * "select all" checkbox (indeterminate when partial). The selected set is owned by the parent; this
- * component computes the next set and calls onChange. `readOnly` disables every control. Tokens only.
+ * "select all" checkbox (indeterminate when partial). Permissions whose action is NOT one of the 6 grid
+ * columns (the off-grid `reports:business` / `notifications:broadcast`) have no cell, so they're rendered
+ * as their own controllable checkboxes in an "Additional permissions" section below the grid. The selected
+ * set is owned by the parent; this component computes the next set and calls onChange. `readOnly` disables
+ * every control. Tokens only.
  */
 import { Checkbox } from '../../../components/ui';
 import { PERMISSION_ACTIONS, type Module, type Permission } from '../roles.types';
@@ -24,6 +27,14 @@ const triState = (ids: string[], selected: Set<string>): TriState => {
   return on === 0 ? false : on === ids.length ? true : 'indeterminate';
 };
 
+// The 6 grid actions as a fast lookup (an action outside this set is "off-grid" — no matrix column).
+const GRID_ACTIONS = new Set<string>(PERMISSION_ACTIONS);
+// Friendly labels for the known off-grid permissions; anything else falls back to its `key`.
+const OFF_GRID_LABELS: Record<string, string> = {
+  'reports:business': 'Business dashboard & cross-period trends',
+  'notifications:broadcast': 'Send manual broadcast',
+};
+
 export function PermissionMatrix({ modules, permissions, selected, onChange, readOnly }: PermissionMatrixProps) {
   // index: module_key → action → permission
   const byModule = new Map<string, Map<string, Permission>>();
@@ -32,6 +43,10 @@ export function PermissionMatrix({ modules, permissions, selected, onChange, rea
     byModule.get(p.module_key)!.set(p.action, p);
   }
   const sortedModules = [...modules].sort((a, b) => a.name.localeCompare(b.name));
+  // Off-grid permissions (action ∉ the 6 columns) — rendered as their own section, not swept by row select-all.
+  const offGrid = permissions
+    .filter((p) => !GRID_ACTIONS.has(p.action))
+    .sort((a, b) => a.key.localeCompare(b.key));
 
   const setMany = (ids: string[], on: boolean) => {
     const next = new Set(selected);
@@ -41,10 +56,14 @@ export function PermissionMatrix({ modules, permissions, selected, onChange, rea
     }
     onChange(next);
   };
-  const idsForModule = (key: string) => [...(byModule.get(key)?.values() ?? [])].map((p) => p.id);
+  // Row "select all" covers only GRID cells — the off-grid perms have their own controls below, so a module
+  // row toggle no longer secretly sweeps them (which previously left the row stuck "indeterminate").
+  const idsForModule = (key: string) =>
+    [...(byModule.get(key)?.values() ?? [])].filter((p) => GRID_ACTIONS.has(p.action)).map((p) => p.id);
   const idsForAction = (action: string) => permissions.filter((p) => p.action === action).map((p) => p.id);
 
   return (
+    <>
     <div className={styles.scroll}>
       <table className={styles.table}>
         <thead>
@@ -111,5 +130,28 @@ export function PermissionMatrix({ modules, permissions, selected, onChange, rea
         </tbody>
       </table>
     </div>
+
+      {offGrid.length > 0 && (
+        <div className={styles.extras}>
+          <p className={styles.extrasTitle}>Additional permissions</p>
+          <ul className={styles.extrasList}>
+            {offGrid.map((p) => (
+              <li key={p.id} className={styles.extrasItem}>
+                <Checkbox
+                  aria-label={p.key}
+                  checked={selected.has(p.id)}
+                  disabled={readOnly}
+                  onCheckedChange={(c) => setMany([p.id], c === true)}
+                />
+                <span className={styles.extrasLabel}>
+                  {OFF_GRID_LABELS[p.key] ?? p.key}
+                  <code className={`${styles.extrasKey} mono`}>{p.key}</code>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
   );
 }

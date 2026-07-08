@@ -53,10 +53,10 @@ const CARDS: HubCard[] = [
   { title: 'Reconciliation', description: 'Tie statements to sales and pay runs to their lines; flag discrepancies.', icon: <Scale size={20} />, permission: 'billing:view', to: '/admin/reconciliation' },
   { title: 'Send broadcast', description: 'Compose a one-off announcement to everyone, a role, or specific people.', icon: <Megaphone size={20} />, permission: 'notifications:broadcast', to: '/admin/broadcast' },
   { title: 'Commission Config', description: 'Tiers, flat rates, holdback split, and incentives.', icon: <SlidersHorizontal size={20} />, permission: 'commission:edit', to: '/admin/commission' },
-  { title: 'Product Types', description: 'The configurable product-type catalogue + commission behaviour.', icon: <Tags size={20} />, permission: 'commission:edit', to: '/admin/product-types' },
-  { title: 'Clients', description: 'Partners, their products, and billing rates.', icon: <ShoppingBag size={20} />, permission: 'clients:view', to: '/admin/clients' },
-  { title: 'Products', description: 'Every per-client product across all partners.', icon: <ShoppingCart size={20} />, permission: 'clients:view', to: '/admin/products' },
-  { title: 'KM rates', description: 'Per-client, effective-dated kilometre rate (rep reimbursement + client bill).', icon: <Route size={20} />, permission: 'expenses:view', to: '/admin/km-rates' },
+  { title: 'Product Types', description: 'The configurable product-type catalogue + commission behaviour.', icon: <Tags size={20} />, permission: 'product_types:view', to: '/admin/product-types' },
+  { title: 'Clients', description: 'Partners, their products, and billing rates.', icon: <ShoppingBag size={20} />, permission: 'clients:create', to: '/admin/clients' },
+  { title: 'Products', description: 'Every per-client product across all partners.', icon: <ShoppingCart size={20} />, permission: 'clients:create', to: '/admin/products' },
+  { title: 'KM rates', description: 'Per-client, effective-dated kilometre rate (rep reimbursement + client bill).', icon: <Route size={20} />, permission: 'km_rates:view', to: '/admin/km-rates' },
   { title: 'Expense categories', description: 'Category catalogue and receipt requirements.', icon: <Receipt size={20} />, permission: 'expenses:edit' },
 ];
 

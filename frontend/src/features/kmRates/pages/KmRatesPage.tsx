@@ -1,9 +1,10 @@
 /**
  * KmRatesPage — /admin/km-rates. Manage the per-client, effective-dated kilometre rate (EXP-004).
- * REP rows drive the reimbursement paid to reps; CLIENT-BILL rows are stored for the Wave-2 client
- * expense document — the two streams are never combined (#3). Read gated expenses:view; add/delete
- * gated expenses:edit. The server is the real gate (§5); 403 → AccessDenied. Reuses the shared
- * EffectiveDatedTable (append-new-future-row; current/past rows immutable). Tokens only.
+ * REP rows drive the reimbursement paid to reps; CLIENT-BILL rows are stored for the client expense
+ * document — the two streams are never combined (#3). Read gated km_rates:view; add/delete gated
+ * km_rates:edit (its own RBAC module, so a role can manage km rates without all Expenses access). The
+ * server is the real gate (§5); 403 → AccessDenied. Reuses the shared EffectiveDatedTable
+ * (append-new-future-row; current/past rows immutable). Tokens only.
  */
 import { useMemo, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
@@ -32,8 +33,8 @@ import styles from '../components/kmRates.module.css';
 const STREAM_LABEL: Record<string, string> = { rep: 'Rep', client_bill: 'Client bill' };
 
 export default function KmRatesPage() {
-  const canView = useCan('expenses:view');
-  const canEdit = useCan('expenses:edit');
+  const canView = useCan('km_rates:view');
+  const canEdit = useCan('km_rates:edit');
   const canViewClients = useCan('clients:view');
   const { toast } = useToast();
   const onError = useApiErrorToast();
@@ -60,7 +61,7 @@ export default function KmRatesPage() {
   );
 
   if (!canView || isForbidden(list.error)) {
-    return <AccessDenied message="Managing km rates requires the expenses view permission." />;
+    return <AccessDenied message="Managing km rates requires the km rates permission." />;
   }
 
   const confirmDelete = () => {

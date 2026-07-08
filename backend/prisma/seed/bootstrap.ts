@@ -3,7 +3,8 @@
  * Super Admin password is never overwritten). Shared by the demo seed (prisma/seed.ts) and the clean-wipe
  * reset (prisma/reset.ts). — SRS AUTH-004/007, COMM (Schedule C v2), PAY-001
  *
- *   • 15 modules + the full module×action permission grid (90 permissions).
+ *   • The full module×action permission grid (MODULE_KEYS × 6 actions) + 2 off-grid perms (reports:business,
+ *     notifications:broadcast). Counts are derived — see the closing console.log.
  *   • 4 built-in roles (is_system) with sensible default grants.
  *   • One Super Admin user (credentials from env; placeholder + loud warning if unset).
  *   • Genesis Schedule C v2 commission config (tiers, flat rates, holdback split, release setting).
@@ -31,10 +32,12 @@ const MODULE_NAMES: Record<ModuleKey, string> = {
   clients: 'Clients & Products',
   billing_rates: 'Client Billing Rates',
   commission: 'Commission Configuration',
+  product_types: 'Product Types',
   sales: 'Sales & Validation',
   payrun: 'Pay Run & Holdback',
   clawback: 'Clawback',
   expenses: 'Expenses',
+  km_rates: 'KM Rates',
   billing: 'Billing & Statements',
   documents: 'Documents & E-Signature',
   import: 'Data Import & Integration',
@@ -55,10 +58,12 @@ const ADMIN_GRANTS: Grant[] = [
   ...g('hrm', 'view', 'create', 'edit', 'approve', 'export'),
   ...g('clients', 'view', 'create', 'edit', 'export'),
   ...g('commission', 'view', 'edit', 'approve', 'export'),
+  ...g('product_types', 'view', 'edit'), // manage the product-type catalogue (own module row)
   ...g('sales', 'view', 'create', 'edit', 'approve', 'delete', 'export'),
   ...g('payrun', 'view', 'create', 'approve', 'export'),
   ...g('clawback', 'view', 'create', 'export'),
   ...g('expenses', 'view', 'create', 'edit', 'approve', 'delete', 'export'), // delete = remove a not-yet-approved item
+  ...g('km_rates', 'view', 'edit'), // manage the per-client km rate config (own module row)
   ...g('billing', 'view', 'create', 'export'),
   ...g('documents', 'view', 'create', 'edit', 'export'),
   ...g('import', 'view', 'create', 'edit', 'approve'),
@@ -233,7 +238,7 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
 
   // 4. Built-in roles + their grants.
   const roleGrants: Record<string, string[]> = {
-    [BUILTIN_ROLES.SUPER_ADMIN]: permissions.map((p) => p.id), // all 90
+    [BUILTIN_ROLES.SUPER_ADMIN]: permissions.map((p) => p.id), // every permission (grid + off-grid)
     [BUILTIN_ROLES.ADMIN]: grantIds(ADMIN_GRANTS),
     [BUILTIN_ROLES.MANAGER]: grantIds(MANAGER_GRANTS),
     [BUILTIN_ROLES.SALES_REP]: grantIds(SALES_REP_GRANTS),

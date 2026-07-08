@@ -305,7 +305,8 @@ export class IncentivesController {
 
 /**
  * Product-type catalogue — the configurable type list + behaviour. GET is an authenticated reference read
- * (product / flat-rate / incentive forms use it); create/edit require commission:edit. — §6
+ * (product / flat-rate / incentive forms use it); create/edit require product_types:edit (its OWN RBAC
+ * module, so a role can manage the catalogue without all Commission Config edit access). — §6
  */
 @ApiTags('Commission Config')
 @ApiBearerAuth()
@@ -325,11 +326,11 @@ export class ProductTypesController {
   }
 
   @Post()
-  @RequirePermission('commission', 'edit')
+  @RequirePermission('product_types', 'edit')
   @ApiOperation({
     summary: 'Add a product type (always a standard add-on)',
     description:
-      'Requires commission:edit. behaviour is forced standard_addon — a new type can never be tiered/' +
+      'Requires product_types:edit. behaviour is forced standard_addon — a new type can never be tiered/' +
       'greenfield (#5/#9). May carry an inline commission flat rate (written to the commission stream).',
   })
   @ApiCreatedResponse({ type: ProductTypeResponse })
@@ -338,10 +339,10 @@ export class ProductTypesController {
   }
 
   @Patch(':key')
-  @RequirePermission('commission', 'edit')
+  @RequirePermission('product_types', 'edit')
   @ApiOperation({
     summary: 'Relabel / activate / deactivate a product type',
-    description: 'Requires commission:edit. key + behaviour are immutable; system types cannot be deactivated.',
+    description: 'Requires product_types:edit. key + behaviour are immutable; system types cannot be deactivated.',
   })
   @ApiOkResponse({ type: ProductTypeResponse })
   update(@Param('key') key: string, @Body() dto: UpdateProductTypeDto, @CurrentUser('id') actorId: string) {

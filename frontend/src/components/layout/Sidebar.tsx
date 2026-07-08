@@ -67,8 +67,11 @@ interface NavGroup {
 const statusOf = (search: string) => new URLSearchParams(search).get('status');
 const canReport = (a: NavAccess) => a.permissions.has('reports:view');
 const isAdmin = (a: NavAccess) => a.isSuperAdmin || a.roles.includes('Admin');
-// Permissions that reveal at least one Administration hub card (so the nav item isn't a dead-end).
-const ADMIN_CARD_PERMS = ['profile:approve', 'users:view', 'roles:view', 'settings:view', 'notifications:broadcast', 'commission:edit', 'clients:view', 'expenses:edit', 'audit:view', 'billing:view'];
+// Permissions that reveal at least one Administration hub card (so the nav item isn't a dead-end). NOTE:
+// deliberately excludes `clients:view`/`expenses:view` — those are READ perms reps legitimately hold for
+// sale/expense entry; gating admin config on them leaked the whole Administration group to reps. The admin
+// surfaces are gated on manage-level or dedicated perms instead (clients:create, km_rates/product_types).
+const ADMIN_CARD_PERMS = ['profile:approve', 'users:view', 'roles:view', 'settings:view', 'notifications:broadcast', 'commission:edit', 'clients:create', 'km_rates:view', 'product_types:view', 'expenses:edit', 'audit:view', 'billing:view'];
 const hasAnyAdmin = (a: NavAccess) => isAdmin(a) || ADMIN_CARD_PERMS.some((p) => a.permissions.has(p));
 
 const NAV: NavGroup[] = [
@@ -85,6 +88,9 @@ const NAV: NavGroup[] = [
       { label: 'Business', icon: LayoutDashboard, to: '/dashboards/business', show: (a) => a.isSuperAdmin },
       { label: 'Operations', icon: CheckSquare, to: '/dashboards/admin', show: isAdmin },
       { label: 'Leaderboard', icon: Trophy, to: '/dashboards/leaderboard', show: canReport },
+      // Reports hub — reps legitimately hold reports:view (their own reports), so it lives with the
+      // dashboards, NOT under Administration (which is now truly admin-only). — RPT-001/007
+      { label: 'Reports', icon: BarChart3, to: '/reports', match: (l) => l.pathname.startsWith('/reports'), show: canReport },
       // The assistant is authenticated-only (no permission) — shown to every signed-in user; scope is server-side.
       { label: 'Assistant', icon: Sparkles, to: '/chatbot', match: (l) => l.pathname.startsWith('/chatbot'), show: () => true },
     ],
@@ -199,14 +205,16 @@ const NAV: NavGroup[] = [
         icon: ShoppingBag,
         to: '/admin/clients',
         match: (l) => l.pathname.startsWith('/admin/clients'),
-        show: (a) => a.permissions.has('clients:view'),
+        // Admin management surface — gated on a manage perm (Admin/SA), NOT clients:view (which reps hold
+        // for sale-form dropdowns). The page still reads clients:view; this only hides the nav from reps.
+        show: (a) => a.permissions.has('clients:create'),
       },
       {
         label: 'Products',
         icon: ShoppingCart,
         to: '/admin/products',
         match: (l) => l.pathname.startsWith('/admin/products'),
-        show: (a) => a.permissions.has('clients:view'),
+        show: (a) => a.permissions.has('clients:create'),
       },
       {
         label: 'Commission Config',
@@ -220,14 +228,14 @@ const NAV: NavGroup[] = [
         icon: Tags,
         to: '/admin/product-types',
         match: (l) => l.pathname.startsWith('/admin/product-types'),
-        show: (a) => a.permissions.has('commission:edit'),
+        show: (a) => a.permissions.has('product_types:view'),
       },
       {
         label: 'KM Rates',
         icon: Route,
         to: '/admin/km-rates',
         match: (l) => l.pathname.startsWith('/admin/km-rates'),
-        show: (a) => a.permissions.has('expenses:view'),
+        show: (a) => a.permissions.has('km_rates:view'),
       },
       {
         label: 'Import',
@@ -236,7 +244,6 @@ const NAV: NavGroup[] = [
         match: (l) => l.pathname.startsWith('/import'),
         show: (a) => a.permissions.has('import:view'),
       },
-      { label: 'Reports', icon: BarChart3, to: '/reports', match: (l) => l.pathname.startsWith('/reports'), show: canReport },
     ],
   },
   {

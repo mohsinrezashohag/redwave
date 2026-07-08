@@ -3215,7 +3215,7 @@ paths:
       tags: &a130
         - Commission Config
     post:
-      description: Requires commission:edit. behaviour is forced standard_addon — a
+      description: Requires product_types:edit. behaviour is forced standard_addon — a
         new type can never be tiered/greenfield (#5/#9). May carry an inline
         commission flat rate (written to the commission stream).
       operationId: ProductTypesController_create_v1
@@ -3244,7 +3244,7 @@ paths:
       tags: *a130
   /v1/product-types/{key}:
     patch:
-      description: Requires commission:edit. key + behaviour are immutable; system
+      description: Requires product_types:edit. key + behaviour are immutable; system
         types cannot be deactivated.
       operationId: ProductTypesController_update_v1
       parameters:
@@ -4655,7 +4655,7 @@ paths:
       tags: *a178
   /v1/km-rates:
     get:
-      description: Requires expenses:view. Filter by stream / client / status. Each
+      description: Requires km_rates:view. Filter by stream / client / status. Each
         row carries its server-derived status.
       operationId: KmRateController_list_v1
       parameters:
@@ -4733,7 +4733,7 @@ paths:
       tags: &a186
         - Expenses
     post:
-      description: "Requires expenses:edit. Appends a new future-dated rate for the
+      description: "Requires km_rates:edit. Appends a new future-dated rate for the
         (stream, client) scope: it supersedes the scope’s pending row and bounds
         the current one. Back-dating is rejected (422). Omit client_id for the
         global default."
@@ -4763,7 +4763,7 @@ paths:
       tags: *a186
   /v1/km-rates/{id}:
     delete:
-      description: Requires expenses:edit. Only a pending row may be deleted
+      description: Requires km_rates:edit. Only a pending row may be deleted
         (current/past → 422). Re-opens any predecessor it had bounded.
       operationId: KmRateController_remove_v1
       parameters:

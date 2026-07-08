@@ -5,6 +5,13 @@
   border-radius: var(--radius-md);
 }
 
+/* Bounded pane (opt-in via the Table `maxHeight` prop): the table scrolls within itself on BOTH axes so
+   the sticky header anchors here and works, and the app footer is never overlapped. max-height is applied
+   inline (a dynamic length). — double-scroll fix */
+.pane {
+  overflow: auto;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
