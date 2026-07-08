@@ -12,8 +12,13 @@
   min-width: 0;
 }
 
+/* min-height:0 is REQUIRED for a flex-column scroll region: without it a flex item won't shrink below its
+   content's intrinsic height, so `overflow-y:auto` never engages — instead this region grows and pushes the
+   content past the pinned footer (the "outer scroll into white space" on tall pages). With it, <main> is the
+   single page scroller and the footer stays pinned. — double-scroll fix */
 .content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
