@@ -36,7 +36,7 @@ export class BillingGenerationController {
     @Param('id', ParseUUIDPipe) clientId: string,
     @Body() dto: GenerateBillingDto,
   ) {
-    return this.statements.preview(clientId, dto.pay_period_id);
+    return this.statements.preview(clientId, dto.billing_period_id);
   }
 
   @Post(':id/statements')
@@ -53,7 +53,7 @@ export class BillingGenerationController {
     @Body() dto: GenerateBillingDto,
     @CurrentUser('id') actorId: string,
   ) {
-    return this.statements.generate(clientId, dto.pay_period_id, actorId, dto.fx_rate);
+    return this.statements.generate(clientId, dto.billing_period_id, actorId, dto.fx_rate);
   }
 
   @Post(':id/invoices')
@@ -70,6 +70,6 @@ export class BillingGenerationController {
     @Body() dto: GenerateBillingDto,
     @CurrentUser('id') actorId: string,
   ) {
-    return this.invoices.generate(clientId, dto.pay_period_id, actorId, dto.fx_rate);
+    return this.invoices.generate(clientId, dto.billing_period_id, actorId, dto.fx_rate);
   }
 }

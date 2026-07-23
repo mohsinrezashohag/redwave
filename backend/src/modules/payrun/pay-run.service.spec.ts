@@ -273,3 +273,148 @@ describe('PayRunService.exportRun — RBAC scope (PII; a manager exports only th
     expect(where).toEqual({ pay_run_id: 'run-1' });
   });
 });
+
+describe('PayRunService — the line carries the engine reconciliation facts', () => {
+  it('persists gross, the 30% held, tier, tally and rate so the 70/30 split is provable', async () => {
+    const { service, tx } = make();
+    await service.finalize('run-1', user);
+    const line = lineArg(tx) as unknown as Record<string, unknown>;
+
+    expect(line.gross_commission).toBe('110.00');
+    expect(line.amount_held).toBe('33.00');
+    expect(line.tier_at_payment).toBe(4);
+    expect(line.internet_tally).toBe(1);
+    expect(line.rate_per_activation).toBe('110.00');
+    // The invariant the UI relies on: gross = advance + held, exactly.
+    expect(Number(line.commission_70) + Number(line.amount_held)).toBe(Number(line.gross_commission));
+  });
+});
+
+describe('PayRunService.getHoldbackSummary', () => {
+  const period = (id: string, n: number, payday: string) => ({
+    id,
+    period_number: n,
+    payday: new Date(payday),
+    start_date: new Date(payday),
+    end_date: new Date(payday),
+    status: 'open',
+  });
+  // The run is on P2; P3 is the next cycle.
+  const periods = [
+    period('P1', 1, '2026-01-30T00:00:00.000Z'),
+    period('P2', 2, '2026-02-13T00:00:00.000Z'),
+    period('P3', 3, '2026-02-27T00:00:00.000Z'),
+  ];
+
+  function makeSummary(opts: { status?: string; lines?: unknown[]; ledger?: unknown[] } = {}) {
+    const prisma = {
+      payRun: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'run-1', status: opts.status ?? 'draft', pay_period: periods[1] }),
+      },
+      payRunLine: { findMany: jest.fn().mockResolvedValue(opts.lines ?? []) },
+      holdbackLedger: { findMany: jest.fn().mockResolvedValue(opts.ledger ?? []) },
+      payPeriod: { findMany: jest.fn().mockResolvedValue(periods) },
+      holdbackReleaseSetting: { findFirst: jest.fn().mockResolvedValue({ release_rule: 'cycles:1' }) },
+    };
+    const scope = { getRepScope: jest.fn().mockResolvedValue({ level: 'all' }) };
+    const service = new PayRunService(
+      prisma as never,
+      { log: jest.fn() } as never,
+      scope as never,
+      {} as never,
+      {} as never,
+      new ZeroExpenseTotalProvider(),
+      new ZeroClawbackTotalProvider(),
+      { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never,
+    );
+    return { service, prisma };
+  }
+
+  it('DRAFT: projects the held 30% from the lines and the release period from the rule', async () => {
+    const { service } = makeSummary({
+      status: 'draft',
+      lines: [
+        { rep_id: 'r1', amount_held: decLike('123.00') },
+        { rep_id: 'r2', amount_held: decLike('77.00') },
+      ],
+      // A prior P1 hold scheduled to mature INTO this period (P2), not yet released.
+      ledger: [
+        {
+          rep_id: 'r1',
+          origin_pay_period_id: 'P1',
+          amount_held: decLike('50.00'),
+          scheduled_release_period_id: 'P2',
+          release_status: 'scheduled',
+          amount_released: null,
+          clawback_applied: null,
+        },
+      ],
+    });
+    const s = await service.getHoldbackSummary('run-1', user);
+
+    expect(s.is_projection).toBe(true);
+    expect(s.held_this_period).toBe('200.00'); // Σ line amount_held
+    expect(s.held_release_period?.period_number).toBe(3); // cycles:1 from P2 → P3
+    expect(s.releasing_this_period).toBe('50.00'); // still-scheduled amount maturing into P2
+    expect(s.outstanding_total).toBe('50.00');
+  });
+
+  it('FINALIZED: reads the held/released figures from the frozen ledger, incl. the clawback set-off', async () => {
+    const { service } = makeSummary({
+      status: 'finalized',
+      lines: [{ rep_id: 'r1', amount_held: decLike('200.00') }],
+      ledger: [
+        {
+          rep_id: 'r1',
+          origin_pay_period_id: 'P2', // this period's hold, frozen at finalize
+          amount_held: decLike('200.00'),
+          scheduled_release_period_id: 'P3',
+          release_status: 'scheduled',
+          amount_released: null,
+          clawback_applied: null,
+        },
+        {
+          rep_id: 'r1',
+          origin_pay_period_id: 'P1', // matured into P2 and was paid out, with a set-off
+          amount_held: decLike('50.00'),
+          scheduled_release_period_id: 'P2',
+          release_status: 'released',
+          amount_released: decLike('40.00'),
+          clawback_applied: decLike('10.00'),
+        },
+      ],
+    });
+    const s = await service.getHoldbackSummary('run-1', user);
+
+    expect(s.is_projection).toBe(false);
+    expect(s.held_this_period).toBe('200.00'); // from the ledger, not the lines
+    expect(s.held_release_period?.period_number).toBe(3); // the frozen FK
+    expect(s.releasing_this_period).toBe('40.00'); // actually released
+    expect(s.clawback_setoff_this_period).toBe('10.00');
+    expect(s.outstanding_total).toBe('200.00'); // the released P1 hold no longer counts
+
+    // by_origin aggregates the ledger per origin period, oldest first.
+    expect(s.by_origin.map((o) => o.origin_period?.period_number)).toEqual([1, 2]);
+    expect(s.by_origin[0]).toMatchObject({
+      amount_held: '50.00',
+      release_status: 'released',
+      amount_released: '40.00',
+      clawback_applied: '10.00',
+    });
+    expect(s.by_origin[1]).toMatchObject({ amount_held: '200.00', release_status: 'scheduled' });
+  });
+
+  it('scopes to the caller’s reps (a roster caller never sees another roster’s holdback)', async () => {
+    const { service, prisma } = makeSummary({ status: 'finalized' });
+    prisma.payRunLine.findMany.mockResolvedValue([]); // no lines in scope
+    const s = await service.getHoldbackSummary('run-1', user);
+
+    // With no reps in scope the ledger is never queried and every figure is zero.
+    expect(prisma.holdbackLedger.findMany).not.toHaveBeenCalled();
+    expect(s.held_this_period).toBe('0.00');
+    expect(s.outstanding_total).toBe('0.00');
+    expect(s.by_origin).toEqual([]);
+  });
+});

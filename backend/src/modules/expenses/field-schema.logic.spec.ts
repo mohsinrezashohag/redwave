@@ -52,3 +52,42 @@ describe('parseFieldDefs', () => {
     expect(parseFieldDefs({})).toEqual([]);
   });
 });
+
+/** A cap MULTIPLIER lets one item cover several units of a per-unit allowance (EXP-013). */
+describe('assertFieldDefs — multiplies_cap', () => {
+  const counter = (over: Partial<ExpenseFieldDef> = {}): ExpenseFieldDef => ({
+    key: 'meals_count',
+    label: 'Meals covered',
+    type: 'number',
+    required: false,
+    ...over,
+  });
+
+  it('accepts a number field flagged as the multiplier', () => {
+    expect(assertFieldDefs([counter({ multiplies_cap: true })])).toEqual([]);
+  });
+
+  it('rejects it on a non-number field — a cap can only be scaled by a count', () => {
+    const errors = assertFieldDefs([counter({ type: 'text', multiplies_cap: true })]);
+    expect(errors.join(' ')).toMatch(/multiplies_cap only applies to a number field/);
+  });
+
+  it('rejects TWO multipliers — the effective cap would be ambiguous', () => {
+    const errors = assertFieldDefs([
+      counter({ multiplies_cap: true }),
+      counter({ key: 'people_count', label: 'People', multiplies_cap: true }),
+    ]);
+    expect(errors.join(' ')).toMatch(/only one field may multiply the cap/);
+  });
+});
+
+describe('parseFieldDefs — multiplies_cap', () => {
+  it('reads the flag only when strictly true (a truthy string is not a config)', () => {
+    const [a, b] = parseFieldDefs([
+      { key: 'n', label: 'N', type: 'number', required: false, multiplies_cap: true },
+      { key: 'm', label: 'M', type: 'number', required: false, multiplies_cap: 'yes' },
+    ]);
+    expect(a.multiplies_cap).toBe(true);
+    expect(b.multiplies_cap).toBeUndefined();
+  });
+});

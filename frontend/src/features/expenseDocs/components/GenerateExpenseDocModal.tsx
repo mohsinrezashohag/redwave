@@ -10,7 +10,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Banner, Button, FormField, Input, Modal, MultiSelect, useToast } from '../../../components/ui';
-import { useApiErrorToast } from '../../../lib/api/apiError';
+import { ApiError, useApiErrorToast } from '../../../lib/api/apiError';
+import { MissingKmRateBanner, type MissingKmRate } from './MissingKmRateBanner';
 import { money } from '../../../lib/format/money';
 import { ClientPeriodPicker } from '../../billing/components/ClientPeriodPicker';
 import { useExpenseDocs, useGenerateExpenseDoc, usePreviewExpenseDoc } from '../api/useExpenseDocs';
@@ -29,10 +30,31 @@ interface Props {
   presetPeriodId?: string;
 }
 
+/**
+ * Pull the structured `missing_km_rate[]` out of a generate 422 (carried on ApiError.details). Returns null
+ * for any other error so the caller falls back to a normal error toast. Pure.
+ */
+function extractMissingKmRate(error: unknown): MissingKmRate[] | null {
+  if (!(error instanceof ApiError) || error.status !== 422) return null;
+  const details = error.details;
+  if (!details || typeof details !== 'object' || !('missing_km_rate' in details)) return null;
+  const list = (details as { missing_km_rate?: unknown }).missing_km_rate;
+  if (!Array.isArray(list) || list.length === 0) return null;
+  return list as MissingKmRate[];
+}
+
 export function GenerateExpenseDocModal({ open, onClose, clients, periods, presetClientId, presetPeriodId }: Props) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const onError = useApiErrorToast();
+  // The km-rate refusal is a CONFIG problem, not a failure to report as a toast that scrolls away — it
+  // carries the unpriced dates, so surface them with a link to the screen that fixes it (#13).
+  const [missingKmRate, setMissingKmRate] = useState<MissingKmRate[] | null>(null);
+  const handleError = (err: unknown) => {
+    const missing = extractMissingKmRate(err);
+    if (missing) setMissingKmRate(missing);
+    else onError(err);
+  };
   const [clientId, setClientId] = useState<string | undefined>(presetClientId);
   const [periodId, setPeriodId] = useState<string | undefined>(presetPeriodId);
   const [repIds, setRepIds] = useState<string[]>([]);
@@ -76,6 +98,7 @@ export function GenerateExpenseDocModal({ open, onClose, clients, periods, prese
 
   const onPreview = () => {
     if (!clientId || !periodId) return;
+    setMissingKmRate(null);
     previewMut.mutate(
       { clientId, body: { pay_period_id: periodId, rep_ids: repIds.length ? repIds : undefined, dates: dates.length ? dates : undefined } },
       {
@@ -88,13 +111,14 @@ export function GenerateExpenseDocModal({ open, onClose, clients, periods, prese
             setAllDates([...new Set(p.lines.map((l) => l.date))].sort());
           }
         },
-        onError,
+        onError: handleError,
       },
     );
   };
 
   const onIssue = () => {
     if (!clientId || !periodId) return;
+    setMissingKmRate(null);
     genMut.mutate(
       {
         clientId,
@@ -111,7 +135,7 @@ export function GenerateExpenseDocModal({ open, onClose, clients, periods, prese
           onClose();
           navigate(`/billing/expense-documents/${doc.id}`);
         },
-        onError,
+        onError: handleError,
       },
     );
   };
@@ -147,6 +171,8 @@ export function GenerateExpenseDocModal({ open, onClose, clients, periods, prese
           onPeriod={(v) => { setPeriodId(v); resetPreview(); }}
           disabled={busy}
         />
+
+        {missingKmRate && <MissingKmRateBanner missing={missingKmRate} />}
 
         {alreadyExists && (
           <Banner tone="info" title="A document already exists for this client + period">

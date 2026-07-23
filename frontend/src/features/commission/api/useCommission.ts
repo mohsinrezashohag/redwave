@@ -12,18 +12,23 @@ import { commissionKeys } from './keys';
 import type { RateStatus } from '../../../components/ui';
 import type { FlatRate, HoldbackConfig, HoldbackReleaseSetting, Incentive, IncentiveStatus, TierConfig } from '../commission.types';
 
-export function useTierSchedules(enabled = true) {
+/**
+ * Tier schedules for a CLIENT SCOPE: a client id for that client's own ladder, the literal `'global'` for
+ * the fallback row, or `undefined` for every scope (the default admin view). — CLAUDE #10
+ */
+export function useTierSchedules(clientId?: string, enabled = true) {
   return useQuery({
-    queryKey: commissionKeys.tiers(),
-    queryFn: () => unwrap<TierConfig[]>(api.GET('/v1/commission/tiers')),
+    queryKey: commissionKeys.tiers(clientId),
+    queryFn: () => unwrap<TierConfig[]>(api.GET('/v1/commission/tiers', { params: { query: { client_id: clientId } } })),
     enabled,
   });
 }
 
-export function useFlatRates(status: RateStatus | 'all' = 'all', enabled = true) {
+export function useFlatRates(status: RateStatus | 'all' = 'all', clientId?: string, enabled = true) {
   return useQuery({
-    queryKey: commissionKeys.flatRates(status),
-    queryFn: () => unwrap<FlatRate[]>(api.GET('/v1/commission/flat-rates', { params: { query: { status } } })),
+    queryKey: commissionKeys.flatRates(status, clientId),
+    queryFn: () =>
+      unwrap<FlatRate[]>(api.GET('/v1/commission/flat-rates', { params: { query: { status, client_id: clientId } } })),
     enabled,
   });
 }

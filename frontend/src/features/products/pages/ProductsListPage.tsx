@@ -11,6 +11,8 @@ import { useCan } from '../../../auth/useCan';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { ExportMenu } from '../../../components/data/ExportMenu';
 import type { ExportColumn } from '../../../lib/export/exportRows';
+import { exportFilename } from '../../../lib/export/exportFilename';
+import { todayIso } from '../../../lib/format/date';
 import { productTypeLabel } from '../../../lib/format/productType';
 import { useClients } from '../../clients/api/useClients';
 import { useProductTypes } from '../../productTypes/api/useProductTypes';
@@ -93,7 +95,7 @@ export default function ProductsListPage() {
               onValueChange={(v) => setProductType(v === ALL ? undefined : (v as ProductType))}
             />
             <Select options={STATUS_OPTIONS} value={status} onValueChange={(v) => setStatus(v as ProductStatusFilter)} aria-label="Status filter" />
-            <ExportMenu filename="products" title="Products" columns={exportColumns} getRows={() => fetchAllProducts(filters)} />
+            <ExportMenu filename={exportFilename({ source: 'products', generatedOn: todayIso() })} title="Products" columns={exportColumns} getRows={() => fetchAllProducts(filters)} />
           </div>
         }
       />

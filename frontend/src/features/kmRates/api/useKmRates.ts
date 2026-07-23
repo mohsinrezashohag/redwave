@@ -54,3 +54,16 @@ export function useDeleteKmRate() {
     onSuccess: () => qc.invalidateQueries({ queryKey: kmRateKeys.all }),
   });
 }
+
+/**
+ * Set the office a km trip runs from (SRS EXP-004). Invalidates the shared expense-settings query so an
+ * open km form picks up the new origin without a reload. `settings:edit`; the server re-authorizes (§5).
+ */
+export function useSaveOfficeOrigin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { office_address: string }) =>
+      unwrap<{ office_address: string | null }>(api.PATCH('/v1/expense-settings', { body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['expense-settings'] }),
+  });
+}

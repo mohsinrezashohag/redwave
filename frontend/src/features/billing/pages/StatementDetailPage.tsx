@@ -1,7 +1,8 @@
 /**
- * StatementDetailPage — /billing/statements/:id. Renders the immutable, gapless-numbered statement (ONE LINE
- * PER CUSTOMER, the server total, NO GST, CAD) + the paired one-line commission invoice. The UI prices
- * nothing and shows NO commission data (#3). Download re-renders the file from the frozen record; QuickBooks
+ * StatementDetailPage — /billing/statements/:id. Renders the immutable, gapless-numbered statement for a
+ * BILLING WEEK ("Bill 17") — one row per sale with every rate-kind component, the summary strip, and the
+ * paired one-line commission invoice. NO GST. The UI prices nothing, sums nothing, and shows NO commission
+ * data (#3) — the summary strip is server-computed from the frozen lines. Download re-renders the file from the frozen record; QuickBooks
  * export records an artifact. "Issue new version" creates a NEW numbered statement (the current one is kept,
  * superseded). `billing:view`; create/export gate the actions.
  */
@@ -15,11 +16,11 @@ import { money } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useClients } from '../../clients/api/useClients';
-import { usePayPeriods } from '../../payrun/api/usePayRun';
-import { useInvoiceFor, useStatement } from '../api/useBilling';
+import { useBillingPeriods, useInvoiceFor, useStatement } from '../api/useBilling';
 import { downloadInvoicePdf, downloadStatementExcel, exportStatementQuickbooks } from '../billing.download';
-import { statementNo } from '../billing.logic';
+import { billLabel, statementNo } from '../billing.logic';
 import { StatementLinesTable } from '../components/StatementLinesTable';
+import { StatementSummaryStrip } from '../components/StatementSummaryStrip';
 import { InvoiceCard } from '../components/InvoiceCard';
 import { GenerateBillingModal } from '../components/GenerateBillingModal';
 import styles from '../components/billing.module.css';
@@ -36,8 +37,8 @@ export default function StatementDetailPage() {
   const stmtQ = useStatement(id, canView);
   const statement = stmtQ.data;
   const clientsQ = useClients('all', canView);
-  const periodsQ = usePayPeriods(canView);
-  const { invoice } = useInvoiceFor(statement?.client_id, statement?.pay_period_id, canView);
+  const periodsQ = useBillingPeriods(canView);
+  const { invoice } = useInvoiceFor(statement?.client_id, statement?.billing_period_id ?? undefined, canView);
   const [regenOpen, setRegenOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
@@ -62,7 +63,7 @@ export default function StatementDetailPage() {
   }
 
   const client = (clientsQ.data ?? []).find((c) => c.id === statement.client_id);
-  const period = (periodsQ.data ?? []).find((p) => p.id === statement.pay_period_id);
+  const period = (periodsQ.data ?? []).find((p) => p.id === statement.billing_period_id);
   const clientName = client ? `${client.name} (${client.client_code})` : '—';
   const lines = statement.lines ?? [];
 
@@ -83,7 +84,11 @@ export default function StatementDetailPage() {
             <Badge tone={statement.status === 'issued' ? 'success' : 'neutral'}>{statement.status}</Badge>
           </span>
         }
-        subtitle={period ? `#${period.period_number} · ${displayDate(period.start_date)}–${displayDate(period.end_date)} · generated ${displayDate(statement.generated_at)} · CAD` : `generated ${displayDate(statement.generated_at)}`}
+        subtitle={
+          period
+            ? `${billLabel(period)} · generated ${displayDate(statement.generated_at)} · ${statement.currency}`
+            : `generated ${displayDate(statement.generated_at)} · ${statement.currency}`
+        }
         actions={
           <>
             <Button variant="tertiary" leftIcon={<ArrowLeft size={16} />} onClick={() => navigate('/billing')}>
@@ -114,18 +119,25 @@ export default function StatementDetailPage() {
         </Card>
       )}
 
-      <div className={styles.summary}>
-        <StatCard label="Total billed (CAD)" value={money(statement.total_amount)} />
-        <StatCard label="Customers" value={String(lines.length)} />
-      </div>
+      {statement.summary ? (
+        <StatementSummaryStrip summary={statement.summary} currency={statement.currency} />
+      ) : (
+        <div className={styles.summary}>
+          <StatCard label={`Total billed (${statement.currency})`} value={money(statement.total_amount, statement.currency)} />
+          <StatCard label="Sales" value={String(lines.length)} />
+        </div>
+      )}
 
-      <Card title="Statement — one line per customer">
+      <Card title="Statement — one row per sale">
         {lines.length === 0 ? (
-          <p className="mono">This statement has no billable customers for the period.</p>
+          <p className="mono">This statement has no billable sales for the week.</p>
         ) : (
-          <StatementLinesTable lines={lines} />
+          <StatementLinesTable lines={lines} currency={statement.currency} />
         )}
-        <p className={styles.note}>No GST — tax is handled in QuickBooks. Every amount is priced by the server from client billing rates (CAD).</p>
+        <p className={styles.note}>
+          No GST — tax is handled in QuickBooks. Every amount is priced by the server from client billing rates
+          effective on each sale&rsquo;s own date.
+        </p>
       </Card>
 
       <InvoiceCard
@@ -143,7 +155,7 @@ export default function StatementDetailPage() {
         clients={clientsQ.data ?? []}
         periods={periodsQ.data ?? []}
         presetClientId={statement.client_id}
-        presetPeriodId={statement.pay_period_id}
+        presetPeriodId={statement.billing_period_id ?? undefined}
       />
     </div>
   );

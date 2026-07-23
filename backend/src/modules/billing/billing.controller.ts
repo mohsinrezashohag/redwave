@@ -16,7 +16,7 @@ import { InvoiceService } from './invoice.service';
 import { BillingExportService, RenderedFile, StatementFormat } from './billing-export.service';
 import { ListBillingQuery } from './dto/list.query';
 import { StatementExportDto } from './dto/export.dto';
-import { ClientInvoiceResponse, ClientStatementResponse } from './dto/billing.response';
+import { BillingPeriodResponse, ClientInvoiceResponse, ClientStatementResponse } from './dto/billing.response';
 
 /** Stream a rendered file as a download attachment. */
 function sendFile(res: Response, file: RenderedFile): void {
@@ -82,6 +82,29 @@ export class StatementsController {
     @Res() res: Response,
   ): Promise<void> {
     sendFile(res, await this.exports.exportStatement(id, dto.format, actorId));
+  }
+}
+
+/**
+ * The weekly billing calendar the UI picks from. Read-only + seeded, exactly like pay periods — Redwave
+ * bills a fixed Mon–Sun week, so there is nothing to create by hand.
+ */
+@ApiTags('Billing & Statements')
+@ApiBearerAuth()
+@ApiErrorResponses()
+@Controller('billing-periods')
+export class BillingPeriodsController {
+  constructor(private readonly statements: StatementService) {}
+
+  @Get()
+  @RequirePermission('billing', 'view')
+  @ApiOperation({
+    summary: 'List the billing weeks ("Bill 17", Mon–Sun)',
+    description: 'Requires billing:view. Separate from pay periods — a bill straddles two of them.',
+  })
+  @ApiOkResponse({ type: BillingPeriodResponse, isArray: true })
+  list() {
+    return this.statements.listPeriods();
   }
 }
 

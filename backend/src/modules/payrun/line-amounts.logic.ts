@@ -24,6 +24,12 @@ export interface LineAmounts {
   bonus_amount: Decimal;
   clawback_total: Decimal;
   net_payout: Decimal;
+  // ── Reconciliation facts — copied VERBATIM off the engine result, never derived here (#1/#5). They let
+  // the UI prove the split (gross = commission_70 + amount_held) and how gross was reached (tier × tally).
+  gross_commission: Decimal; // the 70/30 base — Σ commissionBase, EXCLUDES incentives (paid in full)
+  tier_at_payment: number | null; // null when the internet tally is 0
+  internet_tally: number; // gross non-greenfield internet count across ALL clients (#5)
+  rate_per_activation: Decimal | null; // null when there is no tier
 }
 
 export function computeNet(parts: {
@@ -59,5 +65,10 @@ export function buildLineAmounts(result: PeriodResult, inputs: LineInputs): Line
       bonus: inputs.bonus,
       clawback: inputs.clawback,
     }),
+    // Pass-through only — the engine is the sole author of these (#5).
+    gross_commission: result.grossCommission,
+    tier_at_payment: result.tierNumber,
+    internet_tally: result.internetTally,
+    rate_per_activation: result.ratePerActivation,
   };
 }

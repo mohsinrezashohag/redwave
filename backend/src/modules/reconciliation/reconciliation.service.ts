@@ -17,17 +17,17 @@ export class ReconciliationService {
     private readonly statements: StatementService,
   ) {}
 
-  /** Tie the CURRENT (issued) statement for a client+period to its lines and to a live re-price. */
-  async statementTieOut(clientId: string, payPeriodId: string) {
+  /** Tie the CURRENT (issued) statement for a client + BILLING WEEK to its lines and to a live re-price. */
+  async statementTieOut(clientId: string, billingPeriodId: string) {
     const statement = await this.prisma.clientStatement.findFirst({
-      where: { client_id: clientId, pay_period_id: payPeriodId, status: 'issued' },
+      where: { client_id: clientId, billing_period_id: billingPeriodId, status: 'issued' },
       include: { lines: { select: { line_total: true } } },
     });
 
     // Live re-price now (billing stream only). May 422 if a product lost its rate since issue → null.
     let liveTotal: string | null = null;
     try {
-      const { draft } = await this.statements.priceClientPeriod(clientId, payPeriodId);
+      const { draft } = await this.statements.priceClientPeriod(clientId, billingPeriodId);
       liveTotal = formatMoney(draft.total_amount);
     } catch {
       liveTotal = null;
@@ -36,7 +36,7 @@ export class ReconciliationService {
     if (!statement) {
       return {
         client_id: clientId,
-        pay_period_id: payPeriodId,
+        billing_period_id: billingPeriodId,
         statement: null,
         frozen_total: '0.00',
         lines_sum: '0.00',
@@ -44,7 +44,7 @@ export class ReconciliationService {
         total_equals_lines: true,
         statement_matches_live: false,
         ok: false,
-        discrepancies: ['No issued statement for this client and period — generate one.'],
+        discrepancies: ['No issued statement for this client and billing week — generate one.'],
       };
     }
 
@@ -55,7 +55,7 @@ export class ReconciliationService {
     });
     return {
       client_id: clientId,
-      pay_period_id: payPeriodId,
+      billing_period_id: billingPeriodId,
       statement: { id: statement.id, statement_number: statement.statement_number, status: statement.status },
       ...tie,
     };

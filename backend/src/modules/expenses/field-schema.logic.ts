@@ -16,6 +16,13 @@ export interface ExpenseFieldDef {
   required: boolean; // missing/empty on save → Alert
   options?: string[]; // for type 'select'
   soft_cap?: string; // numeric/money threshold → Warning if the value exceeds it
+  /**
+   * This field's whole-number value MULTIPLIES the category's `amount_soft_cap` — so ONE item can cover a
+   * day's worth of a per-unit allowance without tripping the cap. Meals is the case that drove it: a $30
+   * cap is per MEAL, so a single lunch-and-dinner item declares 2 and is judged against $60 instead of
+   * being flagged for doing in one item what two items would do unflagged. Number fields only. — EXP-013
+   */
+  multiplies_cap?: boolean;
 }
 
 /** The resolved schema for one category (config row → typed). */
@@ -59,6 +66,7 @@ export function parseFieldDefs(raw: unknown): ExpenseFieldDef[] {
       required: r.required === true,
       ...(Array.isArray(r.options) ? { options: r.options.filter((o): o is string => typeof o === 'string') } : {}),
       ...(typeof r.soft_cap === 'string' ? { soft_cap: r.soft_cap } : {}),
+      ...(r.multiplies_cap === true ? { multiplies_cap: true } : {}),
     });
   }
   return defs;
@@ -72,6 +80,7 @@ export function parseFieldDefs(raw: unknown): ExpenseFieldDef[] {
 export function assertFieldDefs(defs: ExpenseFieldDef[]): string[] {
   const errors: string[] = [];
   const seen = new Set<string>();
+  let multiplier: string | null = null; // at most one field may scale the category cap
   for (const def of defs) {
     const at = def.key || '(missing key)';
     if (!KEY.test(def.key)) errors.push(`field '${at}': key must be snake_case`);
@@ -86,6 +95,11 @@ export function assertFieldDefs(defs: ExpenseFieldDef[]): string[] {
     if (def.soft_cap != null) {
       if (!DECIMAL.test(def.soft_cap)) errors.push(`field '${at}': soft_cap must be a decimal string`);
       if (def.type !== 'number' && def.type !== 'money') errors.push(`field '${at}': soft_cap only applies to a number/money field`);
+    }
+    if (def.multiplies_cap) {
+      if (def.type !== 'number') errors.push(`field '${at}': multiplies_cap only applies to a number field`);
+      if (multiplier && multiplier !== def.key) errors.push(`field '${at}': only one field may multiply the cap (already '${multiplier}')`);
+      multiplier = def.key;
     }
   }
   return errors;

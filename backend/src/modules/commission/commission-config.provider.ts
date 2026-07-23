@@ -12,6 +12,7 @@ import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { dateOnly, selectEffectiveRate } from '../../common/effective-dating';
+import { GLOBAL_SCOPE, scopeKeyOf, selectEffectiveByScope } from './client-scope.logic';
 import {
   EngineConfig,
   FlatRates,
@@ -34,33 +35,51 @@ export class CommissionConfigProvider {
   async getEngineConfig(date: string): Promise<EngineConfig> {
     const on = dateOnly(date);
 
-    // 1. Tier schedule (header in force + its bracket rows).
+    // 1. Tier schedules — the GLOBAL ladder plus any per-client ones.
+    // MUST group by client scope BEFORE picking the effective row: selectEffectiveRate returns the latest
+    // effective_from from whatever array it is given, so a mixed-scope list would let one client's newer
+    // schedule masquerade as everyone's.
     const headers = await this.prisma.commissionTierConfig.findMany({ include: { tiers: true } });
-    const header = selectEffectiveRate(headers, on);
-    if (!header) {
+    const effectiveHeaders = selectEffectiveByScope(headers, on);
+    const globalHeader = effectiveHeaders.get(GLOBAL_SCOPE);
+    if (!globalHeader) {
       throw new UnprocessableEntityException(`no effective tier schedule on ${date}`);
     }
-    const tiers: TierBracket[] = header.tiers.map((t) => ({
-      tierNumber: t.tier_number,
-      minCount: t.min_count,
-      maxCount: t.max_count,
-      ratePerActivation: toDecimal(t.rate_per_activation),
-    }));
+    const toBrackets = (rows: { tier_number: number; min_count: number; max_count: number | null; rate_per_activation: { toString(): string } }[]): TierBracket[] =>
+      rows.map((t) => ({
+        tierNumber: t.tier_number,
+        minCount: t.min_count,
+        maxCount: t.max_count,
+        ratePerActivation: toDecimal(t.rate_per_activation),
+      }));
+    const tiers = toBrackets(globalHeader.tiers);
+    const tiersByClient: Record<string, TierBracket[]> = {};
+    for (const [scope, header] of effectiveHeaders) {
+      if (scope !== GLOBAL_SCOPE) {
+        tiersByClient[scope] = toBrackets(header.tiers);
+      }
+    }
 
-    // 2. Flat rates — one effective row per product_type, as a map keyed by the catalogue key. Built over
-    // whatever flat types are configured & effective on the date (NOT a hard-coded trio), so SA-added types
-    // are supported. A sold type missing from this map throws in the engine (the inline-rate-at-creation
-    // flow makes that an edge). The engine determines tiers — flat rates here are pay rates only (#3/#5).
+    // 2. Flat rates — one effective row per (client scope, product_type), as maps keyed by the catalogue
+    // key. Built over whatever flat types are configured & effective on the date (NOT a hard-coded trio),
+    // so SA-added types are supported. A sold type missing from BOTH the client map and the global map
+    // throws in the engine. The engine determines tiers — flat rates here are pay rates only (#3/#5).
     const flatRows = await this.prisma.commissionFlatRate.findMany();
-    const flatTypes = [...new Set(flatRows.map((r) => r.product_type))];
     const flatRates: FlatRates = {};
-    for (const productType of flatTypes) {
+    const flatRatesByClient: Record<string, FlatRates> = {};
+    const flatScopes = [...new Set(flatRows.map((r) => `${scopeKeyOf(r)}|${r.product_type}`))];
+    for (const scopeKey of flatScopes) {
+      const [scope, productType] = scopeKey.split('|');
       const effective = selectEffectiveRate(
-        flatRows.filter((r) => r.product_type === productType),
+        flatRows.filter((r) => scopeKeyOf(r) === scope && r.product_type === productType),
         on,
       );
-      if (effective) {
-        flatRates[productType] = toDecimal(effective.amount);
+      if (!effective) continue;
+      const amount = toDecimal(effective.amount);
+      if (scope === GLOBAL_SCOPE) {
+        flatRates[productType] = amount;
+      } else {
+        (flatRatesByClient[scope] ??= {})[productType] = amount;
       }
     }
 
@@ -88,6 +107,6 @@ export class CommissionConfigProvider {
       amount: toDecimal(i.amount),
     }));
 
-    return { tiers, flatRates, holdback, incentives };
+    return { tiers, flatRates, tiersByClient, flatRatesByClient, holdback, incentives };
   }
 }

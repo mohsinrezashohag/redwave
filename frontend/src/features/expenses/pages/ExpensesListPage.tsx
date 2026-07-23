@@ -123,7 +123,7 @@ export default function ExpensesListPage() {
         <>
           <ExpenseFilterBar filters={filters} onChange={onChange} />
           {canApprove && <ValidationSummaryBanner filters={filters} />}
-          {groupMode !== 'none' && grouped.data && <GroupedSummary items={grouped.data} mode={groupMode} />}
+          {groupMode !== 'none' && grouped.data && <GroupedSummary items={grouped.data} mode={groupMode} configs={configs.data} />}
           <ExpenseItemsTable filters={filters} canReview={canApprove} />
           <ExportModal open={exportOpen} onOpenChange={setExportOpen} />
         </>

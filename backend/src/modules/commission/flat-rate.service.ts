@@ -1,6 +1,7 @@
 /**
  * FlatRateService — effective-dated flat (non-tiered) product rates: greenfield internet, TV, home
- * phone. internet is tiered (rejected here). Scope = product_type; reuses shared supersession.
+ * phone. internet is tiered (rejected here). Scope = (client_id, product_type) — client_id null is the
+ * GLOBAL rate, the fallback for any client without its own; reuses shared supersession.
  * — SRS COMM-002, §7.2
  */
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
@@ -9,6 +10,8 @@ import { AuditService } from '../../common/audit/audit.service';
 import { deriveStatus, planSupersession, previousDay, toUtcDateOnly } from '../../common/effective-dating';
 import { parseEffectiveWindow } from './effective-dates.util';
 import { assertPending, resolveEditWindow } from './effective-edit.util';
+import { scopeWhere } from './client-scope.logic';
+import { resolveClientScope } from './client-scope.util';
 import { CreateFlatRateDto, ListFlatRatesQuery, UpdateFlatRateDto } from './dto/flat-rate.dto';
 
 @Injectable()
@@ -21,7 +24,8 @@ export class FlatRateService {
   async list(query: ListFlatRatesQuery) {
     const today = toUtcDateOnly(new Date());
     const rows = await this.prisma.commissionFlatRate.findMany({
-      orderBy: [{ product_type: 'asc' }, { effective_from: 'asc' }],
+      where: scopeWhere(query.client_id),
+      orderBy: [{ product_type: 'asc' }, { client_id: 'asc' }, { effective_from: 'asc' }],
     });
     let annotated = rows.map((r) => ({ ...r, status: deriveStatus(r, today) }));
     if (query.status && query.status !== 'all') {
@@ -34,8 +38,12 @@ export class FlatRateService {
     await this.assertFlatRatable(dto.product_type);
     const { from, to, today } = parseEffectiveWindow(dto.effective_from, dto.effective_to);
 
+    // null = the GLOBAL rate for this type. Scope = (client, product_type): a client's rate must never
+    // supersede or bound the global one (or another client's).
+    const clientId = await resolveClientScope(this.prisma, dto.client_id);
+
     const existing = await this.prisma.commissionFlatRate.findMany({
-      where: { product_type: dto.product_type }, // scope = product_type
+      where: { client_id: clientId, product_type: dto.product_type },
       select: { id: true, effective_from: true, effective_to: true },
     });
     const plan = planSupersession(existing, from, today);
@@ -52,6 +60,7 @@ export class FlatRateService {
       }
       return tx.commissionFlatRate.create({
         data: {
+          client_id: clientId,
           product_type: dto.product_type,
           amount: dto.amount, // decimal STRING → Prisma Decimal
           effective_from: from,
@@ -88,7 +97,8 @@ export class FlatRateService {
     const { from, to, today } = resolveEditWindow(row, dto);
 
     const others = await this.prisma.commissionFlatRate.findMany({
-      where: { product_type: row.product_type, id: { not: id } },
+      // Same SCOPE only — client_id + product_type are immutable on edit.
+      where: { client_id: row.client_id, product_type: row.product_type, id: { not: id } },
       select: { id: true, effective_from: true, effective_to: true },
     });
     const plan = planSupersession(others, from, today);
@@ -124,7 +134,8 @@ export class FlatRateService {
     await this.prisma.$transaction(async (tx) => {
       await tx.commissionFlatRate.delete({ where: { id } });
       await tx.commissionFlatRate.updateMany({
-        where: { product_type: row.product_type, effective_to: predecessorEnd },
+        // Scope-bound by client too — otherwise this re-opens another client's (or the global) row.
+        where: { client_id: row.client_id, product_type: row.product_type, effective_to: predecessorEnd },
         data: { effective_to: null },
       });
     });

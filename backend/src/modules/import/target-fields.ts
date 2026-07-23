@@ -76,6 +76,28 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
     { field: 'is_greenfield', type: 'text', required: false, label: 'Greenfield', aliases: ['greenfield', 'is greenfield', 'gf'], example: 'false', dict: 'true/false (reference flag).' },
   ],
 
+  // ── LIVE sales entry (IMP-013) — real `entered`/`validated` sales that DO reach the engine. ONE ROW =
+  //    ONE SALE; `product_types` is a comma-separated list so a bundle (and the mandatory internet base,
+  //    SALE-001a) fits on a single row. Address columns are optional (blank → '—') so a tier/clawback test
+  //    sheet stays quick to write. No commission is written here — Pay Run freezes snapshots (#2/#5).
+  'sales_entry:sales': [
+    { field: 'client_code', type: 'code', required: true, label: 'Client code', aliases: ['code', 'client code', 'client', 'partner'], example: 'VF', dict: 'Client (by code) — must already exist.' },
+    { field: 'rep_code', type: 'code', required: true, label: 'Rep code', aliases: ['rep', 'rep code', 'distributor', 'agent', 'agent code'], example: 'RW-D-0001', dict: 'Rep (by code) — must already exist and be active.' },
+    { field: 'product_types', type: 'text', required: true, label: 'Product types', aliases: ['products', 'product types', 'product type', 'type', 'services'], example: 'internet,tv', dict: 'Comma-separated product types on this sale (e.g. "internet" or "internet,tv,home_phone"). MUST include an internet/greenfield base — add-ons cannot be sold standalone (SALE-001a).' },
+    { field: 'sale_date', type: 'date', required: true, label: 'Sale date', aliases: ['date', 'sale date', 'sold', 'order date'], example: '2026-07-06', dict: 'YYYY-MM-DD. GOVERNS the pay period (#7).' },
+    { field: 'customer_name', type: 'text', required: true, label: 'Customer', aliases: ['customer', 'name', 'subscriber', 'household'], example: 'Jane Doe', dict: 'Customer/household name. Ignored when the first/last columns are supplied (the name is derived from them).' },
+    { field: 'customer_first_name', type: 'text', required: false, label: "Customer's first name", aliases: ['first name', 'first', 'given name', "customer's first name"], example: 'Jane', dict: 'Optional. The client bill prints first and last name as separate columns.' },
+    { field: 'customer_last_name', type: 'text', required: false, label: "Customer's last name", aliases: ['last name', 'last', 'surname', 'family name', "customer's last name"], example: 'Doe', dict: 'Optional. Supplied with the first name, it becomes the customer name.' },
+    { field: 'activation_date', type: 'date', required: false, label: 'Activation date', aliases: ['activation', 'activation date', 'activated', 'install date'], example: '2026-07-10', dict: 'Reference only — drives no logic.' },
+    { field: 'street', type: 'text', required: false, label: 'Street', aliases: ['street', 'address', 'address 1'], example: '12 Main St', dict: 'Optional — blank becomes “—”.' },
+    { field: 'city', type: 'text', required: false, label: 'City', aliases: ['city', 'town'], example: 'Winnipeg', dict: 'Optional — blank becomes “—”.' },
+    { field: 'province_state', type: 'text', required: false, label: 'Province/State', aliases: ['province', 'state', 'province/state', 'region'], example: 'MB', dict: 'Optional — blank becomes “—”.' },
+    { field: 'postal_code', type: 'text', required: false, label: 'Postal code', aliases: ['postal', 'postal code', 'zip', 'zip code'], example: 'R3C 1A1', dict: 'Optional — blank becomes “—”.' },
+    { field: 'mpu_id', type: 'text', required: false, label: 'MPU ID', aliases: ['mpu', 'mpu id', 'house id', 'unit id'], example: 'MPU-1042', dict: 'Client house/unit identifier (also disambiguates the Sale ID).' },
+    { field: 'is_greenfield', type: 'text', required: false, label: 'Greenfield', aliases: ['greenfield', 'is greenfield', 'gf'], example: 'false', dict: 'true/false. Greenfield internet is flat-rated and EXCLUDED from the tier tally (#9).' },
+    { field: 'status', type: 'text', required: false, label: 'Status', aliases: ['status', 'state', 'validated'], example: 'entered', dict: 'entered (default) or validated. "validated" also runs the entered→validated transition at commit.' },
+  ],
+
   // ── Opening holdback balances (IMP-007; UUIDs — these reference existing system records) ──
   'balance_migration:holdback': [
     { field: 'rep_code', type: 'code', required: true, label: 'Rep code', aliases: ['rep', 'rep code', 'distributor', 'agent'], example: 'RW-D-0001', dict: 'Rep (by code) holding the balance.' },

@@ -3,7 +3,8 @@
  * the total distance, with a LIVE INDICATIVE billable preview (kmPreview) — but the server computes the
  * authoritative amount, so no `amount` is sent for km. When a browser Maps key is configured, the stops are
  * Places autocompletes and the distance auto-derives from the route (MapStops); otherwise it falls back to
- * manual address + total-km entry (the server still computes the amount). Tokens only.
+ * manual address + total-km entry (the server still computes the amount). The FIRST stop defaults to the
+ * configured office — policy is that trips run from it. Tokens only.
  */
 import { useEffect } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
@@ -11,6 +12,7 @@ import { Controller, useFieldArray, useFormContext, useWatch } from 'react-hook-
 import { Banner, Button, DatePicker, FormField, IconButton, Input, RadioGroup } from '../../../components/ui';
 import { money } from '../../../lib/format/money';
 import { kmPreview, TRIP_OPTIONS } from '../km';
+import { officeStop, useExpenseSettings } from '../api/useLookups';
 import { mapsEnabled } from '../maps.config';
 import { MapStops } from './MapStops';
 import type { TripType } from '../expenses.types';
@@ -22,12 +24,28 @@ export function KmItemFields({ index }: { index: number }) {
   const { fields, append, remove } = useFieldArray({ control, name: `items.${index}.stops` as const });
   const itemErrors = formState.errors.items?.[index];
 
+  // Policy: a day's driving runs FROM the office, so the first stop defaults to it rather than the rep
+  // retyping (and mistyping) the same address daily. It is a default, not a lock — the rep can replace it
+  // for a trip that genuinely started elsewhere. Only ever fills a BLANK first stop, so editing an existing
+  // km log never rewrites its origin. — SRS EXP-004
+  const settings = useExpenseSettings();
+  const office = officeStop(settings.data);
+
   useEffect(() => {
     if (!getValues(`items.${index}.trip_type`)) setValue(`items.${index}.trip_type`, 'round');
     const stops = getValues(`items.${index}.stops`) ?? [];
     for (let k = stops.length; k < 2; k++) append({ address: '' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Separate from the mount effect: the settings fetch may resolve after it.
+  useEffect(() => {
+    if (!office) return;
+    if (!getValues(`items.${index}.stops.0.address`)) {
+      setValue(`items.${index}.stops.0`, office, { shouldValidate: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [office?.address]);
 
   const totalKm = useWatch({ control, name: `items.${index}.total_km` });
   const trip = (useWatch({ control, name: `items.${index}.trip_type` }) ?? 'round') as TripType;

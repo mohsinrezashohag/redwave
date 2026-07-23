@@ -62,10 +62,21 @@ export interface IncentiveConfig {
   amount: Decimal; // the bonus
 }
 
-/** The effective configuration, passed IN (the engine never reads a database). */
+/**
+ * The effective configuration, passed IN (the engine never reads a database).
+ *
+ * `tiers`/`flatRates` are the GLOBAL fallback. The optional per-client maps override them for activations
+ * belonging to that client — a per-client RATE lookup only: the internet tally is always cross-client (#5).
+ * A client with no entry falls back to the global rows, so a config carrying neither map behaves exactly
+ * as before.
+ */
 export interface EngineConfig {
   tiers: TierBracket[];
   flatRates: FlatRates;
+  /** clientId → that client's own bracket ladder (own boundaries AND rates). */
+  tiersByClient?: Record<string, TierBracket[]>;
+  /** clientId → that client's own flat rates, keyed by product type. */
+  flatRatesByClient?: Record<string, FlatRates>;
   holdback: HoldbackSplit;
   incentives?: IncentiveConfig[];
 }
@@ -74,7 +85,7 @@ export interface EngineConfig {
 export interface ActivationInput {
   id: string; // sale_item id — echoed onto the output for mapping
   productType: string; // product-type key (only 'internet'/'greenfield_internet' are special)
-  clientId: string; // used for incentive scope only — NOT for the tally (tally is cross-client)
+  clientId: string; // incentive scope + per-client RATE lookup — NEVER the tally (tally is cross-client, #5)
   saleDate: string; // 'YYYY-MM-DD' — used for the incentive window only
 }
 
@@ -98,7 +109,10 @@ export interface ComputedItem {
 
 export interface PeriodResult {
   internetTally: number; // gross non-greenfield internet count, across ALL clients
-  tierNumber: number | null; // null when the tally is 0
+  // Period-level tier/rate. Null when the tally is 0 — and ALSO null when the rep's internet activations
+  // resolved to DIFFERENT clients' schedules (there is no single honest answer). The exact per-item values
+  // are always on `items[].tierAtPayment` / `.rateApplied`, so nothing is lost.
+  tierNumber: number | null;
   ratePerActivation: Decimal | null;
   items: ComputedItem[];
   grossCommission: Decimal; // Σ commissionBase — the 70/30 base

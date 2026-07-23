@@ -246,6 +246,9 @@ enum ImportSourceType {
   client_report
   master_migration
   balance_migration
+  // Operator-supplied sheet of LIVE sales (sales_entry:sales) — neither a client report nor a migration.
+  // Creates real `entered`/`validated` sales that DO flow into tier/pay-run/clawback. — IMP-013
+  sales_entry
 }
 
 enum ImportType {
@@ -340,6 +343,7 @@ model User {
   user_mfa                      UserMfa?                   @relation("UserMfaOwner")
   mfa_recovery_codes            MfaRecoveryCode[]          @relation("MfaRecoveryOwner")
   security_settings_updated     SecuritySetting[]          @relation("SecuritySettingUpdatedBy")
+  expense_settings_updated      ExpenseSetting[]           @relation("ExpenseSettingUpdatedBy")
 
   @@map("users")
 }
@@ -608,19 +612,23 @@ model Client {
   is_active       Boolean
   created_at      DateTime @default(now())
 
-  products              Product[]
-  client_billing_rates  ClientBillingRate[]
-  custom_fields         ClientCustomField[]
-  incentives            Incentive[]
-  sales                 Sale[]
-  expense_items         ExpenseItem[]
-  expense_exports       ExpenseExport[]
-  km_rate_configs       KmRateConfig[]
-  client_statements     ClientStatement[]
-  client_invoices       ClientInvoice[]
-  client_expense_docs   ClientExpenseDocument[]
-  import_batches        ImportBatch[]
-  import_field_mappings ImportFieldMapping[]
+  products                Product[]
+  client_billing_rates    ClientBillingRate[]
+  custom_fields           ClientCustomField[]
+  incentives              Incentive[]
+  sales                   Sale[]
+  expense_items           ExpenseItem[]
+  expense_exports         ExpenseExport[]
+  km_rate_configs         KmRateConfig[]
+  // Per-client REP-commission scope (null rows on those tables are the global fallback). A scope FK only —
+  // no path from here to client_billing_rates; the two rate streams stay separate (#3).
+  commission_tier_configs CommissionTierConfig[]
+  commission_flat_rates   CommissionFlatRate[]
+  client_statements       ClientStatement[]
+  client_invoices         ClientInvoice[]
+  client_expense_docs     ClientExpenseDocument[]
+  import_batches          ImportBatch[]
+  import_field_mappings   ImportFieldMapping[]
 
   @@index([is_active]) // list filter (active/inactive)
   @@map("clients")
@@ -707,6 +715,11 @@ model ClientBillingRate {
 
 model CommissionTierConfig {
   id             String    @id @default(uuid()) @db.Uuid
+  // null = the GLOBAL schedule (the fallback for any client without its own). Scoping the REP-commission
+  // stream by client is NOT a #3 violation — nothing here reads client_billing_rates (cf. incentives
+  // .scope_client_id). The internet TALLY stays cross-client (#5); only the RATE is resolved per client.
+  client_id      String?   @db.Uuid
+  client         Client?   @relation(fields: [client_id], references: [id])
   effective_from DateTime  @db.Date
   effective_to   DateTime? @db.Date
   created_by     String    @db.Uuid
@@ -714,6 +727,7 @@ model CommissionTierConfig {
 
   tiers CommissionTier[]
 
+  @@index([client_id, effective_from]) // scope selection (mirrors km_rate_config)
   @@map("commission_tier_configs")
 }
 
@@ -731,6 +745,9 @@ model CommissionTier {
 
 model CommissionFlatRate {
   id               String               @id @default(uuid()) @db.Uuid
+  // null = the GLOBAL flat rate for this product type (fallback). See CommissionTierConfig.client_id.
+  client_id        String?              @db.Uuid
+  client           Client?              @relation(fields: [client_id], references: [id])
   product_type     String // FK → product_type_catalogue.key
   product_type_ref ProductTypeCatalogue @relation(fields: [product_type], references: [key])
   amount           Decimal              @db.Decimal(12, 2)
@@ -739,6 +756,7 @@ model CommissionFlatRate {
   created_by       String               @db.Uuid
   creator          User                 @relation("FlatRateCreatedBy", fields: [created_by], references: [id])
 
+  @@index([product_type, client_id, effective_from]) // scope selection
   @@map("commission_flat_rates")
 }
 
@@ -788,29 +806,33 @@ model Incentive {
 // ════════════════════════════════════════════════════════════════════════════════
 
 model Sale {
-  id              String     @id @default(uuid()) @db.Uuid
-  sale_code       String     @unique
-  sale_date       DateTime   @db.Date // KING — governs the pay period. — §3 #7
-  activation_date DateTime?  @db.Date // reference only; drives no logic
-  rep_id          String     @db.Uuid
-  rep             Rep        @relation(fields: [rep_id], references: [id])
-  client_id       String     @db.Uuid
-  client          Client     @relation(fields: [client_id], references: [id])
-  customer_name   String
-  street          String
-  city            String
-  province_state  String
-  postal_code     String
-  mpu_id          String?
-  is_greenfield   Boolean
-  status          SaleStatus
-  validated_by    String?    @db.Uuid
-  validator       User?      @relation("SaleValidatedBy", fields: [validated_by], references: [id])
-  validated_at    DateTime?
-  pay_run_id      String?    @db.Uuid
-  pay_run         PayRun?    @relation(fields: [pay_run_id], references: [id])
-  import_batch_id String?    @db.Uuid // provenance for imported sales (bulk-validated / historical); no FK (polymorphic, IMP-008)
-  created_at      DateTime   @default(now())
+  id                  String     @id @default(uuid()) @db.Uuid
+  sale_code           String     @unique
+  sale_date           DateTime   @db.Date // KING — governs the pay period. — §3 #7
+  activation_date     DateTime?  @db.Date // reference only; drives no logic
+  rep_id              String     @db.Uuid
+  rep                 Rep        @relation(fields: [rep_id], references: [id])
+  client_id           String     @db.Uuid
+  client              Client     @relation(fields: [client_id], references: [id])
+  // The display/search name. When the first/last pair is supplied it is DERIVED from them server-side, so the
+  // two never disagree; sales entered before the split carry only this one (the statement splits them then).
+  customer_name       String
+  customer_first_name String?
+  customer_last_name  String?
+  street              String
+  city                String
+  province_state      String
+  postal_code         String
+  mpu_id              String?
+  is_greenfield       Boolean
+  status              SaleStatus
+  validated_by        String?    @db.Uuid
+  validator           User?      @relation("SaleValidatedBy", fields: [validated_by], references: [id])
+  validated_at        DateTime?
+  pay_run_id          String?    @db.Uuid
+  pay_run             PayRun?    @relation(fields: [pay_run_id], references: [id])
+  import_batch_id     String?    @db.Uuid // provenance for imported sales (bulk-validated / historical); no FK (polymorphic, IMP-008)
+  created_at          DateTime   @default(now())
 
   sale_items             SaleItem[]
   clawbacks              Clawback[]
@@ -873,6 +895,23 @@ model PayPeriod {
   @@map("pay_periods")
 }
 
+// BILLING PERIOD — the CLIENT-BILLING week (Monday→Sunday), numbered sequentially ("Bill 17"). Deliberately
+// SEPARATE from PayPeriod (Sunday→Saturday, biweekly): a bill straddles two pay periods, so billing cannot
+// reuse pay_period_id. Governs which sales a statement covers, by sale_date (#7). — docs/uat/billing-target-format.md
+model BillingPeriod {
+  id            String          @id @default(uuid()) @db.Uuid
+  period_number Int             @unique // the sequential bill number — "Bill 17"
+  start_date    DateTime        @db.Date // Monday
+  end_date      DateTime        @db.Date // Sunday
+  status        PayPeriodStatus
+
+  client_statements ClientStatement[]
+  client_invoices   ClientInvoice[]
+
+  @@index([start_date])
+  @@map("billing_periods")
+}
+
 model PayRun {
   id            String       @id @default(uuid()) @db.Uuid
   pay_period_id String       @db.Uuid
@@ -906,6 +945,16 @@ model PayRunLine {
   clawback_total      Decimal @db.Decimal(12, 2)
   net_payout          Decimal @db.Decimal(12, 2)
 
+  // Reconciliation facts, copied verbatim off the engine's PeriodResult at draft/finalize (NEVER recomputed
+  // — #1/#5). They make the 70/30 split provable on screen: gross = commission_70 + amount_held, and
+  // tier/tally/rate explain how gross was reached. Nullable: pre-migration rows have none, and the engine
+  // returns a null tier/rate when the internet tally is 0.
+  gross_commission    Decimal? @db.Decimal(12, 2) // the 70/30 base (Σ commissionBase; excludes incentives)
+  amount_held         Decimal? @db.Decimal(12, 2) // THIS period's 30% (→ holdback_ledger.amount_held at finalize)
+  tier_at_payment     Int? // tier the period's internet activations were paid at
+  internet_tally      Int? // gross non-greenfield internet count that drove the tier (#5/#9)
+  rate_per_activation Decimal? @db.Decimal(12, 2) // tier rate applied per internet activation
+
   @@map("pay_run_lines")
 }
 
@@ -925,6 +974,9 @@ model HoldbackLedger {
   clawback_applied            Decimal?              @db.Decimal(12, 2)
 
   @@index([rep_id, release_status])
+  // Period-scoped lookups for the pay-run holdback summary (what was held in a period / what matures into it).
+  @@index([origin_pay_period_id])
+  @@index([scheduled_release_period_id])
   @@map("holdback_ledger")
 }
 
@@ -1094,6 +1146,24 @@ model KmRateConfig {
   @@map("km_rate_config")
 }
 
+// EXPENSE SETTINGS — the singleton org-level expense policy. Today it holds the OFFICE ADDRESS a km trip
+// runs from: policy is that a day's driving starts and ends at the office, so a new km log DEFAULTS its
+// first stop to it rather than leaving the rep to retype it (and mistype it) daily. Nullable because a
+// deployment that has not set an office yet simply gets no default. — SRS EXP-004
+model ExpenseSetting {
+  id             String   @id @default(uuid()) @db.Uuid
+  office_address String?
+  // Captured when the address is set through a Places lookup, so the default stop carries real coordinates
+  // and the server can derive the route distance (else '0' and the typed total is used).
+  office_lat     Decimal? @db.Decimal(9, 6)
+  office_lng     Decimal? @db.Decimal(9, 6)
+  updated_by     String?  @db.Uuid
+  updater        User?    @relation("ExpenseSettingUpdatedBy", fields: [updated_by], references: [id])
+  updated_at     DateTime @default(now()) @updatedAt
+
+  @@map("expense_settings")
+}
+
 model ExpenseExport {
   id            String       @id @default(uuid()) @db.Uuid
   generated_by  String       @db.Uuid
@@ -1166,74 +1236,120 @@ enum BillingDocStatus {
 }
 
 model ClientStatement {
-  id               String           @id @default(uuid()) @db.Uuid
-  statement_number Int?             @unique // gapless, global per type; minted on issue (null only on legacy rows)
-  status           BillingDocStatus @default(issued)
-  client_id        String           @db.Uuid
-  client           Client           @relation(fields: [client_id], references: [id])
-  pay_period_id    String           @db.Uuid
-  pay_period       PayPeriod        @relation(fields: [pay_period_id], references: [id])
-  total_amount     Decimal          @db.Decimal(12, 2) // in `currency`
+  id                String           @id @default(uuid()) @db.Uuid
+  statement_number  Int?             @unique // gapless, global per type; minted on issue (null only on legacy rows)
+  status            BillingDocStatus @default(issued)
+  client_id         String           @db.Uuid
+  client            Client           @relation(fields: [client_id], references: [id])
+  // The BILLING week this statement covers. Nullable only because rows issued before the weekly-billing
+  // change carry pay_period_id instead — issued documents are immutable, so they are never back-filled.
+  billing_period_id String?          @db.Uuid
+  billing_period    BillingPeriod?   @relation(fields: [billing_period_id], references: [id])
+  pay_period_id     String?          @db.Uuid // legacy (pre-weekly-billing) statements only
+  pay_period        PayPeriod?       @relation(fields: [pay_period_id], references: [id])
+  // The applied spiff's own effective window — frozen so the "Spiff (…)" column header reproduces exactly on
+  // a re-render. Null when no spiff applied, or when sales in the week hit more than one distinct spiff row.
+  spiff_from        DateTime?        @db.Date
+  spiff_to          DateTime?        @db.Date
+  total_amount      Decimal          @db.Decimal(12, 2) // in `currency`
   // Stored-FX (frozen at ISSUE; CAD → fx_rate=1; never re-converted, #12). — Meeting 3
-  currency         String           @default("CAD") // FK → currencies.code (= the client's currency at issue)
-  currency_ref     Currency         @relation(fields: [currency], references: [code])
-  fx_rate          Decimal          @default(1) @db.Decimal(18, 8) // currency → CAD
-  fx_rate_date     DateTime?        @db.Date
-  amount_cad       Decimal?         @db.Decimal(12, 2) // = roundHalfUp(total_amount × fx_rate)
-  file_url         String? // optional — the Excel artifact is rendered on demand (download) / recorded in billing_exports
-  generated_by     String           @db.Uuid
-  generator        User             @relation("StatementGeneratedBy", fields: [generated_by], references: [id])
-  generated_at     DateTime         @default(now())
-  superseded_by_id String?          @db.Uuid
-  superseded_by    ClientStatement? @relation("StatementSupersede", fields: [superseded_by_id], references: [id])
+  currency          String           @default("CAD") // FK → currencies.code (= the client's currency at issue)
+  currency_ref      Currency         @relation(fields: [currency], references: [code])
+  fx_rate           Decimal          @default(1) @db.Decimal(18, 8) // currency → CAD
+  fx_rate_date      DateTime?        @db.Date
+  amount_cad        Decimal?         @db.Decimal(12, 2) // = roundHalfUp(total_amount × fx_rate)
+  file_url          String? // optional — the Excel artifact is rendered on demand (download) / recorded in billing_exports
+  generated_by      String           @db.Uuid
+  generator         User             @relation("StatementGeneratedBy", fields: [generated_by], references: [id])
+  generated_at      DateTime         @default(now())
+  superseded_by_id  String?          @db.Uuid
+  superseded_by     ClientStatement? @relation("StatementSupersede", fields: [superseded_by_id], references: [id])
 
   lines      ClientStatementLine[]
   supersedes ClientStatement[]     @relation("StatementSupersede")
   exports    BillingExport[]
 
   @@index([client_id, pay_period_id, status])
+  @@index([client_id, billing_period_id, status])
   @@map("client_statements")
 }
 
+// ONE ROW PER SALE, frozen at issue. Carries the full client-facing line: who sold it, to whom, where, which
+// products were present, and the amount contributed by EACH rate kind — so the workbook Redwave sends is a
+// straight projection of stored facts and a re-render is byte-stable. Every column added for the weekly
+// billing format is nullable (or defaulted) because lines issued before it are immutable and never rewritten.
+// — docs/uat/billing-target-format.md
 model ClientStatementLine {
-  id               String          @id @default(uuid()) @db.Uuid
-  statement_id     String          @db.Uuid
-  statement        ClientStatement @relation(fields: [statement_id], references: [id])
-  sale_id          String          @db.Uuid
-  sale             Sale            @relation(fields: [sale_id], references: [id])
-  customer_name    String
-  products_summary String
-  line_total       Decimal         @db.Decimal(12, 2)
+  id           String          @id @default(uuid()) @db.Uuid
+  statement_id String          @db.Uuid
+  statement    ClientStatement @relation(fields: [statement_id], references: [id])
+  sale_id      String          @db.Uuid
+  sale         Sale            @relation(fields: [sale_id], references: [id])
+  /// Render order as priced (sale_date, then sale_code) — stable across re-renders.
+  sort_order   Int             @default(0)
 
+  // Who / where / what (frozen snapshots — the sale may change later; the issued document may not).
+  sale_date           DateTime? @db.Date
+  rep_code            String? // Agent ID
+  rep_name            String? // Agent Name
+  customer_name       String // kept: UI, QuickBooks CSV, back-compat
+  customer_first_name String?
+  customer_last_name  String?
+  address             String? // "street, city, province, postal"
+  channel             String? // clients.client_code
+  product_name        String? // the internet speed product on this sale
+  products_summary    String // kept: UI + QuickBooks CSV
+
+  // Presence flags — the workbook's countable columns.
+  has_internet   Boolean @default(false)
+  has_tv         Boolean @default(false)
+  has_home_phone Boolean @default(false)
+
+  // Per-component amounts, each from its own rate kind, effective on sale_date (#10). line_total is their
+  // exact sum (#1). `other_total` catches priced products with no column of their own so nothing is dropped.
+  internet_rate Decimal? @db.Decimal(12, 2) // rate_kind='product' on the internet product
+  tv_rate       Decimal? @db.Decimal(12, 2) // rate_kind='tv_addon', else the TV product's 'product' rate
+  hp_rate       Decimal? @db.Decimal(12, 2) // rate_kind='hp_addon', else the HP product's 'product' rate
+  bundle_bonus  Decimal? @db.Decimal(12, 2) // rate_kind='bundle_bonus' (trigger set all present)
+  spiff         Decimal? @db.Decimal(12, 2) // rate_kind='spiff' (date-bounded)
+  other_total   Decimal? @db.Decimal(12, 2) // Σ remaining 'product' rates (Wireless / Protection Plan / …)
+  line_total    Decimal  @db.Decimal(12, 2)
+
+  @@index([statement_id, sort_order])
   @@map("client_statement_lines")
 }
 
 model ClientInvoice {
-  id               String           @id @default(uuid()) @db.Uuid
-  invoice_number   Int?             @unique // gapless, global per type; minted on issue (null only on legacy rows)
-  status           BillingDocStatus @default(issued)
-  client_id        String           @db.Uuid
-  client           Client           @relation(fields: [client_id], references: [id])
-  pay_period_id    String           @db.Uuid
-  pay_period       PayPeriod        @relation(fields: [pay_period_id], references: [id])
-  total_commission Decimal          @db.Decimal(12, 2) // in `currency`
+  id                String           @id @default(uuid()) @db.Uuid
+  invoice_number    Int?             @unique // gapless, global per type; minted on issue (null only on legacy rows)
+  status            BillingDocStatus @default(issued)
+  client_id         String           @db.Uuid
+  client            Client           @relation(fields: [client_id], references: [id])
+  // Mirrors ClientStatement: new invoices key off the BILLING week (their total IS the statement total, so
+  // the two must always cover the same span); legacy rows keep pay_period_id and are never rewritten.
+  billing_period_id String?          @db.Uuid
+  billing_period    BillingPeriod?   @relation(fields: [billing_period_id], references: [id])
+  pay_period_id     String?          @db.Uuid // legacy (pre-weekly-billing) invoices only
+  pay_period        PayPeriod?       @relation(fields: [pay_period_id], references: [id])
+  total_commission  Decimal          @db.Decimal(12, 2) // in `currency`
   // Stored-FX (frozen at ISSUE; CAD → fx_rate=1; never re-converted, #12). — Meeting 3
-  currency         String           @default("CAD") // FK → currencies.code
-  currency_ref     Currency         @relation(fields: [currency], references: [code])
-  fx_rate          Decimal          @default(1) @db.Decimal(18, 8)
-  fx_rate_date     DateTime?        @db.Date
-  amount_cad       Decimal?         @db.Decimal(12, 2) // = roundHalfUp(total_commission × fx_rate)
-  file_url         String? // optional — the PDF is rendered on demand / recorded in billing_exports
-  generated_by     String?          @db.Uuid
-  generator        User?            @relation("InvoiceGeneratedBy", fields: [generated_by], references: [id])
-  generated_at     DateTime         @default(now())
-  superseded_by_id String?          @db.Uuid
-  superseded_by    ClientInvoice?   @relation("InvoiceSupersede", fields: [superseded_by_id], references: [id])
+  currency          String           @default("CAD") // FK → currencies.code
+  currency_ref      Currency         @relation(fields: [currency], references: [code])
+  fx_rate           Decimal          @default(1) @db.Decimal(18, 8)
+  fx_rate_date      DateTime?        @db.Date
+  amount_cad        Decimal?         @db.Decimal(12, 2) // = roundHalfUp(total_commission × fx_rate)
+  file_url          String? // optional — the PDF is rendered on demand / recorded in billing_exports
+  generated_by      String?          @db.Uuid
+  generator         User?            @relation("InvoiceGeneratedBy", fields: [generated_by], references: [id])
+  generated_at      DateTime         @default(now())
+  superseded_by_id  String?          @db.Uuid
+  superseded_by     ClientInvoice?   @relation("InvoiceSupersede", fields: [superseded_by_id], references: [id])
 
   supersedes ClientInvoice[] @relation("InvoiceSupersede")
   exports    BillingExport[]
 
   @@index([client_id, pay_period_id, status])
+  @@index([client_id, billing_period_id, status])
   @@map("client_invoices")
 }
 

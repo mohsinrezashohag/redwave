@@ -113,3 +113,49 @@ describe('CommissionConfigProvider → CommissionEngine (END-TO-END, seeded Sche
     expect(result.grossCommission.toFixed(2)).toBe('1500.00');
   });
 });
+
+describe('CommissionConfigProvider — per-client scope grouping', () => {
+  const LATER = new Date('2025-06-01T00:00:00.000Z');
+  const bracket = (rate: string) => [
+    { id: 'b', tier_number: 1, min_count: 0, max_count: null, rate_per_activation: dec(rate) },
+  ];
+
+  /** Global genesis schedule + a LATER client-scoped one (the shape that used to break selection). */
+  function scopedPrisma() {
+    const prisma = seededPrisma();
+    prisma.commissionTierConfig.findMany = jest.fn().mockResolvedValue([
+      { id: 'global', client_id: null, effective_from: GENESIS, effective_to: null, tiers: bracket('110.00') },
+      { id: 'vf', client_id: 'VF', effective_from: LATER, effective_to: null, tiers: bracket('200.00') },
+    ]);
+    prisma.commissionFlatRate.findMany = jest.fn().mockResolvedValue([
+      { id: 'g', client_id: null, product_type: 'tv', amount: dec('30.00'), effective_from: GENESIS, effective_to: null },
+      { id: 'v', client_id: 'VF', product_type: 'tv', amount: dec('45.00'), effective_from: LATER, effective_to: null },
+    ]);
+    return prisma;
+  }
+
+  it('a per-client schedule with a LATER effective_from does NOT become the global one', async () => {
+    const config = await new CommissionConfigProvider(scopedPrisma() as never).getEngineConfig('2026-01-10');
+
+    // Selection must group by scope FIRST; ungrouped, VF's newer row would win for everyone.
+    expect(config.tiers[0].ratePerActivation.toFixed(2)).toBe('110.00'); // global untouched
+    expect(config.tiersByClient?.VF?.[0].ratePerActivation.toFixed(2)).toBe('200.00');
+  });
+
+  it('flat rates are keyed by (client, product_type), not collapsed together', async () => {
+    const config = await new CommissionConfigProvider(scopedPrisma() as never).getEngineConfig('2026-01-10');
+
+    expect(config.flatRates.tv.toFixed(2)).toBe('30.00'); // global
+    expect(config.flatRatesByClient?.VF?.tv.toFixed(2)).toBe('45.00');
+  });
+
+  it('still 422s when there is no GLOBAL schedule, even if a client has one', async () => {
+    const prisma = seededPrisma();
+    prisma.commissionTierConfig.findMany = jest
+      .fn()
+      .mockResolvedValue([{ id: 'vf', client_id: 'VF', effective_from: GENESIS, effective_to: null, tiers: bracket('200.00') }]);
+    await expect(
+      new CommissionConfigProvider(prisma as never).getEngineConfig('2026-01-10'),
+    ).rejects.toMatchObject({ status: 422 });
+  });
+});

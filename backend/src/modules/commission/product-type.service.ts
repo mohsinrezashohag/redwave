@@ -57,6 +57,7 @@ export class ProductTypeService {
       if (flat) {
         await tx.commissionFlatRate.create({
           data: {
+            client_id: null, // the GLOBAL rate for the new type (per-client overrides are added separately)
             product_type: type.key, // commission stream — what we PAY the rep (#3)
             amount: flat.amount,
             effective_from: flat.from,

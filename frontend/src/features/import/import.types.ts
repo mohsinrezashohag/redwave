@@ -28,9 +28,10 @@ export type ReconcileBody = components['schemas']['ReconcileDto'];
 export type RemapBody = components['schemas']['RemapDto'];
 export type CreateMappingBody = components['schemas']['CreateMappingDto'];
 
-// ── The 7 supported targets (friendly → pairing). The UI offers ONLY these. ──────────────────────────────
+// ── The 8 supported targets (friendly → pairing). The UI offers ONLY these. ──────────────────────────────
 export type ImportKind =
   | 'bulk_validation'
+  | 'bulk_sales'
   | 'create_clients'
   | 'create_products'
   | 'billing_rate'
@@ -62,6 +63,17 @@ export const KINDS: KindDef[] = [
     needsClient: true,
     needsReconcileTotal: false,
     commitEffect: 'validates each matched sale (entered → validated), in one transaction',
+  },
+  {
+    kind: 'bulk_sales',
+    label: 'Bulk sales entry (live)',
+    description: 'Upload real sales from a spreadsheet — one row per sale, products comma-separated.',
+    source_type: 'sales_entry',
+    import_type: 'sales',
+    needsClient: false, // the client is per-row (client_code)
+    needsReconcileTotal: false,
+    commitEffect: 'creates each sale (entered, or validated where the row says so), in one transaction',
+    note: 'These are LIVE sales: unlike historical imports they DO count toward the tier tally, pay runs and clawbacks. Import clients, products and reps first — an unknown code is reported as an error, never created.',
   },
   {
     kind: 'create_clients',

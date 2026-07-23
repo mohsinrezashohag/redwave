@@ -25,7 +25,7 @@ export class ReconciliationController {
   })
   @ApiOkResponse({ type: StatementTieOutResponse })
   statements(@Query() query: StatementReconciliationQuery) {
-    return this.reconciliation.statementTieOut(query.client_id, query.pay_period_id);
+    return this.reconciliation.statementTieOut(query.client_id, query.billing_period_id);
   }
 
   @Get('pay-runs/:id')

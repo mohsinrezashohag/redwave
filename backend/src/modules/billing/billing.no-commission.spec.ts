@@ -49,18 +49,31 @@ const seqStub = () => {
 };
 
 // ── (b) Behavioral + (c) Equivalence ──────────────────────────────────────────────────────────────
-const sale = (id: string, customer: string, items: { product_id: string; name: string }[]) => ({
+const sale = (id: string, customer: string, items: { product_id: string; name: string; product_type?: string }[]) => ({
   id,
   customer_name: customer,
+  customer_first_name: null,
+  customer_last_name: null,
+  street: '1 Main St',
+  city: 'Winnipeg',
+  province_state: 'MB',
+  postal_code: 'R3C 1A1',
   sale_date: d('2026-01-10'),
-  sale_items: items.map((i) => ({ product_id: i.product_id, product: { name: i.name } })),
+  rep: { rep_code: 'RW-D-0001', full_name: 'Test Rep' },
+  sale_items: items.map((i) => ({
+    product_id: i.product_id,
+    product_type: i.product_type ?? i.product_id,
+    product: { name: i.name },
+  })),
 });
 const rate = (productId: string, amount: string) => ({
   id: `r-${productId}`,
   product_id: productId,
+  rate_kind: 'product' as const,
   effective_from: d('2026-01-01'),
   effective_to: null,
   amount: { toString: () => amount },
+  bundle_product_types: [] as string[],
 });
 
 /** A delegate whose every method throws — proves the billing path never touches it. */
@@ -90,27 +103,31 @@ function makePrisma() {
   };
   const prisma = {
     client: { findUnique: jest.fn().mockResolvedValue({ id: 'c1', client_code: 'VF', currency: 'CAD' }) },
-    payPeriod: {
+    billingPeriod: {
       findUnique: jest.fn().mockResolvedValue({
-        id: 'P1',
-        period_number: 3,
+        id: 'B1',
+        period_number: 27,
         start_date: d('2026-01-01'),
         end_date: d('2026-01-31'),
       }),
     },
     sale: {
       findMany: jest.fn().mockResolvedValue([
-        sale('s1', 'Jane', [
-          { product_id: 'int', name: 'Internet' },
-          { product_id: 'tv', name: 'TV' },
+        sale('s1', 'Jane Doe', [
+          { product_id: 'int', name: 'Internet', product_type: 'internet' },
+          { product_id: 'tv', name: 'TV', product_type: 'tv' },
         ]),
       ]),
     },
+    // ONE read of every rate kind; the service splits them by rate_kind in memory.
     clientBillingRate: {
-      // product rates for the product query; no bundles (rate_kind='bundle_bonus' → []).
-      findMany: jest.fn().mockImplementation(({ where }: { where: { rate_kind?: string } }) =>
-        Promise.resolve(where.rate_kind === 'bundle_bonus' ? [] : [rate('int', '60.00'), rate('tv', '25.00')]),
-      ),
+      findMany: jest.fn().mockResolvedValue([rate('int', '60.00'), rate('tv', '25.00')]),
+    },
+    productTypeCatalogue: {
+      findMany: jest.fn().mockResolvedValue([
+        { key: 'internet', label: 'Internet', behaviour: 'tiered' },
+        { key: 'tv', label: 'TV', behaviour: 'standard_addon' },
+      ]),
     },
     // The commission stream — every access throws.
     commissionTierConfig: trap('commissionTierConfig'),
@@ -129,7 +146,7 @@ describe('Billing #3 — behavioral + equivalence', () => {
     const { prisma, audit } = makePrisma();
     const fx = { getRateToCad: jest.fn().mockResolvedValue(null), isAutoEnabled: jest.fn() };
     const service = new StatementService(prisma as never, audit as never, seqStub() as never, fx as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
-    await expect(service.generate('c1', 'P1', 'admin')).resolves.toBeDefined();
+    await expect(service.generate('c1', 'B1', 'admin')).resolves.toBeDefined();
     expect(prisma.clientBillingRate.findMany).toHaveBeenCalled(); // billing stream IS used
     // (commission traps would have thrown if touched; success already proves they weren't.)
   });
@@ -140,12 +157,12 @@ describe('Billing #3 — behavioral + equivalence', () => {
     const statements = new StatementService(prisma as never, audit as never, seqStub() as never, fx as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
     const invoices = new InvoiceService(prisma as never, audit as never, seqStub() as never, statements);
 
-    const stmt = (await statements.generate('c1', 'P1', 'admin')) as unknown as {
+    const stmt = (await statements.generate('c1', 'B1', 'admin')) as unknown as {
       lines: { line_total: string }[];
     };
     const stmtTotal = stmt.lines.reduce((s, l) => s + Number(l.line_total), 0).toFixed(2);
 
-    const inv = (await invoices.generate('c1', 'P1', 'admin')) as unknown as {
+    const inv = (await invoices.generate('c1', 'B1', 'admin')) as unknown as {
       total_commission: string;
     };
     expect(inv.total_commission).toBe('85.00');

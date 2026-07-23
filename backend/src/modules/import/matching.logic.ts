@@ -137,6 +137,65 @@ export function classifyHistoricalSaleRow(
   return matched();
 }
 
+// ── sales_entry + sales (LIVE sale entry; IMP-013) ───────────────────────────────────────────────
+/** Split the comma-separated `product_types` column into normalised type keys. */
+export const splitProductTypes = (value: string | null): string[] =>
+  (value ?? '')
+    .split(',')
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+
+const LIVE_SALE_STATUSES = ['entered', 'validated'];
+
+/**
+ * A LIVE sale row. Unlike the historical target these become real sales that reach the engine, so every
+ * reference must already exist — an unresolvable client / rep / product is an ERROR, never an implicit
+ * create. The mandatory internet base (SALE-001a) is checked HERE so a bad row surfaces as `error` and the
+ * reconcile gate blocks the commit, instead of throwing mid-transaction and rolling the whole batch back.
+ */
+export function classifyLiveSaleRow(
+  mapped: RawRow,
+  ctx: {
+    clientExists: boolean;
+    /** The rep exists AND is active (SalesService rejects an inactive rep). */
+    repActive: boolean;
+    /** Listed types that have NO active product for this client. */
+    missingProductTypes: string[];
+    /** True when at least one listed type has catalogue behaviour `tiered` or `greenfield`. */
+    hasInternetBase: boolean;
+  },
+): Classification {
+  const client_code = str(mapped, 'client_code');
+  const rep_code = str(mapped, 'rep_code');
+  const productTypes = splitProductTypes(str(mapped, 'product_types'));
+  const sale_date = str(mapped, 'sale_date');
+  const customer_name = str(mapped, 'customer_name');
+  const status = (str(mapped, 'status') ?? 'entered').toLowerCase();
+
+  if (!client_code) return error('client_code is required');
+  if (!rep_code) return error('rep_code is required');
+  if (productTypes.length === 0) return error('product_types is required (comma-separated)');
+  if (!sale_date || !DATE.test(sale_date)) return error('sale_date must be YYYY-MM-DD');
+  if (!customer_name) return error('customer_name is required');
+  if (!LIVE_SALE_STATUSES.includes(status)) {
+    return error(`status must be entered or validated (got "${status}")`);
+  }
+  if (!ctx.clientExists) return error(`client ${client_code} not found`);
+  if (!ctx.repActive) return error(`rep ${rep_code} not found or not active`);
+  if (ctx.missingProductTypes.length > 0) {
+    return error(
+      `no active ${ctx.missingProductTypes.join(', ')} product for client ${client_code} — import products first`,
+    );
+  }
+  // SALE-001a — internet is the mandatory base; add-ons cannot be sold standalone.
+  if (!ctx.hasInternetBase) {
+    return error(
+      'a sale must include an internet activation (the mandatory base); add-ons cannot be sold standalone',
+    );
+  }
+  return matched();
+}
+
 // ── balance_migration + holdback (opening balances; IMP-007) ─────────────────────────────────────
 /** ctx is pre-fetched by the service: rep existence, origin period status, and any existing ledger row. */
 export function classifyHoldbackRow(

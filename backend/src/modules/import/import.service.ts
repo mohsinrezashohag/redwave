@@ -34,12 +34,15 @@ import {
   classifyClientRow,
   classifyHistoricalSaleRow,
   classifyHoldbackRow,
+  classifyLiveSaleRow,
   classifyProductRow,
   classifyRepRow,
   classifySalesRow,
+  splitProductTypes,
 } from './matching.logic';
 import { evaluateGate } from './reconcile-gate.logic';
 import { applyBulkValidation } from './handlers/bulk-validation.handler';
+import { applyLiveSale } from './handlers/live-sales.handler';
 import { applyBillingRate } from './handlers/billing-rate.handler';
 import { applyHoldback } from './handlers/holdback.handler';
 import { applyClient, applyHistoricalSale, applyProduct, applyRep } from './handlers/master.handlers';
@@ -50,6 +53,7 @@ import { ListImportsQuery } from './dto/list-imports.query';
 
 type Kind =
   | 'bulk_validation'
+  | 'bulk_sales'
   | 'historical_sales'
   | 'create_clients'
   | 'create_products'
@@ -69,6 +73,7 @@ const uniqCodes = (rows: RawRow[], key: string): string[] => [
 /** Supported source_type × import_type pairings → the internal target kind (others → 422). */
 function pairingKind(source: ImportSourceType, type: ImportType): Kind | null {
   if (source === 'client_report' && type === 'sales') return 'bulk_validation';
+  if (source === 'sales_entry' && type === 'sales') return 'bulk_sales'; // LIVE sales (IMP-013)
   if (source === 'master_migration' && type === 'sales') return 'historical_sales';
   if (source === 'master_migration' && type === 'clients') return 'create_clients';
   if (source === 'master_migration' && type === 'products') return 'create_products';
@@ -345,6 +350,8 @@ export class ImportService {
     switch (kind) {
       case 'bulk_validation':
         return applyBulkValidation(tx, matchedEntityId!, user, this.sales);
+      case 'bulk_sales':
+        return applyLiveSale(tx, mapped, user, this.sales, batchId);
       case 'billing_rate':
         return applyBillingRate(tx, mapped, user.id);
       case 'create_clients':
@@ -434,6 +441,8 @@ export class ImportService {
         return this.classifyReps(mappedRows);
       case 'historical_sales':
         return this.classifyHistoricalSales(mappedRows);
+      case 'bulk_sales':
+        return this.classifyLiveSales(mappedRows);
     }
   }
 
@@ -516,6 +525,52 @@ export class ImportService {
         clientExists: !!cid,
         repExists: repExists.has(up(str(r, 'rep_code'))),
         productExists: !!(cid && prodKey.has(`${cid}|${str(r, 'product_type')}`)),
+      });
+    });
+  }
+
+  /**
+   * LIVE sales (IMP-013). Like the historical context, but every reference must resolve to something the
+   * engine can actually use: the rep must be ACTIVE, EVERY listed product type must have an active product
+   * for the client, and the catalogue `behaviour` decides whether the row carries the mandatory internet
+   * base (SALE-001a) — pre-checked here so a bad row is an `error` the gate blocks, not a mid-commit throw.
+   */
+  private async classifyLiveSales(mappedRows: RawRow[]): Promise<Classification[]> {
+    const byCode = await this.clientsByCode(uniqCodes(mappedRows, 'client_code'));
+    const repCodes = uniqCodes(mappedRows, 'rep_code');
+    const activeReps = new Set(
+      (
+        await this.prisma.rep.findMany({
+          where: { rep_code: { in: repCodes }, status: 'active' },
+          select: { rep_code: true },
+        })
+      ).map((r) => up(r.rep_code)),
+    );
+    const clientIds = [...byCode.values()];
+    const products = clientIds.length
+      ? await this.prisma.product.findMany({
+          where: { client_id: { in: clientIds }, is_active: true },
+          select: { client_id: true, product_type: true },
+        })
+      : [];
+    const prodKey = new Set(products.map((p) => `${p.client_id}|${p.product_type}`));
+    // product_type → catalogue behaviour; `tiered`/`greenfield` are the internet base (#5/#9).
+    const behaviours = new Map(
+      (await this.prisma.productTypeCatalogue.findMany({ select: { key: true, behaviour: true } })).map(
+        (t) => [t.key, t.behaviour],
+      ),
+    );
+    return mappedRows.map((r) => {
+      const cid = byCode.get(up(str(r, 'client_code')));
+      const types = splitProductTypes(str(r, 'product_types'));
+      return classifyLiveSaleRow(r, {
+        clientExists: !!cid,
+        repActive: activeReps.has(up(str(r, 'rep_code'))),
+        missingProductTypes: cid ? types.filter((t) => !prodKey.has(`${cid}|${t}`)) : types,
+        hasInternetBase: types.some((t) => {
+          const behaviour = behaviours.get(t);
+          return behaviour === 'tiered' || behaviour === 'greenfield';
+        }),
       });
     });
   }

@@ -7,7 +7,7 @@ import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
 import { unwrapList } from '../../../lib/query/unwrapList';
 import { billingKeys } from './keys';
-import type { BillingFilters, ClientInvoice, ClientStatement } from '../billing.types';
+import type { BillingFilters, BillingPeriod, ClientInvoice, ClientStatement } from '../billing.types';
 
 export function useStatements(filters: BillingFilters = {}, enabled = true) {
   return useQuery({
@@ -33,9 +33,22 @@ export function useInvoices(filters: BillingFilters = {}, enabled = true) {
   });
 }
 
-/** The invoice paired with a statement's (client, period) — the one-line commission total. */
-export function useInvoiceFor(clientId: string | undefined, payPeriodId: string | undefined, enabled = true) {
-  const filters: BillingFilters = { client_id: clientId, pay_period_id: payPeriodId };
-  const q = useInvoices(filters, enabled && !!clientId && !!payPeriodId);
+/** The invoice paired with a statement's (client, billing week) — the one-line commission total. */
+export function useInvoiceFor(clientId: string | undefined, billingPeriodId: string | undefined, enabled = true) {
+  const filters: BillingFilters = { client_id: clientId, billing_period_id: billingPeriodId };
+  const q = useInvoices(filters, enabled && !!clientId && !!billingPeriodId);
   return { ...q, invoice: (q.data ?? [])[0] ?? null };
+}
+
+/**
+ * The weekly billing calendar ("Bill 17", Mon–Sun) — the period a statement is generated for. Deliberately
+ * NOT usePayPeriods: pay periods run Sun–Sat biweekly, so a bill straddles two of them.
+ */
+export function useBillingPeriods(enabled = true) {
+  return useQuery({
+    queryKey: billingKeys.periods(),
+    queryFn: () => unwrap<BillingPeriod[]>(api.GET('/v1/billing-periods')),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
 }

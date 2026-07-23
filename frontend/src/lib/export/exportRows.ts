@@ -50,16 +50,17 @@ export async function exportRows<Row>({ format, filename, columns, rows, title }
   }
 
   if (format === 'xlsx') {
-    // write-excel-file (browser, matrix mode) — cast to a precise signature so its overloads don't
-    // mis-resolve against our mixed header/data cell shapes.
+    // write-excel-file (browser, matrix mode). v4 REMOVED the `fileName` option: the call now returns
+    // `{ toBlob, toFile }` and downloads ONLY via `.toFile(name)`. Passing `{ fileName }` and awaiting the
+    // result is a silent no-op — no file, no error. The cast is narrowed to just the matrix argument so
+    // the real return type still applies and a future breaking change fails the build instead of the user.
     type XlsxCell = { value: string; type?: unknown; fontWeight?: 'bold' };
     const writeXlsxFile = (await import('write-excel-file/browser')).default as unknown as (
       data: XlsxCell[][],
-      options: { fileName: string },
-    ) => Promise<unknown>;
+    ) => { toFile: (fileName: string) => Promise<void> };
     const headerRow: XlsxCell[] = headers.map((h) => ({ value: h, fontWeight: 'bold' }));
     const dataRows: XlsxCell[][] = matrix.map((line) => line.map((cell) => ({ value: cell, type: String })));
-    await writeXlsxFile([headerRow, ...dataRows], { fileName: `${filename}.xlsx` });
+    await writeXlsxFile([headerRow, ...dataRows]).toFile(`${filename}.xlsx`);
     return;
   }
 

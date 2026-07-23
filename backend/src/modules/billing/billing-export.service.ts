@@ -27,6 +27,23 @@ export interface RenderedFile {
 
 const dateOnly = (d: Date): string => d.toISOString().slice(0, 10);
 
+/**
+ * The period a billing document covers. New documents carry a BILLING week (Mon–Sun, "Bill 17"); documents
+ * issued before weekly billing carry a pay period and are immutable, so both shapes must render.
+ */
+interface DocPeriod {
+  period_number: number;
+  start_date: Date;
+  end_date: Date;
+}
+function resolvePeriod(doc: { billing_period: DocPeriod | null; pay_period: DocPeriod | null }): DocPeriod {
+  const period = doc.billing_period ?? doc.pay_period;
+  if (!period) {
+    throw new NotFoundException('Billing document has no period');
+  }
+  return period;
+}
+
 @Injectable()
 export class BillingExportService {
   constructor(
@@ -119,23 +136,52 @@ export class BillingExportService {
     const s = await this.prisma.clientStatement.findUnique({
       where: { id },
       include: {
-        lines: { orderBy: { customer_name: 'asc' } },
+        lines: { orderBy: [{ sort_order: 'asc' }, { customer_name: 'asc' }] },
         client: { select: { name: true, client_code: true } },
+        billing_period: { select: { period_number: true, start_date: true, end_date: true } },
         pay_period: { select: { period_number: true, start_date: true, end_date: true } },
       },
     });
     if (!s) throw new NotFoundException('Statement not found');
+    const period = resolvePeriod(s);
+    // Money is rendered from the FROZEN line; a legacy line has no component columns, so it reads as 0 —
+    // its line_total is still exact, which is what the Total column and the grand total are built from.
+    const money = (v: { toString(): string } | null): string => (v ? v.toString() : '0.00');
     return {
       statement_number: s.statement_number,
       client_name: s.client.name,
       client_code: s.client.client_code,
-      period_number: s.pay_period.period_number,
-      period_start: dateOnly(s.pay_period.start_date),
-      period_end: dateOnly(s.pay_period.end_date),
+      period_number: period.period_number,
+      period_start: dateOnly(period.start_date),
+      period_end: dateOnly(period.end_date),
+      is_billing_week: s.billing_period !== null,
+      spiff_from: s.spiff_from ? dateOnly(s.spiff_from) : null,
+      spiff_to: s.spiff_to ? dateOnly(s.spiff_to) : null,
       generated_at: s.generated_at.toISOString(),
       currency: s.currency,
       amount_cad: s.amount_cad?.toString() ?? null,
-      lines: s.lines.map((l) => ({ customer_name: l.customer_name, products_summary: l.products_summary, line_total: l.line_total.toString() })),
+      lines: s.lines.map((l) => ({
+        sale_date: l.sale_date ? dateOnly(l.sale_date) : null,
+        rep_code: l.rep_code,
+        rep_name: l.rep_name,
+        customer_name: l.customer_name,
+        customer_first_name: l.customer_first_name,
+        customer_last_name: l.customer_last_name,
+        address: l.address,
+        channel: l.channel,
+        product_name: l.product_name,
+        has_internet: l.has_internet,
+        has_tv: l.has_tv,
+        has_home_phone: l.has_home_phone,
+        internet_rate: money(l.internet_rate),
+        tv_rate: money(l.tv_rate),
+        hp_rate: money(l.hp_rate),
+        bundle_bonus: money(l.bundle_bonus),
+        spiff: money(l.spiff),
+        other_total: money(l.other_total),
+        products_summary: l.products_summary,
+        line_total: l.line_total.toString(),
+      })),
       total_amount: s.total_amount.toString(),
     };
   }
@@ -145,17 +191,20 @@ export class BillingExportService {
       where: { id },
       include: {
         client: { select: { name: true, client_code: true } },
+        billing_period: { select: { period_number: true, start_date: true, end_date: true } },
         pay_period: { select: { period_number: true, start_date: true, end_date: true } },
       },
     });
     if (!inv) throw new NotFoundException('Invoice not found');
+    const invPeriod = resolvePeriod(inv);
     return {
       invoice_number: inv.invoice_number,
       client_name: inv.client.name,
       client_code: inv.client.client_code,
-      period_number: inv.pay_period.period_number,
-      period_start: dateOnly(inv.pay_period.start_date),
-      period_end: dateOnly(inv.pay_period.end_date),
+      period_number: invPeriod.period_number,
+      period_start: dateOnly(invPeriod.start_date),
+      period_end: dateOnly(invPeriod.end_date),
+      is_billing_week: inv.billing_period !== null,
       generated_at: inv.generated_at.toISOString(),
       currency: inv.currency,
       amount_cad: inv.amount_cad?.toString() ?? null,

@@ -2,13 +2,17 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsUUID, Matches } from 'class-validator';
 
 /**
- * Generate a client statement / commission invoice for a client + pay period. — SRS BILL-002
+ * Generate a client statement / commission invoice for a client + BILLING WEEK. — SRS BILL-002
  * The client id comes from the route (`/v1/clients/{id}/...`); the body carries the period.
  */
 export class GenerateBillingDto {
-  @ApiProperty({ description: 'The pay period to bill (governs which sales by sale_date, #7).' })
+  @ApiProperty({
+    description:
+      'The BILLING week to bill — Mon–Sun, "Bill 17" (governs which sales by sale_date, #7). Deliberately not ' +
+      'the pay period: pay periods are Sun–Sat biweekly, so a bill straddles two of them.',
+  })
   @IsUUID()
-  pay_period_id!: string;
+  billing_period_id!: string;
 
   @ApiPropertyOptional({
     example: '1.36500000',

@@ -6,4 +6,5 @@ export const billingKeys = {
   statements: (filters: BillingFilters) => ['billing', 'statements', filters] as const,
   statement: (id: string) => ['billing', 'statement', id] as const,
   invoices: (filters: BillingFilters) => ['billing', 'invoices', filters] as const,
+  periods: () => ['billing', 'periods'] as const,
 };

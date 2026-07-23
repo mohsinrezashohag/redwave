@@ -14,6 +14,8 @@ export interface InvoiceForExport {
   period_number: number;
   period_start: string;
   period_end: string;
+  /** true → a billing week ("Bill 17"); false → a legacy pay-period invoice. */
+  is_billing_week: boolean;
   generated_at: string;
   currency: string; // the document's billing currency (#12)
   amount_cad: string | null; // frozen CAD equivalent (null on legacy rows)
@@ -41,7 +43,11 @@ export class InvoicePdfRenderer {
     y -= 6;
     line(invoiceNo(inv.invoice_number), 12, bold);
     line(`Client: ${inv.client_name} (${inv.client_code})`);
-    line(`Pay period ${inv.period_number}: ${inv.period_start} to ${inv.period_end}`);
+    line(
+      inv.is_billing_week
+        ? `Bill ${inv.period_number}: ${inv.period_start} to ${inv.period_end}`
+        : `Pay period ${inv.period_number}: ${inv.period_start} to ${inv.period_end}`,
+    );
     line(`Generated: ${inv.generated_at.slice(0, 10)}`);
     y -= 18;
 

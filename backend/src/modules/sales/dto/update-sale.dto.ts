@@ -9,12 +9,24 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
  * endpoint. — SRS SALE-001 (edit pre-validation)
  */
 export class UpdateSaleDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Derived from the first/last pair when those are supplied.' })
   @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(150)
   customer_name?: string;
+
+  @ApiPropertyOptional({ example: 'Liam' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  customer_first_name?: string;
+
+  @ApiPropertyOptional({ example: 'Tremblay' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  customer_last_name?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

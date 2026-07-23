@@ -188,12 +188,24 @@ export class DashboardsService {
     const saleDateIn = (p: { start_date: Date; end_date: Date } | null): Prisma.SaleWhereInput =>
       p ? { sale_date: { gte: p.start_date, lte: p.end_date } } : {};
     const periodStmt = period ? { pay_period_id: period.id } : {};
+    // Statements bill by WEEK, not by pay period, so a bill can straddle two of them. For a period-over-period
+    // revenue trend each bill is attributed to the pay period containing its Monday — one bill, one period.
+    // Statements issued before weekly billing still carry pay_period_id, so both are matched.
+    const stmtIn = (p: { id: string; start_date: Date; end_date: Date } | null): Prisma.ClientStatementWhereInput =>
+      p
+        ? {
+            OR: [
+              { pay_period_id: p.id },
+              { billing_period: { start_date: { gte: p.start_date, lte: p.end_date } } },
+            ],
+          }
+        : {};
 
     // ── Money (frozen reads) ──
     const [revAgg, payAgg, heldAgg, schedAgg, clawAgg, expenseGroups] = await Promise.all([
       // Revenue is CONSOLIDATED in CAD across clients (a USD client bills USD but rolls up via its frozen
       // amount_cad, #12). — Meeting 3
-      this.prisma.clientStatement.aggregate({ where: periodStmt, _sum: { amount_cad: true } }),
+      this.prisma.clientStatement.aggregate({ where: stmtIn(period), _sum: { amount_cad: true } }),
       this.prisma.payRunLine.aggregate({
         where: period ? { pay_run: { pay_period_id: period.id } } : {},
         _sum: { net_payout: true, commission_70: true, holdback_release_30: true },
@@ -263,7 +275,7 @@ export class DashboardsService {
       this.effectiveTierBrackets(),
       this.prisma.client.findMany({ select: { id: true, client_code: true, name: true } }),
       this.prisma.productTypeCatalogue.findMany({ select: { key: true, label: true } }),
-      this.prisma.clientStatement.groupBy({ by: ['client_id'], where: periodStmt, _sum: { amount_cad: true } }), // CAD-consolidated
+      this.prisma.clientStatement.groupBy({ by: ['client_id'], where: stmtIn(period), _sum: { amount_cad: true } }), // CAD-consolidated
       this.prisma.sale.groupBy({ by: ['status'], where: { ...saleDateIn(period) }, _count: { _all: true } }),
     ]);
     const tierCounts = new Map<number, number>();
@@ -298,7 +310,7 @@ export class DashboardsService {
 
     // ── Period-over-period growth ──
     const [revPrevAgg, actPrev, histPrevAgg] = await Promise.all([
-      prev ? this.prisma.clientStatement.aggregate({ where: { pay_period_id: prev.id }, _sum: { amount_cad: true } }) : Promise.resolve(null),
+      prev ? this.prisma.clientStatement.aggregate({ where: stmtIn(prev), _sum: { amount_cad: true } }) : Promise.resolve(null),
       prev
         ? this.prisma.saleItem.count({ where: { sale: { status: { in: CONFIRMED }, sale_date: { gte: prev.start_date, lte: prev.end_date } } } })
         : Promise.resolve(0),
@@ -373,7 +385,17 @@ export class DashboardsService {
       periods.find((p) => p.start_date.getTime() <= d.getTime() && p.end_date.getTime() >= d.getTime()) ?? null;
 
     const [statements, lines, claws, clients, brackets, activeReps, items, histItems] = await Promise.all([
-      this.prisma.clientStatement.findMany({ where: { pay_period_id: { in: periodIds } }, select: { pay_period_id: true, client_id: true, amount_cad: true } }), // CAD-consolidated
+      // CAD-consolidated. A bill covers a WEEK, so it is attributed to the pay period containing its Monday;
+      // statements issued before weekly billing still carry pay_period_id and are matched directly.
+      this.prisma.clientStatement.findMany({
+        where: {
+          OR: [
+            { pay_period_id: { in: periodIds } },
+            { billing_period: { start_date: { gte: minStart, lte: maxEnd } } },
+          ],
+        },
+        select: { pay_period_id: true, client_id: true, amount_cad: true, billing_period: { select: { start_date: true } } },
+      }),
       this.prisma.payRunLine.findMany({ where: { pay_run: { pay_period_id: { in: periodIds } } }, select: { net_payout: true, holdback_release_30: true, pay_run: { select: { pay_period_id: true } } } }),
       this.prisma.clawback.findMany({ where: { applied_in_pay_run: { pay_period_id: { in: periodIds } } }, select: { amount: true, applied_in_pay_run: { select: { pay_period_id: true } } } }),
       this.prisma.client.findMany({ select: { id: true, client_code: true } }),
@@ -398,11 +420,14 @@ export class DashboardsService {
     const tallyByPeriodRep = new Map<string, Map<string, number>>();
 
     for (const s of statements) {
-      perPeriod.get(s.pay_period_id)!.revenue = perPeriod.get(s.pay_period_id)!.revenue.plus(dec(s.amount_cad));
+      const periodId = s.pay_period_id ?? (s.billing_period ? periodOf(s.billing_period.start_date)?.id : null);
+      const acc = periodId ? perPeriod.get(periodId) : undefined;
+      if (!acc || !periodId) continue; // a bill whose week falls outside the requested window
+      acc.revenue = acc.revenue.plus(dec(s.amount_cad));
       const code = clientCode.get(s.client_id) ?? s.client_id;
-      const m = revByPeriodClient.get(s.pay_period_id) ?? new Map<string, Decimal>();
+      const m = revByPeriodClient.get(periodId) ?? new Map<string, Decimal>();
       m.set(code, (m.get(code) ?? new Decimal(0)).plus(dec(s.amount_cad)));
-      revByPeriodClient.set(s.pay_period_id, m);
+      revByPeriodClient.set(periodId, m);
     }
     for (const l of lines) {
       const acc = perPeriod.get(l.pay_run.pay_period_id);
@@ -507,8 +532,17 @@ export class DashboardsService {
     return currentPeriod(periods, winnipegDateOnly()); // "today" in Winnipeg — CLAUDE §11
   }
 
+  /**
+   * The GLOBAL bracket ladder, for tier PROGRESS display only. Schedules can be per-client, but a rep's
+   * progress spans clients, so there is no single per-client answer — this reads the global ladder
+   * explicitly (never a mixed-scope list, which would let one client's newer schedule pose as everyone's).
+   * Pay is unaffected: the engine resolves each activation's rate from its own client's schedule.
+   */
   private async effectiveTierBrackets(): Promise<TierBracket[]> {
-    const headers = await this.prisma.commissionTierConfig.findMany({ include: { tiers: true } });
+    const headers = await this.prisma.commissionTierConfig.findMany({
+      where: { client_id: null },
+      include: { tiers: true },
+    });
     const header = selectEffectiveRate(headers, winnipegDateOnly());
     return (header?.tiers ?? []).map((t) => ({
       tier_number: t.tier_number,

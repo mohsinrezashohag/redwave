@@ -1,10 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, Matches } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 
 const MONEY = /^\d+(\.\d{1,2})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export class CreateFlatRateDto {
+  @ApiPropertyOptional({
+    description:
+      'Client this rate applies to. OMIT for the GLOBAL rate — the fallback for any client without its own.',
+  })
+  @IsOptional()
+  @IsUUID()
+  client_id?: string;
+
   @ApiProperty({
     type: String,
     example: 'tv',
@@ -52,4 +60,13 @@ export class ListFlatRatesQuery {
   @IsOptional()
   @IsIn(['past', 'current', 'pending', 'all'])
   status?: 'past' | 'current' | 'pending' | 'all';
+
+  @ApiPropertyOptional({
+    description:
+      "Scope filter: a client id, the literal 'global' for the global fallback, or omit for every scope.",
+    example: 'global',
+  })
+  @IsOptional()
+  @IsString()
+  client_id?: string;
 }

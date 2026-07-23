@@ -45,7 +45,10 @@ function make(parseRows: Record<string, unknown>[] = [], headers: string[] = [])
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
-  const sales = { validateWithinTx: jest.fn().mockResolvedValue({ id: 'sale-A' }) };
+  const sales = {
+    validateWithinTx: jest.fn().mockResolvedValue({ id: 'sale-A' }),
+    createWithinTx: jest.fn().mockResolvedValue({ id: 'sale-L' }),
+  };
   const parser = { parse: jest.fn().mockResolvedValue({ sheet: null, headers, rows: parseRows }) };
   const storage = { upload: jest.fn().mockResolvedValue({ path: 'imports/2026/x.csv', stored: true }) };
   const service = new ImportService(
@@ -143,6 +146,70 @@ describe('ImportService.commit — gate + atomicity + idempotency (#8)', () => {
     const { service, prisma } = make();
     prisma.importBatch.findUnique.mockResolvedValue(stagedBatch({ status: 'cancelled' }));
     await expect(service.commit('b1', user)).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+describe('ImportService.commit — LIVE sales (sales_entry:sales — IMP-013)', () => {
+  const row = {
+    client_code: 'VF',
+    rep_code: 'RW-D-0001',
+    product_types: 'internet,tv',
+    sale_date: '2026-07-06',
+    customer_name: 'Jane Doe',
+  };
+  const liveBatch = (mapped: Record<string, unknown>) =>
+    stagedBatch({
+      source_type: 'sales_entry',
+      import_type: 'sales',
+      client_id: null,
+      import_rows: [{ id: 'r1', match_status: 'matched', mapped_data: mapped }],
+    });
+
+  it('DRIVES SalesService.createWithinTx inside the batch tx (never reimplements sale creation)', async () => {
+    const { service, prisma, tx, sales } = make();
+    tx.product.findFirst.mockResolvedValueOnce({ id: 'p-int' }).mockResolvedValueOnce({ id: 'p-tv' });
+    prisma.importBatch.findUnique.mockResolvedValue(liveBatch(row));
+
+    await service.commit('b1', user);
+
+    expect(sales.createWithinTx).toHaveBeenCalledTimes(1);
+    const [txArg, dto, , opts] = sales.createWithinTx.mock.calls[0] as [unknown, Record<string, unknown>, unknown, unknown];
+    expect(txArg).toBe(tx); // atomic with the rest of the batch (#8)
+    // ONE ROW = ONE SALE, with every listed product type as an item.
+    expect(dto.items).toEqual([{ product_id: 'p-int' }, { product_id: 'p-tv' }]);
+    expect(dto.customer_name).toBe('Jane Doe');
+    expect(opts).toEqual({ importBatchId: 'b1' }); // provenance (IMP-008)
+    expect(tx.sale.create).not.toHaveBeenCalled(); // the handler itself writes no sale row
+  });
+
+  it('blank status stays entered; "validated" ALSO runs the entered→validated transition', async () => {
+    const entered = make();
+    entered.prisma.importBatch.findUnique.mockResolvedValue(liveBatch(row));
+    await entered.service.commit('b1', user);
+    expect(entered.sales.validateWithinTx).not.toHaveBeenCalled();
+
+    const validated = make();
+    validated.prisma.importBatch.findUnique.mockResolvedValue(liveBatch({ ...row, status: 'validated' }));
+    await validated.service.commit('b1', user);
+    expect(validated.sales.validateWithinTx).toHaveBeenCalledWith(validated.tx, 'sale-L', {}, user);
+  });
+
+  it('optional address columns fall back to the “—” placeholder', async () => {
+    const { service, prisma, sales } = make();
+    prisma.importBatch.findUnique.mockResolvedValue(liveBatch(row));
+    await service.commit('b1', user);
+    const dto = sales.createWithinTx.mock.calls[0][1] as Record<string, string>;
+    expect(dto.street).toBe('—');
+    expect(dto.postal_code).toBe('—');
+  });
+
+  it('a product that vanished between staging and commit throws → the batch rolls back uncommitted', async () => {
+    const { service, prisma, tx } = make();
+    tx.product.findFirst.mockResolvedValue(null);
+    prisma.importBatch.findUnique.mockResolvedValue(liveBatch(row));
+
+    await expect(service.commit('b1', user)).rejects.toMatchObject({ code: 'IMPORT_PRODUCT_NOT_FOUND' });
+    expect(tx.importBatch.update).not.toHaveBeenCalled(); // never marked committed
   });
 });
 

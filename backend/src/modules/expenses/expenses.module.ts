@@ -9,11 +9,13 @@ import {
 } from './expenses.controller';
 import { ExpenseReportsController } from './expense-report.controller';
 import { KmRateController } from './km-rate.controller';
+import { ExpenseSettingsController } from './expense-settings.controller';
 import { ExpensesService } from './expenses.service';
 import { ExpenseReportsService } from './expense-report.service';
 import { FieldConfigService } from './field-config.service';
 import { ExpenseExportService } from './expense-export.service';
 import { KmRateService } from './km-rate.service';
+import { ExpenseSettingsService } from './expense-settings.service';
 import { ExpensePayrunProvider } from './expense-payrun.provider';
 import { MapsService } from './maps.service';
 
@@ -25,6 +27,7 @@ import { MapsService } from './maps.service';
     ExpenseFieldConfigsController,
     ExpenseExportsController,
     KmRateController,
+    ExpenseSettingsController,
   ],
   providers: [
     ExpensesService,
@@ -32,6 +35,7 @@ import { MapsService } from './maps.service';
     FieldConfigService,
     ExpenseExportService,
     KmRateService,
+    ExpenseSettingsService,
     MapsService,
     ExpensePayrunProvider,
     // The REAL implementation of the Pay Run expense seam — re-binds the token Pay Run left at zero.

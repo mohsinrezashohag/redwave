@@ -6,10 +6,18 @@ import { SCHEDULE_C_V2 } from './schedule-c-v2';
 function make() {
   const tx = {
     commissionTier: { deleteMany: jest.fn() },
-    commissionTierConfig: { deleteMany: jest.fn(), update: jest.fn(), create: jest.fn() },
+    commissionTierConfig: {
+      deleteMany: jest.fn(),
+      update: jest.fn(),
+      create: jest.fn(),
+      delete: jest.fn(),
+      updateMany: jest.fn(),
+    },
   };
   const prisma = {
-    commissionTierConfig: { findMany: jest.fn().mockResolvedValue([]) },
+    commissionTierConfig: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn() },
+    // Scope validation reads the client (unknown/inactive → 422, never a silent global write).
+    client: { findUnique: jest.fn().mockResolvedValue({ id: 'VF', is_active: true }) },
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
@@ -79,5 +87,78 @@ describe('TierScheduleService.create (COMM-001 / COMM-006)', () => {
     };
     expect(arg.data.tiers.create[0].rate_per_activation).toBe('110.00');
     expect(typeof arg.data.tiers.create[0].rate_per_activation).toBe('string');
+  });
+});
+
+/**
+ * Per-client scope: a client's ladder and the GLOBAL one (client_id null) are INDEPENDENT effective-dated
+ * streams. Supersession must never cross scopes — a VF schedule bounding the global row would silently
+ * change every other client's pay. — CLAUDE #10
+ */
+describe('TierScheduleService — per-client scope isolation', () => {
+  it('create scopes the supersession read to the client (never sees the global rows)', async () => {
+    const { service, prisma, tx } = make();
+    tx.commissionTierConfig.create.mockResolvedValue({ id: 'new', effective_from: monthsFromToday(1), effective_to: null, tiers: [] });
+
+    await service.create({ client_id: 'VF', effective_from: iso(monthsFromToday(1)), tiers: tiersDto }, 'actor');
+
+    expect(prisma.commissionTierConfig.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { client_id: 'VF' } }),
+    );
+    const arg = tx.commissionTierConfig.create.mock.calls[0][0] as { data: { client_id: unknown } };
+    expect(arg.data.client_id).toBe('VF');
+  });
+
+  it('create with no client_id writes the GLOBAL row and reads only global rows', async () => {
+    const { service, prisma, tx } = make();
+    tx.commissionTierConfig.create.mockResolvedValue({ id: 'new', effective_from: monthsFromToday(1), effective_to: null, tiers: [] });
+
+    await service.create({ effective_from: iso(monthsFromToday(1)), tiers: tiersDto }, 'actor');
+
+    expect(prisma.commissionTierConfig.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { client_id: null } }),
+    );
+    const arg = tx.commissionTierConfig.create.mock.calls[0][0] as { data: { client_id: unknown } };
+    expect(arg.data.client_id).toBeNull();
+    // The global write must not have consulted the clients table at all.
+    expect(prisma.client.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown/inactive client scope (422) rather than writing global', async () => {
+    const { service, tx, prisma } = make();
+    prisma.client.findUnique.mockResolvedValue(null);
+    await expect(
+      service.create({ client_id: 'nope', effective_from: iso(monthsFromToday(1)), tiers: tiersDto }, 'actor'),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(tx.commissionTierConfig.create).not.toHaveBeenCalled();
+  });
+
+  it('update keeps the row in its own scope (client_id is immutable on edit)', async () => {
+    const { service, prisma, tx } = make();
+    const row = { id: 't1', client_id: 'VF', effective_from: monthsFromToday(1), effective_to: null };
+    prisma.commissionTierConfig.findUnique.mockResolvedValue(row);
+    tx.commissionTierConfig.update.mockResolvedValue({ ...row, tiers: [] });
+
+    await service.update('t1', { effective_from: iso(monthsFromToday(2)) }, 'actor');
+
+    expect(prisma.commissionTierConfig.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { client_id: 'VF', id: { not: 't1' } } }),
+    );
+    const arg = tx.commissionTierConfig.update.mock.calls.at(-1)?.[0] as { data: Record<string, unknown> };
+    expect(arg.data).not.toHaveProperty('client_id');
+  });
+
+  it('remove re-opens ONLY its own scope predecessor (never another client / the global row)', async () => {
+    const { service, prisma, tx } = make();
+    const from = monthsFromToday(1);
+    prisma.commissionTierConfig.findUnique.mockResolvedValue({ id: 't1', client_id: 'VF', effective_from: from, effective_to: null });
+
+    await service.remove('t1', 'actor');
+
+    const where = (tx.commissionTierConfig.updateMany.mock.calls[0][0] as { where: Record<string, unknown> }).where;
+    expect(where.client_id).toBe('VF');
+    expect(tx.commissionTierConfig.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { effective_to: null } }),
+    );
   });
 });

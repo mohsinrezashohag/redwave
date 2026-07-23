@@ -1,10 +1,10 @@
 /**
- * InvoiceService — generates the one-line COMMISSION INVOICE for a client + pay period. — SRS BILL-003
+ * InvoiceService — generates the one-line COMMISSION INVOICE for a client + BILLING WEEK. — SRS BILL-003
  *
  * `total_commission` = the client-billing statement total (Redwave's commission FROM the partner),
  * obtained by reusing `StatementService.priceClientPeriod` — the SAME billing-stream calc as the
  * statement. It NEVER reads rep `commission_*` tables or the engine (#3). One row, no lines, no GST.
- * Replace-in-place per (client, period). Owns client_invoices.
+ * Issued per (client, billing week), matching the statement it totals. Owns client_invoices.
  */
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -26,9 +26,9 @@ export class InvoiceService {
    * ISSUE a commission invoice — a NEW gapless-numbered IMMUTABLE version; the prior current version is
    * marked `superseded` (metadata only). `total_commission` = the billing-stream statement total (#3).
    */
-  async generate(clientId: string, payPeriodId: string, actorId: string, fxOverride?: string) {
+  async generate(clientId: string, billingPeriodId: string, actorId: string, fxOverride?: string) {
     // Same billing-stream total as the statement (structurally identical — never re-derived). (#3)
-    const { client, draft } = await this.statements.priceClientPeriod(clientId, payPeriodId);
+    const { client, draft } = await this.statements.priceClientPeriod(clientId, billingPeriodId);
     const total = formatMoney(draft.total_amount);
     // Freeze the FX snapshot AT ISSUE (#12) — CAD → rate 1; total_commission is in the client's currency.
     const fx = await this.statements.resolveIssueFx(client.currency, draft.total_amount, fxOverride);
@@ -40,7 +40,7 @@ export class InvoiceService {
           invoice_number,
           status: 'issued',
           client_id: clientId,
-          pay_period_id: payPeriodId,
+          billing_period_id: billingPeriodId,
           total_commission: total,
           currency: fx.currency,
           fx_rate: fx.fx_rate,
@@ -50,7 +50,7 @@ export class InvoiceService {
         },
       });
       const prior = await tx.clientInvoice.findFirst({
-        where: { client_id: clientId, pay_period_id: payPeriodId, status: 'issued', id: { not: created.id } },
+        where: { client_id: clientId, billing_period_id: billingPeriodId, status: 'issued', id: { not: created.id } },
         select: { id: true },
       });
       if (prior) {
@@ -67,16 +67,16 @@ export class InvoiceService {
       entityType: 'client_invoices',
       entityId: invoice.id,
       action: 'create',
-      after: { invoice_number: invoice.invoice_number, client_id: clientId, pay_period_id: payPeriodId, total_commission: total },
+      after: { invoice_number: invoice.invoice_number, client_id: clientId, billing_period_id: billingPeriodId, total_commission: total },
     });
     return invoice;
   }
 
-  list(query: { client_id?: string; pay_period_id?: string }) {
+  list(query: { client_id?: string; billing_period_id?: string }) {
     return this.prisma.clientInvoice.findMany({
       where: {
         ...(query.client_id ? { client_id: query.client_id } : {}),
-        ...(query.pay_period_id ? { pay_period_id: query.pay_period_id } : {}),
+        ...(query.billing_period_id ? { billing_period_id: query.billing_period_id } : {}),
       },
       orderBy: { invoice_number: 'desc' },
     });

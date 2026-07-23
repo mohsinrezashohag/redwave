@@ -11,7 +11,14 @@ import { deriveStatus, planSupersession, previousDay, toUtcDateOnly } from '../.
 import { validateTierBrackets } from './tier-schedule.logic';
 import { parseEffectiveWindow } from './effective-dates.util';
 import { assertPending, resolveEditWindow } from './effective-edit.util';
-import { CreateTierScheduleDto, TierBracketDto, UpdateTierScheduleDto } from './dto/tier.dto';
+import { scopeWhere } from './client-scope.logic';
+import { resolveClientScope } from './client-scope.util';
+import {
+  CreateTierScheduleDto,
+  ListTierSchedulesQuery,
+  TierBracketDto,
+  UpdateTierScheduleDto,
+} from './dto/tier.dto';
 
 @Injectable()
 export class TierScheduleService {
@@ -20,12 +27,17 @@ export class TierScheduleService {
     private readonly audit: AuditService,
   ) {}
 
-  /** Current + pending schedules, each status-annotated. — SRS §7.3 */
-  async list() {
+  /**
+   * Schedules, each status-annotated. `client_id` selects the scope: a client id for that client's own
+   * ladder, or `null` for the GLOBAL one (the fallback used by any client without its own). Omit to list
+   * every scope. — SRS §7.3
+   */
+  async list(query: ListTierSchedulesQuery = {}) {
     const today = toUtcDateOnly(new Date());
     const headers = await this.prisma.commissionTierConfig.findMany({
+      where: scopeWhere(query.client_id),
       include: { tiers: { orderBy: { tier_number: 'desc' } } },
-      orderBy: { effective_from: 'asc' },
+      orderBy: [{ client_id: 'asc' }, { effective_from: 'asc' }],
     });
     return headers.map((h) => ({ ...h, status: deriveStatus(h, today) }));
   }
@@ -46,8 +58,12 @@ export class TierScheduleService {
       throw new DomainError('TIER_SCHEDULE_INVALID', (e as Error).message);
     }
     const { from, to, today } = parseEffectiveWindow(dto.effective_from, dto.effective_to);
+    // null = the GLOBAL ladder. Supersession is per SCOPE: a client's schedule must never bound or
+    // supersede the global one (or another client's) — they are independent effective-dated streams.
+    const clientId = await resolveClientScope(this.prisma, dto.client_id);
 
     const existing = await this.prisma.commissionTierConfig.findMany({
+      where: { client_id: clientId },
       select: { id: true, effective_from: true, effective_to: true },
     });
     const plan = planSupersession(existing, from, today);
@@ -68,6 +84,7 @@ export class TierScheduleService {
       }
       return tx.commissionTierConfig.create({
         data: {
+          client_id: clientId,
           effective_from: from,
           effective_to: to,
           created_by: actorId,
@@ -120,8 +137,9 @@ export class TierScheduleService {
     }
     const { from, to, today } = resolveEditWindow(row, dto);
 
+    // Same SCOPE only — client_id is immutable on edit (like rate_kind/product_type elsewhere).
     const others = await this.prisma.commissionTierConfig.findMany({
-      where: { id: { not: id } },
+      where: { client_id: row.client_id, id: { not: id } },
       select: { id: true, effective_from: true, effective_to: true },
     });
     const plan = planSupersession(others, from, today);
@@ -172,7 +190,12 @@ export class TierScheduleService {
     await this.prisma.$transaction(async (tx) => {
       await tx.commissionTier.deleteMany({ where: { tier_config_id: id } });
       await tx.commissionTierConfig.delete({ where: { id } });
-      await tx.commissionTierConfig.updateMany({ where: { effective_to: predecessorEnd }, data: { effective_to: null } });
+      // Scope-bound: without client_id this would re-open EVERY scope's row ending on that date,
+      // silently resurrecting another client's (or the global) superseded schedule.
+      await tx.commissionTierConfig.updateMany({
+        where: { client_id: row.client_id, effective_to: predecessorEnd },
+        data: { effective_to: null },
+      });
     });
     await this.audit.log({ actorId, entityType: 'commission_tier_configs', entityId: id, action: 'delete', before: row });
   }

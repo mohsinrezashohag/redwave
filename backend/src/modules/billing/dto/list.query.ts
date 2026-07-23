@@ -8,8 +8,8 @@ export class ListBillingQuery {
   @IsUUID()
   client_id?: string;
 
-  @ApiPropertyOptional({ description: 'Filter by pay period.' })
+  @ApiPropertyOptional({ description: 'Filter by billing week ("Bill 17").' })
   @IsOptional()
   @IsUUID()
-  pay_period_id?: string;
+  billing_period_id?: string;
 }

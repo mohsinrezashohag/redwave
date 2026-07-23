@@ -33,9 +33,30 @@ import { ListSalesQuery } from './dto/list-sales.query';
 import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
 
 const dateOnly = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
+
+/**
+ * The customer-name fields to write. The client bill prints first and last name as separate columns, so a
+ * sale captures them separately and the single display name is DERIVED — the two can never drift apart.
+ * A caller that sends only `customer_name` (imports, legacy clients) still works: the pair stays null and
+ * the statement falls back to splitting the display name.
+ */
+function customerNameFields(dto: { customer_name?: string; customer_first_name?: string; customer_last_name?: string }) {
+  const first = dto.customer_first_name?.trim() || null;
+  const last = dto.customer_last_name?.trim() || null;
+  const derived = [first, last].filter(Boolean).join(' ');
+  return {
+    customer_name: derived || (dto.customer_name ?? ''),
+    customer_first_name: first,
+    customer_last_name: last,
+  };
+}
 // Default sale_date = the CANONICAL Winnipeg calendar day (#7), so a late-night sale never lands in the
 // wrong pay period under UTC. — CLAUDE §11
-const SALE_INCLUDE = { sale_items: true } as const;
+// Each item carries its product's NAME as well as its type key: the client bill prints the internet SPEED
+// ("Fibre 1gig/2.5gig"), and a per-speed sales export has to name it too — the type key alone can't. — SALE-004
+const SALE_INCLUDE = {
+  sale_items: { include: { product: { select: { name: true } } } },
+} as const;
 
 @Injectable()
 export class SalesService {
@@ -49,22 +70,30 @@ export class SalesService {
     @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
   ) {}
 
-  async create(dto: CreateSaleDto, user: AuthUser) {
+  /**
+   * Resolve + VALIDATE everything a sale entry needs, against `db` (the live client OR a caller's tx).
+   * This is the SINGLE implementation of the sale-entry rules — the public `create` and the tx-aware
+   * `createWithinTx` both go through it, so no caller (notably the Import commit) ever reimplements sale
+   * creation. Performs no writes; returns a `data(saleCode)` builder for the caller to write once the
+   * sale_code is resolved. — SRS SALE-001/001a
+   */
+  private async resolveSaleCreate(
+    db: Prisma.TransactionClient | PrismaService,
+    dto: CreateSaleDto,
+    user: AuthUser,
+  ) {
     const repId = dto.rep_id ?? user.repId;
     if (!repId) {
       throw new UnprocessableEntityException('rep_id is required (the caller has no linked rep)');
     }
     await this.assertRepInScope(user, repId);
 
-    const rep = await this.prisma.rep.findUnique({
-      where: { id: repId },
-      select: { status: true },
-    });
+    const rep = await db.rep.findUnique({ where: { id: repId }, select: { status: true } });
     if (!rep || rep.status !== 'active') {
       throw new UnprocessableEntityException('rep does not exist or is not active');
     }
 
-    const client = await this.prisma.client.findUnique({
+    const client = await db.client.findUnique({
       where: { id: dto.client_id },
       select: { id: true, is_active: true, client_code: true },
     });
@@ -74,7 +103,7 @@ export class SalesService {
 
     // Every product must belong to this client and be active; capture its product_type + catalogue
     // behaviour (behaviour drives the internet-base rule below).
-    const products = await this.prisma.product.findMany({
+    const products = await db.product.findMany({
       where: { id: { in: dto.items.map((i) => i.product_id) }, client_id: client.id },
       select: {
         id: true,
@@ -115,37 +144,44 @@ export class SalesService {
       mpuId: dto.mpu_id ?? null,
     });
 
-    const created = await this.createWithUniqueCode(base, (saleCode) =>
-      this.prisma.sale.create({
-        data: {
-          sale_code: saleCode,
-          sale_date: dateOnly(saleDate), // KING — governs the pay period (#7)
-          activation_date: dto.activation_date ? dateOnly(dto.activation_date) : null, // reference only
-          rep_id: repId,
-          client_id: client.id,
-          customer_name: dto.customer_name,
-          street: dto.street,
-          city: dto.city,
-          province_state: dto.province_state,
-          postal_code: dto.postal_code,
-          mpu_id: dto.mpu_id ?? null,
-          is_greenfield: isGreenfield,
-          status: 'entered',
-          sale_items: {
-            create: dto.items.map((item) => {
-              const productType = productById.get(item.product_id)!.product_type;
-              return {
-                product_id: item.product_id,
-                product_type: productType,
-                counts_toward_tally: countsTowardTally(productType, isGreenfield),
-                item_status: 'active',
-                // snapshot fields stay NULL — Pay Run freezes them at finalize (#5/#2)
-              };
-            }),
-          },
-        },
-        include: SALE_INCLUDE,
-      }),
+    const data = (saleCode: string, importBatchId?: string): Prisma.SaleUncheckedCreateInput => ({
+      sale_code: saleCode,
+      sale_date: dateOnly(saleDate), // KING — governs the pay period (#7)
+      activation_date: dto.activation_date ? dateOnly(dto.activation_date) : null, // reference only
+      rep_id: repId,
+      client_id: client.id,
+      // The client bill prints first + last name as separate columns, so capture them separately and DERIVE
+      // the display name — the two can then never disagree. Callers that send only customer_name still work.
+      ...customerNameFields(dto),
+      street: dto.street,
+      city: dto.city,
+      province_state: dto.province_state,
+      postal_code: dto.postal_code,
+      mpu_id: dto.mpu_id ?? null,
+      is_greenfield: isGreenfield,
+      status: 'entered',
+      ...(importBatchId ? { import_batch_id: importBatchId } : {}), // provenance (IMP-008)
+      sale_items: {
+        create: dto.items.map((item) => {
+          const productType = productById.get(item.product_id)!.product_type;
+          return {
+            product_id: item.product_id,
+            product_type: productType,
+            counts_toward_tally: countsTowardTally(productType, isGreenfield),
+            item_status: 'active' as const,
+            // snapshot fields stay NULL — Pay Run freezes them at finalize (#5/#2)
+          };
+        }),
+      },
+    });
+
+    return { repId, clientId: client.id, isGreenfield, base, data };
+  }
+
+  async create(dto: CreateSaleDto, user: AuthUser) {
+    const resolved = await this.resolveSaleCreate(this.prisma, dto, user);
+    const created = await this.createWithUniqueCode(resolved.base, (saleCode) =>
+      this.prisma.sale.create({ data: resolved.data(saleCode), include: SALE_INCLUDE }),
     );
 
     await this.audit.log({
@@ -155,14 +191,41 @@ export class SalesService {
       action: 'create',
       after: {
         sale_code: created.sale_code,
-        rep_id: repId,
-        client_id: client.id,
+        rep_id: resolved.repId,
+        client_id: resolved.clientId,
         status: 'entered',
         item_count: dto.items.length,
-        is_greenfield: isGreenfield,
+        is_greenfield: resolved.isGreenfield,
       },
     });
     return created;
+  }
+
+  /**
+   * Sale entry composable inside a CALLER'S transaction (no own `$transaction`, no audit) — the mirror of
+   * `validateWithinTx`. The **Import** commit drives it so a whole batch of live sales is created
+   * atomically (#8); the entry RULES live in `resolveSaleCreate` and are never reimplemented there. The
+   * item snapshots stay NULL — importing a sale writes no commission (#2/#5).
+   *
+   * sale_code: the suffix count runs ON `tx`, so sales created earlier in the SAME batch are visible. The
+   * public `create` retries on a P2002 race, but a retry is impossible inside a Postgres transaction (a
+   * failed statement aborts it), so a genuine collision here rolls the whole batch back — which is the
+   * correct outcome for an atomic import. — SALE-001/003, IMP-013
+   */
+  async createWithinTx(
+    tx: Prisma.TransactionClient,
+    dto: CreateSaleDto,
+    user: AuthUser,
+    opts: { importBatchId?: string } = {},
+  ) {
+    const resolved = await this.resolveSaleCreate(tx, dto, user);
+    const existingCount = await tx.sale.count({
+      where: { OR: [{ sale_code: resolved.base }, { sale_code: { startsWith: `${resolved.base}-` } }] },
+    });
+    return tx.sale.create({
+      data: resolved.data(withSuffix(resolved.base, existingCount), opts.importBatchId),
+      include: SALE_INCLUDE,
+    });
   }
 
   async edit(id: string, dto: UpdateSaleDto, user: AuthUser) {
@@ -171,10 +234,20 @@ export class SalesService {
     if (sale.status !== 'entered') {
       throw new ConflictException('only entered sales can be edited');
     }
+    // Editing the name goes through the same derive-from-the-pair rule as create, so a corrected first/last
+    // always reaches the display name too.
+    const nameEdit =
+      dto.customer_first_name !== undefined || dto.customer_last_name !== undefined
+        ? customerNameFields({
+            customer_name: dto.customer_name ?? sale.customer_name,
+            customer_first_name: dto.customer_first_name ?? sale.customer_first_name ?? undefined,
+            customer_last_name: dto.customer_last_name ?? sale.customer_last_name ?? undefined,
+          })
+        : { customer_name: dto.customer_name };
     const updated = await this.prisma.sale.update({
       where: { id },
       data: {
-        customer_name: dto.customer_name,
+        ...nameEdit,
         street: dto.street,
         city: dto.city,
         province_state: dto.province_state,

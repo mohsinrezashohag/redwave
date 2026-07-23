@@ -6,7 +6,7 @@ export class StatementReconciliationQuery {
   @IsUUID()
   client_id!: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'The billing week ("Bill 17") the statement covers.' })
   @IsUUID()
-  pay_period_id!: string;
+  billing_period_id!: string;
 }

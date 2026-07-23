@@ -49,8 +49,9 @@ describe('exportDefs — per-type defs mirror the server gate', () => {
   });
 
   it('builds kebab-case dated filenames (extension added by exportRows)', () => {
-    expect(exportFilename('business_summary', '2026-06-11')).toBe('report-business-summary-2026-06-11');
-    expect(exportFilename('payrun_summary', '2026-06-11')).toBe('report-payrun-summary-2026-06-11');
+    // Rides the shared lib/export convention: redwave- prefix + compacted generation date.
+    expect(exportFilename('business_summary', '2026-06-11')).toBe('redwave-report-business-summary-20260611');
+    expect(exportFilename('payrun_summary', '2026-06-11')).toBe('redwave-report-payrun-summary-20260611');
   });
 });
 

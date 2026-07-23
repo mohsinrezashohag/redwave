@@ -9,6 +9,8 @@ function make() {
     commissionFlatRate: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn() },
     // The flat-ratable check reads behaviour from the catalogue (default: a standard add-on).
     productTypeCatalogue: { findUnique: jest.fn().mockResolvedValue({ behaviour: 'standard_addon', is_active: true }) },
+    // Scope validation reads the client (unknown/inactive → 422, never a silent global write).
+    client: { findUnique: jest.fn().mockResolvedValue({ id: 'VF', is_active: true }) },
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
@@ -71,7 +73,8 @@ describe('FlatRateService.create (COMM-002)', () => {
     expect(arg.data.amount).toBe('35.00');
     expect(typeof arg.data.amount).toBe('string');
     expect(prisma.commissionFlatRate.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { product_type: 'tv' } }), // scope = product_type
+      // scope = (client_id, product_type); null client = the GLOBAL rate
+      expect.objectContaining({ where: { client_id: null, product_type: 'tv' } }),
     );
   });
 });
@@ -108,5 +111,46 @@ describe('FlatRateService.update / remove (pending-only — #10)', () => {
     const { service, prisma } = make();
     prisma.commissionFlatRate.findUnique.mockResolvedValue(current());
     await expect(service.remove('f2', 'actor')).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+});
+
+/**
+ * Per-client scope: the flat-rate scope is (client_id, product_type). A client's TV rate and the GLOBAL TV
+ * rate are independent streams — supersession must never cross them. — CLAUDE #10
+ */
+describe('FlatRateService — per-client scope isolation', () => {
+  it('create scopes supersession to (client, product_type) and persists client_id', async () => {
+    const { service, prisma, tx } = make();
+    tx.commissionFlatRate.create.mockResolvedValue({ id: 'new', product_type: 'tv', amount: '45.00', effective_from: monthsOut(1), effective_to: null });
+
+    await service.create({ client_id: 'VF', product_type: 'tv' as never, amount: '45.00', effective_from: iso(1) }, 'actor');
+
+    expect(prisma.commissionFlatRate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { client_id: 'VF', product_type: 'tv' } }),
+    );
+    const arg = tx.commissionFlatRate.create.mock.calls[0][0] as { data: { client_id: unknown } };
+    expect(arg.data.client_id).toBe('VF');
+  });
+
+  it('rejects an unknown/inactive client scope (422) rather than writing the global rate', async () => {
+    const { service, prisma, tx } = make();
+    prisma.client.findUnique.mockResolvedValue(null);
+    await expect(
+      service.create({ client_id: 'nope', product_type: 'tv' as never, amount: '45.00', effective_from: iso(1) }, 'actor'),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(tx.commissionFlatRate.create).not.toHaveBeenCalled();
+  });
+
+  it('remove re-opens ONLY its own (client, product_type) predecessor', async () => {
+    const { service, prisma, tx } = make();
+    prisma.commissionFlatRate.findUnique.mockResolvedValue({
+      id: 'f1', client_id: 'VF', product_type: 'tv', amount: '45.00', effective_from: monthsOut(1), effective_to: null,
+    });
+
+    await service.remove('f1', 'actor');
+
+    const where = (tx.commissionFlatRate.updateMany.mock.calls[0][0] as { where: Record<string, unknown> }).where;
+    expect(where.client_id).toBe('VF');
+    expect(where.product_type).toBe('tv');
   });
 });

@@ -10,7 +10,7 @@
  * Money math uses decimal.js; conversion to Prisma Decimal (`.toFixed(2)`) happens only on write.
  */
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { HoldbackReleaseStatus, Prisma } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
@@ -410,6 +410,116 @@ export class PayRunService {
     });
   }
 
+  /**
+   * The run's period-level 30% (deferred pay) view — EVERY figure is computed here so the UI does no
+   * arithmetic. DRAFT: the current hold + its release period are a PROJECTION (no ledger rows exist until
+   * finalize) taken from the draft lines' `amount_held` and the same pure release rule finalize will apply.
+   * FINALIZED: read from the frozen `holdback_ledger`. Rep-scoped via the run's (already scoped) lines.
+   * — SRS §9 / §17.1
+   */
+  async getHoldbackSummary(runId: string, user: AuthUser) {
+    const run = await this.prisma.payRun.findUnique({
+      where: { id: runId },
+      include: { pay_period: true },
+    });
+    if (!run) {
+      throw new NotFoundException('Pay run not found');
+    }
+    const period = run.pay_period;
+    const isProjection = run.status === 'draft';
+    const lines = await this.getLines(runId, user); // already rep-scoped
+    const repIds = lines.map((l) => l.rep_id);
+
+    // Every ledger row for this run's reps — the single source for the figures below.
+    const ledger = repIds.length
+      ? await this.prisma.holdbackLedger.findMany({ where: { rep_id: { in: repIds } } })
+      : [];
+    const allPeriods = await this.prisma.payPeriod.findMany();
+    const periodRef = (id: string | null) => {
+      const p = id ? allPeriods.find((x) => x.id === id) : undefined;
+      return p ? { id: p.id, period_number: p.period_number, payday: p.payday } : null;
+    };
+    const sum = (values: Decimal[]): Decimal => values.reduce((s, v) => s.plus(v), new Decimal(0));
+    const opt = (value: { toString(): string } | null): Decimal => (value ? dec(value) : new Decimal(0));
+
+    // (a) Held THIS period. Draft → the lines' projected 30%; finalized → the frozen ledger rows.
+    const originRows = ledger.filter((r) => r.origin_pay_period_id === period.id);
+    const held = isProjection
+      ? sum(lines.map((l) => opt(l.amount_held)))
+      : sum(originRows.map((r) => dec(r.amount_held)));
+
+    // (b) WHEN it releases. Finalized → the frozen FK; draft → the pure rule (unchanged by this read).
+    let releasePeriodId =
+      originRows.find((r) => r.scheduled_release_period_id)?.scheduled_release_period_id ?? null;
+    if (isProjection) {
+      const setting = await this.prisma.holdbackReleaseSetting.findFirst({
+        orderBy: { effective_from: 'desc' },
+      });
+      const rule = setting?.release_rule ?? 'next_cycle_after_30_days';
+      releasePeriodId = resolveScheduledReleasePeriod(period, allPeriods, rule)?.id ?? null;
+    }
+
+    // (c) Prior holds maturing INTO this period (draft → still-scheduled amounts; finalized → released).
+    const maturing = ledger.filter((r) => r.scheduled_release_period_id === period.id);
+    const releasing = isProjection
+      ? sum(maturing.filter((r) => r.release_status === 'scheduled').map((r) => dec(r.amount_held)))
+      : sum(maturing.map((r) => opt(r.amount_released)));
+    const setoff = sum(maturing.map((r) => opt(r.clawback_applied)));
+    const outstanding = sum(
+      ledger.filter((r) => r.release_status !== 'released').map((r) => dec(r.amount_held)),
+    );
+
+    // (d) Aggregate the ledger by ORIGIN period — "what is held, and when does it release".
+    type Group = {
+      held: Decimal;
+      released: Decimal;
+      setoff: Decimal;
+      scheduledId: string | null;
+      statuses: Set<HoldbackReleaseStatus>;
+    };
+    const groups = new Map<string, Group>();
+    for (const row of ledger) {
+      const g: Group = groups.get(row.origin_pay_period_id) ?? {
+        held: new Decimal(0),
+        released: new Decimal(0),
+        setoff: new Decimal(0),
+        scheduledId: null,
+        statuses: new Set<HoldbackReleaseStatus>(),
+      };
+      g.held = g.held.plus(dec(row.amount_held));
+      g.released = g.released.plus(opt(row.amount_released));
+      g.setoff = g.setoff.plus(opt(row.clawback_applied));
+      g.scheduledId = g.scheduledId ?? row.scheduled_release_period_id;
+      g.statuses.add(row.release_status);
+      groups.set(row.origin_pay_period_id, g);
+    }
+    const by_origin = [...groups.entries()]
+      .map(([originId, g]) => ({
+        origin_period: periodRef(originId),
+        amount_held: money(g.held),
+        scheduled_release_period: periodRef(g.scheduledId),
+        // Mixed statuses across reps collapse to the least-advanced one (still owed wins).
+        release_status: g.statuses.has('held')
+          ? ('held' as const)
+          : g.statuses.has('scheduled')
+            ? ('scheduled' as const)
+            : ('released' as const),
+        amount_released: g.released.isZero() ? null : money(g.released),
+        clawback_applied: g.setoff.isZero() ? null : money(g.setoff),
+      }))
+      .sort((a, b) => (a.origin_period?.period_number ?? 0) - (b.origin_period?.period_number ?? 0));
+
+    return {
+      is_projection: isProjection,
+      held_this_period: money(held),
+      held_release_period: periodRef(releasePeriodId),
+      releasing_this_period: money(releasing),
+      clawback_setoff_this_period: money(setoff),
+      outstanding_total: money(outstanding),
+      by_origin,
+    };
+  }
+
   // ── internals ─────────────────────────────────────────────────────────────────────────────────
 
   /** Gather a rep's validated sales in the period and run the engine. Pure engine call (no DB writes). */
@@ -473,6 +583,13 @@ export class PayRunService {
       bonus_note: note,
       clawback_total: money(amounts.clawback_total),
       net_payout: money(amounts.net_payout),
+      // Reconciliation facts straight off the engine result — never recomputed here (#1/#5). Persisting
+      // gross + the 30% held is what lets the UI prove commission_70 = 70% of gross without any UI math.
+      gross_commission: money(amounts.gross_commission),
+      amount_held: money(amounts.amount_held),
+      tier_at_payment: amounts.tier_at_payment,
+      internet_tally: amounts.internet_tally,
+      rate_per_activation: amounts.rate_per_activation ? money(amounts.rate_per_activation) : null,
     };
   }
 

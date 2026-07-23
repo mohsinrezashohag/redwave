@@ -78,19 +78,52 @@ export class ExpenseReportsService {
   }
 
   // ── Create ──────────────────────────────────────────────────────────────────────
+  /**
+   * Create the rep's folder for a week — or RESOLVE to the one they already have. A week is a single
+   * container by design, so a second "new report" for the same (rep, week) is the rep looking for the
+   * folder they already made, not asking for a duplicate: splitting a week across two folders is how items
+   * get submitted twice or missed entirely at review. Returns the existing folder with its live aggregates
+   * (`reused: true`) so the caller can say so instead of silently pretending it created one. — EXP-001
+   *
+   * Only a folder OWNED by the same submitter for the same rep+week resolves; another user's folder for
+   * that rep is left alone (an admin creating on behalf still gets their own container).
+   */
   async create(dto: CreateExpenseReportDto, user: AuthUser) {
+    const repId = dto.rep_id ?? user.repId ?? null;
+    const weekStart = dateOnly(dto.week_start);
+
+    const existing = await this.prisma.expenseReport.findFirst({
+      where: { submitted_by: user.id, rep_id: repId, week_start: weekStart },
+      orderBy: { created_at: 'asc' }, // the ORIGINAL folder for the week, not the newest duplicate
+    });
+    if (existing) {
+      const items = await this.prisma.expenseItem.findMany({
+        where: { expense_report_id: existing.id },
+        select: ITEM_AGG_SELECT,
+      });
+      const configs = await this.expenses.loadConfigs();
+      return { ...existing, ...this.summarize(items, configs), reused: true };
+    }
+
     const report = await this.prisma.expenseReport.create({
       data: {
         name: dto.name,
         submitted_by: user.id,
-        rep_id: dto.rep_id ?? user.repId ?? null,
-        week_start: dateOnly(dto.week_start),
+        rep_id: repId,
+        week_start: weekStart,
         week_end: dateOnly(dto.week_end),
       },
     });
     await this.audit.log({ actorId: user.id, entityType: 'expense_reports', entityId: report.id, action: 'create', after: { name: report.name } });
     // A fresh folder is empty → derived status 'empty', zero totals.
-    return { ...report, item_count: 0, total_reimbursable_cad: '0.00', status: 'empty' as const, validation: { alert_count: 0, warning_count: 0, flagged: 0 } };
+    return {
+      ...report,
+      item_count: 0,
+      total_reimbursable_cad: '0.00',
+      status: 'empty' as const,
+      validation: { alert_count: 0, warning_count: 0, flagged: 0 },
+      reused: false,
+    };
   }
 
   // ── List (paginated + scoped, aggregated) ─────────────────────────────────────────

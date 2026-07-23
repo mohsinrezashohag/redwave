@@ -7,6 +7,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrapList } from '../../../lib/query/unwrapList';
+import { unwrap } from '../../../lib/query/unwrap';
 
 export interface ClientLite {
   id: string;
@@ -61,4 +62,30 @@ export function usePayPeriods(enabled = true) {
 /** The pay period whose [start,end] contains today (for the list's default date range). */
 export function currentPeriod(periods: PayPeriodLite[] | undefined, todayIso: string): PayPeriodLite | undefined {
   return periods?.find((p) => p.start_date.slice(0, 10) <= todayIso && todayIso <= p.end_date.slice(0, 10));
+}
+
+/**
+ * Org expense settings — the OFFICE the km policy says a trip runs from. Read is authenticated-only (no
+ * permission): every rep's km form defaults its first stop to it. Cached long — it changes when the company
+ * moves. — SRS EXP-004
+ */
+export interface ExpenseSettings {
+  office_address: string | null;
+  office_lat: string | null;
+  office_lng: string | null;
+}
+
+export function useExpenseSettings(enabled = true) {
+  return useQuery({
+    queryKey: ['expense-settings'],
+    queryFn: () => unwrap<ExpenseSettings>(api.GET('/v1/expense-settings')),
+    enabled,
+    staleTime: 30 * 60_000,
+  });
+}
+
+/** The office as a km STOP, or null when no office is configured (then the rep types the origin). */
+export function officeStop(settings: ExpenseSettings | undefined): { address: string; lat: string; lng: string } | null {
+  if (!settings?.office_address) return null;
+  return { address: settings.office_address, lat: settings.office_lat ?? '0', lng: settings.office_lng ?? '0' };
 }

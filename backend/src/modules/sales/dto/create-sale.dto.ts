@@ -49,11 +49,30 @@ export class CreateSaleDto {
   @Matches(DATE, { message: 'activation_date must be a YYYY-MM-DD date' })
   activation_date?: string;
 
-  @ApiProperty()
+  @ApiProperty({
+    description:
+      'The customer/household name. DERIVED from customer_first_name + customer_last_name when those are ' +
+      'supplied, so the two can never disagree.',
+  })
   @IsString()
   @MinLength(1)
   @MaxLength(150)
   customer_name!: string;
+
+  @ApiPropertyOptional({
+    example: 'Liam',
+    description: 'Given name. The client bill prints first and last name as separate columns.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  customer_first_name?: string;
+
+  @ApiPropertyOptional({ example: 'Tremblay', description: 'Family name.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  customer_last_name?: string;
 
   @ApiProperty()
   @IsString()

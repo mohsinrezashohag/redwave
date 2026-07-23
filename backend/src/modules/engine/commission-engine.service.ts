@@ -36,11 +36,24 @@ export class CommissionEngineService {
     const { activations, config } = input;
 
     // Tier from the GROSS internet tally (non-greenfield internet), aggregated across all clients.
+    // ⚠ NEVER add a clientId predicate here. Per-client SCHEDULES change which rate an activation is paid
+    // at; they never split the tally — counting per client is the explicit forbidden mistake. — CLAUDE #5
     const internetTally = activations.filter((a) => a.productType === ProductType.internet).length;
-    const tierBracket = internetTally > 0 ? this.determineTier(internetTally, config.tiers) : null;
+
+    // The bracket is resolved PER CLIENT (that client's ladder, else the global one) but always against the
+    // ONE cross-client tally above — memoised so a schedule is walked once per client, not once per item.
+    const bracketCache = new Map<string, TierBracket>();
+    const bracketFor = (clientId: string): TierBracket => {
+      const cached = bracketCache.get(clientId);
+      if (cached) return cached;
+      const ladder = config.tiersByClient?.[clientId] ?? config.tiers;
+      const bracket = this.determineTier(internetTally, ladder);
+      bracketCache.set(clientId, bracket);
+      return bracket;
+    };
 
     const items = activations.map((activation) =>
-      this.computeItem(activation, config, tierBracket),
+      this.computeItem(activation, config, internetTally > 0 ? bracketFor : null),
     );
     // Incentives are applied in a PERIOD-LEVEL pass (a threshold is relative to the rep's matching
     // activations for that incentive), then frozen onto the relevant items. — SRS COMM-005
@@ -54,10 +67,16 @@ export class CommissionEngineService {
     const advanceAmount = roundMoneyHalfUp(grossCommission.times(config.holdback.advancePct));
     const holdbackAmount = grossCommission.minus(advanceAmount);
 
+    // Period-level tier/rate are only meaningful when every internet activation resolved to the SAME
+    // bracket; with per-client schedules a mixed period has no single answer, so report null and let the
+    // per-item snapshots carry the truth.
+    const internetItems = items.filter((i) => i.countsTowardTally);
+    const uniformTier = this.uniformTier(internetItems);
+
     return {
       internetTally,
-      tierNumber: tierBracket?.tierNumber ?? null,
-      ratePerActivation: tierBracket?.ratePerActivation ?? null,
+      tierNumber: uniformTier?.tierAtPayment ?? null,
+      ratePerActivation: uniformTier?.rateApplied ?? null,
       items,
       grossCommission,
       advanceAmount,
@@ -90,11 +109,24 @@ export class CommissionEngineService {
     return bracket;
   }
 
+  /**
+   * The bracket shared by every internet item, or null when they differ (per-client schedules) or there
+   * are none. Compares the resolved tier + rate, which is what the period-level scalars report.
+   */
+  private uniformTier(internetItems: ComputedItem[]): ComputedItem | null {
+    const first = internetItems[0];
+    if (!first) return null;
+    const mixed = internetItems.some(
+      (i) => i.tierAtPayment !== first.tierAtPayment || !i.rateApplied.equals(first.rateApplied),
+    );
+    return mixed ? null : first;
+  }
+
   /** Compute one activation's amounts (tier rate or flat rate, plus any per_activation incentive). */
   private computeItem(
     activation: ActivationInput,
     config: EngineConfig,
-    tierBracket: TierBracket | null,
+    bracketFor: ((clientId: string) => TierBracket) | null,
   ): ComputedItem {
     const isInternet = activation.productType === ProductType.internet;
 
@@ -102,14 +134,16 @@ export class CommissionEngineService {
     let rateApplied: Decimal;
     let tierAtPayment: number | null;
     if (isInternet) {
-      // tierBracket is non-null whenever an internet activation exists (tally > 0).
-      if (!tierBracket) {
+      // bracketFor is non-null whenever an internet activation exists (tally > 0).
+      if (!bracketFor) {
         throw new Error('Internal: internet activation with no tier bracket');
       }
-      rateApplied = tierBracket.ratePerActivation;
-      tierAtPayment = tierBracket.tierNumber;
+      // This client's ladder (else the global one), against the ONE cross-client tally.
+      const bracket = bracketFor(activation.clientId);
+      rateApplied = bracket.ratePerActivation;
+      tierAtPayment = bracket.tierNumber;
     } else {
-      rateApplied = this.flatRateFor(activation.productType, config.flatRates);
+      rateApplied = this.flatRateFor(activation.productType, activation.clientId, config);
       tierAtPayment = null;
     }
 
@@ -126,11 +160,12 @@ export class CommissionEngineService {
     };
   }
 
-  private flatRateFor(productType: string, flatRates: EngineConfig['flatRates']): Decimal {
-    // internet is handled by the tier path; every other (flat) type is a map lookup by key.
-    const rate = flatRates[productType];
+  private flatRateFor(productType: string, clientId: string, config: EngineConfig): Decimal {
+    // internet is handled by the tier path; every other (flat) type is a map lookup by key — this client's
+    // own rate first, then the global one.
+    const rate = config.flatRatesByClient?.[clientId]?.[productType] ?? config.flatRates[productType];
     if (rate === undefined) {
-      throw new Error(`No flat rate for product type ${productType}`);
+      throw new Error(`No flat rate for product type ${productType} (client ${clientId})`);
     }
     return rate;
   }

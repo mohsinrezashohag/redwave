@@ -6,6 +6,8 @@
  * a real file). Generated client-side via the Batch-1 exportRows (Excel + CSV). — SRS §15
  */
 import { exportRows } from '../../lib/export/exportRows';
+import { exportFilename } from '../../lib/export/exportFilename';
+import { todayIso } from '../../lib/format/date';
 
 export interface TemplateField {
   field: string;
@@ -87,6 +89,28 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
+    id: 'bulk_sales',
+    label: 'Bulk sales entry (live)',
+    group: 'Sales',
+    description:
+      'Real sales that DO count toward the tier tally, pay runs and clawbacks. ONE ROW = ONE SALE — put every product on the sale in `product_types`, comma-separated. Import clients, products and reps first.',
+    fields: [
+      f('client_code', 'Client code', 'VF', 'RF', 'Client (by code) — must already exist.', true),
+      f('rep_code', 'Rep code', 'RW-D-0001', 'RW-D-0001', 'Rep (by code) — must exist and be active.', true),
+      f('product_types', 'Product types', 'internet', 'internet,tv,home_phone', 'Comma-separated products on this sale. MUST include an internet/greenfield base — add-ons cannot be sold standalone.', true),
+      f('sale_date', 'Sale date', '2026-07-06', '2026-07-07', 'YYYY-MM-DD. Governs which pay period the sale falls in.', true),
+      f('customer_name', 'Customer', 'Jane Doe', 'John Roe', 'Customer/household name.', true),
+      f('activation_date', 'Activation date', '2026-07-10', '', 'Reference only — drives no logic.'),
+      f('street', 'Street', '12 Main St', '', 'Optional — blank becomes “—”.'),
+      f('city', 'City', 'Winnipeg', '', 'Optional — blank becomes “—”.'),
+      f('province_state', 'Province/State', 'MB', '', 'Optional — blank becomes “—”.'),
+      f('postal_code', 'Postal code', 'R3C 1A1', '', 'Optional — blank becomes “—”.'),
+      f('mpu_id', 'MPU ID', 'MPU-2001', '', 'Client house/unit identifier (also disambiguates the Sale ID).'),
+      f('is_greenfield', 'Greenfield', 'false', 'false', 'true/false. Greenfield internet is flat-rated and EXCLUDED from the tier tally.'),
+      f('status', 'Status', 'entered', 'validated', 'entered (default) or validated — "validated" also validates the sale at commit.'),
+    ],
+  },
+  {
     id: 'historical_sales',
     label: 'Historical sales (migration)',
     group: 'Sales',
@@ -153,6 +177,7 @@ export const TEMPLATES: TemplateDef[] = [
 /** Map an import kind → the template whose fields define its system fields (for the mapping editor). */
 export const KIND_TO_TEMPLATE: Record<string, string> = {
   bulk_validation: 'cti_report',
+  bulk_sales: 'bulk_sales',
   create_clients: 'clients',
   create_products: 'products',
   billing_rate: 'billing_rates',
@@ -171,7 +196,7 @@ export function downloadTemplate(def: TemplateDef, format: 'xlsx' | 'csv'): void
   ];
   void exportRows({
     format,
-    filename: `redwave-import-${def.id}-template`,
+    filename: exportFilename({ source: `import-${def.id}-template`, generatedOn: todayIso() }),
     columns: def.fields.map((fld) => ({ header: fld.label, value: (r: Record<string, string>) => r[fld.field] ?? '' })),
     rows,
   });

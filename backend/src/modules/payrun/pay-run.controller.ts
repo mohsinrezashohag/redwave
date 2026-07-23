@@ -26,6 +26,7 @@ import {
   ExportResultResponse,
   HoldbackLedgerResponse,
   PayPeriodResponse,
+  PayRunHoldbackSummaryResponse,
   PayRunLineResponse,
   PayRunResponse,
   PayRunSummaryResponse,
@@ -96,6 +97,21 @@ export class PayRunController {
   @ApiOkResponse({ type: PayRunLineResponse, isArray: true })
   lines(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.payRuns.getLines(id, user);
+  }
+
+  @Get(':id/holdback')
+  @RequirePermission('payrun', 'view')
+  @ApiOperation({
+    summary: "The run's period-level 30% (deferred pay) view",
+    description:
+      'Requires payrun:view (scoped). Every figure is server-computed — what is held this period, WHEN it ' +
+      'releases, what matures into this period, the clawback set-off, and the per-origin ledger breakdown. ' +
+      'On a DRAFT the current hold + release period are a projection (is_projection=true); once finalized ' +
+      'they are read from the frozen holdback_ledger.',
+  })
+  @ApiOkResponse({ type: PayRunHoldbackSummaryResponse })
+  holdbackSummary(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.payRuns.getHoldbackSummary(id, user);
   }
 
   @Post(':id/lines/:lineId/bonus')

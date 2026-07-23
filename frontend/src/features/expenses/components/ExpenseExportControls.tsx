@@ -8,9 +8,10 @@
 import { Select } from '../../../components/ui';
 import { ExportMenu } from '../../../components/data/ExportMenu';
 import { useCan } from '../../../auth/useCan';
-import { displayDate } from '../../../lib/format/date';
+import { displayDate, todayIso } from '../../../lib/format/date';
 import { money } from '../../../lib/format/money';
 import type { ExportColumn } from '../../../lib/export/exportRows';
+import { exportFilename } from '../../../lib/export/exportFilename';
 import { fetchAllExpenseItems } from '../api/useExpenseItems';
 import { useClients, useReps } from '../api/useLookups';
 import { categoryLabel, groupItems, type ExpenseGroup, type GroupMode } from '../format';
@@ -19,6 +20,7 @@ import styles from './expenses.module.css';
 
 const GROUP_OPTIONS = [
   { value: 'none', label: 'No grouping' },
+  { value: 'category', label: 'Group: category' },
   { value: 'daily', label: 'Group: daily' },
   { value: 'weekly', label: 'Group: weekly' },
   { value: 'monthly', label: 'Group: monthly' },
@@ -52,28 +54,33 @@ export function ExpenseExportControls({ filters, groupMode, onGroupChange, confi
     { header: 'Amount', value: (it) => money(it.amount) },
   ];
 
+  // The bucket column is the grouping dimension itself — "Category" reads wrong under "Period".
   const groupColumns: ExportColumn<ExpenseGroup>[] = [
-    { header: 'Period', value: (g) => g.label },
+    { header: groupMode === 'category' ? 'Category' : 'Period', value: (g) => g.label },
     { header: 'Items', value: (g) => String(g.count) },
     { header: 'Total', value: (g) => money(g.total) },
   ];
+
+  // One naming rule for both shapes: the grouped export is the same data, bucketed.
+  const period = { from: filters.from, to: filters.to };
+  const generatedOn = todayIso();
 
   return (
     <div className={styles.exportControls}>
       <Select aria-label="Grouping" options={GROUP_OPTIONS} value={groupMode} onValueChange={(v) => onGroupChange(v as GroupMode)} />
       {groupMode === 'none' ? (
         <ExportMenu<ExpenseItem>
-          filename="expenses"
+          filename={exportFilename({ source: 'expenses', period, generatedOn })}
           title="Expenses"
           columns={itemColumns}
           getRows={() => fetchAllExpenseItems(filters)}
         />
       ) : (
         <ExportMenu<ExpenseGroup>
-          filename={`expenses-${groupMode}`}
+          filename={exportFilename({ source: `expenses-${groupMode}`, period, generatedOn })}
           title={`Expenses (${groupMode})`}
           columns={groupColumns}
-          getRows={async () => groupItems(await fetchAllExpenseItems(filters), groupMode)}
+          getRows={async () => groupItems(await fetchAllExpenseItems(filters), groupMode, configs)}
         />
       )}
     </div>

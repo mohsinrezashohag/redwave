@@ -2,6 +2,8 @@ import {
   classifyBillingRateRow,
   classifyClientRow,
   classifyHistoricalSaleRow,
+  classifyLiveSaleRow,
+  splitProductTypes,
   classifyHoldbackRow,
   classifyProductRow,
   classifyRepRow,
@@ -75,6 +77,70 @@ describe('classifyHistoricalSaleRow (reference-only)', () => {
   });
   it('bad billed_amount → error', () => {
     expect(classifyHistoricalSaleRow({ ...good, billed_amount: 'x' }, ctx).match_status).toBe('error');
+  });
+});
+
+describe('classifyLiveSaleRow (LIVE sales — IMP-013)', () => {
+  const good = {
+    client_code: 'VF',
+    rep_code: 'RW-D-0001',
+    product_types: 'internet,tv',
+    sale_date: '2026-07-06',
+    customer_name: 'Jane Doe',
+  };
+  const ctx = { clientExists: true, repActive: true, missingProductTypes: [], hasInternetBase: true };
+
+  it('valid + existing client/active rep/products + internet base → matched', () => {
+    expect(classifyLiveSaleRow(good, ctx).match_status).toBe('matched');
+  });
+  it('defaults status to entered when the column is blank', () => {
+    expect(classifyLiveSaleRow({ ...good, status: '' }, ctx).match_status).toBe('matched');
+    expect(classifyLiveSaleRow({ ...good, status: 'validated' }, ctx).match_status).toBe('matched');
+  });
+  it('an unknown status → error', () => {
+    const c = classifyLiveSaleRow({ ...good, status: 'paid' }, ctx);
+    expect(c.match_status).toBe('error');
+    expect(c.issue).toMatch(/entered or validated/);
+  });
+
+  // Unresolvable references must ERROR — an import never creates master data.
+  it('unknown client → error (never creates the client)', () => {
+    const c = classifyLiveSaleRow(good, { ...ctx, clientExists: false });
+    expect(c.match_status).toBe('error');
+    expect(c.issue).toContain('client VF not found');
+  });
+  it('unknown or INACTIVE rep → error (never creates the rep)', () => {
+    const c = classifyLiveSaleRow(good, { ...ctx, repActive: false });
+    expect(c.match_status).toBe('error');
+    expect(c.issue).toMatch(/not found or not active/);
+  });
+  it('a product type with no active product for the client → error (import products first)', () => {
+    const c = classifyLiveSaleRow(good, { ...ctx, missingProductTypes: ['tv'] });
+    expect(c.match_status).toBe('error');
+    expect(c.issue).toContain('tv');
+  });
+
+  // SALE-001a is pre-checked here so the gate blocks the row instead of a mid-commit rollback.
+  it('add-ons only (no internet base) → error, not a mid-commit throw', () => {
+    const c = classifyLiveSaleRow({ ...good, product_types: 'tv,home_phone' }, { ...ctx, hasInternetBase: false });
+    expect(c.match_status).toBe('error');
+    expect(c.issue).toMatch(/mandatory base/);
+  });
+
+  it('missing required columns → error', () => {
+    expect(classifyLiveSaleRow({ ...good, client_code: '' }, ctx).match_status).toBe('error');
+    expect(classifyLiveSaleRow({ ...good, rep_code: '' }, ctx).match_status).toBe('error');
+    expect(classifyLiveSaleRow({ ...good, product_types: '' }, ctx).match_status).toBe('error');
+    expect(classifyLiveSaleRow({ ...good, customer_name: '' }, ctx).match_status).toBe('error');
+    expect(classifyLiveSaleRow({ ...good, sale_date: '06/07/2026' }, ctx).match_status).toBe('error');
+  });
+});
+
+describe('splitProductTypes', () => {
+  it('splits, trims, lower-cases and drops blanks', () => {
+    expect(splitProductTypes(' Internet , TV ,, home_phone ')).toEqual(['internet', 'tv', 'home_phone']);
+    expect(splitProductTypes(null)).toEqual([]);
+    expect(splitProductTypes('')).toEqual([]);
   });
 });
 

@@ -15,8 +15,7 @@ import { money } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useClients } from '../../clients/api/useClients';
-import { usePayPeriods } from '../../payrun/api/usePayRun';
-import { useStatements } from '../api/useBilling';
+import { useBillingPeriods, useStatements } from '../api/useBilling';
 import { downloadStatementExcel } from '../billing.download';
 import { statementNo } from '../billing.logic';
 import { ClientPeriodPicker } from '../components/ClientPeriodPicker';
@@ -34,16 +33,17 @@ export default function BillingListPage() {
   const [generateOpen, setGenerateOpen] = useState(false);
 
   const clientsQ = useClients('all', canView);
-  const periodsQ = usePayPeriods(canView);
-  const q = useStatements({ client_id: clientId, pay_period_id: periodId }, canView);
+  const periodsQ = useBillingPeriods(canView);
+  const q = useStatements({ client_id: clientId, billing_period_id: periodId }, canView);
 
   const clientName = useMemo(() => {
     const m = new Map((clientsQ.data ?? []).map((c) => [c.id, `${c.name} (${c.client_code})`]));
     return (id: string) => m.get(id) ?? '—';
   }, [clientsQ.data]);
   const periodLabel = useMemo(() => {
-    const m = new Map((periodsQ.data ?? []).map((p) => [p.id, `#${p.period_number}`]));
-    return (id: string) => m.get(id) ?? '—';
+    const m = new Map((periodsQ.data ?? []).map((p) => [p.id, `Bill ${p.period_number}`]));
+    // A statement issued before weekly billing has no billing_period_id — it reads as "—", honestly.
+    return (id: string | null) => (id ? m.get(id) ?? '—' : '—');
   }, [periodsQ.data]);
 
   if (!canView || isForbidden(q.error)) {
@@ -58,9 +58,9 @@ export default function BillingListPage() {
   const columns: DataColumn<ClientStatement>[] = [
     { id: 'number', header: 'Statement', render: (s) => <span className="mono">{statementNo(s.statement_number)}</span> },
     { id: 'client', header: 'Client', render: (s) => clientName(s.client_id) },
-    { id: 'period', header: 'Period', render: (s) => <span className="mono">{periodLabel(s.pay_period_id)}</span> },
+    { id: 'period', header: 'Billing week', render: (s) => <span className="mono">{periodLabel(s.billing_period_id)}</span> },
     { id: 'status', header: 'Status', render: (s) => <Badge tone={s.status === 'issued' ? 'success' : 'neutral'}>{s.status}</Badge> },
-    { id: 'total', header: 'Total (CAD)', align: 'right', numeric: true, render: (s) => money(s.total_amount) },
+    { id: 'total', header: 'Total', align: 'right', numeric: true, render: (s) => money(s.total_amount, s.currency) },
     { id: 'generated', header: 'Generated', render: (s) => <span className="mono">{displayDate(s.generated_at)}</span> },
   ];
 

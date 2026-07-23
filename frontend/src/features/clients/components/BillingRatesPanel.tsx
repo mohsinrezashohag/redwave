@@ -6,7 +6,7 @@
  * (billing_rates:delete). Money is exact-decimal via money(). Reads ONLY billing rates — never commission (#3).
  */
 import { useState } from 'react';
-import { Banner, Button, ConfirmDialog, Select, useToast } from '../../../components/ui';
+import { Banner, Button, ConfirmDialog, SegmentedControl, Select, useToast } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -16,10 +16,14 @@ import { useClientBillingRates } from '../api/useClients';
 import { useDeleteBillingRate } from '../api/useClientMutations';
 import { EffectiveDatedTable, type EffectiveColumn } from '../../../components/ui';
 import { BillingRateFormModal } from './BillingRateFormModal';
+import { PriceChart } from './PriceChart';
 import type { BillingRate, BillingRateFilters, Product, RateKind } from '../clients.types';
 import styles from './clients.module.css';
 
 const ALL = '__all__';
+/** The price chart reads the UNFILTERED set; a stable ref keeps it one query key (shared with the default history view). */
+const NO_FILTERS: BillingRateFilters = {};
+type View = 'chart' | 'history';
 const RATE_KIND_LABEL: Record<RateKind, string> = {
   product: 'Product rate',
   tv_addon: 'TV add-on',
@@ -52,11 +56,15 @@ export function BillingRatesPanel({
   const onError = useApiErrorToast();
   const remove = useDeleteBillingRate();
 
+  const [view, setView] = useState<View>('chart');
   const [filters, setFilters] = useState<BillingRateFilters>({});
   const [addOpen, setAddOpen] = useState(false);
   const [editRate, setEditRate] = useState<BillingRate | null>(null);
   const [deleteRate, setDeleteRate] = useState<BillingRate | null>(null);
-  const q = useClientBillingRates(clientId, filters, canView);
+  const q = useClientBillingRates(clientId, filters, canView && view === 'history');
+  // The chart needs every status; with no filters this is the same query key as the default history view,
+  // so TanStack serves it from one cache entry rather than fetching twice.
+  const chartQ = useClientBillingRates(clientId, NO_FILTERS, canView && view === 'chart');
 
   // Hidden entirely without billing_rates:view — these are sensitive partner financials.
   if (!canView) {
@@ -91,9 +99,55 @@ export function BillingRatesPanel({
 
   const rates = q.data ?? [];
   const showRowActions = canEdit || canDelete;
+
+  if (view === 'chart') {
+    return (
+      <div>
+        <div className={styles.filters}>
+          <SegmentedControl
+            options={[
+              { value: 'chart', label: 'Current prices' },
+              { value: 'history', label: 'Rate history' },
+            ]}
+            value={view}
+            onChange={setView}
+            size="sm"
+            ariaLabel="Billing rate view"
+          />
+        </div>
+        <DataState
+          isLoading={chartQ.isLoading}
+          isError={chartQ.isError}
+          isEmpty={false}
+          onRetry={() => chartQ.refetch()}
+        >
+          <PriceChart products={products} rates={chartQ.data ?? []} currency={currency} />
+        </DataState>
+        {canCreate && (
+          <div className={styles.panelActions}>
+            <Button variant="secondary" onClick={() => setAddOpen(true)}>
+              Add rate
+            </Button>
+          </div>
+        )}
+        {canCreate && <BillingRateFormModal open={addOpen} clientId={clientId} products={products} currency={currency} onClose={() => setAddOpen(false)} />}
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className={styles.filters}>
+        <SegmentedControl
+          options={[
+            { value: 'chart', label: 'Current prices' },
+            { value: 'history', label: 'Rate history' },
+          ]}
+          value={view}
+          onChange={setView}
+          size="sm"
+          ariaLabel="Billing rate view"
+        />
         <div className={styles.filterControl}>
           <Select
             aria-label="Product filter"
@@ -167,7 +221,7 @@ export function BillingRatesPanel({
       />
 
       {canCreate && (
-        <div style={{ marginTop: 'var(--space-3)' }}>
+        <div className={styles.panelActions}>
           <Button variant="secondary" onClick={() => setAddOpen(true)}>
             Add rate
           </Button>

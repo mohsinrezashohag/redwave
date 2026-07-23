@@ -6,8 +6,14 @@
  */
 import type { components } from '../../api/generated/schema';
 
-/** ONE LINE PER CUSTOMER — the backend aggregates a sale's products into a single line. */
+/** ONE ROW PER SALE, carrying the amount from every rate kind — the client workbook's line. */
 export type ClientStatementLine = components['schemas']['ClientStatementLineResponse'];
+
+/** Counts + column totals, summed by the SERVER from the frozen lines — the workbook's summary strip. */
+export type StatementSummary = components['schemas']['StatementSummaryResponse'];
+
+/** A billing WEEK (Mon–Sun) with a sequential bill number — "Bill 17". Not a pay period. */
+export type BillingPeriod = components['schemas']['BillingPeriodResponse'];
 
 export type ClientStatement = components['schemas']['ClientStatementResponse'];
 
@@ -32,7 +38,7 @@ export interface UnpricedDetail {
 
 export interface BillingFilters {
   client_id?: string;
-  pay_period_id?: string;
+  billing_period_id?: string;
 }
 
 // Request bodies — typed from the generated schema.

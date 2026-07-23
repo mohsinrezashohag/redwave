@@ -15,8 +15,8 @@ export class StatementTieOutResponse {
   @ApiProperty()
   client_id!: string;
 
-  @ApiProperty()
-  pay_period_id!: string;
+  @ApiProperty({ description: 'The billing week ("Bill 17") the statement covers.' })
+  billing_period_id!: string;
 
   @ApiProperty({ type: () => StatementTieOutRefResponse, nullable: true })
   statement!: StatementTieOutRefResponse | null;

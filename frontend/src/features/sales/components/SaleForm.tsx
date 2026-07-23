@@ -44,7 +44,8 @@ const schema = z.object({
   client_id: z.string().uuid({ message: 'Select a client' }),
   rep_id: z.string().optional(),
   sale_date: z.string().regex(DATE, 'Use YYYY-MM-DD'),
-  customer_name: z.string().min(1, 'Required').max(150),
+  customer_first_name: z.string().min(1, 'Required').max(80),
+  customer_last_name: z.string().min(1, 'Required').max(80),
   street: z.string().min(1, 'Required').max(200),
   city: z.string().min(1, 'Required').max(100),
   province_state: z.string().min(1, 'Required').max(100),
@@ -74,7 +75,8 @@ export function SaleForm() {
       client_id: '',
       rep_id: '',
       sale_date: todayIso(),
-      customer_name: '',
+      customer_first_name: '',
+      customer_last_name: '',
       street: '',
       city: '',
       province_state: '',
@@ -111,7 +113,10 @@ export function SaleForm() {
         client_id: values.client_id,
         rep_id: values.rep_id || undefined,
         sale_date: values.sale_date,
-        customer_name: values.customer_name,
+        // The client bill prints the two names as separate columns; the server derives the display name.
+        customer_name: `${values.customer_first_name} ${values.customer_last_name}`.trim(),
+        customer_first_name: values.customer_first_name,
+        customer_last_name: values.customer_last_name,
         street: values.street,
         city: values.city,
         province_state: values.province_state,
@@ -180,9 +185,14 @@ export function SaleForm() {
           />
         </div>
 
-        <FormField label="Customer name" required error={errors.customer_name?.message}>
-          <Input {...register('customer_name')} placeholder="Jane Doe" />
-        </FormField>
+        <div className={styles.grid}>
+          <FormField label="Customer first name" required error={errors.customer_first_name?.message}>
+            <Input {...register('customer_first_name')} placeholder="Jane" />
+          </FormField>
+          <FormField label="Customer last name" required error={errors.customer_last_name?.message}>
+            <Input {...register('customer_last_name')} placeholder="Doe" />
+          </FormField>
+        </div>
 
         <FormField label="Street" required error={errors.street?.message}>
           <Input {...register('street')} placeholder="123 Main St" />

@@ -32,7 +32,7 @@ import { FlatRateService } from './flat-rate.service';
 import { HoldbackService } from './holdback.service';
 import { IncentiveService } from './incentive.service';
 import { ProductTypeService } from './product-type.service';
-import { CreateTierScheduleDto, UpdateTierScheduleDto } from './dto/tier.dto';
+import { CreateTierScheduleDto, ListTierSchedulesQuery, UpdateTierScheduleDto } from './dto/tier.dto';
 import { CreateFlatRateDto, ListFlatRatesQuery, UpdateFlatRateDto } from './dto/flat-rate.dto';
 import {
   SetHoldbackConfigDto,
@@ -70,8 +70,8 @@ export class CommissionController {
     description: 'Requires commission:view.',
   })
   @ApiOkResponse({ type: TierConfigResponse, isArray: true })
-  listTiers() {
-    return this.tiers.list();
+  listTiers(@Query() query: ListTierSchedulesQuery) {
+    return this.tiers.list(query);
   }
 
   @Post('tiers')

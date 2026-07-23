@@ -9,7 +9,7 @@
  * sums them into money (#1). Numeric comparisons use decimal.js (no float).
  */
 import { Decimal } from 'decimal.js';
-import { CategorySchema } from './field-schema.logic';
+import { CategorySchema, ExpenseFieldDef } from './field-schema.logic';
 
 export type Severity = 'alert' | 'warning';
 
@@ -39,6 +39,19 @@ const fieldVal = (fv: Record<string, unknown> | null | undefined, key: string): 
 const isNumeric = (s: string): boolean => /^\d+(\.\d+)?$/.test(s.trim());
 
 /**
+ * How many CAP UNITS this item covers — the value of the field flagged `multiplies_cap`, else 1. A blank,
+ * non-numeric or <1 value falls back to 1, so a malformed entry can never LOWER the bar for a warning.
+ */
+function capUnits(item: ValidatableItem, fields: ExpenseFieldDef[]): number {
+  const def = fields.find((f) => f.multiplies_cap);
+  if (!def) return 1;
+  const raw = fieldVal(item.field_values, def.key);
+  if (typeof raw !== 'string' || !isNumeric(raw)) return 1;
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n > 1 ? n : 1;
+}
+
+/**
  * Compute the item's alerts + warnings against its category schema. A missing schema (unknown category)
  * yields only the core amount alert — the service separately rejects an inactive/unknown category.
  */
@@ -65,8 +78,19 @@ export function validateExpenseItem(item: ValidatableItem, schema: CategorySchem
 
   // ── WARNINGS (flag, non-blocking) ───────────────────────────────────────────────
   if (!isKm && schema?.amount_soft_cap && !isEmpty(item.amount) && isNumeric(item.amount as string)) {
-    if (new Decimal(item.amount as string).greaterThan(new Decimal(schema.amount_soft_cap))) {
-      warnings.push({ code: 'amount_over_cap', severity: 'warning', field: 'amount', message: `Amount exceeds the ${schema.category_key} soft cap of ${schema.amount_soft_cap}` });
+    // The cap is PER UNIT when a field declares itself the multiplier: one item covering a day's lunch AND
+    // dinner is judged against 2 × the cap, so combining meals into one item is no longer penalised
+    // relative to splitting them. Units default to 1, so a category without a multiplier is unchanged.
+    const units = capUnits(item, fields);
+    const cap = new Decimal(schema.amount_soft_cap).times(units);
+    if (new Decimal(item.amount as string).greaterThan(cap)) {
+      const per = units > 1 ? ` (${schema.amount_soft_cap} × ${units})` : '';
+      warnings.push({
+        code: 'amount_over_cap',
+        severity: 'warning',
+        field: 'amount',
+        message: `Amount exceeds the ${schema.category_key} soft cap of ${cap.toFixed(2)}${per}`,
+      });
     }
   }
   for (const def of fields) {

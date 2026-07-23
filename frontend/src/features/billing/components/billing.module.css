@@ -75,3 +75,25 @@
   font-weight: var(--weight-bold);
   color: var(--text-primary);
 }
+
+/* ── The client workbook's summary strip (counts + column totals, server-computed) ────────── */
+.summaryStrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+}
+
+/* Secondary text inside a line cell (rep code, address). */
+.subtle {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* Presence flags on the statement line. */
+.flagOn {
+  color: var(--success);
+}
+
+.flagOff {
+  color: var(--text-secondary);
+}

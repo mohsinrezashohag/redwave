@@ -268,8 +268,15 @@ export async function seedDemo(
     await clawbacks.enter({ sale_item_id: paidInternet.id, reason: 'Install failed; activation reversed by the client.', reported_date: p1Mid }, sa);
   }
 
-  // ── A client statement (one line per customer), priced ONLY from billing rates (#3). VF in prev2 is paid. ──
-  await statements.generate(clientByCode['VF'].id, prev2.id, superAdminUserId);
+  // ── A client statement (one row per sale, every rate kind), priced ONLY from billing rates (#3). Billing
+  //    runs on its own WEEKLY calendar, so find the week containing the demo's prev2 sales rather than
+  //    reusing the pay period. — docs/uat/billing-target-format.md
+  const billingWeek = await prisma.billingPeriod.findFirst({
+    where: { start_date: { lte: new Date(`${p2Mid}T00:00:00.000Z`) }, end_date: { gte: new Date(`${p2Mid}T00:00:00.000Z`) } },
+  });
+  if (billingWeek) {
+    await statements.generate(clientByCode['VF'].id, billingWeek.id, superAdminUserId);
+  }
 
   // ── Expenses (REPORT-AS-FOLDER, EXP-001): a rep's weekly folder holds a km item (multi-stop) + a meals
   //    item — submitted, then both APPROVED; a second folder holds a gas item left submitted (→ admin queue).

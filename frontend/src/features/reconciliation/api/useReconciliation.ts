@@ -7,14 +7,17 @@ import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
 import type { PayRunTieOut, StatementTieOut } from '../reconciliation.types';
 
-export function useStatementTieOut(clientId: string | undefined, payPeriodId: string | undefined, enabled = true) {
+/** Tie a statement out against its lines and a live re-price, for a client + BILLING WEEK. */
+export function useStatementTieOut(clientId: string | undefined, billingPeriodId: string | undefined, enabled = true) {
   return useQuery({
-    queryKey: ['reconciliation', 'statement', clientId, payPeriodId],
+    queryKey: ['reconciliation', 'statement', clientId, billingPeriodId],
     queryFn: () =>
       unwrap<StatementTieOut>(
-        api.GET('/v1/reconciliation/statements', { params: { query: { client_id: clientId as string, pay_period_id: payPeriodId as string } } }),
+        api.GET('/v1/reconciliation/statements', {
+          params: { query: { client_id: clientId as string, billing_period_id: billingPeriodId as string } },
+        }),
       ),
-    enabled: enabled && !!clientId && !!payPeriodId,
+    enabled: enabled && !!clientId && !!billingPeriodId,
   });
 }
 
