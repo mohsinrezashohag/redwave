@@ -52,7 +52,7 @@ These are the rules that, if broken, produce wrong money or a privacy/security b
 2. **Sale-item snapshots are immutable.** When a `sale_item` is paid, its `tier_at_payment`, `rate_applied`, `commission_paid`, and `incentive_amount` are frozen. Never update a snapshot. Corrections happen via a **new** clawback/adjustment record.
 3. **The two rate streams never mix.** `client_billing_rates` (what we charge the client) and the `commission_*` tables (what we pay the rep) are separate, with no code path that joins or combines them. (This was the prior system's core defect.)
 4. **No in-system clawback date math.** The system does **not** compute or enforce 30/60-day windows. A clawback is entered manually when the client reports a cancellation, at any time. Recover the exact amount from the snapshot.
-5. **Gross tally, never re-tier.** The commission tier is computed from the **gross** internet activation count for the period and applied to every internet activation in it. A cancellation **never** recalculates a period's tier. (Cancellations are flat clawbacks — see #6.)
+5. **Gross tally, never re-tier.** The commission tier is computed from the **gross** internet activation count for the period and applied to every internet activation in it. A cancellation **never** recalculates a period's tier. (Cancellations are flat clawbacks — see #6.) **The tally is CROSS-CLIENT and stays client-blind.** Commission tier schedules and flat rates can each be **scoped to one client** (a `client_id`-null row is the GLOBAL fallback), but that scopes only the **rate lookup** — never the tally. The engine counts every internet activation across all clients into ONE number, then looks the bracket up on each activation's own client schedule (falling back to global). A per-client tally would be the "per-client tallies are wrong" defect in §6.
 6. **Clawback is a flat deduction.** A clawback subtracts the exact amount originally paid (incl. any incentive) from the rep's pay-run total. No 70/30 sequencing. Per `sale_item`, so one product can be clawed back without touching others on the same sale. *Built (`modules/clawback/`): entry targets a **PAID** `sale_item` (frozen `commission_paid` ≠ null, else 422); the amount is the engine's `computeClawbackAmount` from the snapshot (rate + incentive) — the snapshot is **never edited** (#2), the period is **never re-tiered** (#5), there is **no date math** (#6), and only the target item + its sale flip to `clawed_back` (one clawback per item). It is `pending` until a pay run deducts it, then `applied` + linked. The `CLAWBACK_TOTAL_PROVIDER` seam is rebound to `ClawbackPayrunProvider`; finalize calls `markApplied(...)` in its transaction so the deduction is recorded exactly once.*
 7. **`sale_date` governs the pay period.** Not validation date, not activation date. `activation_date` is stored for reference only and **drives no logic**. *Built (Sales): `sales` has **no `pay_period_id` FK**, so the period is **derived** from `sale_date` via the pure `modules/sales/pay-period.logic.ts#resolvePayPeriod` (period whose `[start,end]` contains `sale_date`). Validation never touches `sale_date`. Pre-loading `pay_periods` is Pay Run's job — derived period is null until then.*
 8. **Pay-run finalize is atomic and idempotent.** One DB transaction; an `Idempotency-Key` so a retry never double-pays or double-releases a holdback. Finalize is what freezes the snapshots (#2). *Built (`modules/payrun/pay-run.service.ts`): the whole finalize runs in **one `prisma.$transaction`** (a mid-step throw rolls back entirely). `pay_runs` has **no idempotency-key column**, so idempotency is **state-based** — re-finalizing a non-draft run is a no-op, plus freeze-once guards (sales become `paid`; one `holdback_ledger` row per rep+origin). Finalize freezes `sale_item` snapshots, transitions sales Validated→in_pay_run→paid, records the 30% hold, releases due prior holds, applies bonuses, composes net.*
@@ -268,7 +268,8 @@ This file is the project's **persistent memory**. Claude Code loads it at the st
 - **Billing `bundle_bonus` pricing (DONE — Bundle-pricing track, migration `20260616000000`).** Add-on **products** (HP/TV/Protection Plan/Mesh/Speed-attach, entered as Products with per-product `rate_kind='product'` rates) are already billed. **`bundle_bonus` is now APPLIED to statement/invoice line totals** via a configurable trigger: `client_billing_rates.bundle_product_types String[]` (sorted; the product-type catalogue keys that must ALL be present on a sale). `billing-rates.service#create` validates a bundle carries **≥2 distinct active catalogue types + no `product_id`** (422 otherwise; non-bundle kinds must carry an empty set), and **keys the effective-dating scope by the trigger set** (`create`/`update`/`remove`/`groupByScope`) so DISTINCT bundles don't supersede each other. `StatementService.priceClientPeriod` loads the client's bundle rates, and for each sale whose `sale_item.product_type`s cover a bundle's trigger, appends a **synthetic `PricedItem`** `{product_id:null, name:"<A + B> bundle", rate}` (effective on `sale_date`, once per sale per bundle) → `buildStatement` sums it into the line/total in the **client's currency**, inside the frozen-FX `amount_cad` at issue (#12, automatic — no FX change). Reconciliation re-prices via the same path (consistent by construction). Still **client-bill only** (#3 — `billing.no-commission.spec` green; commission engine untouched). **Still deferred:** the add-on **KINDS** `tv_addon`/`hp_addon`/`spiff` remain unused/uncombined (no pinned combine rule; not in the grid) — if Redwave needs them, extend `priceClientPeriod` the same way.
 - **Real billing export generation (DONE — Billing batch).** Statements/invoices/QuickBooks-CSV now render for real ON DEMAND (exceljs / pdf-lib / hand-rolled CSV) and stream from the FROZEN record; a `billing_exports` table records each artifact (+ Supabase upload when configured). Statements/invoices are also gapless-numbered + immutable now. See the §13 "Billing — gapless numbering · immutability · reconciliation · QuickBooks" subsection.
 - **Documents & E-Signature built — REAL storage + in-system stamping (no e-sign vendor).** `modules/documents/` — upload (PDF via the unified **`POST /v1/files`** pipeline; the JSON create **claims** the stored path — see the §12 "Real file storage" entry) → share + **place fields** → sign (server **stamps** a per-signer copy) / decline / sign-upload → final all-signatures copy, with the overall status **derived** by the pure `document-status.logic.ts` (`deriveRequestStatus`/`deriveDocumentStatus`) + recomputed in a `$transaction` after every action (`status.recompute.ts` — UNCHANGED). **Share == signature request** (no shares table; DOC-002); recipients become the **visibility** set — a user sees only documents they own or are a recipient of, **Admin/Super Admin see all** (user-based `OR` in the query, NOT `ScopeService`). **Decline is terminal**. **RBAC maps to the real 6 actions**: upload + request = `documents:create`; reads + the `…/file-url` endpoints = `documents:view`; **sign / sign-upload / cancel + `/v1/signatures/{id}/file-url` carry NO permission** — authenticated + row-level (recipient / requester-owner-admin), per arch §6.10. Re-acting → 409. **Storage model (the law):** files (original, per-signer copy, final copy, saved-signature images, rep docs) live in Supabase by **object PATH**; bytes are served only via short-TTL signed URLs minted by the visibility-gated `…/file-url` endpoints — never public; `Document.original_file_url` is **set once, never mutated** (DOC-001/004). **Stamping** = `pdf-lib` (`stamp.service.ts` + the pure `stamp.logic.ts`: top-left-fraction → pdf-lib points, unit-tested) — loads the original, draws each field (signature/initial → image, date → signing date, text → typed value), uploads a NEW object; graceful no-op when storage is off. **PDF-only** at upload (non-PDF → 422; Word→PDF conversion deferred, §12). **New entities** (migration `20260610130000_documents_esign_real`): `signature_fields` (per request/recipient: type signature|initial|date|text, page, normalized x/y/w/h, value_text/value_image_path) + `user_signatures` (per-user saved reusable signature, method, is_default) + `signature_requests.completed_file_path`. **Saved signatures** = own-scoped `/v1/account/signatures` CRUD (no module permission). Signature events (request/sign/complete) emit via the **`NOTIFICATION_EMITTER` seam** (rebound by `NotificationsModule`). decline/sign time+IP in the **audit_log** (DOC-007). Seed unchanged (`documents:create` already on Manager + Sales Rep; **no new permission** — saved signatures + field placement + file-url all ride existing gates).
-- **Data Import & Integration — REAL upload + parse + 7 targets + historical sales (stage → reconcile → commit; atomic + idempotent #8).** `modules/import/`. **Real file upload**: `POST /v1/imports` is **multipart** (xlsx/xls/csv/tsv) → `ParserService` (**exceljs** + **papaparse**) → `applyMapping` → `cleanMappedRow` (pure `clean.logic`: trim, **date→'YYYY-MM-DD'** by the cell's own day [no DST drift], **money→exact decimal string**, **codes UPPER-cased** [kills VF/Vf], missing→null) → classify → stage; the source file is stored via `StorageService.upload('imports')`. **Mapping is auto-suggested** from headers (pure `suggest-mapping.logic`) when no `field_mapping_id`; the `target-fields` registry (per `${source}:${import_type}`: field+type+aliases+required+dict) is the single source of truth for cleaning + suggestion + templates. **Mapping CRUD** (`/v1/import-mappings`, IMP-002) + **`POST /:id/remap`** (re-apply a mapping to the stored `raw_data`, no re-upload). **7 targets**: `client_report`+`sales` (bulk validation → `SalesService.validateWithinTx`); `master_migration`+`clients`/`products`(+inline rate)/`billing_rates`(back-dated #10)/`reps`/`sales`(**historical**); `balance_migration`+`holdback`. Code-based classifiers + handlers (`handlers/master.handlers` + the re-keyed billing-rate/holdback) resolve client_code/rep_code/product_name → ids within the tx. **Commit** = the pure `reconcile-gate.logic#evaluateGate` (block any unmatched/duplicate/error; `balance_migration` reconciles to the operator `reconcile_total`, IMP-007) then ONE `prisma.$transaction` (throw → whole batch rolls back, stays `staged`); re-commit is a **no-op** (state-based). **Error report** `GET /:id/error-report` (CSV). RBAC per arch §6.11: create/view/edit + **commit = `import:approve`** (Admin/SA) — **no new permission** (mapping CRUD + remap + error-report ride existing). ImportModule imports StorageModule + SalesModule (one-directional).
+- **Data Import & Integration — REAL upload + parse + 8 targets + historical sales (stage → reconcile → commit; atomic + idempotent #8).** `modules/import/`. **Real file upload**: `POST /v1/imports` is **multipart** (xlsx/xls/csv/tsv) → `ParserService` (**exceljs** + **papaparse**) → `applyMapping` → `cleanMappedRow` (pure `clean.logic`: trim, **date→'YYYY-MM-DD'** by the cell's own day [no DST drift], **money→exact decimal string**, **codes UPPER-cased** [kills VF/Vf], missing→null) → classify → stage; the source file is stored via `StorageService.upload('imports')`. **Mapping is auto-suggested** from headers (pure `suggest-mapping.logic`) when no `field_mapping_id`; the `target-fields` registry (per `${source}:${import_type}`: field+type+aliases+required+dict) is the single source of truth for cleaning + suggestion + templates. **Mapping CRUD** (`/v1/import-mappings`, IMP-002) + **`POST /:id/remap`** (re-apply a mapping to the stored `raw_data`, no re-upload). **8 targets**: `client_report`+`sales` (bulk validation → `SalesService.validateWithinTx`); **`sales_entry`+`sales` (LIVE sales, IMP-013 — see below)**; `master_migration`+`clients`/`products`(+inline rate)/`billing_rates`(back-dated #10)/`reps`/`sales`(**historical**); `balance_migration`+`holdback`. Code-based classifiers + handlers (`handlers/master.handlers` + the re-keyed billing-rate/holdback) resolve client_code/rep_code/product_name → ids within the tx. **Commit** = the pure `reconcile-gate.logic#evaluateGate` (block any unmatched/duplicate/error; `balance_migration` reconciles to the operator `reconcile_total`, IMP-007) then ONE `prisma.$transaction` (throw → whole batch rolls back, stays `staged`); re-commit is a **no-op** (state-based). **Error report** `GET /:id/error-report` (CSV). RBAC per arch §6.11: create/view/edit + **commit = `import:approve`** (Admin/SA) — **no new permission** (mapping CRUD + remap + error-report ride existing). ImportModule imports StorageModule + SalesModule (one-directional).
+- **LIVE sales bulk entry (IMP-013 — the 8th target; migration `20260621000000_import_live_sales`).** New `ImportSourceType` value **`sales_entry`** → pair **`sales_entry:sales`** → Kind `bulk_sales`. A new *source* (not type) because the pair must be unique — `pairingKind` and the FE `kindOf` both reverse-resolve by it, and both sales pairs were taken. **Creates REAL sales that DO reach the engine** (tier / pay run / clawback) — the opposite of `historical`. **ONE ROW = ONE SALE**: `product_types` is a comma-separated list so a bundle (and the mandatory internet base) fits one row, keeping the 1-row = 1-entity = 1-gate-unit model. Address columns are optional (blank → `'—'`). A `status` column of `validated` also runs the entered→validated transition at commit. **Drives `SalesService`, never reimplements it**: the new **`SalesService.createWithinTx(tx, dto, user, {importBatchId})`** mirrors `validateWithinTx` (tx first, no audit, no own `$transaction`), and the entry RULES (rep active + in scope, client active, products belong to the client, **SALE-001a internet base**, `countsTowardTally`, Sale ID) live in ONE private `resolveSaleCreate(db, …)` shared with the public `create`. **sale_code caveat:** the suffix count runs on `tx` so same-batch siblings are visible; the public `create` keeps its P2002 retry, but a retry is impossible inside a Postgres tx (a failed statement aborts it) so a genuine collision rolls the batch back. **Unresolvable client/rep/product classifies as `error`** (never creates master data), and **SALE-001a is pre-checked in the classifier** so a bad row is blocked by the gate instead of throwing mid-commit. **No commission is written at import** (snapshots stay NULL — Pay Run freezes them, #2/#5; spec-locked). **No new RBAC permission** (rides `import:create` / `import:approve`); the commit tx, `evaluateGate` and re-commit idempotency are unchanged. FE: a `KINDS` entry + a `templates.ts` `TemplateDef` (group `Sales`) + `KIND_TO_TEMPLATE` → the Excel/CSV download and the MappingEditor field list appear automatically.
 - **Historical sales (CONFIRMED rule, IMP-012).** `master_migration`+`sales` → `sale.status='historical'` + `sale_items` with `counts_toward_tally=false`, commission snapshots **NULL** (#2: not a commission record), `historical_billed_amount` set (the source-file BILLED amount — a **billing-stream reference**, never commission, never joined to commission_*, #3), `import_batch_id` set (IMP-008). **Reference-only**: every rep-facing query already filters `CONFIRMED=[validated,in_pay_run,paid]` (or `'validated'`), so `historical` is **auto-excluded** from pay run / commission / tier / leaderboard / billing / clawback with NO filter change (a `dashboards.service.spec` locks it). The **Business dashboard ALONE blends it**: `business()`+`businessTrends()` add a separate historical `sale_items` pass into revenue (+Σ`historical_billed_amount`) + total_activations + by-product/by-client mix (current + prev), never into internet tally / greenfield / tier / payout. `SaleStatus` += `historical` (terminal, `sale-status.logic` `historical:[]`); migration `20260610140000_import_real_historical` (+ `historical_billed_amount`, `ImportType.billing_rates`, `sales.import_batch_id`).
 - **Import deferrals (remaining).** **`mixed` import_type** unsupported. **Provenance is one-directional** for non-sales targets (clients/products/reps/rates/holdback) via `import_rows.matched_entity_id` (only **sales** carry `import_batch_id`). VF/RF/CTI templates are **sensible defaults** (`frontend/.../templates.ts`) — refine from a real file (import is mapping-driven, so any layout works). The **server-recorded** export render stays the only stub (FE templates are real, generated via `exportRows`). Excel parsing uses **exceljs** (not SheetJS `xlsx` — parse-side CVE avoidance, consistent with the export side).
 - **Reporting & Dashboards built (read-layer; NO money recompute; leakage-scoped).** `modules/reporting/` — the final backend module: four role-scoped dashboards, a counts-only leaderboard, notifications, and a scoped read-only chatbot. **Every read is scoped server-side**: **rep** dashboard scopes to `user.repId` *directly* (null → 403 + audit — NOT `getRepScope`, which returns `roster` for a player-coach); **manager** uses `getRepScope` roster and **rejects a bare rep** (`scope.level==='self'` → 403); **business** is `@RequirePermission('reports','view')` + a service `if(!isSuperAdmin) 403+audit` (there is **no `business` action**); **admin** = `reports:view` + Admin/SA queues. **All money is READ** from `pay_run_lines`/`holdback_ledger`/`clawbacks`/`client_statements` (business net_margin = revenue − payout, a display subtraction — never recomputed, #1/#5); counts from `sales`/`sale_items`; tier-progress is a pure count→bracket lookup (`tier-progress.logic`, no rates). **Leaderboard** = company-wide ranked internet-activation **counts only** (no money field — asserted), visible to anyone with `reports:view` (Sales Rep seed gained `reports:view`). **Notifications** (`NotificationsModule`): `notify(event,user,…)` reads the global `NotificationEventSetting` (Super-Admin-set, **no per-user override**), creates in-app rows + stubbed `EMAIL_DISPATCHER`; best-effort (never breaks the triggering action); `GET /v1/notifications` is own-only; settings GET/PATCH gated `settings:{view,edit}` (Super Admin). **Chatbot** (`POST /v1/chatbot/query`, authenticated): the stubbed `LLM_PROVIDER` returns ONLY an allow-listed intent (no ids/SQL); tools take **only the AuthUser** + are entitlement-gated (`isToolAllowed`) → a rep can never retrieve another rep's/role's data regardless of prompt (proven by smoke). Seeded: 8 notification settings (`rate_change` in-app-only, RPT-010) + a `gemini` `ChatbotConfig` (`is_active=false`).
@@ -282,6 +283,16 @@ This file is the project's **persistent memory**. Claude Code loads it at the st
 - **Meeting-3 reconciliation + Wave 1 (DONE — docs commit `2f6bbd2`; see `docs/meeting-3-deltas.md`).** The 3rd-meeting deltas are reconciled into BRD/SRS/data-model/CLAUDE §3 (source of truth). **Wave 1 shipped** (additive, invariant-safe, no currency): (1) **internet-base rule (SALE-001a)** — a sale must include a tiered/greenfield product; standalone add-ons → 422 (`sales.service` + `SaleForm`); add-on flat rate may be **$0 (bill-only)** — already allowed. (2) **Clawback finder (CLAW-009)** — search Sale ID / customer / **address / rep name** + Rep/Address columns (`PaidSaleFinder`, client-side over the loaded clawable set; `/v1/search` also matches rep name). (3) **Personal / do-not-reimburse toggle (EXP-012)** — `expense_items.is_personal`; **excluded from the pay-run seam** (`ExpensePayrunProvider` `is_personal:false`) + the reimbursable grouped total; a "Personal" badge/column. (4) **Custom tags (EXP-002a)** — `expense_items.tags` jsonb `string[]` (client + channel); the grouped/searchable expense-TYPE picker is **deferred to the report-folder rework** (needs the expanded category model). (5) **Per-client, effective-dated km rate — REP stream (EXP-004)** — new `km_rate_config` table (two-stream #3: `rep` wired, `client_bill` stored for Wave 2); the km amount resolves the rep rate in force for the client on the item date (client-specific → global → **$0.45 default**), via pure `km-rate.logic#selectKmRate` + `KmRateService` (CRUD reuses `common/effective-dating`, back-date 422); admin at **`/admin/km-rates`** (**`km_rates:view`/`edit`** — its own RBAC module; originally `expenses:view`/`edit`, re-pointed in the RBAC-governance batch so km-rate management is grantable independently of Expenses). **3 additive migrations** (`20260614000000` is_personal, `20260614010000` tags, `20260614020000` km_rate_config) — operator runs `migrate deploy`. Verified LOCAL: 602 backend tests + build + contract regen green; FE build+lint+stylelint+tsc green. **Wave 2 (gated, NOT started):** per-client **currency + stored-FX** migration (§3 #12 blast-radius) with mandatory money-path tests; the **rate-grid data** for the 4 clients (VF/RF/CTI/VF Business — client-BILL, engine untouched #3) + `standard_addon` types (Wireless/Protection Plan/Mesh/Speed-attach) + configurable bundles; ~~split billing + the client expense billing document~~ (**DONE** — see the "Client expense billing document" §13 build note); ~~per-type field sets + Alert/Warning validation~~ (**DONE** — see the "per-type expense fields + Alert/Warning" §13 build note). ~~The **expenses report-as-folder rework**~~ (**DONE** — see the "Report-as-folder expense rework" §13 build note; business week = **Mon–Sun**, migration `20260619000000`).
 - **Currency / stored-FX money model (DONE — Wave-2 track 1, BACKEND-ONLY; migration `20260615000000`).** The money-model foundation for #12. New `currencies` catalogue (CAD/USD, admin-extensible, seeded in bootstrap) + `clients.currency` (FK, default CAD). The frozen stored-FX fieldset `{original_currency, fx_rate Decimal(18,8), fx_rate_date, amount_cad}` is on **`expense_items`** (frozen at APPROVAL) and **`client_statements` + `client_invoices`** (frozen at ISSUE); `amount`/`total_amount`/`total_commission` now hold the value in the record's currency. **FX source = shared `common/fx`** (`FxRateService` env-gated on `FX_RATE_SOURCE=bank_of_canada`, Bank of Canada Valet, no key, graceful null → manual; `FxModule` @Global; pure `convertToCad` = half-up via `common/money`). **Resolution at each capture = override → API → 422** (never guess; CAD → rate 1, no fetch): expense approval reads `ReviewDto.fx_rate`; billing issue reads `GenerateBillingDto.fx_rate`. **Roll-ups read `amount_cad`:** the pay-run seam (`ExpensePayrunProvider`) + **every consolidated-revenue/expense read on the business + trends dashboards** (`dashboards.service`) — a foreign expense reaches the pay run already CAD; rep pay stays **CAD-only** (commission_*/pay_run_lines/holdback/clawbacks unchanged). Billing renderers label the doc's currency + a CAD-equivalent line. Reconciliation unchanged (compares like-for-like in the client currency). **Backfill:** existing rows → `{CAD, 1, self}` (identity — provably unchanged). **INERT until a USD client exists** (rate-grid track). Verified LOCAL: **623 backend tests** (incl. the mandatory half-up `.xx5` boundary on BOTH approval + issue) + tsc + lint + contract regen green. Operator: `migrate deploy` (stacks on the 3 Wave-1 migrations) + re-seed bootstrap (adds currencies); optional `FX_RATE_SOURCE`. **FE deferred** to the rate-grid track (currency picker + FX-override UI, when there's a USD client to exercise). **Next tracks:** ~~rate-grid data (sets `CTI=USD`)~~ (done) → ~~split billing + `client_expense_documents`~~ (done, §13) → ~~per-type fields + Alert/Warning~~ (done, §13) → ~~report-folder rework~~ (done, §13). **Expense module = fully built.**
 - **Rate-grid track — currency wiring + deferred currency FE (DONE — BE+FE; NO migration).** Brings the stored-FX model to life so a **USD client (CTI)** exercises the first real conversion. **Backend:** new tiny **`modules/currencies/`** — `GET /v1/currencies` (authenticated reference read, no permission, like `/v1/product-types`) + `CurrenciesService.assertSupported`. **`clients.currency` is now settable end-to-end** — `Create/UpdateClientDto` + service persist + `ClientResponse` carry it; a non-CAD code is validated (422 on unknown); **a currency CHANGE is BLOCKED once the client has an issued statement/invoice** (frozen billing history stays coherent, #12) — freely editable before. **Frontend** (`gen:api` regen first — the currency-track DTOs were stale in `schema.d.ts`): new shared **`features/currencies/useCurrencies`**; `ClientFormModal` billing-currency picker + `ClientDetailPage` display; **rate cards + `BillingRateFormModal` label the client's currency** (`money(amount, currency)` — a `USD 250.00` prefix for non-CAD, `$` default unchanged); **expense-form per-item currency picker** (`ExpenseItemRow` common-fields, **locked to CAD for km**); **approval FX-override** — `ReviewActions` opens an FX dialog for a FOREIGN item (`original_currency≠CAD` & `amount_cad==null`) collecting the rate + an approximate `amount_cad` preview, sent as `ReviewDto.fx_rate` (the server re-freezes authoritatively). **Bulk approve can't carry an override** → a foreign item relies on the FX source or is skipped (single-item path takes the manual rate). **Tests:** client-currency CRUD + the no-issued-statement guard; `GET /v1/currencies`; the first **source-driven** USD statement issue (`FxRateService→1.365` ⇒ `amount_cad 341.25`); business-dashboard CAD consolidation reads `amount_cad`. **632 backend tests** + FE build/lint/stylelint/tsc + contract regen green. **DATA-ENTRY is the operator's browser pass** (see `docs/rate-grid.md`): the 4 clients (CTI=USD) + products + billing rates + the new `standard_addon` types + the RF **$35 HP+TV `bundle_bonus`** row — all via existing admin UI, **no seed**. **Bundle APPLICATION to statement totals is now DONE** (see the "Billing `bundle_bonus` pricing" entry above — the RF $35 HP+TV row is priced into the line total once a sale has both). Get a client sign-off on the grid VALUES before entry.
+
+### Open after the UAT batches (this session)
+- **`prisma/seed/demo.ts` calls `documents.upload(dto, stubPdf, sa)` against a TWO-argument method.** Pre-existing (unchanged at HEAD), hidden because the seed runs `--transpile-only`, so `SEED_DEMO=yes` throws at the documents step before finishing. The seed is NOT typechecked by `tsconfig.json` (`include: ["src/**/*"]`) — worth widening, or the next drift lands the same way.
+- **`mfa.service.spec.ts` is a flake.** Failed once in a full-suite run and passed alone + on re-run (817/817). TOTP window + bcrypt rounds under parallel load; it will bite CI eventually. Fix by freezing the clock / lowering the test bcrypt cost, not by retrying.
+- **The sales export carries no Rep column.** `SaleResponse` exposes only `rep_id` (no code/name) and the sales table has no rep column either, so the client-bill-shaped export omits the Agent ID / Agent Name pair the STATEMENT has. Add the rep to `SALE_INCLUDE` + the response DTO if the export needs to line up completely.
+- **The office origin (`expense_settings`) is typed, not geocoded.** The admin card takes a plain address, so the defaulted km stop carries no lat/lng and the server falls back to the rep's typed total (exactly like any manual stop). The `office_lat`/`office_lng` columns exist — wire the Places autocomplete into `OfficeOriginCard` to let the office contribute to route derivation.
+- **Expense CATEGORIES are still enum-bound.** `expense_items.category` remains the `ExpenseCategory` enum (km/meals/hotel/flight/rental/gas/other); the per-type FIELD schema is fully dynamic but a new category key (e.g. `parking`) needs an enum migration. The new category GROUPING dimension inherits that ceiling.
+- **The client expense document is outside the reconciliation tie-out.** `/v1/reconciliation/*` covers statements + pay runs only; a `CEXP-` document has no tie-out check.
+- **Billing add-on kinds are now applied — except the ones with no rule.** `tv_addon` / `hp_addon` / `spiff` are live (add-on wins, product rate is the fallback). No combine rule was ever pinned for stacking several add-on kinds on one component, so only ONE rate fills each column; revisit if Redwave needs them to sum.
+- **One folder per rep+week is enforced in the SERVICE, not the DB.** `create` resolves to the existing folder; there is no unique constraint (a null-rep folder and an admin creating on behalf both need to stay legal). A partial unique index on `(submitted_by, rep_id, week_start) WHERE rep_id IS NOT NULL` would harden it.
 
 ---
 
@@ -733,13 +744,25 @@ The UI for the Pay Run pipeline (SRS §9). `features/payrun/`. The backend does 
 server-sourced and displayed via `money()` (exact-decimal, tabular-mono, right-aligned) / `sumMoney()`
 (integer-cents totals, no float). Reuses the playbook exactly. Two pages under the Money nav group.
 
-- **The line API carries only 7 components + net** (verified `lineData`): `commission_70` (70% advance),
-  `holdback_release_30` (released), `incentive_total`, `expense_total`, `bonus_amount`/`bonus_note`,
-  `clawback_total`, `net_payout`. **No tier, no gross, no current-period 30%-held on the line** — those would
-  need UI math (forbidden #1/#5). So the review is **server-faithful**: the **current 30%-held is surfaced
-  from the holdback ledger AFTER finalize** (`amount_held`; during draft a note says it's recorded at
-  finalize); **tier + gross are a flagged backend follow-up** (a future field on the line). The drill-down
-  states this honestly.
+- **The line API carries the 7 payout components + net + the RECONCILIATION facts** (`lineData`):
+  `commission_70` (70% advance), `holdback_release_30` (released), `incentive_total`, `expense_total`,
+  `bonus_amount`/`bonus_note`, `clawback_total`, `net_payout`, **plus `gross_commission` (the 70/30 base),
+  `amount_held` (THIS period's 30%), `tier_at_payment`, `internet_tally`, `rate_per_activation`** — all
+  copied VERBATIM off the engine's `PeriodResult` at draft **and** finalize (migration
+  `20260620000000_payrun_line_reconciliation`, 5 nullable cols; **no money is recomputed**, #1/#5; nullable
+  only for pre-migration rows and a 0-tally tier/rate). **The invariant `gross === commission_70 +
+  amount_held` holds exactly** (spec-locked, no lost cent), so a "the 70% looks wrong" report is decidable
+  on screen: `$287` is 70% of a **$410** gross, not the assumed $420 — rate composition, not a split error.
+  The drawer renders the full waterfall `gross − 30% held = 70% advance → + released + incentives +
+  expenses + bonus − clawback = net`, above a basis line (`Tier N · tally internet @ rate`); the +/−/=
+  glyphs are presentation only.
+- **Period-level 30% view — `GET /v1/pay-runs/:id/holdback`** (`payrun:view`, `PayRunHoldbackSummaryResponse`):
+  `held_this_period`, `held_release_period` (WHEN it releases), `releasing_this_period`,
+  `clawback_setoff_this_period`, `outstanding_total`, `by_origin[]`. **Every total is server-computed** so the
+  UI never aggregates the ledger (the reviewer's "no arithmetic in the component"). Reuses `scopeRepIds`, the
+  pure `resolveScheduledReleasePeriod`, and the frozen `holdback_ledger`. On a **draft** the current hold +
+  release period are a **projection** (`is_projection: true` — nothing hits the ledger until finalize);
+  finalized figures are read from the ledger. FE: `HoldbackSummaryPanel` + a "Held this period (30%)" KPI.
 - **Period list `/pay-runs`** (`payrun:view`): the pre-loaded 2026 schedule (`usePayPeriods`) **joined
   client-side** with the run headers (`usePayRuns`, latest run per period) to derive each row's run state —
   no run / draft / finalized / exported. Action by state: **no run → "Draft a run"** (`payrun:create`, POSTs
@@ -936,7 +959,7 @@ reconcile-before-commit GATE, the ATOMIC + idempotent commit, the 7 handlers); *
 adjusts the mapping, reconciles, and commits — it does NO matching/commit logic**. Reuses the playbook +
 `lib/api/multipartUpload`. Three pages + a templates panel under the Administration nav group.
 
-- **STAGE = a REAL file upload** (`NewImportPage`, `import:create`): kind Select (the **7 targets** in `KINDS`,
+- **STAGE = a REAL file upload** (`NewImportPage`, `import:create`): kind Select (the **8 targets** in `KINDS`,
   `import.types.ts`) + client / reconcile_total (when needed) + an optional **saved-mapping** picker
   (`useImportMappings`) + a real `FileUpload` (xlsx/xls/csv/tsv) → multipart `useStageImport` → the batch
   detail. The historical kind shows a clear **reference-only** note. (The old JSON `RowsEditor`/`parseRows` are
@@ -1460,3 +1483,206 @@ governance; the server was always the real gate (§5 — this was a visibility l
   no longer sees the Administration group (deep-link `/admin/km-rates` → AccessDenied); the SA Roles matrix
   shows KM Rates + Product Types rows + the Business/Broadcast toggles; the matrix + long lists scroll within
   their own pane with the footer clean (360px + light/dark).
+
+### Per-client commission rates + the client price chart (built — review items 5/12/19; migration `20260622000000`)
+Commission tier schedules and flat rates can now be scoped to ONE CLIENT, effective-dated by the same
+supersession as everything else, with the **global row as the fallback**. Reuse this shape; the invariant
+framing below is load-bearing.
+- **Not a #3 violation.** Scoping commission rates *by* client reads nothing from `client_billing_rates` —
+  it stays the rep-commission stream, scoped by client exactly like `incentives.scope_client_id` and
+  `km_rate_config`. A `Client` back-relation on a commission table *looks* like #3 on review; it is not.
+- **#5 is preserved absolutely — the TALLY stays client-blind.** `commission-engine.service.ts` counts every
+  internet activation across all clients into ONE number (the line is commented as forbidden to filter by
+  client), then resolves the bracket via a memoised `bracketFor(clientId)` = `determineTier(internetTally,
+  tiersByClient[clientId] ?? tiers)`. Per-client means a per-client **rate**, never a per-client tally.
+  A regression spec (`#5 REGRESSION: the tally ignores clientId entirely`) locks it.
+- **Schema (additive):** `commission_tier_configs.client_id` + `commission_flat_rates.client_id`, both
+  nullable UUID FK → `clients` (RESTRICT) + an index. **No unique constraints** (supersession is procedural;
+  Postgres treats NULLs as distinct). **`HoldbackConfig` stays GLOBAL** — a per-client split would need
+  per-client rounding and would break the derived `advance + holdback === gross`. Deliberately out of scope.
+- **Resolution** = the pure `commission/client-scope.logic.ts` (`scopeWhere`, `scopeKeyOf`, `selectForClient`,
+  `selectEffectiveByScope`), generalising `selectKmRate`. Scopes key on `client_id ?? 'GLOBAL'` (spec mocks omit
+  the field, so `=== null` would drop the global row). `common/effective-dating.ts` needed **zero changes** —
+  it is scope-agnostic; only the `where` clauses and grouping keys changed.
+- **`EngineConfig` keeps `tiers`/`flatRates` as the GLOBAL fallback** and ADDS optional `tiersByClient` /
+  `flatRatesByClient`. Leaving the existing fields untouched is what lets all 14 original engine fixtures
+  pass verbatim. `getEngineConfig(date)` **keeps its `(date)` signature** — ONE call per run, as-of close; a
+  `clientId` parameter would let a single run straddle effective dates.
+- **`PeriodResult.tierNumber` / `ratePerActivation` are now "the UNIFORM value, else null"** — the honest
+  representation once clients can differ. Per-item `tierAtPayment`/`rateApplied` stay exact, so the frozen
+  snapshot (#2) loses nothing; the pay-run drawer says *why* the line scalars are blank ("Mixed client rates").
+- **THREE latent bugs this surfaced and fixed** (all would have corrupted other scopes): (1) the provider and
+  `dashboards#effectiveTierBrackets` handed **ungrouped** headers to `selectEffectiveRate`, so a per-client
+  row with a later `effective_from` would have become the GLOBAL schedule for everyone — the provider now
+  groups by scope first, and dashboards read `client_id: null` explicitly (the indicative tier-progress
+  ladder); (2) both `remove` paths re-opened bounded predecessors with **no client filter**, resurrecting
+  another scope's superseded row — now scope-bound. Bootstrap idempotency guards gained `client_id: null`.
+- **Engine purity is now ASSERTED, not just documented** (`engine/engine.purity.spec.ts`, modelled on
+  `billing.no-commission.spec.ts`): a source scan bans Prisma/DB/sibling imports, Prisma delegates, and any
+  clock/randomness; behavioural tests assert zero constructor deps, identical output across instances, and
+  that neither the config (incl. the per-client maps) nor the activation list is mutated.
+- **`client_id` is immutable on edit** (like `rate_kind`/`product_type`); an unknown/inactive client is a 422
+  from the shared `client-scope.util#resolveClientScope` — never a silent global write. List endpoints take
+  `?client_id=` (a client id, the literal `global`, or omit for every scope). **No new RBAC**
+  (`commission:view`/`edit`).
+- **FE:** `features/commission/` gained a page-level **`ScopeSelector`** (All scopes / Global / one client)
+  threaded to the tier + flat-rate sections; **`commissionKeys.tiers()/flatRates()` now carry the clientId**
+  (without it the cache serves one client's schedule to another). Both modals share a **`ClientScopeField`**
+  (mirroring `IncentiveModal`'s scope_mode radio) and pre-select the page scope; the "All scopes" view gains
+  an "Applies to" column; an empty client scope reads "no schedule of its own — paid at the global rates".
+- **Review #12 needed NO code (rejected a speed column).** Speeds are PRODUCTS: the sale-entry picker maps a
+  client's products unconditionally, does not dedupe by `product_type`, and `Product` has no
+  `@@unique(client_id, product_type)` — so `Internet 500Mbps` / `Internet 1Gbps` appear as separate options
+  with no deploy. Client BILLING rates are per-product (per-speed pricing already works); commission rates
+  are per-product_type, so all speeds of a client earn that client's tier rate.
+- **Review #19 — the price chart** (`features/clients/priceChart.ts` + `PriceChart.tsx`): the rates panel is
+  now a SegmentedControl "Current prices | Rate history". The chart is a **pure selection projection** (no
+  arithmetic, #1; server-derived statuses, no date math) — one row per product with today's rate + the next
+  scheduled change, then one row per client-wide rate (each bundle trigger its own row). **A product with no
+  current rate stays visible and is flagged** — that is exactly the condition that 422s a statement as
+  unpriced. Same `billing_rates:view` gate; both views share one query key so there is no second fetch.
+- **Verified LOCAL** (backend **773 tests** — 19 engine incl. 5 per-client fixtures + the purity guard, the
+  provider scope-grouping specs, and the service isolation specs; build + contract regen 149 paths; FE
+  gen:api + build + lint + stylelint + 61 vitest incl. `priceChart.test.ts`). Operator: `migrate deploy`
+  (additive — existing rows keep `client_id = NULL` = global, so behaviour is **unchanged** until a
+  per-client row is added). Browser pass: Commission Config → scope to a client → add a tier schedule + flat
+  rate → a rep selling for that client AND another is paid each client's rate off ONE shared tally (the
+  drawer shows "Mixed client rates"); the client record shows the current price chart; adding
+  `Internet 1Gbps` under a client makes it selectable on sale entry with no deploy.
+
+### Weekly client billing + the wide statement line (built — review items 4/7/8/9; migration `20260623000000`)
+The client statement now reproduces the workbook Redwave actually sends (`docs/uat/billing-target-format.md`,
+verified against `docs/uat/Sample Billing for Client.xlsx`). Three defects, one cause: the line was too narrow
+and only ONE rate kind was priced. Still **client-bill only** (#3 — `billing.no-commission.spec` green, and it
+now scans the two new files automatically).
+- **`billing_periods` — billing has its OWN calendar.** Weekly **Mon–Sun**, sequential `period_number` =
+  "Bill 17", seeded for 2026 by the pure `modules/billing/billing-periods.seed-data.ts` (anchor Mon
+  `2026-01-05`). Deliberately NOT the pay period: pay periods run **Sun–Sat biweekly**, so a bill straddles
+  two of them. Statements + invoices gained `billing_period_id`; **`pay_period_id` relaxed to nullable** so
+  documents issued before the change keep theirs. `GET /v1/billing-periods` (`billing:view`, read-only +
+  seeded, like pay periods). **No new RBAC permission.**
+- **Every rate kind is applied now** (`statement.service#priceClientPeriod`, ONE rate read split by kind):
+  internet = the product rate on the internet product (per speed); **TV/HP = the client-wide `tv_addon` /
+  `hp_addon` if in force, ELSE the TV/HP product rate** — the add-on WINS, they never stack, so today's
+  product-rate data (per `docs/rate-grid.md`) bills identically and a client migrates by simply adding an
+  add-on rate; `bundle_bonus` unchanged; **`spiff`** is client-wide + date-bounded by its own
+  `effective_from`/`to`, and that window is FROZEN on the statement (`spiff_from`/`spiff_to`) so the column
+  header reproduces on a re-render. Everything else priced lands in **`other_total`** (never dropped).
+  **A product priced by no kind at all is still a 422** with `unpriced[]`.
+- **The line is the client's row** (`client_statement_lines`, all new columns nullable + `sort_order`):
+  sale_date · rep_code · rep_name · customer first/last · address · channel · product_name ·
+  has_internet/tv/home_phone · internet_rate · tv_rate · hp_rate · bundle_bonus · spiff · other_total ·
+  line_total. **`line_total` is the EXACT sum of the six components** (spec-locked over many compositions).
+  `statement.logic.ts` stays pure; it gained `splitCustomerName` as the LEGACY fallback only.
+- **`sales.customer_first_name` / `customer_last_name`** — the bill prints them as separate columns. Captured
+  on the sale form + the `sales_entry` import target; **`customer_name` is DERIVED** from the pair in ONE
+  helper (`sales.service#customerNameFields`) so the two can never drift. Sales entered before the split are
+  split at generation.
+- **The Excel IS the target format** (`statement-excel.renderer`): 17 columns, header on row 2, **summary
+  strip on row 1** as live `COUNTIF` / `SUBTOTAL(9,…)` over an **autofiltered** range — so the client's
+  filtering updates the totals, exactly as the source workbook does. Real Date + Boolean cell types (so
+  `COUNTIF(…,TRUE)` matches). An **"Other" column appears only when a row carries one**, keeping the default
+  output at exactly 17 columns. Read-back assertions in `renderers.spec` lock the layout.
+- **The UI still computes nothing.** A server-computed `summary` (counts + column totals via
+  `statement-summary.logic`, summed from the FROZEN lines — never re-priced) drives the detail page's strip
+  and the preview banner. `StatementLinesTable` is the wide row-per-sale table; the pickers, list, preview and
+  reconciliation all moved to billing weeks (`useBillingPeriods`, `Bill 27 · Jun 29 – Jul 5`).
+- **Forward-only, per the immutability rule.** Nothing rewrites an issued document: legacy statements keep
+  `pay_period_id` + narrow lines and still download as issued; **regenerate** to get the new format (a new
+  gapless number supersedes the prior version). The business dashboard attributes a bill to the pay period
+  containing its **Monday** (`stmtIn`), so revenue trends keep working across both shapes.
+- **Verified LOCAL** (backend **805 tests** incl. the add-on-wins/product-fallback pair, the spiff window, the
+  six-component sum, the 17-column + summary-strip + autofilter read-back, and the billing-week generator;
+  build + contract regen 150 paths; FE gen:api + build + lint + stylelint + 61 vitest). Operator:
+  `migrate deploy` (additive; stacks on `20260622000000`) + **re-seed bootstrap** (adds the 2026 billing
+  weeks). Browser pass: add a VF `spiff` for the week + confirm the TV/HP rates → enter sales across
+  Mon 2026-06-29 → Sun 2026-07-05 with mixed TV/HP → generate that bill → the detail shows the strip + wide
+  lines → download the Excel and compare with the sample; a sale on the following Monday falls into the NEXT
+  bill even though the pay period has not rolled.
+
+### Export naming, the sales export shape, and sale-detail navigation (built — review items 6/10/11; NO migration)
+A UAT pass on the exports. Two of the three were latent bugs with non-obvious causes; record them so they
+are not reintroduced.
+- **`lib/export/exportFilename.ts` is THE naming convention** — `redwave-<source>[-<period>]-<generated>`
+  (e.g. `redwave-sales-2026-07-01_2026-07-23-20260723`). Pure, deterministic (the caller passes
+  `generatedOn`, so it never reads a clock), slug-safe. **Every** client-generated file goes through it:
+  sales · clients · products · reps · expenses (+ grouped) · import templates · report exports. The reports
+  feature keeps its thin `exportFilename(type, today)` wrapper but now DELEGATES to the shared one.
+  `exportRows`/`ExportMenu` still take a plain `filename` string — one seam, callers build it.
+- **BUG 1 — client-side Excel export produced NO file.** `write-excel-file` **v4** removed the `fileName`
+  option: the call now returns `{ toBlob, toFile }` and downloads ONLY via **`.toFile(name)`**.
+  `exportRows` still passed `{ fileName }` **behind a hand-written cast that defeated the real types**, then
+  `await`ed the returned object — not a thenable, so nothing happened, silently, with no error. Fixed by
+  calling `.toFile()`; the cast is now narrowed to the matrix argument ONLY so the real return type still
+  applies and the next breaking change fails the build instead of the user.
+- **BUG 2 — `download (5).xlsx`.** `enableCors` in `main.ts` had **no `exposedHeaders`**. The browser hides
+  every response header from JS cross-origin, so `downloadFile`'s `Content-Disposition` read was always
+  null in production (FE on `app.` → API on `api.`) and it fell through to its literal `'download'`
+  fallback. Fixed with `exposedHeaders: ['Content-Disposition']` on **both** branches. This affected EVERY
+  server-rendered file (statements, invoices, expense documents, import error reports, signed PDFs) — it
+  only manifests in production, never through the dev proxy, so keep the header when touching CORS.
+- **The sales export uses the CLIENT BILL's column shape** (`features/sales/saleExport.ts`, pure +
+  unit-tested): Sale ID · date · customer · Channel · Client · **Product (the internet speed)** ·
+  Internet/TV/Home Phone flags · a rate per component · Other · Total · greenfield · status — replacing one
+  `"Internet, TV, Home Phone"` cell. Same component split the statement renderer uses (internet =
+  catalogue behaviour `tiered`/`greenfield`; TV/HP = the `is_system` keys; everything else → **Other**), so
+  a sales export reads beside a bill. **The money is the FROZEN COMMISSION snapshot** (`rate_applied`) — it
+  is deliberately **BLANK on an unpaid sale** (a zero would read as "earned nothing") and **no client
+  billing rate is read here** (#3): a rep's export never reveals what the client is charged. Summed with
+  `sumMoney` (integer cents, #1). `saleExportRowAccessor` caches per sale identity so the ~9 component
+  columns project each row once. **The on-screen table is unchanged** — this is the export only.
+- **`SaleItemResponse` gained `product { name }`** (`SALE_INCLUDE` now nests the product) — the type key
+  alone cannot name a speed. Also used on the Sale detail, which showed only a type label.
+- **Sale detail gained header NAVIGATION** — "Enter sale" (`sales:create`) + "All sales", so entering one
+  sale leads straight into the next. The actions that act on THAT sale (validate/greenfield/delete) stay
+  with the record.
+- **Verified LOCAL** (backend 805 tests + build + contract regen 150 paths; FE gen:api + build + lint +
+  stylelint + **76 vitest** incl. `exportFilename` and `saleExport`). **No migration, no new permission.**
+  Operator: redeploy the API for the CORS header. Browser pass: Sales → Export Excel actually produces a
+  file named `redwave-sales-….xlsx` (it produced nothing before) with the component columns — a paid sale
+  shows rates, an entered one shows blanks; Billing → download a statement → `STMT-00001.xlsx`, not
+  `download (n).xlsx`; Sale detail → "Enter sale".
+
+### Expense UAT batch — office origin · per-unit caps · one folder per week · category grouping (built — items 13-18; migration `20260624000000`)
+Six findings from an expenses UAT pass. Reuse the patterns; the framings below are the load-bearing part.
+- **#14 — "Invalid input" on empty OPTIONAL fields (a form-state bug, not a DTO one).** RHF registers a
+  `field_values.<key>` the moment its control MOUNTS, so an untouched optional field held `undefined` while
+  the zod schema demanded `z.record(z.string(), z.string())` → the whole record failed. Fixed on the FORM
+  side, per the finding: `DynamicFields` now registers with `defaultValue=""`, and the record accepts
+  `string | undefined` (required-ness is enforced by the superRefine, which reports against the FIELD with
+  its label — never by the record's value type). `pickNonBlank` already strips blanks from the payload.
+- **#17 — the meals soft cap is PER MEAL, so ONE item may cover a day's meals.** A $30 per-item cap flagged
+  a combined lunch+dinner item, pushing reps to split what is one receipt into two rows. A field def may now
+  declare **`multiplies_cap`** (number fields, at most one per category — `assertFieldDefs` enforces both):
+  its value SCALES `amount_soft_cap`, so a `meals_count` of 2 is judged against $60. Bootstrap seeds
+  `meals_count` on meals. **A blank / non-numeric / <1 count falls back to 1**, so a malformed entry can
+  never LOWER the bar. Config-driven — no category is special-cased, and a category without a multiplier is
+  bit-for-bit unchanged. Mirrored in the FE engine (`validation.ts`, exact integer cents).
+- **Seeding now MERGES a field schema instead of skipping it.** The old rule ("never clobber a customized
+  schema") meant an already-seeded deployment could NEVER receive a default added later — `meals_count`
+  would never arrive. Bootstrap now appends only seed-default fields the stored schema lacks (matched by
+  key), preserving SA fields, their order and the SA's cap.
+- **#16 — one folder per rep + week.** `ExpenseReportsService.create` RESOLVES to the caller's existing
+  folder for the same `(submitted_by, rep_id, week_start)` (oldest first — the ORIGINAL, not the newest
+  duplicate) and returns it with its LIVE aggregates + **`reused: true`**, rather than minting a duplicate.
+  A week is one container by design; two folders is how items get submitted twice or missed at review. No
+  migration, no unique constraint — a null-rep folder and an admin creating on behalf keep working.
+- **#15 — km trips DEFAULT to the office origin.** New singleton **`expense_settings`** (office address +
+  optional lat/lng, all nullable) mirroring the `SecuritySetting` lazy-row pattern. `GET /v1/expense-settings`
+  is **authenticated with NO permission** (every rep's km form reads it — it is an org address); `PATCH` is
+  `settings:edit`. `KmItemFields` fills stop 0 in a SEPARATE effect (the settings fetch can resolve after
+  mount) and **only when blank**, so editing an existing km log never rewrites its origin. It is a default,
+  not a lock. Admin surface: an `OfficeOriginCard` on `/admin/km-rates` — origin and rate answer the same
+  question. **No new RBAC module.**
+- **#18 — grouping gained a CATEGORY dimension.** `GroupMode` += `'category'`; `groupItems` takes optional
+  `configs` to label the bucket (humanized-key fallback) and sorts category buckets by label while date
+  buckets stay newest-first. The grouped export's first column follows the dimension ("Category" vs "Period").
+- **#13 — the km-rate refusal now links to its fix.** The 422 is CORRECT (the server will not invent a price,
+  and deliberately will not fall back to the rep rate — #3), so the UI stops burying it in a toast:
+  `MissingKmRateBanner` lists the unpriced DATES (deduped — a rate covers a date, not an item) and links to
+  `/admin/km-rates`. Mirrors the billing `UnpricedBanner`; the structured `missing_km_rate[]` is read off
+  `ApiError.details`.
+- **Verified LOCAL** (backend **817 tests** incl. the per-unit cap + its fallbacks, the multiplier guards and
+  folder resolution; build + contract regen 151 paths; FE build + lint + stylelint + **85 vitest** incl.
+  `format.test.ts`). Operator: `migrate deploy` (additive singleton table) + **re-seed bootstrap** (merges
+  `meals_count` into the meals schema), then set the office at `/admin/km-rates`.
