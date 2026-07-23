@@ -8,7 +8,7 @@ const dec = (s: string) => ({ toString: () => s });
 
 const folder = { id: 'r1', name: 'Week of 2026-07-06', submitted_by: 'u1', rep_id: 'rep-1', week_start: d('2026-07-06'), week_end: d('2026-07-12'), created_at: d('2026-07-06') };
 
-function make(opts: { items?: unknown[] } = {}) {
+function make(opts: { items?: unknown[]; existingForWeek?: unknown } = {}) {
   const tx = {
     expenseKmLog: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
     expenseKmStop: { deleteMany: jest.fn() },
@@ -20,7 +20,13 @@ function make(opts: { items?: unknown[] } = {}) {
       create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'r1', ...data })),
       findMany: jest.fn().mockResolvedValue([folder]),
       count: jest.fn().mockResolvedValue(1),
-      findFirst: jest.fn().mockResolvedValue(folder),
+      // create() looks for the caller's EXISTING folder for the same rep+week FIRST (returns null by
+      // default = a genuinely new week); every other caller of findFirst is a scoped lookup by id.
+      findFirst: jest
+        .fn()
+        .mockImplementation(({ where }: { where: Record<string, unknown> }) =>
+          Promise.resolve('week_start' in where ? (opts.existingForWeek ?? null) : folder),
+        ),
       update: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ ...folder, ...data })),
     },
     expenseItem: { findMany: jest.fn().mockResolvedValue(opts.items ?? []) },
@@ -53,9 +59,48 @@ const item = (over: Record<string, unknown> = {}) => ({
 
 describe('ExpenseReportsService', () => {
   it('create → a fresh folder is empty (status empty, zero total)', async () => {
-    const { service } = make();
+    const { service, prisma } = make();
     const res = await service.create({ name: 'W', week_start: '2026-07-06', week_end: '2026-07-12' }, user);
-    expect(res).toMatchObject({ item_count: 0, total_reimbursable_cad: '0.00', status: 'empty' });
+    expect(res).toMatchObject({ item_count: 0, total_reimbursable_cad: '0.00', status: 'empty', reused: false });
+    expect(prisma.expenseReport.create).toHaveBeenCalled();
+  });
+
+  /**
+   * A week is ONE container by design: two folders for the same rep+week is how items get submitted twice
+   * or missed at review. A second "new report" is the rep looking for the folder they already made. — EXP-001
+   */
+  describe('create — one folder per rep + week', () => {
+    it('RESOLVES to the existing folder instead of creating a duplicate', async () => {
+      const { service, prisma } = make({
+        existingForWeek: folder,
+        items: [item({ amount_cad: dec('20.00') }), item({ amount_cad: dec('30.00') })],
+      });
+      const res = await service.create({ name: 'Another name', week_start: '2026-07-06', week_end: '2026-07-12' }, user);
+
+      expect(prisma.expenseReport.create).not.toHaveBeenCalled();
+      expect(res).toMatchObject({ id: 'r1', reused: true });
+      // …and it comes back with its LIVE aggregates, not a pretend-empty shell.
+      expect(res.total_reimbursable_cad).toBe('50.00');
+      expect(res.item_count).toBe(2);
+    });
+
+    it('matches on submitter + rep + week_start', async () => {
+      const { service, prisma } = make();
+      await service.create({ name: 'W', week_start: '2026-07-06', week_end: '2026-07-12' }, user);
+      expect(prisma.expenseReport.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { submitted_by: 'u1', rep_id: 'rep-1', week_start: d('2026-07-06') },
+          orderBy: { created_at: 'asc' }, // the ORIGINAL folder, not the newest duplicate
+        }),
+      );
+    });
+
+    it('a DIFFERENT week still creates a new folder', async () => {
+      const { service, prisma } = make(); // no existing folder for that week
+      const res = await service.create({ name: 'W', week_start: '2026-07-13', week_end: '2026-07-19' }, user);
+      expect(prisma.expenseReport.create).toHaveBeenCalled();
+      expect(res.reused).toBe(false);
+    });
   });
 
   it('list → derives status + Σ amount_cad total + aggregated validation per folder', async () => {

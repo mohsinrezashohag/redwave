@@ -20,6 +20,7 @@ import {
 } from '../../src/common/rbac/rbac.constants';
 import { SCHEDULE_C_V2 } from '../../src/modules/commission/schedule-c-v2';
 import { generate2026PayPeriods } from '../../src/modules/payrun/pay-periods.seed-data';
+import { generate2026BillingPeriods } from '../../src/modules/billing/billing-periods.seed-data';
 
 const genesisDate = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
 const BCRYPT_ROUNDS = 12;
@@ -96,7 +97,7 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
 };
 
 // Per-type field schema (EXP-002a) + soft caps (EXP-013). Seeded as the DEFAULT; SA-editable via PATCH.
-type SeedFieldDef = { key: string; label: string; type: string; required: boolean; options?: string[]; soft_cap?: string };
+type SeedFieldDef = { key: string; label: string; type: string; required: boolean; options?: string[]; soft_cap?: string; multiplies_cap?: boolean };
 const EXPENSE_FIELD_CONFIGS: {
   category_key: string;
   label: string;
@@ -109,9 +110,12 @@ const EXPENSE_FIELD_CONFIGS: {
     category_key: 'meals',
     label: 'Meals',
     requires_receipt: true,
-    amount_soft_cap: '30.00', // over $30 → a soft Warning (BRD §7.1 dinner cap)
+    amount_soft_cap: '30.00', // PER MEAL — over it → a soft Warning (BRD §7.1 dinner cap)
     fields: [
       { key: 'vendor', label: 'Vendor', type: 'text', required: true },
+      // The cap is per MEAL, so one item covering lunch AND dinner declares 2 and is judged against $60.
+      // Without this, combining a day's meals into one item is flagged while splitting them is not. — EXP-013
+      { key: 'meals_count', label: 'Meals covered', type: 'number', required: false, multiplies_cap: true },
       { key: 'city', label: 'City of purchase', type: 'text', required: false },
       { key: 'gratuity', label: 'Gratuity', type: 'money', required: false },
       { key: 'attendees', label: 'Attendees', type: 'text', required: false },
@@ -298,7 +302,11 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
 
   // 6. Genesis Schedule C v2 commission config (back-dated genesis so it is always the current config).
   const effectiveFrom = genesisDate(SCHEDULE_C_V2.effectiveFrom);
-  let tierConfig = await prisma.commissionTierConfig.findFirst({ where: { effective_from: effectiveFrom } });
+  // client_id: null pins these guards to the GLOBAL scope — otherwise a per-client row would suppress
+  // re-seeding the global genesis config.
+  let tierConfig = await prisma.commissionTierConfig.findFirst({
+    where: { client_id: null, effective_from: effectiveFrom },
+  });
   if (!tierConfig) {
     tierConfig = await prisma.commissionTierConfig.create({
       data: {
@@ -311,7 +319,7 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
   // Greenfield internet is flat $100 and EXCLUDED from the tier tally (#9). Tiers cover internet only.
   for (const [productType, amount] of Object.entries(SCHEDULE_C_V2.flatRates)) {
     const existingFlat = await prisma.commissionFlatRate.findFirst({
-      where: { product_type: productType, effective_from: effectiveFrom },
+      where: { client_id: null, product_type: productType, effective_from: effectiveFrom },
     });
     if (!existingFlat) {
       await prisma.commissionFlatRate.create({
@@ -353,17 +361,41 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
     }
   }
 
+  // 7b. Billing periods — the 2026 WEEKLY (Mon–Sun) client-billing schedule (idempotent, by period_number).
+  //     Separate from pay periods on purpose: a bill straddles two of them. — docs/uat/billing-target-format.md
+  for (const b of generate2026BillingPeriods()) {
+    const existingBillingPeriod = await prisma.billingPeriod.findUnique({
+      where: { period_number: b.period_number },
+    });
+    if (!existingBillingPeriod) {
+      await prisma.billingPeriod.create({
+        data: {
+          period_number: b.period_number,
+          start_date: genesisDate(b.start_date),
+          end_date: genesisDate(b.end_date),
+          status: 'open',
+        },
+      });
+    }
+  }
+
   // 8. Expense-category catalogue + per-type field schema — idempotent by category_key. — EXP-002a/009/013
-  //    The default `fields`/`amount_soft_cap` are populated on first seed (empty → set) but NEVER clobber an
-  //    SA-customized field schema (like the notification channel toggles below). label/requires_receipt refresh.
+  //    MERGE, never clobber: an SA-customized schema keeps its fields, their order and its soft cap, but any
+  //    NEW seed-default field (matched by key) is APPENDED. Without the merge a deployment that has already
+  //    seeded would never receive a default added later — which is how `meals_count` reaches an existing DB.
   for (const cfg of EXPENSE_FIELD_CONFIGS) {
     const existing = await prisma.expenseFieldConfig.findUnique({
       where: { category_key: cfg.category_key },
-      select: { fields: true },
+      select: { fields: true, amount_soft_cap: true },
     });
-    const alreadyCustomized = Array.isArray(existing?.fields) && (existing!.fields as unknown[]).length > 0;
+    const storedFields = Array.isArray(existing?.fields) ? (existing!.fields as { key?: unknown }[]) : [];
+    const alreadyCustomized = storedFields.length > 0;
+    const missingDefaults = cfg.fields.filter((d) => !storedFields.some((f) => f?.key === d.key));
     const seedSchema = alreadyCustomized
-      ? {}
+      ? // Keep what the SA has; only append defaults they've never seen. The cap stays theirs.
+        missingDefaults.length > 0
+        ? { fields: [...storedFields, ...missingDefaults] as unknown as Prisma.InputJsonValue }
+        : {}
       : { fields: cfg.fields as unknown as Prisma.InputJsonValue, amount_soft_cap: cfg.amount_soft_cap ?? null };
     await prisma.expenseFieldConfig.upsert({
       where: { category_key: cfg.category_key },

@@ -212,6 +212,15 @@ export class ExpenseFieldDefResponse {
 
   @ApiProperty({ type: String, required: false, example: '20.00', description: 'Numeric/money soft cap → Warning.' })
   soft_cap?: string;
+
+  @ApiProperty({
+    type: Boolean,
+    required: false,
+    description:
+      'This number field’s value MULTIPLIES the category amount_soft_cap, so ONE item can cover several units ' +
+      'of a per-unit allowance (e.g. a meals item covering lunch AND dinner) without being flagged.',
+  })
+  multiplies_cap?: boolean;
 }
 
 export class FieldConfigResponse {

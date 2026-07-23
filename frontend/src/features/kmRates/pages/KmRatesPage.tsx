@@ -27,6 +27,7 @@ import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useClients } from '../../expenses/api/useLookups';
 import { useKmRates, useDeleteKmRate, type KmRateFilters } from '../api/useKmRates';
 import { KmRateModal } from '../components/KmRateModal';
+import { OfficeOriginCard } from '../components/OfficeOriginCard';
 import type { KmRate } from '../kmRates.types';
 import styles from '../components/kmRates.module.css';
 
@@ -88,6 +89,9 @@ export default function KmRatesPage() {
           ) : undefined
         }
       />
+
+      {/* The origin every km log starts from — measured in the same place the rate is priced. */}
+      <OfficeOriginCard />
 
       <Card>
         <div className={styles.filters}>

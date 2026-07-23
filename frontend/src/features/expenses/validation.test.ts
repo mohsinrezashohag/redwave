@@ -46,3 +46,52 @@ describe('validateFormItem (FE mirror of the Alert/Warning engine)', () => {
     expect(warnings.map((w) => w.code)).toEqual(['km_zero_claim']);
   });
 });
+
+/**
+ * The cap is PER UNIT when a field declares itself the multiplier — so combining a day's meals into ONE
+ * item is judged the same as splitting them, instead of being flagged for it. Mirrors the server engine.
+ */
+describe('validateFormItem — per-unit soft cap', () => {
+  const mealsWithCount = {
+    category_key: 'meals',
+    label: 'Meals',
+    requires_receipt: false,
+    is_active: true,
+    amount_soft_cap: '30.00',
+    fields: [{ key: 'meals_count', label: 'Meals covered', type: 'number', required: false, multiplies_cap: true }],
+  } as unknown as FieldConfig;
+
+  it('one item covering 2 meals at $45 does not warn', () => {
+    const { warnings } = validateFormItem(
+      { category: 'meals', amount: '45.00', field_values: { meals_count: '2' } },
+      mealsWithCount,
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('warns past the SCALED cap and names it', () => {
+    const { warnings } = validateFormItem(
+      { category: 'meals', amount: '61.00', field_values: { meals_count: '2' } },
+      mealsWithCount,
+    );
+    expect(warnings.map((w) => w.code)).toEqual(['amount_over_cap']);
+    expect(warnings[0].message).toContain('60.00');
+  });
+
+  it('a blank count never lowers the bar', () => {
+    const { warnings } = validateFormItem(
+      { category: 'meals', amount: '45.00', field_values: { meals_count: '' } },
+      mealsWithCount,
+    );
+    expect(warnings.map((w) => w.code)).toEqual(['amount_over_cap']);
+  });
+
+  it('an untouched optional field (undefined) is treated as blank, never as invalid', () => {
+    const { alerts, warnings } = validateFormItem(
+      { category: 'meals', amount: '20.00', field_values: { meals_count: undefined } },
+      mealsWithCount,
+    );
+    expect(alerts).toHaveLength(0);
+    expect(warnings).toHaveLength(0);
+  });
+});

@@ -13,7 +13,11 @@ export function categoryLabel(key: string, configs?: FieldConfig[]): string {
   return configs?.find((c) => c.category_key === key)?.label ?? humanize(key);
 }
 
-export type GroupMode = 'none' | 'daily' | 'weekly' | 'monthly';
+/**
+ * The grouping dimension. Three are date buckets; `category` groups by expense TYPE instead — the question
+ * "how much went on meals vs kilometres this month?" the date buckets can't answer.
+ */
+export type GroupMode = 'none' | 'daily' | 'weekly' | 'monthly' | 'category';
 
 export interface ExpenseGroup {
   key: string;
@@ -36,7 +40,8 @@ function weekStartIso(iso: string): string {
 }
 
 /** Bucket key + human label for an item under the chosen mode. */
-function bucketOf(item: ExpenseItem, mode: GroupMode): { key: string; label: string } {
+function bucketOf(item: ExpenseItem, mode: GroupMode, configs?: FieldConfig[]): { key: string; label: string } {
+  if (mode === 'category') return { key: item.category, label: categoryLabel(item.category, configs) };
   const iso = dateOf(item);
   if (mode === 'daily') return { key: iso, label: iso };
   if (mode === 'weekly') {
@@ -48,11 +53,19 @@ function bucketOf(item: ExpenseItem, mode: GroupMode): { key: string; label: str
   return { key: month, label: month };
 }
 
-/** Group items into daily/weekly/monthly buckets (sorted by key desc), each with a count + exact total. */
-export function groupItems(items: ExpenseItem[], mode: Exclude<GroupMode, 'none'>): ExpenseGroup[] {
+/**
+ * Group items into buckets, each with a count + an exact total. Date buckets sort newest-first; CATEGORY
+ * buckets sort by label so the mix reads alphabetically rather than in an arbitrary key order.
+ * `configs` is optional and only used to label a category bucket (falls back to a humanized key).
+ */
+export function groupItems(
+  items: ExpenseItem[],
+  mode: Exclude<GroupMode, 'none'>,
+  configs?: FieldConfig[],
+): ExpenseGroup[] {
   const map = new Map<string, ExpenseGroup>();
   for (const item of items) {
-    const { key, label } = bucketOf(item, mode);
+    const { key, label } = bucketOf(item, mode, configs);
     const g = map.get(key) ?? { key, label, count: 0, total: '0.00', items: [] };
     g.items.push(item);
     g.count += 1;
@@ -64,5 +77,7 @@ export function groupItems(items: ExpenseItem[], mode: Exclude<GroupMode, 'none'
     ...g,
     total: sumMoney(g.items.filter((i) => !i.is_personal).map((i) => i.amount)),
   }));
-  return groups.sort((a, b) => (a.key < b.key ? 1 : -1));
+  return mode === 'category'
+    ? groups.sort((a, b) => a.label.localeCompare(b.label))
+    : groups.sort((a, b) => (a.key < b.key ? 1 : -1));
 }

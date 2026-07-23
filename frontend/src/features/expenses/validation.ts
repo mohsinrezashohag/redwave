@@ -17,7 +17,8 @@ export interface ValidatableFormItem {
   category: string;
   amount?: string;
   receipt_url?: string;
-  field_values?: Record<string, string>;
+  /** A mounted-but-untouched optional field holds `undefined` — treated as blank, same as ''. */
+  field_values?: Record<string, string | undefined>;
   /** Billable km (computed from the form) — 0 triggers the commute-deduction warning. */
   billable_km?: number | null;
 }
@@ -29,6 +30,19 @@ const cents = (s: string): number => {
   const [i, d = ''] = s.trim().split('.');
   return Number(i || '0') * 100 + Number((d + '00').slice(0, 2));
 };
+
+/**
+ * How many CAP UNITS the item covers — the value of the field flagged `multiplies_cap`, else 1. A blank,
+ * non-numeric or <1 value falls back to 1, so a malformed entry can never LOWER the bar for a warning.
+ */
+function capUnits(item: ValidatableFormItem, fields: FieldConfig['fields']): number {
+  const def = fields.find((f) => f.multiplies_cap);
+  if (!def) return 1;
+  const raw = item.field_values?.[def.key];
+  if (!raw || !isNumeric(raw)) return 1;
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n > 1 ? n : 1;
+}
 
 /** Compute the derived alerts + warnings for one form item against its category config. */
 export function validateFormItem(item: ValidatableFormItem, config: FieldConfig | undefined): { alerts: FeRule[]; warnings: FeRule[] } {
@@ -43,8 +57,20 @@ export function validateFormItem(item: ValidatableFormItem, config: FieldConfig 
     for (const def of fields) {
       if (def.required && isEmpty(item.field_values?.[def.key])) alerts.push({ code: 'field_required', severity: 'alert', field: def.key, message: `${def.label} is required` });
     }
-    if (config?.amount_soft_cap && item.amount && isNumeric(item.amount) && cents(item.amount) > cents(config.amount_soft_cap)) {
-      warnings.push({ code: 'amount_over_cap', severity: 'warning', field: 'amount', message: `Amount exceeds the soft cap of ${config.amount_soft_cap}` });
+    // The cap is PER UNIT when a field declares itself the multiplier (e.g. a meals item covering lunch AND
+    // dinner declares 2 → judged against 2 × the cap), so combining is never penalised versus splitting.
+    if (config?.amount_soft_cap && item.amount && isNumeric(item.amount)) {
+      const units = capUnits(item, fields);
+      const capCents = cents(config.amount_soft_cap) * units;
+      if (cents(item.amount) > capCents) {
+        const cap = (capCents / 100).toFixed(2);
+        warnings.push({
+          code: 'amount_over_cap',
+          severity: 'warning',
+          field: 'amount',
+          message: `Amount exceeds the soft cap of ${cap}${units > 1 ? ` (${config.amount_soft_cap} × ${units})` : ''}`,
+        });
+      }
     }
     for (const def of fields) {
       const raw = item.field_values?.[def.key];

@@ -42,6 +42,16 @@ export class ExpenseFieldDefDto {
   @IsOptional()
   @Matches(DECIMAL, { message: 'soft_cap must be a decimal string' })
   soft_cap?: string;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'Number fields only, at most one per category: this value MULTIPLIES amount_soft_cap so one item may ' +
+      'cover several units of a per-unit allowance (e.g. a meals item covering lunch AND dinner).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  multiplies_cap?: boolean;
 }
 
 /**

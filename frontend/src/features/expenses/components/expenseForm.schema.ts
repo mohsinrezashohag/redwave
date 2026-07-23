@@ -31,8 +31,12 @@ export interface ItemValue {
   is_personal?: boolean;
   /** Custom free-form tags (client + channel, EXP-002a). */
   tags?: string[];
-  /** Per-type CAPTURE fields ({key:value}), keyed by the category schema (EXP-002a). Metadata only (#1). */
-  field_values?: Record<string, string>;
+  /**
+   * Per-type CAPTURE fields ({key:value}), keyed by the category schema (EXP-002a). Metadata only (#1).
+   * A value is `string | undefined`: RHF registers a key the moment its control mounts, so an untouched
+   * OPTIONAL field legitimately holds `undefined` — the payload builder strips those.
+   */
+  field_values?: Record<string, string | undefined>;
   trip_type?: TripType;
   total_km?: string;
   stops?: StopValue[];
@@ -56,7 +60,10 @@ export function makeExpenseSchema(configs: FieldConfig[]) {
       receipt_url: z.string().optional(),
       is_personal: z.boolean().optional(),
       tags: z.array(z.string()).optional(),
-      field_values: z.record(z.string(), z.string()).optional(),
+      // A value may be undefined: mounting a dynamic control registers its key before the user types, so an
+      // untouched OPTIONAL field would otherwise fail as "Invalid input". Required-ness is enforced by the
+      // superRefine below (which reports against the FIELD, with its label) — not by the record's value type.
+      field_values: z.record(z.string(), z.string().optional()).optional(),
       trip_type: z.enum(['single', 'round']).optional(),
       total_km: z.string().optional(),
       stops: z
@@ -94,8 +101,11 @@ export function makeExpenseSchema(configs: FieldConfig[]) {
     });
 }
 
-/** Keep only non-blank field values; undefined when empty (so the payload omits an empty object). */
-function pickNonBlank(values: Record<string, string> | undefined): Record<string, string> | undefined {
+/**
+ * Keep only non-blank field values; undefined when empty (so the payload omits an empty object). Accepts
+ * `undefined` values because a mounted-but-untouched optional control legitimately holds one.
+ */
+function pickNonBlank(values: Record<string, string | undefined> | undefined): Record<string, string> | undefined {
   if (!values) return undefined;
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(values)) if (typeof v === 'string' && v.trim() !== '') out[k] = v;

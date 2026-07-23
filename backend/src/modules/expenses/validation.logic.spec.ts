@@ -72,3 +72,64 @@ describe('validateExpenseItem — Warnings (flag, non-blocking)', () => {
     expect(warnings).toHaveLength(0);
   });
 });
+
+/**
+ * The cap is PER UNIT when a field declares itself the multiplier. This is what lets ONE item cover a day's
+ * lunch AND dinner without being flagged for doing in one item what two items do unflagged. — EXP-013
+ */
+describe('validateExpenseItem — a per-unit soft cap (one item, several meals)', () => {
+  const withCount = (over: Partial<CategorySchema> = {}): CategorySchema =>
+    mealsSchema({
+      fields: [
+        { key: 'vendor', label: 'Vendor', type: 'text', required: true },
+        { key: 'meals_count', label: 'Meals covered', type: 'number', required: false, multiplies_cap: true },
+      ],
+      ...over,
+    });
+
+  it('one item covering 2 meals at $45 does NOT warn — the $30 cap is per meal', () => {
+    const { warnings } = validateExpenseItem(
+      item({ amount: '45.00', field_values: { vendor: 'Earls', meals_count: '2' } }),
+      withCount(),
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('splitting the SAME spend across two items behaves identically (neither shape is penalised)', () => {
+    const half = validateExpenseItem(item({ amount: '22.50', field_values: { vendor: 'Earls' } }), withCount());
+    const combined = validateExpenseItem(
+      item({ amount: '45.00', field_values: { vendor: 'Earls', meals_count: '2' } }),
+      withCount(),
+    );
+    expect(half.warnings).toHaveLength(0);
+    expect(combined.warnings).toHaveLength(0);
+  });
+
+  it('still warns once the scaled cap is genuinely exceeded, and names it', () => {
+    const { warnings } = validateExpenseItem(
+      item({ amount: '61.00', field_values: { vendor: 'Earls', meals_count: '2' } }),
+      withCount(),
+    );
+    expect(warnings.map((w) => w.code)).toEqual(['amount_over_cap']);
+    expect(warnings[0].message).toContain('60.00');
+    expect(warnings[0].message).toContain('30.00 × 2');
+  });
+
+  it('a blank / non-numeric / zero count can never LOWER the bar — it falls back to one unit', () => {
+    for (const meals_count of ['', 'two', '0', '-3']) {
+      const { warnings } = validateExpenseItem(
+        item({ amount: '45.00', field_values: { vendor: 'Earls', meals_count } }),
+        withCount(),
+      );
+      expect(warnings.map((w) => w.code)).toEqual(['amount_over_cap']);
+    }
+  });
+
+  it('a category with NO multiplier field is unchanged (the count field is opt-in)', () => {
+    const { warnings } = validateExpenseItem(
+      item({ amount: '45.00', field_values: { vendor: 'Earls', meals_count: '2' } }),
+      mealsSchema(), // no field flagged multiplies_cap
+    );
+    expect(warnings.map((w) => w.code)).toEqual(['amount_over_cap']);
+  });
+});

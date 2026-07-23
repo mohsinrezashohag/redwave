@@ -20,6 +20,9 @@ export function DynamicFields({ index, fields }: { index: number; fields: Expens
           key={def.key}
           control={control}
           name={`items.${index}.field_values.${def.key}`}
+          // Register as an empty STRING, not undefined — mounting the control creates the key, and an
+          // untouched optional field must read as "blank", which is what the payload builder strips.
+          defaultValue=""
           render={({ field, fieldState }) => (
             <FormField label={def.label} required={def.required} error={fieldState.error?.message}>
               {def.type === 'textarea' ? (

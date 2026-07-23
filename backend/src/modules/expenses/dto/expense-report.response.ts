@@ -57,6 +57,14 @@ export class ExpenseReportResponse {
 
   @ApiPropertyOptional({ type: () => [ExpenseItemResponse], description: 'The folder’s items (present on the detail GET).' })
   items?: ExpenseItemResponse[];
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'CREATE only: true when the caller already had a folder for this rep + week, so the existing one was ' +
+      'returned instead of creating a duplicate. A week is a single container by design (EXP-001).',
+  })
+  reused?: boolean;
 }
 
 /** Paginated list envelope (arch §5.1) — one page of folders + the meta. */
