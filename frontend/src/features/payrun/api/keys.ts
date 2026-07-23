@@ -7,4 +7,5 @@ export const payrunKeys = {
   runs: () => ['payrun', 'runs'] as const,
   run: (id: string) => ['payrun', 'run', id] as const,
   holdback: (filters: HoldbackFilters) => ['payrun', 'holdback', filters] as const,
+  holdbackSummary: (runId: string) => ['payrun', 'holdback-summary', runId] as const,
 };

@@ -14,12 +14,13 @@ import { isForbidden, useApiErrorToast } from '../../../lib/api/apiError';
 import { money, sumMoney } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
-import { usePayPeriods, usePayRun } from '../api/usePayRun';
+import { useHoldbackSummary, usePayPeriods, usePayRun } from '../api/usePayRun';
 import { useDraftRun } from '../api/usePayRunMutations';
 import { PayRunStatusBadge } from '../components/PayRunStatusBadge';
 import { PayRunLinesTable } from '../components/PayRunLinesTable';
 import { LineBreakdownDrawer } from '../components/LineBreakdownDrawer';
 import { HoldbackPanel } from '../components/HoldbackPanel';
+import { HoldbackSummaryPanel } from '../components/HoldbackSummaryPanel';
 import { BonusModal } from '../components/BonusModal';
 import { FinalizeConfirmModal } from '../components/FinalizeConfirmModal';
 import { ExportModal } from '../components/ExportModal';
@@ -38,6 +39,7 @@ export default function PayRunDetailPage() {
 
   const runQ = usePayRun(id, canView);
   const periodsQ = usePayPeriods(canView);
+  const holdbackQ = useHoldbackSummary(id, canView); // server-computed 30% view (no UI aggregation)
   const draft = useDraftRun();
 
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
@@ -128,6 +130,16 @@ export default function PayRunDetailPage() {
       <div className={styles.summary}>
         <StatCard label="Reps" value={String(lines.length)} />
         <StatCard label="Total 70% advance" value={money(totalAdvance)} />
+        {/* The deferred 30% — the SERVER's figure, never a client sum. */}
+        <StatCard
+          label="Held this period (30%)"
+          value={money(holdbackQ.data?.held_this_period)}
+          footnote={
+            holdbackQ.data?.held_release_period
+              ? `Releases into period #${holdbackQ.data.held_release_period.period_number}`
+              : undefined
+          }
+        />
         <StatCard label="Total net payout" value={<NetPayoutCell value={totalNet} />} />
       </div>
 
@@ -138,6 +150,8 @@ export default function PayRunDetailPage() {
       ) : (
         <PayRunLinesTable lines={lines} onSelect={(l) => setSelectedLineId(l.id)} onBonus={(l) => setBonusLineId(l.id)} canBonus={isDraft && canApprove} />
       )}
+
+      <HoldbackSummaryPanel runId={run.id} />
 
       <HoldbackPanel lines={lines} periods={periods} />
 

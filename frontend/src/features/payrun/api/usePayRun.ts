@@ -7,7 +7,14 @@ import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
 import { unwrapList } from '../../../lib/query/unwrapList';
 import { payrunKeys } from './keys';
-import type { HoldbackFilters, HoldbackLedgerEntry, PayPeriod, PayRun, PayRunSummary } from '../payrun.types';
+import type {
+  HoldbackFilters,
+  HoldbackLedgerEntry,
+  PayPeriod,
+  PayRun,
+  PayRunHoldbackSummary,
+  PayRunSummary,
+} from '../payrun.types';
 
 /** The pre-loaded 2026 pay-period schedule (the period list + label lookups). */
 export function usePayPeriods(enabled = true) {
@@ -43,5 +50,20 @@ export function useHoldbackLedger(filters: HoldbackFilters = {}, enabled = true)
     queryKey: payrunKeys.holdback(filters),
     queryFn: () => unwrapList<HoldbackLedgerEntry>(api.GET('/v1/holdback-ledger', { params: { query: filters } })),
     enabled,
+  });
+}
+
+/**
+ * The run's period-level 30% (deferred pay) view. Every total is computed SERVER-side — this hook exists
+ * precisely so the UI never aggregates the holdback ledger itself.
+ */
+export function useHoldbackSummary(runId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: payrunKeys.holdbackSummary(runId ?? ''),
+    queryFn: () =>
+      unwrap<PayRunHoldbackSummary>(
+        api.GET('/v1/pay-runs/{id}/holdback', { params: { path: { id: runId as string } } }),
+      ),
+    enabled: enabled && !!runId,
   });
 }
