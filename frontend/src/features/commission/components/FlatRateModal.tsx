@@ -13,6 +13,10 @@ import { todayIso } from '../../../lib/format/date';
 import { productTypeLabel } from '../../../lib/format/productType';
 import { useProductTypes } from '../../productTypes/api/useProductTypes';
 import { useCreateFlatRate, useUpdateFlatRate } from '../api/useCommissionMutations';
+import { ClientScopeField } from './ClientScopeField';
+import { scopeLabel } from '../clientScope';
+import { useClients } from '../api/useCommission';
+import { useCan } from '../../../auth/useCan';
 import type { FlatRate } from '../commission.types';
 import styles from './commission.module.css';
 
@@ -20,15 +24,34 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONEY = /^\d+(\.\d{1,2})?$/;
 const dateOnly = (v: string | null | undefined) => (v ? v.slice(0, 10) : '');
 
-const schema = z.object({
-  product_type: z.string().regex(/^[a-z][a-z0-9_]*$/, 'Choose a product type'),
-  amount: z.string().regex(MONEY, 'Enter an amount (max 2 dp)'),
-  effective_from: z.string().regex(DATE, 'Date required').refine((d) => d >= todayIso(), 'Must be today or later'),
-  effective_to: z.string().optional(),
-});
+const schema = z
+  .object({
+    scope_mode: z.enum(['all', 'specific']),
+    client_id: z.string().optional(),
+    product_type: z.string().regex(/^[a-z][a-z0-9_]*$/, 'Choose a product type'),
+    amount: z.string().regex(MONEY, 'Enter an amount (max 2 dp)'),
+    effective_from: z.string().regex(DATE, 'Date required').refine((d) => d >= todayIso(), 'Must be today or later'),
+    effective_to: z.string().optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.scope_mode === 'specific' && !v.client_id) {
+      ctx.addIssue({ code: 'custom', path: ['client_id'], message: 'Pick a client' });
+    }
+  });
 type FormValues = z.infer<typeof schema>;
 
-export function FlatRateModal({ open, rate, onClose }: { open: boolean; rate?: FlatRate; onClose: () => void }) {
+export function FlatRateModal({
+  open,
+  rate,
+  defaultClientId,
+  onClose,
+}: {
+  open: boolean;
+  rate?: FlatRate;
+  /** Pre-selects the scope from the page selector; undefined = the global row. */
+  defaultClientId?: string;
+  onClose: () => void;
+}) {
   const isEdit = !!rate;
   const { toast } = useToast();
   const onError = useApiErrorToast();
@@ -39,13 +62,31 @@ export function FlatRateModal({ open, rate, onClose }: { open: boolean; rate?: F
   const flatOptions = (types.data ?? [])
     .filter((t) => t.behaviour !== 'tiered')
     .map((t) => ({ value: t.key, label: t.label }));
-  const { control, register, handleSubmit, formState } = useForm<FormValues>({
+  const { control, register, handleSubmit, formState, watch } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: rate
-      ? { product_type: rate.product_type, amount: rate.amount, effective_from: dateOnly(rate.effective_from), effective_to: dateOnly(rate.effective_to) }
-      : { product_type: '', amount: '', effective_from: '', effective_to: '' },
+      ? {
+          scope_mode: rate.client_id ? 'specific' : 'all',
+          client_id: rate.client_id ?? '',
+          product_type: rate.product_type,
+          amount: rate.amount,
+          effective_from: dateOnly(rate.effective_from),
+          effective_to: dateOnly(rate.effective_to),
+        }
+      : {
+          scope_mode: defaultClientId ? 'specific' : 'all',
+          client_id: defaultClientId ?? '',
+          product_type: '',
+          amount: '',
+          effective_from: '',
+          effective_to: '',
+        },
   });
   const errors = formState.errors;
+  const scopeMode = watch('scope_mode');
+  // Edit shows the scope read-only (client_id is immutable, like product_type) — resolved for display only.
+  const canViewClients = useCan('clients:view');
+  const clients = useClients(canViewClients && isEdit);
 
   const onSubmit = (values: FormValues) => {
     if (isEdit && rate) {
@@ -56,7 +97,13 @@ export function FlatRateModal({ open, rate, onClose }: { open: boolean; rate?: F
       return;
     }
     create.mutate(
-      { product_type: values.product_type, amount: values.amount, effective_from: values.effective_from, effective_to: values.effective_to || undefined },
+      {
+        client_id: values.scope_mode === 'specific' ? values.client_id : undefined,
+        product_type: values.product_type,
+        amount: values.amount,
+        effective_from: values.effective_from,
+        effective_to: values.effective_to || undefined,
+      },
       { onSuccess: () => { toast({ title: 'Flat rate added', tone: 'success' }); onClose(); }, onError },
     );
   };
@@ -66,9 +113,23 @@ export function FlatRateModal({ open, rate, onClose }: { open: boolean; rate?: F
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
         <Banner tone="info" title="Effective-dated">
           {isEdit
-            ? 'Only a pending rate can be edited; the product type is fixed.'
-            : 'A future-dated rate supersedes the pending one for this product type and bounds the current.'}
+            ? 'Only a pending rate can be edited; the product type and scope are fixed.'
+            : 'A future-dated rate supersedes the pending one for this product type — within its own scope — and bounds the current.'}
         </Banner>
+        {isEdit ? (
+          <FormField label="Applies to">
+            <span><Badge tone="neutral">{scopeLabel(rate!.client_id, clients.data)}</Badge></span>
+          </FormField>
+        ) : (
+          <ClientScopeField
+            control={control}
+            modeName="scope_mode"
+            clientName="client_id"
+            mode={scopeMode}
+            error={errors.client_id?.message}
+            help="Global applies to every client. A client-scoped rate replaces it for that client's sales only."
+          />
+        )}
         {isEdit ? (
           <FormField label="Product type">
             <span><Badge tone="neutral">{productTypeLabel(rate!.product_type)}</Badge></span>

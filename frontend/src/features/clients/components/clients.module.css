@@ -118,6 +118,27 @@
   color: var(--text-secondary);
 }
 
+.panelActions {
+  margin-top: var(--space-3);
+}
+
+/* ── Price chart (the at-a-glance rate card) ─────────────────────────────── */
+.priceChart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.priceLabel {
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.priceDetail {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
 .readonlyType {
   display: inline-flex;
   align-items: center;

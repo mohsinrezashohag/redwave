@@ -10,10 +10,12 @@ import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { money } from '../../../lib/format/money';
-import { useTierSchedules } from '../api/useCommission';
+import styles from './commission.module.css';
+import { useClients, useTierSchedules } from '../api/useCommission';
 import { useDeleteTierSchedule } from '../api/useCommissionMutations';
 import { TierScheduleModal } from './TierScheduleModal';
 import { PendingRowActions } from './PendingRowActions';
+import { SCOPE_ALL, scopeDefaultClientId, scopeLabel, scopeParam, type ScopeValue } from '../clientScope';
 import type { TierConfig, TierBracket } from '../commission.types';
 
 function rateRange(tiers: TierBracket[]): string {
@@ -24,16 +26,22 @@ function rateRange(tiers: TierBracket[]): string {
   return `${money(min)}–${money(max)}`;
 }
 
-export function TierSchedulesSection() {
+export function TierSchedulesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue }) {
   const canEdit = useCan('commission:edit');
+  const canViewClients = useCan('clients:view');
   const { toast } = useToast();
   const onError = useApiErrorToast();
   const remove = useDeleteTierSchedule();
   const [open, setOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const q = useTierSchedules();
+  const q = useTierSchedules(scopeParam(scope));
+  const clients = useClients(canViewClients);
 
   const columns: EffectiveColumn<TierConfig>[] = [
+    // Only worth a column when scopes are mixed — a single-scope view already says which in the selector.
+    ...(scope === SCOPE_ALL
+      ? [{ header: 'Applies to', render: (c: TierConfig) => scopeLabel(c.client_id, clients.data) }]
+      : []),
     { header: 'Schedule', render: (c) => `${c.tiers.length} tiers · ${rateRange(c.tiers)} per activation` },
   ];
   const rows = q.data ?? [];
@@ -56,7 +64,13 @@ export function TierSchedulesSection() {
         isError={q.isError}
         isEmpty={rows.length === 0}
         onRetry={() => q.refetch()}
-        emptyNode={<p className="mono">No tier schedule yet.</p>}
+        emptyNode={
+          <p className={styles.note}>
+            {scopeDefaultClientId(scope)
+              ? 'No schedule of its own — this client is paid at the global tier schedule.'
+              : 'No tier schedule yet.'}
+          </p>
+        }
       >
         <EffectiveDatedTable
           rows={rows}
@@ -64,7 +78,9 @@ export function TierSchedulesSection() {
           rowActions={canEdit ? (c) => <PendingRowActions status={c.status} onDelete={() => setDeleteId(c.id)} /> : undefined}
         />
       </DataState>
-      {canEdit && <TierScheduleModal open={open} onClose={() => setOpen(false)} />}
+      {canEdit && open && (
+        <TierScheduleModal open defaultClientId={scopeDefaultClientId(scope)} onClose={() => setOpen(false)} />
+      )}
       <ConfirmDialog
         open={!!deleteId}
         onOpenChange={(o) => !o && setDeleteId(null)}

@@ -94,6 +94,90 @@ describe('CommissionEngineService', () => {
     expect(money(r.grossCommission)).toBe('1500.00');
   });
 
+  // ── Per-client schedules: ONE cross-client tally, a PER-CLIENT rate lookup (#5 preserved) ──────
+  describe('per-client tier schedules', () => {
+    // RF pays more per activation AND brackets differently: 12 falls in RF's 10-24 bracket (tier 2).
+    const RF_TIERS: TierBracket[] = [
+      { tierNumber: 3, minCount: 0, maxCount: 9, ratePerActivation: d('120') },
+      { tierNumber: 2, minCount: 10, maxCount: 24, ratePerActivation: d('150') },
+      { tierNumber: 1, minCount: 25, maxCount: null, ratePerActivation: d('170') },
+    ];
+
+    it('the TALLY stays cross-client while each item is paid at ITS OWN client’s rate', () => {
+      const activations = [...mkMany(internet, 3, 'VF'), ...mkMany(internet, 9, 'RF')];
+      const r = engine.computePeriod({
+        activations,
+        config: baseConfig({ tiersByClient: { RF: RF_TIERS } }),
+      });
+
+      // The one number that must never be split per client. — CLAUDE #5
+      expect(r.internetTally).toBe(12);
+
+      const vf = r.items.filter((i) => activations.find((a) => a.id === i.id)!.clientId === 'VF');
+      const rf = r.items.filter((i) => activations.find((a) => a.id === i.id)!.clientId === 'RF');
+      // VF has no schedule of its own → the GLOBAL ladder: tally 12 → Tier 3 @ $125.
+      expect(vf.every((i) => money(i.rateApplied) === '125.00' && i.tierAtPayment === 3)).toBe(true);
+      // RF's own ladder, against the SAME tally of 12 → its 10-24 bracket @ $150.
+      expect(rf.every((i) => money(i.rateApplied) === '150.00' && i.tierAtPayment === 2)).toBe(true);
+      expect(money(r.grossCommission)).toBe('1725.00'); // 3×125 + 9×150
+      // Mixed schedules → no single honest period-level tier/rate; per-item values carry the truth.
+      expect(r.tierNumber).toBeNull();
+      expect(r.ratePerActivation).toBeNull();
+    });
+
+    it('a client with no schedule of its own falls back to the GLOBAL ladder', () => {
+      const activations = mkMany(internet, 12, 'VF');
+      const r = engine.computePeriod({
+        activations,
+        config: baseConfig({ tiersByClient: { RF: RF_TIERS } }), // nothing for VF
+      });
+      expect(r.tierNumber).toBe(3); // uniform → reported
+      expect(money(r.ratePerActivation as Decimal)).toBe('125.00');
+      expect(r.items.every((i) => money(i.rateApplied) === '125.00')).toBe(true);
+    });
+
+    it('all activations on ONE client’s schedule still report a uniform tier/rate', () => {
+      const activations = mkMany(internet, 12, 'RF');
+      const r = engine.computePeriod({
+        activations,
+        config: baseConfig({ tiersByClient: { RF: RF_TIERS } }),
+      });
+      expect(r.internetTally).toBe(12);
+      expect(r.tierNumber).toBe(2);
+      expect(money(r.ratePerActivation as Decimal)).toBe('150.00');
+      expect(money(r.grossCommission)).toBe('1800.00'); // 12 × 150
+    });
+
+    it('per-client FLAT rates resolve per item, falling back to global', () => {
+      const activations = [mk(internet, 'VF'), mk(tv, 'VF'), mk(tv, 'RF'), mk(home_phone, 'RF')];
+      const r = engine.computePeriod({
+        activations,
+        config: baseConfig({ flatRatesByClient: { RF: { tv: d('45') } } }), // RF's TV only
+      });
+      const rate = (i: number) => money(r.items[i].rateApplied);
+      expect(rate(1)).toBe('30.00'); // VF TV → global
+      expect(rate(2)).toBe('45.00'); // RF TV → RF's own
+      expect(rate(3)).toBe('30.00'); // RF home phone → global (no RF entry)
+    });
+
+    it('#5 REGRESSION: the tally ignores clientId entirely, however many schedules are in play', () => {
+      // 4 clients, each with its own ladder — the tally is still the plain cross-client count.
+      const activations = [
+        ...mkMany(internet, 5, 'A'),
+        ...mkMany(internet, 4, 'B'),
+        ...mkMany(internet, 3, 'C'),
+        ...mkMany(internet, 8, 'D'),
+      ];
+      const r = engine.computePeriod({
+        activations,
+        config: baseConfig({ tiersByClient: { A: RF_TIERS, B: RF_TIERS, C: RF_TIERS, D: RF_TIERS } }),
+      });
+      expect(r.internetTally).toBe(20); // NOT 5/4/3/8 — one shared tally
+      // 20 lands in RF_TIERS' 10-24 bracket for every client.
+      expect(r.items.every((i) => i.tierAtPayment === 2)).toBe(true);
+    });
+  });
+
   it('FIXTURE 3 — tier boundary: 16 internet → Tier 3 ($125); 17 internet → Tier 2 ($145)', () => {
     const r16 = engine.computePeriod({ activations: mkMany(internet, 16), config: baseConfig() });
     expect(r16.tierNumber).toBe(3);

@@ -15,6 +15,9 @@ export interface BracketForm {
 }
 
 export interface TierFormValues {
+  /** 'all' = the GLOBAL row (client_id omitted); 'specific' = one client's own ladder. */
+  scope_mode: 'all' | 'specific';
+  client_id?: string;
   effective_from: string;
   effective_to: string;
   tiers: BracketForm[];
@@ -43,9 +46,10 @@ export function toBracketInputs(tiers: BracketForm[]): BracketInput[] {
   }));
 }
 
-/** Map validated form values → the API request body. */
+/** Map validated form values → the API request body. "All clients" omits client_id = the GLOBAL row. */
 export function buildTierBody(values: TierFormValues): CreateTierScheduleBody {
   return {
+    client_id: values.scope_mode === 'specific' ? values.client_id : undefined,
     effective_from: values.effective_from,
     effective_to: values.effective_to || undefined,
     tiers: values.tiers.map((t) => ({

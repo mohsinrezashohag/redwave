@@ -10,23 +10,30 @@ import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { money } from '../../../lib/format/money';
 import { productTypeLabel } from '../../../lib/format/productType';
-import { useFlatRates } from '../api/useCommission';
+import { useClients, useFlatRates } from '../api/useCommission';
 import { useDeleteFlatRate } from '../api/useCommissionMutations';
 import { FlatRateModal } from './FlatRateModal';
 import { PendingRowActions } from './PendingRowActions';
+import { SCOPE_ALL, scopeDefaultClientId, scopeLabel, scopeParam, type ScopeValue } from '../clientScope';
 import type { FlatRate } from '../commission.types';
+import styles from './commission.module.css';
 
-export function FlatRatesSection() {
+export function FlatRatesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue }) {
   const canEdit = useCan('commission:edit');
+  const canViewClients = useCan('clients:view');
   const { toast } = useToast();
   const onError = useApiErrorToast();
   const remove = useDeleteFlatRate();
   const [open, setOpen] = useState(false);
   const [editRate, setEditRate] = useState<FlatRate | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const q = useFlatRates('all');
+  const q = useFlatRates('all', scopeParam(scope));
+  const clients = useClients(canViewClients);
 
   const columns: EffectiveColumn<FlatRate>[] = [
+    ...(scope === SCOPE_ALL
+      ? [{ header: 'Applies to', render: (r: FlatRate) => scopeLabel(r.client_id, clients.data) }]
+      : []),
     { header: 'Product type', render: (r) => productTypeLabel(r.product_type) },
     { header: 'Amount', align: 'right', render: (r) => money(r.amount) },
   ];
@@ -50,7 +57,13 @@ export function FlatRatesSection() {
         isError={q.isError}
         isEmpty={rows.length === 0}
         onRetry={() => q.refetch()}
-        emptyNode={<p className="mono">No flat rates yet.</p>}
+        emptyNode={
+          <p className={styles.note}>
+            {scopeDefaultClientId(scope)
+              ? 'No flat rates of its own — this client is paid at the global flat rates.'
+              : 'No flat rates yet.'}
+          </p>
+        }
       >
         <EffectiveDatedTable
           rows={rows}
@@ -58,7 +71,9 @@ export function FlatRatesSection() {
           rowActions={canEdit ? (r) => <PendingRowActions status={r.status} onEdit={() => setEditRate(r)} onDelete={() => setDeleteId(r.id)} /> : undefined}
         />
       </DataState>
-      {canEdit && <FlatRateModal open={open} onClose={() => setOpen(false)} />}
+      {canEdit && open && (
+        <FlatRateModal open defaultClientId={scopeDefaultClientId(scope)} onClose={() => setOpen(false)} />
+      )}
       {editRate && <FlatRateModal open rate={editRate} onClose={() => setEditRate(null)} />}
       <ConfirmDialog
         open={!!deleteId}

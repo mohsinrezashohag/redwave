@@ -37,6 +37,13 @@ export class TierConfigResponse {
   @ApiProperty()
   id!: string;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "Client this schedule applies to; null = the GLOBAL ladder (fallback for clients without their own).",
+  })
+  client_id!: string | null;
+
   @ApiProperty({ type: String, format: 'date-time' })
   effective_from!: string;
 
@@ -56,6 +63,13 @@ export class TierConfigResponse {
 export class FlatRateResponse {
   @ApiProperty()
   id!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Client this rate applies to; null = the GLOBAL rate for this product type.',
+  })
+  client_id!: string | null;
 
   @ApiProperty({ type: String, example: 'tv', description: 'Product-type catalogue key.' })
   product_type!: string;
