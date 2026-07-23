@@ -26,6 +26,12 @@ export class SalePayPeriodResponse {
   end_date!: string;
 }
 
+/** The item's product, for display — the type key alone can't name a speed. */
+export class SaleItemProductResponse {
+  @ApiProperty({ example: 'Fibre 1gig/2.5gig' })
+  name!: string;
+}
+
 export class SaleItemResponse {
   @ApiProperty()
   id!: string;
@@ -35,6 +41,9 @@ export class SaleItemResponse {
 
   @ApiProperty()
   product_id!: string;
+
+  @ApiProperty({ type: () => SaleItemProductResponse, description: 'The product this item sold (name only).' })
+  product!: SaleItemProductResponse;
 
   @ApiProperty({ type: String, example: 'internet', description: 'Product-type catalogue key (snapshot).' })
   product_type!: string;
@@ -88,6 +97,12 @@ export class SaleResponse {
 
   @ApiProperty()
   customer_name!: string;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Given name (the client bill prints it separately).' })
+  customer_first_name!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Family name.' })
+  customer_last_name!: string | null;
 
   @ApiProperty()
   street!: string;

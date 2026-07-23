@@ -9,7 +9,8 @@ import { useCan } from '../../../auth/useCan';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { ExportMenu } from '../../../components/data/ExportMenu';
 import type { ExportColumn } from '../../../lib/export/exportRows';
-import { displayDate } from '../../../lib/format/date';
+import { displayDate, todayIso } from '../../../lib/format/date';
+import { exportFilename } from '../../../lib/export/exportFilename';
 import { useUsers } from '../../admin/api/useUsers';
 import { RepsTable } from '../components/RepsTable';
 import { fetchAllReps } from '../api/useReps';
@@ -82,7 +83,7 @@ export default function RepsListPage() {
             {canViewUsers && managerOptions.length > 1 && (
               <Select options={managerOptions} value={managerId} onValueChange={setManagerId} aria-label="Manager filter" />
             )}
-            <ExportMenu filename="reps" title="Reps" columns={exportColumns} getRows={() => fetchAllReps(filters)} />
+            <ExportMenu filename={exportFilename({ source: 'reps', generatedOn: todayIso() })} title="Reps" columns={exportColumns} getRows={() => fetchAllReps(filters)} />
           </div>
         }
       />

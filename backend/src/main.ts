@@ -63,14 +63,20 @@ async function bootstrap(): Promise<void> {
 
   // CORS — credentialed (the refresh cookie rides cross-site). In production set CORS_ORIGIN to a
   // comma-separated allowlist of frontend origins. Unset → permissive (dev only). — arch §11
+  //
+  // `Content-Disposition` MUST be exposed: the frontend is a different origin in production, and a browser
+  // hides every response header from JS unless it is listed here. Without it the download helper cannot
+  // read the filename the server sent and falls back to "download", so every statement / invoice / expense
+  // document / export saves as `download (5).xlsx`. — arch §6.9
+  const exposedHeaders = ['Content-Disposition'];
   const corsOrigin = process.env.CORS_ORIGIN;
   if (corsOrigin) {
-    app.enableCors({ origin: corsOrigin.split(',').map((o) => o.trim()), credentials: true });
+    app.enableCors({ origin: corsOrigin.split(',').map((o) => o.trim()), credentials: true, exposedHeaders });
   } else {
     if (isProd) {
       console.warn('⚠️  CORS_ORIGIN is not set in production — refusing credentialed cross-site cookies may fail.');
     }
-    app.enableCors({ credentials: true, origin: true });
+    app.enableCors({ credentials: true, origin: true, exposedHeaders });
   }
 
   // Swagger /docs — DISABLED in production unless ENABLE_SWAGGER=true, and then gated behind HTTP Basic

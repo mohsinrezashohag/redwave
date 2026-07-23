@@ -8,6 +8,8 @@ import { Button, Input, PageHeader, Select } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
 import { ExportMenu } from '../../../components/data/ExportMenu';
 import type { ExportColumn } from '../../../lib/export/exportRows';
+import { exportFilename } from '../../../lib/export/exportFilename';
+import { todayIso } from '../../../lib/format/date';
 import { ClientsTable } from '../components/ClientsTable';
 import { ClientFormModal, type ClientFormState } from '../components/ClientFormModal';
 import { fetchAllClients } from '../api/useClients';
@@ -67,7 +69,7 @@ export default function ClientsPage() {
           <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
             <SearchBox value={search} onChange={setSearch} />
             <Select options={STATUS_OPTIONS} value={status} onValueChange={(v) => setStatus(v as StatusFilter)} aria-label="Status filter" />
-            <ExportMenu filename="clients" title="Clients" columns={EXPORT_COLUMNS} getRows={() => fetchAllClients(filters)} />
+            <ExportMenu filename={exportFilename({ source: 'clients', generatedOn: todayIso() })} title="Clients" columns={EXPORT_COLUMNS} getRows={() => fetchAllClients(filters)} />
             {canCreate && (
               <Button variant="primary" onClick={() => setModal({ mode: 'create' })}>
                 Create client

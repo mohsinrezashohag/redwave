@@ -7,6 +7,7 @@
  */
 import type { components } from '../../api/generated/schema';
 import type { ExportColumn } from '../../lib/export/exportRows';
+import { exportFilename as sharedExportFilename } from '../../lib/export/exportFilename';
 import { money } from '../../lib/format/money';
 import { displayDate } from '../../lib/format/date';
 import type { ReportType } from './reports.types';
@@ -57,9 +58,12 @@ export const REPORT_TYPE_DEFS: ReportTypeDef[] = [
   },
 ];
 
-/** `report-business-summary-2026-06-11` etc. — exportRows appends the extension. */
+/**
+ * `redwave-report-business-summary-20260611` etc. — the shared convention (`lib/export/exportFilename`),
+ * with the report type as the source slug. exportRows appends the extension.
+ */
 export function exportFilename(type: ReportType, todayIso: string): string {
-  return `report-${type.replace(/_/g, '-')}-${todayIso}`;
+  return sharedExportFilename({ source: `report-${type.replace(/_/g, '-')}`, generatedOn: todayIso });
 }
 
 // ── Leaderboard (counts ONLY — no money column) ─────────────────────────────────────

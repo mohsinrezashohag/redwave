@@ -147,7 +147,11 @@ export function SaleDetailView({ id }: { id: string }) {
               <ul className={styles.items}>
                 {sale.sale_items.map((item) => (
                   <li key={item.id} className={styles.item}>
-                    <span>{productTypeLabel(item.product_type)}</span>
+                    {/* The product NAME carries the speed ("Fibre 1gig/2.5gig"); the type key alone can't. */}
+                    <span>
+                      {item.product?.name ?? productTypeLabel(item.product_type)}
+                      <span className={styles.muted}> · {productTypeLabel(item.product_type)}</span>
+                    </span>
                     <span className={styles.muted}>
                       {item.counts_toward_tally ? 'Counts toward tally' : 'Excluded from tally'}
                     </span>
