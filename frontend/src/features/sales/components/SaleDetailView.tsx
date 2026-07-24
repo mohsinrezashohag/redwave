@@ -184,9 +184,8 @@ export function SaleDetailView({ id }: { id: string }) {
                 Delete
               </Button>
             )}
-            <Button variant="tertiary" onClick={() => navigate('/sales')}>
-              Back to sales
-            </Button>
+            {/* No "back to sales" here — navigation lives in the page header, so this row is only ever
+                actions that change THIS sale. Two routes to the same list read as two different things. */}
           </div>
 
           <Modal
