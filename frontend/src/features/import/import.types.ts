@@ -16,6 +16,20 @@ export type ImportBatch = components['schemas']['ImportBatchResponse'];
 export type StagedImport = components['schemas']['StagedImportResponse'];
 export type ImportFieldMapping = components['schemas']['ImportFieldMappingResponse'];
 
+// The DRY RUN — what staging WOULD produce, with nothing written.
+export type ImportPreview = components['schemas']['ImportPreviewResponse'];
+export type ImportIssueGroup = components['schemas']['ImportIssueGroupResponse'];
+
+/**
+ * A batch's stored `error_summary` carries the per-status counts PLUS the grouped problems. It is typed as
+ * free-form JSON in the contract, so read it through this guard rather than casting at each call site.
+ */
+export function issueGroupsOf(summary: unknown): ImportIssueGroup[] {
+  if (!summary || typeof summary !== 'object') return [];
+  const groups = (summary as { groups?: unknown }).groups;
+  return Array.isArray(groups) ? (groups as ImportIssueGroup[]) : [];
+}
+
 export interface ImportFilters {
   status?: ImportBatchStatus;
   source_type?: ImportSourceType;

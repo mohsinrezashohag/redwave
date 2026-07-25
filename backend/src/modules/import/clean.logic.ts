@@ -7,7 +7,7 @@
  */
 import { RawRow } from './mapping.logic';
 
-export type FieldType = 'text' | 'date' | 'money' | 'code' | 'int';
+export type FieldType = 'text' | 'date' | 'money' | 'code' | 'int' | 'bool';
 
 /** Trim whitespace; empty → null. The base normalisation for every cell. */
 export function normWs(v: unknown): string | null {
@@ -81,6 +81,26 @@ export function normCode(v: unknown): string | null {
   return s ? s.toUpperCase() : null;
 }
 
+/**
+ * Coerce a boolean-ish cell to the string `'true'` / `'false'`. Excel hands us a real boolean, a formula
+ * result, `Yes`/`Y`/`1`, or the word `TRUE` in any case — all of which meant subtly different things to the
+ * per-handler regexes that used to do this. Anything unrecognised → null (absent, not false), so a required
+ * flag can still be reported as missing rather than silently reading as "no".
+ */
+export function coerceBool(v: unknown): string | null {
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  const s = normWs(v);
+  if (s === null) return null;
+  if (/^(true|yes|y|1|x)$/i.test(s)) return 'true';
+  if (/^(false|no|n|0)$/i.test(s)) return 'false';
+  return null;
+}
+
+/** Read a cleaned boolean field. A `bool`-typed cell is already `'true'`/`'false'`; anything else is false. */
+export function isTrue(v: unknown): boolean {
+  return coerceBool(v) === 'true';
+}
+
 /** Clean a single value by its field type. */
 export function cleanValue(value: unknown, type: FieldType): string | null {
   switch (type) {
@@ -92,6 +112,8 @@ export function cleanValue(value: unknown, type: FieldType): string | null {
       return normCode(value);
     case 'int':
       return coerceInt(value);
+    case 'bool':
+      return coerceBool(value);
     default:
       return normWs(value);
   }

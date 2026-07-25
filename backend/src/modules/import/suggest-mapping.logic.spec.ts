@@ -8,10 +8,26 @@ describe('suggest-mapping.logic', () => {
     const mapping = suggestMapping(headers, fields);
     expect(mapping.client_code).toBe('Client');
     expect(mapping.rep_code).toBe('Agent Code');
-    expect(mapping.product_type).toBe('Service');
+    expect(mapping.product_types).toBe('Service');
     expect(mapping.sale_date).toBe('Sale Date');
     expect(mapping.billed_amount).toBe('Billed Amount');
     expect(mapping.customer_name).toBe('Customer Name');
+  });
+
+  // Greedy first-match let an early field capture a column a later field matched better.
+  it('a stronger claim wins the column — "code" does not swallow a Rep code column', () => {
+    const fields = TARGET_FIELDS['master_migration:sales'];
+    const mapping = suggestMapping(['Rep code', 'Partner', 'Products', 'Date', 'Amount'], fields);
+    expect(mapping.rep_code).toBe('Rep code'); // NOT taken by client_code's "code" alias
+    expect(mapping.client_code).not.toBe('Rep code');
+  });
+
+  it('is order-independent — the same headers map the same way whatever order they arrive in', () => {
+    const fields = TARGET_FIELDS['master_migration:sales'];
+    const headers = ['Client code', 'Rep code', 'Product type', 'Sale date', 'Billed amount'];
+    const forward = suggestMapping(headers, fields);
+    const reversed = suggestMapping([...headers].reverse(), fields);
+    expect(reversed).toEqual(forward);
   });
 
   it('does not reuse a source column for two fields, and omits unmatched fields', () => {

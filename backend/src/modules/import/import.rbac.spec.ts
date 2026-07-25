@@ -15,6 +15,11 @@ describe('Import RBAC metadata', () => {
     expect(meta(ImportController, 'commit')).toEqual({ moduleKey: 'import', action: 'approve' });
   });
 
+  // The dry run reads a file the caller is about to stage — same gate as staging, and no new permission.
+  it('preview rides import:create (it writes nothing, but sees the same data as staging)', () => {
+    expect(meta(ImportController, 'preview')).toEqual({ moduleKey: 'import', action: 'create' });
+  });
+
   it('mapping CRUD rides the same import permissions (no new permission)', () => {
     expect(meta(ImportMappingsController, 'list')).toEqual({ moduleKey: 'import', action: 'view' });
     expect(meta(ImportMappingsController, 'create')).toEqual({ moduleKey: 'import', action: 'create' });

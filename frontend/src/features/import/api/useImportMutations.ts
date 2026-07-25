@@ -15,6 +15,7 @@ import type {
   CreateMappingBody,
   ImportBatch,
   ImportFieldMapping,
+  ImportPreview,
   ImportSourceType,
   ImportType,
   ReconcileBody,
@@ -29,22 +30,41 @@ export interface StageInput {
   client_id?: string;
   field_mapping_id?: string;
   reconcile_total?: string;
+  /** Worksheet to read (Excel only). Omit to let the server pick the best-matching sheet. */
+  sheet?: string;
+  /** Historical sales only — create the referenced client / rep / product when it doesn't exist yet. */
+  create_missing?: boolean;
+}
+
+function stageForm(input: StageInput): FormData {
+  const form = new FormData();
+  form.append('file', input.file);
+  form.append('source_type', input.source_type);
+  form.append('import_type', input.import_type);
+  if (input.client_id) form.append('client_id', input.client_id);
+  if (input.field_mapping_id) form.append('field_mapping_id', input.field_mapping_id);
+  if (input.reconcile_total) form.append('reconcile_total', input.reconcile_total);
+  if (input.sheet) form.append('sheet', input.sheet);
+  if (input.create_missing) form.append('create_missing', 'true');
+  return form;
 }
 
 export function useStageImport() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: StageInput) => {
-      const form = new FormData();
-      form.append('file', input.file);
-      form.append('source_type', input.source_type);
-      form.append('import_type', input.import_type);
-      if (input.client_id) form.append('client_id', input.client_id);
-      if (input.field_mapping_id) form.append('field_mapping_id', input.field_mapping_id);
-      if (input.reconcile_total) form.append('reconcile_total', input.reconcile_total);
-      return multipartPost<StagedImport>('/v1/imports', form);
-    },
+    mutationFn: (input: StageInput) => multipartPost<StagedImport>('/v1/imports', stageForm(input)),
     onSuccess: () => qc.invalidateQueries({ queryKey: importKeys.all }),
+  });
+}
+
+/**
+ * DRY RUN — the same file, the same server path, but nothing is written. Lets the operator see the chosen
+ * sheet, the detected header row, the mapping and the blocking problems BEFORE a batch exists. Deliberately
+ * does NOT invalidate the import cache: it creates nothing.
+ */
+export function usePreviewImport() {
+  return useMutation({
+    mutationFn: (input: StageInput) => multipartPost<ImportPreview>('/v1/imports/preview', stageForm(input)),
   });
 }
 

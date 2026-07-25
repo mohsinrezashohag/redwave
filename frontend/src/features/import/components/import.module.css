@@ -242,3 +242,96 @@
   max-height: 360px;
   overflow-y: auto;
 }
+
+/* ── Grouped issues + dry-run preview ─────────────────────────────────────────── */
+.issueGroupList {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.issueRows {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.previewGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.previewStat {
+  padding: var(--space-3);
+  background-color: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.previewStatLabel {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.previewStatValue {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+}
+
+.previewNote {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-top: var(--space-2);
+}
+
+/* The sample grid scrolls inside its own pane so the page keeps one scroller (§13.3). */
+.tableScroll {
+  overflow-x: auto;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-3);
+}
+
+.previewTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.previewTable th,
+.previewTable td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.previewTable th {
+  position: sticky;
+  top: 0;
+  background-color: var(--surface-2);
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.previewCell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+
+/* A matched row's note (e.g. "will create client VF") — information, not a failure. */
+.noteCell {
+  max-width: 260px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}

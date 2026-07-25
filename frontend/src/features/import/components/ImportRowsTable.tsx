@@ -58,7 +58,9 @@ export function ImportRowsTable({ batch, kind, canEdit, onMatch, onEdit, onIgnor
               <span className="mono">{row.matched_entity_id ? row.matched_entity_id.slice(0, 8) : '—'}</span>
             </TD>
             <TD>
-              <span className={styles.issueCell}>{row.issue ?? '—'}</span>
+              {/* A MATCHED row's note is informational ("will create client VF"), not a failure — styling it
+                  like an error would make a healthy row read as broken. */}
+              <span className={row.match_status === 'matched' ? styles.noteCell : styles.issueCell}>{row.issue ?? '—'}</span>
             </TD>
             {staged && canEdit && (
               <TD align="right">

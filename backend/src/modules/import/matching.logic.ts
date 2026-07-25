@@ -6,6 +6,7 @@
  */
 import { MatchStatus } from '@prisma/client';
 import { RawRow } from './mapping.logic';
+import { resolveVocabValue, splitValues, Vocab } from './value-vocabulary.logic';
 
 export interface Classification {
   match_status: MatchStatus;
@@ -117,33 +118,97 @@ export function classifyRepRow(mapped: RawRow, ctx: { codeExists: boolean }): Cl
 }
 
 // ── master_migration + sales (HISTORICAL — reference-only; never paid) ───────────────────────────
+/**
+ * ONE ROW = ONE HOUSEHOLD, so `product_types` may list several ("Internet, TV, Home Phone") and the row
+ * becomes one sale with N items. The service resolves the raw cell through the value vocabulary first, so a
+ * human-written `"Internet, TV"` arrives here as `['internet','tv']`.
+ *
+ * Unlike the LIVE target this does NOT require an internet base (SALE-001a is an entry rule; history is
+ * reference data and may legitimately record a TV-only household).
+ */
 export function classifyHistoricalSaleRow(
   mapped: RawRow,
-  ctx: { clientExists: boolean; repExists: boolean; productExists: boolean },
+  ctx: {
+    clientExists: boolean;
+    repExists: boolean;
+    /** Types the vocabulary could not resolve at all (verbatim, for the message). */
+    unknownProductTypes: string[];
+    /** Resolved types that have NO active product for this client. */
+    missingProductTypes: string[];
+    /** Count of types that DID resolve — zero means the cell named nothing usable. */
+    resolvedCount: number;
+    /** The canonical form of what resolved, for a "did you mean …" hint. */
+    suggestion: string | null;
+    /**
+     * The operator opted in to creating referenced master data that doesn't exist yet. A missing
+     * client/rep/product then becomes a MATCHED row carrying a note about what will be created, instead of
+     * an error. Never set for live sales — see the guard in `ImportService.analyze`.
+     */
+    createMissing?: boolean;
+  },
 ): Classification {
   const client_code = str(mapped, 'client_code');
   const rep_code = str(mapped, 'rep_code');
-  const product_type = str(mapped, 'product_type');
+  const product_types = str(mapped, 'product_types');
   const sale_date = str(mapped, 'sale_date');
   const billed_amount = str(mapped, 'billed_amount');
   if (!client_code) return error('client_code is required');
   if (!rep_code) return error('rep_code is required');
-  if (!product_type) return error('product_type is required');
+  if (!product_types) return error('product_types is required');
   if (!sale_date || !DATE.test(sale_date)) return error('sale_date must be YYYY-MM-DD');
   if (!billed_amount || !MONEY.test(billed_amount)) return error('billed_amount must be a decimal string (≤2 dp)');
-  if (!ctx.clientExists) return error(`client ${client_code} not found`);
-  if (!ctx.repExists) return error(`rep ${rep_code} not found`);
-  if (!ctx.productExists) return error(`no ${product_type} product for client ${client_code} — import products first`);
-  return matched();
+
+  // An unresolvable TYPE is always an error, even with create-missing on: the product-type catalogue is
+  // Super-Admin-governed configuration (#10), not something an uploaded file may extend.
+  if (ctx.unknownProductTypes.length > 0) return error(unknownTypeIssue(ctx.unknownProductTypes, ctx.suggestion));
+  if (ctx.resolvedCount === 0) return error(`"${product_types}" names no known product type`);
+
+  const willCreate: string[] = [];
+  if (!ctx.clientExists) {
+    if (!ctx.createMissing) return error(`client ${client_code} not found`);
+    willCreate.push(`client ${client_code}`);
+  }
+  if (!ctx.repExists) {
+    if (!ctx.createMissing) return error(`rep ${rep_code} not found`);
+    willCreate.push(`rep ${rep_code}`);
+  }
+  if (ctx.missingProductTypes.length > 0) {
+    if (!ctx.createMissing) {
+      return error(`no ${ctx.missingProductTypes.join(', ')} product for client ${client_code} — import products first`);
+    }
+    willCreate.push(`${ctx.missingProductTypes.join(', ')} product${ctx.missingProductTypes.length > 1 ? 's' : ''}`);
+  }
+
+  // Matched, but the operator should see what this row is about to bring into existence.
+  return willCreate.length > 0 ? { match_status: 'matched', issue: `will create ${willCreate.join(', ')}` } : matched();
+}
+
+/**
+ * The operator-facing message for an unresolvable type. It names the FIX: the old message claimed the
+ * product was missing when the product existed and only the spelling differed, which sent operators off to
+ * re-import their product master for no reason.
+ */
+export function unknownTypeIssue(unknown: string[], suggestion: string | null): string {
+  const listed = unknown.map((u) => `"${u}"`).join(', ');
+  const hint = suggestion ? ` — did you mean ${suggestion}?` : ' — check the product-type catalogue';
+  return `unknown product type ${listed}${hint}`;
 }
 
 // ── sales_entry + sales (LIVE sale entry; IMP-013) ───────────────────────────────────────────────
-/** Split the comma-separated `product_types` column into normalised type keys. */
-export const splitProductTypes = (value: string | null): string[] =>
-  (value ?? '')
-    .split(',')
-    .map((t) => t.trim().toLowerCase())
-    .filter(Boolean);
+/**
+ * Split a `product_types` cell into canonical catalogue keys. The naive comma-split this replaced only
+ * handled `internet,tv` written exactly as the system stores it; resolution now goes through the value
+ * vocabulary, so `"Internet, TV"` / `"Internet + TV"` / `"HP"` and SA-added types all land correctly.
+ *
+ * `vocab` is optional so the pure unit tests (and any caller without catalogue rows to hand) keep the old
+ * lenient behaviour: with no vocabulary the fragments are simply normalised, never invented.
+ */
+export const splitProductTypes = (value: string | null, vocab?: Vocab): string[] => {
+  if (vocab && vocab.length > 0) {
+    return resolveVocabValue(value, vocab).keys;
+  }
+  return splitValues(value).map((t) => t.trim().toLowerCase());
+};
 
 const LIVE_SALE_STATUSES = ['entered', 'validated'];
 
@@ -159,6 +224,10 @@ export function classifyLiveSaleRow(
     clientExists: boolean;
     /** The rep exists AND is active (SalesService rejects an inactive rep). */
     repActive: boolean;
+    /** Types the vocabulary could not resolve at all (verbatim, for the message). */
+    unknownProductTypes?: string[];
+    /** The canonical form of what resolved, for a "did you mean …" hint. */
+    suggestion?: string | null;
     /** Listed types that have NO active product for this client. */
     missingProductTypes: string[];
     /** True when at least one listed type has catalogue behaviour `tiered` or `greenfield`. */
@@ -167,19 +236,21 @@ export function classifyLiveSaleRow(
 ): Classification {
   const client_code = str(mapped, 'client_code');
   const rep_code = str(mapped, 'rep_code');
-  const productTypes = splitProductTypes(str(mapped, 'product_types'));
+  const rawTypes = str(mapped, 'product_types');
   const sale_date = str(mapped, 'sale_date');
   const customer_name = str(mapped, 'customer_name');
   const status = (str(mapped, 'status') ?? 'entered').toLowerCase();
 
   if (!client_code) return error('client_code is required');
   if (!rep_code) return error('rep_code is required');
-  if (productTypes.length === 0) return error('product_types is required (comma-separated)');
+  if (!rawTypes) return error('product_types is required (comma-separated)');
   if (!sale_date || !DATE.test(sale_date)) return error('sale_date must be YYYY-MM-DD');
   if (!customer_name) return error('customer_name is required');
   if (!LIVE_SALE_STATUSES.includes(status)) {
     return error(`status must be entered or validated (got "${status}")`);
   }
+  const unknownTypes = ctx.unknownProductTypes ?? [];
+  if (unknownTypes.length > 0) return error(unknownTypeIssue(unknownTypes, ctx.suggestion ?? null));
   if (!ctx.clientExists) return error(`client ${client_code} not found`);
   if (!ctx.repActive) return error(`rep ${rep_code} not found or not active`);
   if (ctx.missingProductTypes.length > 0) {

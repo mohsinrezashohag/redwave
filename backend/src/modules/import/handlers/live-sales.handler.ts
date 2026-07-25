@@ -11,7 +11,7 @@ import { Prisma } from '@prisma/client';
 import { AuthUser } from '../../../common/rbac/auth-user.type';
 import { DomainError } from '../../../common/errors/domain-error';
 import { SalesService } from '../../sales/sales.service';
-import { normCode } from '../clean.logic';
+import { isTrue, normCode } from '../clean.logic';
 import { RawRow } from '../mapping.logic';
 import { splitProductTypes } from '../matching.logic';
 
@@ -19,7 +19,6 @@ const text = (row: RawRow, key: string): string | null => {
   const v = row[key];
   return v === undefined || v === null || v === '' ? null : String(v);
 };
-const bool = (v: unknown): boolean => /^(true|yes|y|1)$/i.test(String(v ?? '').trim());
 /** Address columns are optional on this target — a blank becomes the same placeholder history uses. */
 const addr = (row: RawRow, key: string): string => text(row, key) ?? '—';
 
@@ -77,7 +76,7 @@ export async function applyLiveSale(
       province_state: addr(mapped, 'province_state'),
       postal_code: addr(mapped, 'postal_code'),
       mpu_id: text(mapped, 'mpu_id') ?? undefined,
-      is_greenfield: bool(mapped.is_greenfield),
+      is_greenfield: isTrue(mapped.is_greenfield),
       items: productIds.map((product_id) => ({ product_id })),
     },
     user,

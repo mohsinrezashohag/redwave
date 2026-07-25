@@ -6600,6 +6600,52 @@ paths:
       security: *a265
       summary: Import/migration history
       tags: *a266
+  /v1/imports/preview:
+    post:
+      description: Requires import:create. Runs the SAME parse → map → clean →
+        classify path as staging and reports what it would produce — chosen
+        sheet, detected header row, the mapping, required fields with no column,
+        a row sample, and the grouped blockers — WITHOUT creating a batch or
+        storing the file. Lets the operator correct the sheet or mapping before
+        anything is staged.
+      operationId: ImportController_preview_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                source_type:
+                  type: string
+                import_type:
+                  type: string
+                client_id:
+                  type: string
+                field_mapping_id:
+                  type: string
+                sheet:
+                  type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportPreviewResponse"
+        "400": *a259
+        "401": *a260
+        "403": *a261
+        "404": *a262
+        "409": *a263
+        "422": *a264
+      security: *a265
+      summary: Dry-run an import file (no batch, nothing stored)
+      tags: *a266
   /v1/imports/{id}:
     get:
       description: Requires import:view. Rows with match status, counts, and reconcile
@@ -13005,6 +13051,149 @@ components:
         - run_by
         - created_at
         - committed_at
+    ImportWillCreateProductResponse:
+      type: object
+      properties:
+        client_code:
+          type: string
+          example: VF
+        product_type:
+          type: string
+          example: internet
+      required:
+        - client_code
+        - product_type
+    ImportWillCreateResponse:
+      type: object
+      properties:
+        clients:
+          description: Client codes with no client record.
+          type: array
+          items:
+            type: string
+        reps:
+          description: Rep codes with no rep record.
+          type: array
+          items:
+            type: string
+        products:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportWillCreateProductResponse"
+      required:
+        - clients
+        - reps
+        - products
+    ImportIssueGroupResponse:
+      type: object
+      properties:
+        issue:
+          type: string
+          description: The problem, with row-specific values folded out so identical
+            issues group.
+        match_status:
+          type: string
+          example: error
+        count:
+          type: number
+          description: How many rows hit this problem.
+        row_numbers:
+          description: Up to 10 example row numbers, ascending.
+          type: array
+          items:
+            type: number
+        sample_issue:
+          type: string
+          description: One verbatim example message.
+      required:
+        - issue
+        - match_status
+        - count
+        - row_numbers
+        - sample_issue
+    ImportPreviewRowResponse:
+      type: object
+      properties:
+        row_number:
+          type: number
+        match_status:
+          type: string
+          example: matched
+        issue:
+          type: string
+          nullable: true
+        mapped_data:
+          type: object
+          additionalProperties: true
+          description: The row after mapping + cleaning.
+      required:
+        - row_number
+        - match_status
+        - issue
+        - mapped_data
+    ImportPreviewResponse:
+      type: object
+      properties:
+        create_missing:
+          type: boolean
+          description: Whether this run was asked to create missing master data.
+        will_create:
+          $ref: "#/components/schemas/ImportWillCreateResponse"
+        sheet:
+          type: string
+          nullable: true
+          description: The worksheet chosen (null for CSV/TSV).
+        sheets:
+          description: Every worksheet in the workbook, so the operator can pick another.
+          type: array
+          items:
+            type: string
+        header_row:
+          type: number
+          description: 1-based row the headers were detected on.
+        headers:
+          type: array
+          items:
+            type: string
+        mapping:
+          type: object
+          additionalProperties:
+            type: string
+          description: "The `{ systemField: sourceColumn }` mapping that would be applied."
+        unmapped_required:
+          description: Required system fields no column mapped to.
+          type: array
+          items:
+            type: string
+        total_rows:
+          type: number
+        counts:
+          type: object
+          additionalProperties:
+            type: number
+          description: Row counts per match status.
+        issue_groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportIssueGroupResponse"
+        sample:
+          description: The first rows, cleaned + classified.
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportPreviewRowResponse"
+      required:
+        - create_missing
+        - will_create
+        - sheet
+        - sheets
+        - header_row
+        - headers
+        - mapping
+        - unmapped_required
+        - total_rows
+        - counts
+        - issue_groups
+        - sample
     ImportBatchResponse:
       type: object
       properties:

@@ -32,7 +32,7 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
     { field: 'client_code', type: 'code', required: true, label: 'Client code', aliases: ['code', 'client code', 'client_code', 'partner code'], example: 'VF', dict: 'Unique client/partner code (UPPER-cased; e.g. VF, RF, CTI).' },
     { field: 'name', type: 'text', required: true, label: 'Name', aliases: ['name', 'client name', 'partner', 'partner name'], example: 'Valley Fiber', dict: 'Client display name.' },
     { field: 'market', type: 'text', required: true, label: 'Market', aliases: ['market', 'country', 'region'], example: 'CA', dict: 'Market: CA or US.' },
-    { field: 'supplies_mpu_id', type: 'text', required: false, label: 'Supplies MPU ID', aliases: ['mpu', 'supplies mpu', 'has mpu', 'mpu id'], example: 'true', dict: 'true if the client supplies an MPU ID per house (CTI/VF), else false (RF Now).' },
+    { field: 'supplies_mpu_id', type: 'bool', required: false, label: 'Supplies MPU ID', aliases: ['mpu', 'supplies mpu', 'has mpu', 'mpu id'], example: 'true', dict: 'true if the client supplies an MPU ID per house (CTI/VF), else false (RF Now). Yes/Y/1 are also accepted.' },
   ],
 
   // ── Go-live master data: products (+ optional inline billing rate) ──
@@ -67,13 +67,13 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
   'master_migration:sales': [
     { field: 'client_code', type: 'code', required: true, label: 'Client code', aliases: ['code', 'client code', 'client', 'partner'], example: 'VF', dict: 'Client (by code).' },
     { field: 'rep_code', type: 'code', required: true, label: 'Rep code', aliases: ['rep', 'rep code', 'distributor', 'agent', 'agent code'], example: 'RW-D-0001', dict: 'Rep (by code).' },
-    { field: 'product_type', type: 'text', required: true, label: 'Product type', aliases: ['type', 'product type', 'product', 'service'], example: 'internet', dict: 'Product type (internet / tv / home_phone / greenfield_internet).' },
+    { field: 'product_types', type: 'text', required: true, label: 'Product type(s)', aliases: ['type', 'product type', 'product types', 'product', 'products', 'service', 'services'], example: 'internet,tv', dict: 'One or more product types on this household — "internet" or "internet,tv,home_phone". Names are matched loosely, so "Internet, TV" works.' },
     { field: 'sale_date', type: 'date', required: true, label: 'Sale date', aliases: ['date', 'sale date', 'sold', 'order date'], example: '2025-03-12', dict: 'The sale date (reference; historical sales never enter a pay period).' },
     { field: 'activation_date', type: 'date', required: false, label: 'Activation date', aliases: ['activation', 'activation date', 'activated', 'install date'], example: '2025-03-20', dict: 'Reference only.' },
-    { field: 'billed_amount', type: 'money', required: true, label: 'Billed amount', aliases: ['amount', 'billed', 'billed amount', 'revenue', 'value'], example: '60.00', dict: 'The historical BILLED amount (business-aggregation reference; NOT rep commission, #3).' },
+    { field: 'billed_amount', type: 'money', required: true, label: 'Billed amount', aliases: ['amount', 'billed', 'billed amount', 'revenue', 'value'], example: '60.00', dict: 'The historical BILLED amount for the WHOLE row (business-aggregation reference; NOT rep commission, #3). Recorded once, on the base item — never split across products.' },
     { field: 'customer_name', type: 'text', required: false, label: 'Customer', aliases: ['customer', 'name', 'subscriber', 'household'], example: 'Jane Doe', dict: 'Customer/household name (reference).' },
     { field: 'mpu_id', type: 'text', required: false, label: 'MPU ID', aliases: ['mpu', 'mpu id', 'house id'], example: 'MPU-1042', dict: 'Client identifier (reference).' },
-    { field: 'is_greenfield', type: 'text', required: false, label: 'Greenfield', aliases: ['greenfield', 'is greenfield', 'gf'], example: 'false', dict: 'true/false (reference flag).' },
+    { field: 'is_greenfield', type: 'bool', required: false, label: 'Greenfield', aliases: ['greenfield', 'is greenfield', 'gf'], example: 'false', dict: 'true/false (reference flag). Yes/Y/1 are also accepted.' },
   ],
 
   // ── LIVE sales entry (IMP-013) — real `entered`/`validated` sales that DO reach the engine. ONE ROW =
@@ -94,7 +94,7 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
     { field: 'province_state', type: 'text', required: false, label: 'Province/State', aliases: ['province', 'state', 'province/state', 'region'], example: 'MB', dict: 'Optional — blank becomes “—”.' },
     { field: 'postal_code', type: 'text', required: false, label: 'Postal code', aliases: ['postal', 'postal code', 'zip', 'zip code'], example: 'R3C 1A1', dict: 'Optional — blank becomes “—”.' },
     { field: 'mpu_id', type: 'text', required: false, label: 'MPU ID', aliases: ['mpu', 'mpu id', 'house id', 'unit id'], example: 'MPU-1042', dict: 'Client house/unit identifier (also disambiguates the Sale ID).' },
-    { field: 'is_greenfield', type: 'text', required: false, label: 'Greenfield', aliases: ['greenfield', 'is greenfield', 'gf'], example: 'false', dict: 'true/false. Greenfield internet is flat-rated and EXCLUDED from the tier tally (#9).' },
+    { field: 'is_greenfield', type: 'bool', required: false, label: 'Greenfield', aliases: ['greenfield', 'is greenfield', 'gf'], example: 'false', dict: 'true/false (Yes/Y/1 also accepted). Greenfield internet is flat-rated and EXCLUDED from the tier tally (#9).' },
     { field: 'status', type: 'text', required: false, label: 'Status', aliases: ['status', 'state', 'validated'], example: 'entered', dict: 'entered (default) or validated. "validated" also runs the entered→validated transition at commit.' },
   ],
 

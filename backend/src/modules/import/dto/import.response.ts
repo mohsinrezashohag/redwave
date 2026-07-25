@@ -104,6 +104,105 @@ export class StagedImportResponse extends ImportBatchResponse {
   applied_mapping?: Record<string, string>;
 }
 
+/** One DISTINCT problem across the file, with example rows — not one entry per failing row. */
+export class ImportIssueGroupResponse {
+  @ApiProperty({ description: 'The problem, with row-specific values folded out so identical issues group.' })
+  issue!: string;
+
+  @ApiProperty({ example: 'error' })
+  match_status!: string;
+
+  @ApiProperty({ description: 'How many rows hit this problem.' })
+  count!: number;
+
+  @ApiProperty({ type: [Number], description: 'Up to 10 example row numbers, ascending.' })
+  row_numbers!: number[];
+
+  @ApiProperty({ description: 'One verbatim example message.' })
+  sample_issue!: string;
+}
+
+/** One cleaned + classified row from the dry run. */
+export class ImportPreviewRowResponse {
+  @ApiProperty()
+  row_number!: number;
+
+  @ApiProperty({ example: 'matched' })
+  match_status!: string;
+
+  @ApiProperty({ type: String, nullable: true })
+  issue!: string | null;
+
+  @ApiProperty({ type: 'object', additionalProperties: true, description: 'The row after mapping + cleaning.' })
+  mapped_data!: Record<string, unknown>;
+}
+
+/** A product that would be created, identified by its client + catalogue type. */
+export class ImportWillCreateProductResponse {
+  @ApiProperty({ example: 'VF' })
+  client_code!: string;
+
+  @ApiProperty({ example: 'internet' })
+  product_type!: string;
+}
+
+/**
+ * The master data a HISTORICAL sales file references but that doesn't exist yet. Reported whether or not
+ * `create_missing` is on: with it ON this is what WILL be created, with it OFF it is what is currently
+ * blocking the rows.
+ */
+export class ImportWillCreateResponse {
+  @ApiProperty({ type: [String], description: 'Client codes with no client record.' })
+  clients!: string[];
+
+  @ApiProperty({ type: [String], description: 'Rep codes with no rep record.' })
+  reps!: string[];
+
+  @ApiProperty({ type: () => [ImportWillCreateProductResponse] })
+  products!: ImportWillCreateProductResponse[];
+}
+
+/**
+ * The DRY RUN result: exactly what staging WOULD produce, with nothing written. Lets the operator fix the
+ * sheet/mapping before a batch exists. — IMP-003
+ */
+export class ImportPreviewResponse {
+  @ApiProperty({ description: 'Whether this run was asked to create missing master data.' })
+  create_missing!: boolean;
+
+  @ApiProperty({ type: () => ImportWillCreateResponse })
+  will_create!: ImportWillCreateResponse;
+  @ApiProperty({ type: String, nullable: true, description: 'The worksheet chosen (null for CSV/TSV).' })
+  sheet!: string | null;
+
+  @ApiProperty({ type: [String], description: 'Every worksheet in the workbook, so the operator can pick another.' })
+  sheets!: string[];
+
+  @ApiProperty({ description: '1-based row the headers were detected on.' })
+  header_row!: number;
+
+  @ApiProperty({ type: [String] })
+  headers!: string[];
+
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, description: 'The `{ systemField: sourceColumn }` mapping that would be applied.' })
+  mapping!: Record<string, string>;
+
+  @ApiProperty({ type: [String], description: 'Required system fields no column mapped to.' })
+  unmapped_required!: string[];
+
+  @ApiProperty()
+  total_rows!: number;
+
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'number' }, description: 'Row counts per match status.' })
+  counts!: Record<string, number>;
+
+  @ApiProperty({ type: () => [ImportIssueGroupResponse] })
+  issue_groups!: ImportIssueGroupResponse[];
+
+  @ApiProperty({ type: () => [ImportPreviewRowResponse], description: 'The first rows, cleaned + classified.' })
+  sample!: ImportPreviewRowResponse[];
+}
+
 /** A saved reusable column→field mapping. */
 export class ImportFieldMappingResponse {
   @ApiProperty()
