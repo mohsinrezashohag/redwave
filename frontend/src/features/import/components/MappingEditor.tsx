@@ -14,22 +14,18 @@ import styles from './import.module.css';
 import type { ImportBatch, KindDef } from '../import.types';
 
 const NONE = '__none__';
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-/** A simple client-side initial guess: match each field to a source column by normalized name/label/alias. */
-function guess(fields: { field: string; label: string }[], columns: string[]): Record<string, string> {
-  const used = new Set<string>();
-  const out: Record<string, string> = {};
-  for (const f of fields) {
-    const targets = [norm(f.field), norm(f.label)];
-    const hit = columns.find((c) => !used.has(c) && targets.some((t) => norm(c) === t || norm(c).includes(t) || t.includes(norm(c))));
-    if (hit) {
-      out[f.field] = hit;
-      used.add(hit);
-    }
-  }
-  return out;
-}
+/**
+ * There is NO client-side guessing here, deliberately.
+ *
+ * This panel used to recompute its own mapping with a crude normalized-contains match that ignored the
+ * target's field ALIASES entirely — while the copy told the operator "the server auto-suggested a mapping at
+ * upload". So the screen showed a mapping the server had never applied (MPU ID → TV, Customer → Agent ID),
+ * and pressing Apply would have committed that fiction over the server's correct one.
+ *
+ * The batch now carries `applied_mapping`, which is the mapping the rows were actually classified with.
+ * Display exactly that.
+ */
 
 export function MappingEditor({ batch, kind }: { batch: ImportBatch; kind?: KindDef }) {
   const { toast } = useToast();
@@ -46,7 +42,7 @@ export function MappingEditor({ batch, kind }: { batch: ImportBatch; kind?: Kind
     return [...cols];
   }, [batch.import_rows]);
 
-  const [mapping, setMapping] = useState<Record<string, string>>(() => guess(fields, sourceColumns));
+  const [mapping, setMapping] = useState<Record<string, string>>(() => ({ ...(batch.applied_mapping ?? {}) }));
   const [mappingName, setMappingName] = useState('');
 
   if (fields.length === 0 || sourceColumns.length === 0) return null;
@@ -70,7 +66,8 @@ export function MappingEditor({ batch, kind }: { batch: ImportBatch; kind?: Kind
   return (
     <Card title="Column mapping">
       <p className={styles.hint}>
-        Map each system field to a column from your file. The server auto-suggested a mapping at upload — adjust any mismatch and Apply.
+        This is the mapping the server applied to these rows. Adjust any mismatch and Apply to re-classify —
+        a field left “not mapped” is simply absent from every row.
       </p>
       <div className={styles.mapGrid}>
         {fields.map((fld) => (

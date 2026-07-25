@@ -50,6 +50,8 @@ import {
   Vocab,
   VocabResolution,
 } from './value-vocabulary.logic';
+import { detectProductTypeColumns, ProductTypeColumn, resolveRowProductTypes } from './product-columns.logic';
+import { CandidateSale, matchReportRow } from './sale-matching.logic';
 import { groupIssues, summariseIssues } from './group-issues.logic';
 import { evaluateGate } from './reconcile-gate.logic';
 import { applyBulkValidation } from './handlers/bulk-validation.handler';
@@ -80,6 +82,11 @@ const up = (s: string | null): string => (s ?? '').toUpperCase();
 const uniqCodes = (rows: RawRow[], key: string): string[] => [
   ...new Set(rows.map((r) => str(r, key)).filter((v): v is string => !!v)),
 ];
+/**
+ * A stored DATE column back to 'YYYY-MM-DD' (they are UTC-midnight, so the UTC day IS the real day, #7).
+ * Tolerates a missing value: a sale with no usable date simply can't corroborate a match on one.
+ */
+const isoDate = (d: Date | null | undefined): string | null => (d instanceof Date ? d.toISOString().slice(0, 10) : null);
 
 /**
  * Saved mappings are keyed by SYSTEM FIELD, so renaming the historical target's `product_type` to
@@ -104,12 +111,23 @@ export function migrateLegacyMappingKeys(mappingJson: unknown): unknown {
  * so the resolution rule lives in exactly one place and cannot disagree with itself between stage and
  * commit. A row whose types don't resolve is left untouched; the classifier turns it into an `error`.
  */
-function canonicaliseProductTypes(row: RawRow, vocab: Vocab): VocabResolution {
-  const resolved = resolveVocabValue(str(row, 'product_types'), vocab);
+function canonicaliseProductTypes(row: RawRow, vocab: Vocab, ctx?: ProductTypeContext): VocabResolution {
+  const resolved = ctx
+    ? resolveRowProductTypes(ctx.rawByRow.get(row) ?? {}, str(row, 'product_types'), ctx.typeColumns, vocab)
+    : resolveVocabValue(str(row, 'product_types'), vocab);
   if (resolved.keys.length > 0 && resolved.unknown.length === 0) {
     row.product_types = resolved.keys.join(',');
   }
   return resolved;
+}
+
+/**
+ * Lets a classifier reach the row's ORIGINAL cells, which is where the per-type flag columns live — the
+ * mapped row only carries the system fields. Keyed by the mapped row object so the pairing cannot drift.
+ */
+interface ProductTypeContext {
+  typeColumns: ProductTypeColumn[];
+  rawByRow: Map<RawRow, RawRow>;
 }
 
 /**
@@ -185,8 +203,19 @@ export class ImportService {
 
     const rawRows = parsed.rows;
     const mappedRows = rawRows.map((raw) => cleanMappedRow(applyMapping(raw, mapping), types));
-    const classifications = await this.classifyAll(kind, mappedRows, dto.client_id ?? null, dto.create_missing ?? false);
-    return { kind, fields, parsed, mapping, rawRows, mappedRows, classifications };
+
+    // The real working files give each product type its own yes/no column rather than listing them in one
+    // cell, so a sales target also reads that layout. Columns already claimed by another system field are
+    // excluded, and an explicit product-types cell still wins per row.
+    const wantsProductTypes = fields.some((f) => f.field === 'product_types');
+    const typeColumns = wantsProductTypes
+      ? detectProductTypeColumns(parsed.headers, await this.productTypeVocab(), Object.values(mapping))
+      : [];
+    const productTypeCtx: ProductTypeContext | undefined =
+      typeColumns.length > 0 ? { typeColumns, rawByRow: new Map(mappedRows.map((m, i) => [m, rawRows[i]])) } : undefined;
+
+    const classifications = await this.classifyAll(kind, mappedRows, dto.client_id ?? null, dto.create_missing ?? false, productTypeCtx);
+    return { kind, fields, parsed, mapping, rawRows, mappedRows, classifications, typeColumns };
   }
 
   /**
@@ -195,7 +224,7 @@ export class ImportService {
    * blockers — WITHOUT creating a batch or storing the file. Nothing here writes.
    */
   async preview(file: UploadedFile, dto: CreateImportDto) {
-    const { kind, fields, parsed, mapping, mappedRows, classifications } = await this.analyze(file, dto);
+    const { kind, fields, parsed, mapping, mappedRows, classifications, typeColumns } = await this.analyze(file, dto);
 
     const rows = classifications.map((c, i) => ({
       row_number: i + 1,
@@ -208,6 +237,9 @@ export class ImportService {
     return {
       create_missing: dto.create_missing ?? false,
       will_create: willCreate,
+      // Empty unless the file uses the column-per-type layout — the operator should see that a row's
+      // products were read from yes/no columns rather than a list cell.
+      product_type_columns: typeColumns,
       sheet: parsed.sheet,
       sheets: parsed.sheets,
       header_row: parsed.headerRow,
@@ -248,6 +280,8 @@ export class ImportService {
         // Persisted because remap + a reconcile edit re-classify: without it those re-runs would judge the
         // rows under the opposite rule and flip them back to `error`.
         create_missing: dto.create_missing ?? false,
+        // Persisted so the detail screen can show what was ACTUALLY applied instead of re-guessing.
+        applied_mapping: mapping as Prisma.InputJsonValue,
         error_summary: this.summariseWithGroups(
           classifications.map((c, i) => ({ row_number: i + 1, match_status: c.match_status, issue: c.issue })),
         ),
@@ -273,8 +307,8 @@ export class ImportService {
       action: 'create',
       after: { source_type: dto.source_type, import_type: dto.import_type, ...this.summarise(classifications) },
     });
-    // The applied mapping + parsed headers are returned (transient) so the FE can show + adjust the mapping.
-    return { ...batch, source_headers: parsed.headers, applied_mapping: mapping };
+    // `source_headers` is transient (the FE offers them as mapping choices); `applied_mapping` is stored.
+    return { ...batch, source_headers: parsed.headers };
   }
 
   // ── Remap (re-apply a new mapping to the stored raw_data — no re-upload) ─────────────
@@ -302,12 +336,14 @@ export class ImportService {
           },
         });
       }
+      // The new mapping IS the batch's mapping from here on — the detail screen reads it back.
+      await tx.importBatch.update({ where: { id }, data: { applied_mapping: dto.mapping_json as Prisma.InputJsonValue } });
       await this.recountBatch(tx, id);
     });
 
     const updated = await this.findOne(id);
     await this.audit.log({ actorId: user.id, entityType: 'import_batches', entityId: id, action: 'reconcile', after: { remap: true, ...this.summarise(updated.import_rows) } });
-    return { ...updated, applied_mapping: dto.mapping_json };
+    return updated;
   }
 
   // ── Reads ─────────────────────────────────────────────────────────────────────────
@@ -549,7 +585,13 @@ export class ImportService {
   }
 
   /** Classify every mapped row for the batch kind, pre-fetching the DB context each classifier needs. */
-  private async classifyAll(kind: Kind, mappedRows: RawRow[], clientId: string | null, createMissing = false): Promise<Classification[]> {
+  private async classifyAll(
+    kind: Kind,
+    mappedRows: RawRow[],
+    clientId: string | null,
+    createMissing = false,
+    productTypeCtx?: ProductTypeContext,
+  ): Promise<Classification[]> {
     switch (kind) {
       case 'bulk_validation':
         return this.classifySales(mappedRows, clientId);
@@ -564,10 +606,31 @@ export class ImportService {
       case 'create_reps':
         return this.classifyReps(mappedRows);
       case 'historical_sales':
-        return this.classifyHistoricalSales(mappedRows, createMissing);
+        return this.classifyHistoricalSales(mappedRows, createMissing, productTypeCtx);
       case 'bulk_sales':
-        return this.classifyLiveSales(mappedRows);
+        return this.classifyLiveSales(mappedRows, productTypeCtx);
     }
+  }
+
+  /**
+   * Rep ids by code — accepting EITHER the system `rep_code` (RW-D-0001) or the optional `external_code`
+   * (the "Redwave20" style Redwave's own files use). Both are matched UPPER-cased, the same fold import
+   * cleaning applies, so a file may mix the two schemes freely. `rep_code` remains the immutable business
+   * key (#11); this is only a second way to look one up.
+   */
+  private async repsByAnyCode(codes: string[]): Promise<Map<string, string>> {
+    if (codes.length === 0) return new Map();
+    const upper = codes.map(up);
+    const rows = await this.prisma.rep.findMany({
+      where: { OR: [{ rep_code: { in: upper } }, { external_code: { in: upper } }] },
+      select: { id: true, rep_code: true, external_code: true },
+    });
+    const byCode = new Map<string, string>();
+    for (const rep of rows) {
+      byCode.set(up(rep.rep_code), rep.id);
+      if (rep.external_code) byCode.set(up(rep.external_code), rep.id);
+    }
+    return byCode;
   }
 
   private async clientsByCode(codes: string[]): Promise<Map<string, string>> {
@@ -576,19 +639,58 @@ export class ImportService {
     return new Map(rows.map((c) => [up(c.client_code), c.id]));
   }
 
+  /**
+   * Client report → entered sales. MPU ID is the partner's per-house identifier and remains the exact,
+   * preferred key. But CTI/VF supply it and **RF Now does not** (SRS §84), so a row without one falls back
+   * to matching on customer name + address + date. That fallback NEVER auto-validates on a guess — only an
+   * unambiguous strong candidate matches; anything else comes back with candidates for the operator.
+   */
   private async classifySales(mappedRows: RawRow[], clientId: string | null): Promise<Classification[]> {
     const mpus = uniqCodes(mappedRows, 'mpu_id');
-    const entered = mpus.length
-      ? await this.prisma.sale.findMany({ where: { client_id: clientId ?? undefined, status: 'entered', mpu_id: { in: mpus } }, select: { id: true, mpu_id: true } })
-      : [];
     const byMpu = new Map<string, string[]>();
-    for (const s of entered) {
-      if (!s.mpu_id) continue;
-      (byMpu.get(s.mpu_id) ?? byMpu.set(s.mpu_id, []).get(s.mpu_id)!).push(s.id);
+    if (mpus.length) {
+      const entered = await this.prisma.sale.findMany({
+        where: { client_id: clientId ?? undefined, status: 'entered', mpu_id: { in: mpus } },
+        select: { id: true, mpu_id: true },
+      });
+      for (const s of entered) {
+        if (!s.mpu_id) continue;
+        (byMpu.get(s.mpu_id) ?? byMpu.set(s.mpu_id, []).get(s.mpu_id)!).push(s.id);
+      }
     }
+
+    // Load the client's open sales ONCE for the rows that have no MPU to match on.
+    const needsFallback = mappedRows.some((r) => !str(r, 'mpu_id'));
+    const openSales: CandidateSale[] = needsFallback
+      ? (
+          await this.prisma.sale.findMany({
+            where: { client_id: clientId ?? undefined, status: 'entered' },
+            select: { id: true, sale_code: true, customer_name: true, street: true, sale_date: true, activation_date: true },
+            take: 2000,
+          })
+        ).map((s) => ({
+          id: s.id,
+          sale_code: s.sale_code,
+          customer_name: s.customer_name,
+          street: s.street,
+          sale_date: isoDate(s.sale_date) ?? '',
+          activation_date: isoDate(s.activation_date),
+        }))
+      : [];
+
     return mappedRows.map((r) => {
       const mpu = str(r, 'mpu_id');
-      return classifySalesRow(r, { matchedSaleIds: mpu ? (byMpu.get(mpu) ?? []) : [] });
+      if (mpu) {
+        return classifySalesRow(r, { matchedSaleIds: byMpu.get(mpu) ?? [] });
+      }
+      const outcome = matchReportRow(
+        { customer_name: str(r, 'customer_name'), service_address: str(r, 'service_address'), activation_date: str(r, 'activation_date') },
+        openSales,
+      );
+      if (outcome.matchedSaleId) {
+        return { match_status: 'matched' as const, issue: null, matched_entity_id: outcome.matchedSaleId };
+      }
+      return { match_status: 'unmatched' as const, issue: outcome.issue };
     });
   }
 
@@ -650,9 +752,7 @@ export class ImportService {
   private async historicalContext(mappedRows: RawRow[]) {
     const byCode = await this.clientsByCode(uniqCodes(mappedRows, 'client_code'));
     const repCodes = uniqCodes(mappedRows, 'rep_code');
-    const repExists = new Set(
-      (await this.prisma.rep.findMany({ where: { rep_code: { in: repCodes } }, select: { rep_code: true } })).map((r) => up(r.rep_code)),
-    );
+    const repExists = new Set((await this.repsByAnyCode(repCodes)).keys());
     const clientIds = [...byCode.values()];
     const products = clientIds.length
       ? await this.prisma.product.findMany({ where: { client_id: { in: clientIds }, is_active: true }, select: { client_id: true, product_type: true } })
@@ -662,11 +762,11 @@ export class ImportService {
     return { byCode, repExists, prodKey, vocab };
   }
 
-  private async classifyHistoricalSales(mappedRows: RawRow[], createMissing: boolean): Promise<Classification[]> {
+  private async classifyHistoricalSales(mappedRows: RawRow[], createMissing: boolean, productTypeCtx?: ProductTypeContext): Promise<Classification[]> {
     const { byCode, repExists, prodKey, vocab } = await this.historicalContext(mappedRows);
     return mappedRows.map((r) => {
       const cid = byCode.get(up(str(r, 'client_code')));
-      const resolved = canonicaliseProductTypes(r, vocab);
+      const resolved = canonicaliseProductTypes(r, vocab, productTypeCtx);
       return classifyHistoricalSaleRow(r, {
         clientExists: !!cid,
         repExists: repExists.has(up(str(r, 'rep_code'))),
@@ -724,16 +824,17 @@ export class ImportService {
    * for the client, and the catalogue `behaviour` decides whether the row carries the mandatory internet
    * base (SALE-001a) — pre-checked here so a bad row is an `error` the gate blocks, not a mid-commit throw.
    */
-  private async classifyLiveSales(mappedRows: RawRow[]): Promise<Classification[]> {
+  private async classifyLiveSales(mappedRows: RawRow[], productTypeCtx?: ProductTypeContext): Promise<Classification[]> {
     const byCode = await this.clientsByCode(uniqCodes(mappedRows, 'client_code'));
     const repCodes = uniqCodes(mappedRows, 'rep_code');
+    // Either code resolves, but the rep must still be ACTIVE — SalesService rejects an inactive one.
+    const upperRepCodes = repCodes.map(up);
+    const activeRepRows = await this.prisma.rep.findMany({
+      where: { status: 'active', OR: [{ rep_code: { in: upperRepCodes } }, { external_code: { in: upperRepCodes } }] },
+      select: { rep_code: true, external_code: true },
+    });
     const activeReps = new Set(
-      (
-        await this.prisma.rep.findMany({
-          where: { rep_code: { in: repCodes }, status: 'active' },
-          select: { rep_code: true },
-        })
-      ).map((r) => up(r.rep_code)),
+      activeRepRows.flatMap((r) => [up(r.rep_code), ...(r.external_code ? [up(r.external_code)] : [])]),
     );
     const clientIds = [...byCode.values()];
     const products = clientIds.length
@@ -753,7 +854,7 @@ export class ImportService {
     return mappedRows.map((r) => {
       const cid = byCode.get(up(str(r, 'client_code')));
       canonicaliseSingle(r, 'status', SALE_STATUS_VOCAB); // "Validated" → validated
-      const resolved = canonicaliseProductTypes(r, vocab);
+      const resolved = canonicaliseProductTypes(r, vocab, productTypeCtx);
       const types = resolved.keys;
       return classifyLiveSaleRow(r, {
         clientExists: !!cid,
@@ -772,9 +873,7 @@ export class ImportService {
   private async classifyHoldbacks(mappedRows: RawRow[]): Promise<Classification[]> {
     const repCodes = uniqCodes(mappedRows, 'rep_code');
     const periodIds = uniqCodes(mappedRows, 'origin_pay_period_id');
-    const reps = new Map(
-      (await this.prisma.rep.findMany({ where: { rep_code: { in: repCodes } }, select: { id: true, rep_code: true } })).map((r) => [up(r.rep_code), r.id]),
-    );
+    const reps = await this.repsByAnyCode(repCodes);
     const periods = new Map(
       (await this.prisma.payPeriod.findMany({ where: { id: { in: periodIds } }, select: { id: true, status: true } })).map((p) => [p.id, p.status]),
     );

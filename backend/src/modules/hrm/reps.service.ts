@@ -112,6 +112,8 @@ export class RepsService {
       const rep = await this.prisma.rep.create({
         data: {
           rep_code: dto.rep_code,
+          // Stored UPPER-cased so it matches the fold import cleaning applies to codes.
+          external_code: dto.external_code?.trim() ? dto.external_code.trim().toUpperCase() : null,
           full_name: dto.full_name,
           field_manager_id: dto.field_manager_id,
           hire_date: dateOnly(dto.hire_date),
@@ -151,6 +153,10 @@ export class RepsService {
 
     const data: Prisma.RepUncheckedUpdateInput = {};
     if (dto.full_name !== undefined) data.full_name = dto.full_name;
+    // An alias, not a business key — editable, and clearable by sending an empty string.
+    if (dto.external_code !== undefined) {
+      data.external_code = dto.external_code.trim() ? dto.external_code.trim().toUpperCase() : null;
+    }
     if (dto.field_manager_id !== undefined) data.field_manager_id = dto.field_manager_id;
     if (dto.hire_date !== undefined) data.hire_date = dateOnly(dto.hire_date);
     if (dto.user_id !== undefined) data.user_id = dto.user_id ?? null;
@@ -236,6 +242,7 @@ export class RepsService {
   private auditView(rep: Rep) {
     return {
       rep_code: rep.rep_code,
+      external_code: rep.external_code,
       full_name: rep.full_name,
       field_manager_id: rep.field_manager_id,
       status: rep.status,

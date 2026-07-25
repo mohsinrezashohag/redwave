@@ -16,6 +16,13 @@ export class RepResponse {
   @ApiProperty()
   rep_code!: string;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Legacy / partner code (e.g. Redwave20). Imports resolve a rep by this OR rep_code.',
+  })
+  external_code!: string | null;
+
   @ApiProperty({ type: String, nullable: true, description: 'Linked login user, if any.' })
   user_id!: string | null;
 

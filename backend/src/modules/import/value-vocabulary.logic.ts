@@ -167,6 +167,17 @@ export function resolveVocabValue(raw: unknown, vocab: Vocab): VocabResolution {
   return { ...out, suggestion: out.keys.length > 0 ? out.keys.join(' + ') : null };
 }
 
+/**
+ * EXACT resolution only — no loose containment. Used where a near miss would be actively wrong: detecting
+ * which FILE COLUMNS are product-type flags. Loose matching would read `"Internet Rate"` as the internet
+ * column and start treating a dollar figure as a yes/no flag.
+ */
+export function resolveVocabExact(raw: unknown, vocab: Vocab): string | null {
+  const text = raw === null || raw === undefined ? '' : String(raw).trim();
+  if (text === '') return null;
+  return resolveExact(text, indexVocab(vocab));
+}
+
 /** Build the product-type vocabulary from the `product_type_catalogue` rows (key + label). */
 export function buildProductTypeVocab(rows: { key: string; label?: string | null }[]): Vocab {
   return rows.map((r) => ({ key: r.key, labels: r.label ? [r.label] : [] }));

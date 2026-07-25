@@ -24,7 +24,12 @@ function make(parseRows: Record<string, unknown>[] = [], headers: string[] = [])
     holdbackLedger: { create: jest.fn().mockResolvedValue({ id: 'hl-1' }) },
     client: { findUnique: jest.fn().mockResolvedValue({ id: 'c1', client_code: 'VF' }), create: jest.fn().mockResolvedValue({ id: 'c1' }), update: jest.fn() },
     product: { findFirst: jest.fn().mockResolvedValue({ id: 'p1' }), create: jest.fn().mockResolvedValue({ id: 'p1' }) },
-    rep: { findUnique: jest.fn().mockResolvedValue({ id: 'rep1' }), create: jest.fn().mockResolvedValue({ id: 'rep1' }) },
+    // findFirst — reps resolve by rep_code OR the external_code alias.
+    rep: {
+      findUnique: jest.fn().mockResolvedValue({ id: 'rep1' }),
+      findFirst: jest.fn().mockResolvedValue({ id: 'rep1' }),
+      create: jest.fn().mockResolvedValue({ id: 'rep1' }),
+    },
     sale: { create: jest.fn().mockResolvedValue({ id: 'sale-H' }), count: jest.fn().mockResolvedValue(0) },
   };
   const prisma = {
@@ -83,18 +88,32 @@ const stagedBatch = (over: Record<string, unknown>) => ({
 describe('ImportService.stage (real parse → clean → classify)', () => {
   it('parses the file, cleans + classifies bulk-validation rows, stores the file, computes counts', async () => {
     const { service, prisma, storage } = make([{ 'MPU #': 'A' }, { 'MPU #': 'B' }, { 'MPU #': '' }], ['MPU #']);
-    prisma.sale.findMany.mockResolvedValue([{ id: 'sale-A', mpu_id: 'A' }]); // one entered sale for MPU A
+    // First call = the MPU lookup; second = the no-MPU fallback candidate load (row 3 has no MPU). The
+    // fallback row carries no customer/address here, so it correctly matches nothing.
+    prisma.sale.findMany
+      .mockResolvedValueOnce([{ id: 'sale-A', mpu_id: 'A' }]) // one entered sale for MPU A
+      .mockResolvedValueOnce([
+        { id: 'sale-A', sale_code: 'VF-1', customer_name: 'Jane Doe', street: '1 Main St', sale_date: new Date('2026-02-01T00:00:00Z'), activation_date: null },
+      ]);
     const res = await service.stage(file, { source_type: 'client_report', import_type: 'sales', client_id: 'c1' } as never, user);
     expect(storage.upload).toHaveBeenCalledWith('imports', file);
     const data = (prisma.importBatch.create.mock.calls[0][0] as {
-      data: { source_file_url: string; total_rows: number; matched_rows: number; import_rows: { create: { match_status: string; matched_entity_id: string | null }[] } };
+      data: {
+        source_file_url: string;
+        total_rows: number;
+        matched_rows: number;
+        applied_mapping: Record<string, string>;
+        import_rows: { create: { match_status: string; matched_entity_id: string | null }[] };
+      };
     }).data;
     expect(data.source_file_url).toBe('imports/2026/x.csv'); // real stored path, not a stub
     expect(data.total_rows).toBe(3);
     expect(data.matched_rows).toBe(1);
     expect(data.import_rows.create.map((r) => r.match_status)).toEqual(['matched', 'unmatched', 'unmatched']);
     expect(data.import_rows.create[0].matched_entity_id).toBe('sale-A');
-    expect(res.applied_mapping.mpu_id).toBe('MPU #'); // auto-suggested mapping returned
+    // PERSISTED, not merely returned — the detail screen reads it back instead of re-guessing a mapping
+    // the server never applied.
+    expect(data.applied_mapping.mpu_id).toBe('MPU #');
     expect(res.source_headers).toEqual(['MPU #']);
   });
 
@@ -315,7 +334,7 @@ describe('ImportService.commit — migration handlers', () => {
       const { service, prisma, tx } = make();
       tx.client.findUnique.mockResolvedValue(null);
       tx.client.create.mockResolvedValue({ id: 'c-new', client_code: 'NEW' });
-      tx.rep.findUnique.mockResolvedValue(null);
+      tx.rep.findFirst.mockResolvedValue(null); // neither rep_code nor external_code resolves
       tx.rep.create.mockResolvedValue({ id: 'rep-new' });
       tx.product.findFirst.mockResolvedValue(null);
       tx.product.create.mockResolvedValue({ id: 'p-new' });

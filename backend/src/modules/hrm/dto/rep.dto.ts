@@ -41,6 +41,18 @@ export class CreateRepDto {
   @Matches(DATE, { message: 'hire_date must be a YYYY-MM-DD date' })
   hire_date!: string;
 
+  @ApiPropertyOptional({
+    example: 'Redwave20',
+    description:
+      'Optional legacy / partner code for this rep, as it appears in spreadsheets and partner reports. ' +
+      'Imports resolve a rep by EITHER this or rep_code. Unlike rep_code it is editable, and it is not a ' +
+      'business key — it exists so an existing file need not be rewritten.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  external_code?: string;
+
   @ApiPropertyOptional({ description: 'Optional linked login user (source of contact info).' })
   @IsOptional()
   @IsUUID()
@@ -54,6 +66,13 @@ export class CreateRepDto {
 
 export class UpdateRepDto {
   // rep_code is intentionally NOT editable — it is the never-reused business key (#11).
+  // external_code IS editable: it is only an alias used to resolve imports.
+
+  @ApiPropertyOptional({ example: 'Redwave20', description: 'Legacy / partner code used to resolve imports.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  external_code?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -65,6 +65,8 @@ export async function applyRep(tx: Prisma.TransactionClient, mapped: RawRow, imp
   const rep = await tx.rep.create({
     data: {
       rep_code: code,
+      // Already UPPER-cased by the `code` field type — the same fold the import lookup uses.
+      external_code: text(mapped, 'external_code'),
       full_name: String(mapped.full_name),
       hire_date: dateOnly(String(mapped.hire_date)),
       // The importing admin is the default field manager; reassign in HRM after go-live.
@@ -73,6 +75,18 @@ export async function applyRep(tx: Prisma.TransactionClient, mapped: RawRow, imp
     },
   });
   return rep.id;
+}
+
+/**
+ * Find a rep by EITHER its system `rep_code` or its optional `external_code` — Redwave's own files call a
+ * rep "Redwave20" while the system knows them as "RW-D-0001". Shared by the commit handlers so a file may
+ * mix both schemes. Codes arrive already UPPER-cased by `normCode`.
+ */
+export async function findRepByAnyCode(tx: Prisma.TransactionClient, code: string): Promise<{ id: string } | null> {
+  return tx.rep.findFirst({
+    where: { OR: [{ rep_code: code }, { external_code: code }] },
+    select: { id: true },
+  });
 }
 
 // ── Historical sales: resolving (and optionally CREATING) the records a row references ────────────
@@ -101,7 +115,7 @@ async function resolveClient(tx: Prisma.TransactionClient, clientCode: string, o
 }
 
 async function resolveRep(tx: Prisma.TransactionClient, repCode: string, saleDate: string, opts: HistoricalSaleOptions) {
-  const existing = await tx.rep.findUnique({ where: { rep_code: repCode }, select: { id: true } });
+  const existing = await findRepByAnyCode(tx, repCode);
   if (existing) return existing;
   if (!opts.createMissing) throw new DomainError('IMPORT_REP_NOT_FOUND', `rep ${repCode} not found`);
   if (!opts.importerUserId) {
