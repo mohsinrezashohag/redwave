@@ -82,6 +82,7 @@ export const TEMPLATES: TemplateDef[] = [
     description: 'Create reps by code (codes are never reused).',
     fields: [
       f('rep_code', 'Rep code', 'RW-D-0001', 'RW-D-0002', 'Unique rep code (never reused).', true),
+      f('external_code', 'Legacy / agent ID', 'Redwave20', 'Redwave15', 'Optional. What this rep is called in your existing spreadsheets. Later imports accept either code, so old files need no rewriting.'),
       f('full_name', 'Full name', 'Riley Rivera', 'Sam Stone', 'Rep full name.', true),
       f('hire_date', 'Hire date', '2025-09-01', '2025-09-15', 'Hire date (YYYY-MM-DD).', true),
       f('field_manager_code', 'Manager code', 'RW-M-0001', '', 'Optional manager code (else the importing admin).'),

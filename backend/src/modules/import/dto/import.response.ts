@@ -79,6 +79,17 @@ export class ImportBatchResponse {
   })
   error_summary!: Record<string, number> | null;
 
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    nullable: true,
+    description: 'The `{ systemField: sourceColumn }` mapping actually applied to this batch.',
+  })
+  applied_mapping!: Record<string, string> | null;
+
+  @ApiProperty({ description: 'Whether the batch may create referenced master data at commit.' })
+  create_missing!: boolean;
+
   @ApiProperty()
   run_by!: string;
 
@@ -95,13 +106,10 @@ export class ImportBatchResponse {
   import_rows?: ImportRowResponse[];
 }
 
-/** Stage/remap also return the parsed headers + the applied mapping so the FE can show + adjust it. */
+/** Stage also returns the parsed headers so the FE can offer them as mapping choices. */
 export class StagedImportResponse extends ImportBatchResponse {
   @ApiPropertyOptional({ type: [String], description: 'The parsed source column headers.' })
   source_headers?: string[];
-
-  @ApiPropertyOptional({ type: 'object', additionalProperties: { type: 'string' }, description: 'The applied `{ systemField: sourceColumn }` mapping.' })
-  applied_mapping?: Record<string, string>;
 }
 
 /** One DISTINCT problem across the file, with example rows — not one entry per failing row. */
@@ -166,12 +174,28 @@ export class ImportWillCreateResponse {
  * The DRY RUN result: exactly what staging WOULD produce, with nothing written. Lets the operator fix the
  * sheet/mapping before a batch exists. — IMP-003
  */
+export class ImportProductTypeColumnResponse {
+  @ApiProperty({ example: 'Home Phone', description: 'The source column header.' })
+  column!: string;
+
+  @ApiProperty({ example: 'home_phone', description: 'The catalogue key it names.' })
+  key!: string;
+}
+
 export class ImportPreviewResponse {
   @ApiProperty({ description: 'Whether this run was asked to create missing master data.' })
   create_missing!: boolean;
 
   @ApiProperty({ type: () => ImportWillCreateResponse })
   will_create!: ImportWillCreateResponse;
+
+  @ApiProperty({
+    type: () => [ImportProductTypeColumnResponse],
+    description:
+      'Non-empty when the file uses one yes/no COLUMN per product type instead of a single list cell. ' +
+      'Each row’s products are read from these columns unless it has an explicit product-types value.',
+  })
+  product_type_columns!: ImportProductTypeColumnResponse[];
   @ApiProperty({ type: String, nullable: true, description: 'The worksheet chosen (null for CSV/TSV).' })
   sheet!: string | null;
 

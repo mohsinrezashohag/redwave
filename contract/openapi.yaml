@@ -9241,6 +9241,11 @@ components:
           type: string
         rep_code:
           type: string
+        external_code:
+          type: string
+          nullable: true
+          description: Legacy / partner code (e.g. Redwave20). Imports resolve a rep by
+            this OR rep_code.
         user_id:
           type: string
           nullable: true
@@ -9272,6 +9277,7 @@ components:
       required:
         - id
         - rep_code
+        - external_code
         - user_id
         - full_name
         - field_manager_id
@@ -9309,6 +9315,13 @@ components:
           type: string
           example: 2026-01-15
           description: YYYY-MM-DD.
+        external_code:
+          type: string
+          example: Redwave20
+          description: Optional legacy / partner code for this rep, as it appears in
+            spreadsheets and partner reports. Imports resolve a rep by EITHER
+            this or rep_code. Unlike rep_code it is editable, and it is not a
+            business key — it exists so an existing file need not be rewritten.
         user_id:
           type: string
           description: Optional linked login user (source of contact info).
@@ -9338,6 +9351,10 @@ components:
     UpdateRepDto:
       type: object
       properties:
+        external_code:
+          type: string
+          example: Redwave20
+          description: Legacy / partner code used to resolve imports.
         full_name:
           type: string
         field_manager_id:
@@ -13011,6 +13028,16 @@ components:
             type: number
           nullable: true
           description: Counts by classification (matched/unmatched/...).
+        applied_mapping:
+          type: object
+          additionalProperties: &a332
+            type: string
+          nullable: true
+          description: "The `{ systemField: sourceColumn }` mapping actually applied to
+            this batch."
+        create_missing:
+          type: boolean
+          description: Whether the batch may create referenced master data at commit.
         run_by:
           type: string
         created_at:
@@ -13030,11 +13057,6 @@ components:
           type: array
           items:
             type: string
-        applied_mapping:
-          type: object
-          additionalProperties:
-            type: string
-          description: "The applied `{ systemField: sourceColumn }` mapping."
       required:
         - id
         - source_file_url
@@ -13048,6 +13070,8 @@ components:
         - error_rows
         - reconcile_total
         - error_summary
+        - applied_mapping
+        - create_missing
         - run_by
         - created_at
         - committed_at
@@ -13084,6 +13108,20 @@ components:
         - clients
         - reps
         - products
+    ImportProductTypeColumnResponse:
+      type: object
+      properties:
+        column:
+          type: string
+          example: Home Phone
+          description: The source column header.
+        key:
+          type: string
+          example: home_phone
+          description: The catalogue key it names.
+      required:
+        - column
+        - key
     ImportIssueGroupResponse:
       type: object
       properties:
@@ -13139,6 +13177,13 @@ components:
           description: Whether this run was asked to create missing master data.
         will_create:
           $ref: "#/components/schemas/ImportWillCreateResponse"
+        product_type_columns:
+          description: Non-empty when the file uses one yes/no COLUMN per product type
+            instead of a single list cell. Each row’s products are read from
+            these columns unless it has an explicit product-types value.
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportProductTypeColumnResponse"
         sheet:
           type: string
           nullable: true
@@ -13184,6 +13229,7 @@ components:
       required:
         - create_missing
         - will_create
+        - product_type_columns
         - sheet
         - sheets
         - header_row
@@ -13235,6 +13281,15 @@ components:
           additionalProperties: *a331
           nullable: true
           description: Counts by classification (matched/unmatched/...).
+        applied_mapping:
+          type: object
+          additionalProperties: *a332
+          nullable: true
+          description: "The `{ systemField: sourceColumn }` mapping actually applied to
+            this batch."
+        create_missing:
+          type: boolean
+          description: Whether the batch may create referenced master data at commit.
         run_by:
           type: string
         created_at:
@@ -13262,6 +13317,8 @@ components:
         - error_rows
         - reconcile_total
         - error_summary
+        - applied_mapping
+        - create_missing
         - run_by
         - created_at
         - committed_at
@@ -14126,14 +14183,14 @@ components:
           type: string
         report_type:
           type: string
-          enum: &a332
+          enum: &a333
             - business_summary
             - leaderboard
             - payrun_summary
             - expense_summary
         format:
           type: string
-          enum: &a333
+          enum: &a334
             - csv
             - excel
             - pdf
@@ -14159,11 +14216,11 @@ components:
       properties:
         report_type:
           type: string
-          enum: *a332
+          enum: *a333
           description: Which report was generated.
         format:
           type: string
-          enum: *a333
+          enum: *a334
         filename:
           type: string
           maxLength: 200

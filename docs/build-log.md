@@ -69,6 +69,7 @@ premature-logout refresh, the double-scroll tables) — those are the most valua
 32. Export naming, the sales export shape, and sale-detail navigation (built — review items 6/10/11; NO migration)
 33. Expense UAT batch — office origin · per-unit caps · one folder per week · category grouping (built — items 13-18; migration `20260624000000`)
 34. Import — value vocabulary, multi-type rows, sheet/header detection, dry-run preview, opt-in create-missing (built — items from the UAT file; migration `20260625000000`)
+35. Import — real-world file shapes: column-per-type products, rep aliases, no-MPU matching (built — migrations `20260626000000` + `20260627000000`)
 
 ---
 
@@ -1529,3 +1530,56 @@ The lines that matter:
   operator to decode N identical error rows. A matched row's note is styled as information, not danger.
 
 **Deferred.** The `mixed` import_type is still unsupported.
+
+### Import — real-world file shapes: column-per-type products, rep aliases, no-MPU matching (built — migrations `20260626000000` + `20260627000000`)
+
+**What prompted it.** A staged `client_report + sales` batch showed 3/3 rows outstanding with "no MPU ID —
+manual match required", and the Column mapping panel displayed nonsense (MPU ID → TV, Customer → Agent ID).
+Reading Redwave's own working files (`docs/uat/Client billing report.xlsx`, `Payroll report.xlsx`) explained
+all of it and turned up three more mismatches between what the system expected and what the business
+actually keeps.
+
+**MPU ID, settled.** It is the PARTNER's per-house identifier (SRS glossary), printed on the remittance file
+they send. CTI and VF supply it; **RF Now does not**, and neither do Redwave's own sheets. It is optional
+everywhere — `SALE-001` says "where available", the column is nullable, the Sale ID uses it "if provided".
+Redwave never invents it. But bulk validation matched on it **and nothing else**, so a file without one
+failed every row, which is exactly what the screenshot showed. `IMP-004` says match on MPU "where
+available"; the where-it-isn't path had never been built.
+
+**Four fixes.**
+- **The mapping panel was showing a fiction.** `MappingEditor` recomputed its OWN mapping with a crude
+  normalized-contains match that ignored the target's field aliases, while the copy claimed "the server
+  auto-suggested a mapping at upload" — and Apply would have committed that guess over the server's correct
+  one. The reason it re-guessed: the applied mapping was only ever RETURNED by stage/remap, never stored, so
+  a detail-page refetch lost it. `import_batches.applied_mapping` now persists it, remap updates it, and the
+  panel renders exactly that. The client-side `guess()` is deleted.
+- **Column-per-type products** (`product-columns.logic.ts`). The real files give each type its own true/false
+  COLUMN (`Internet | TV | Home Phone`) rather than a list cell — no target could read that. Detection is
+  **exact** (`resolveVocabExact`) precisely so `"Internet Rate"` is never mistaken for the internet flag, and
+  an explicit list cell still WINS per row; the flags are the fallback, which is what makes the real file's
+  `Product` column ("Fibre 1gig/2.5gig", a marketing name that resolves to nothing) harmless. Both layouts
+  are supported — nothing about the single-cell format changed.
+- **Rep aliases** (`reps.external_code`). The files call a rep `Redwave20`; the system knows them as
+  `RW-D-0001`. An optional, editable, UNIQUE alias now resolves alongside `rep_code` in every import path
+  (classification and both commit handlers). `rep_code` is untouched and still the immutable never-reused
+  business key (#11) — this is a second lookup key, not a rename. It is set via the reps import
+  (`master_migration:reps` gained the column); there is no rep create/edit form in the UI to add it to.
+- **No-MPU matching** (`sale-matching.logic.ts`). A row without an MPU is matched on customer name +
+  address + date. The rule that governs it: **a fuzzy match never auto-validates a sale**, because
+  validating the wrong one pays the wrong rep. Only an unambiguous strong candidate auto-matches — one that
+  clears the threshold AND leads the runner-up by 20 — and everything else comes back with its scored
+  candidates and the reasons they scored, for the operator to confirm (SALE-007's "surfacing only
+  mismatches", with the candidates already found). Address comparison keys on house number + street stem so
+  `Dr` vs `Drive` agrees; names key on surname + first initial so `M. Thibault` matches `Mark Thibault`. The
+  case that proves the design is the **spouse**: same surname, same address, different sale — indistinguishable
+  by score, and correctly refused by the ambiguity guard rather than guessed. `client_report:sales` gained
+  `service_address` (only that — the agent/product columns were deliberately not added).
+
+**Verified LOCAL:** **950 backend tests** (115 suites) + lint + build + contract regen; FE build + lint +
+stylelint + 85 vitest — all green. `product-columns.logic.spec` uses the file's VERBATIM header row
+(trailing spaces and all) and locks that the three Rate columns are never read as flags.
+**Operator: `migrate deploy`** (two additive columns; both default to today's behaviour).
+
+**Left alone deliberately.** The `mixed` import_type is still unsupported. `supplies_mpu_id` is still stored
+but unread — matching now falls back on its own when a row has no MPU, so the flag is not load-bearing.
+Templates are still only on the import home, not inside the wizard.

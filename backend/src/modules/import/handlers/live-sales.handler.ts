@@ -14,6 +14,7 @@ import { SalesService } from '../../sales/sales.service';
 import { isTrue, normCode } from '../clean.logic';
 import { RawRow } from '../mapping.logic';
 import { splitProductTypes } from '../matching.logic';
+import { findRepByAnyCode } from './master.handlers';
 
 const text = (row: RawRow, key: string): string | null => {
   const v = row[key];
@@ -39,7 +40,8 @@ export async function applyLiveSale(
   if (!client) throw new DomainError('IMPORT_CLIENT_NOT_FOUND', `client ${clientCode} not found`);
 
   const repCode = normCode(mapped.rep_code)!;
-  const rep = await tx.rep.findUnique({ where: { rep_code: repCode }, select: { id: true } });
+  // Either the system rep_code or the legacy external_code — the classifier already proved one resolves.
+  const rep = await findRepByAnyCode(tx, repCode);
   if (!rep) throw new DomainError('IMPORT_REP_NOT_FOUND', `rep ${repCode} not found`);
 
   // One row = one sale; `product_types` is the (comma-separated) list of items on it.

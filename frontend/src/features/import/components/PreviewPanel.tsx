@@ -76,6 +76,22 @@ export function PreviewPanel({ preview, onSheetChange, busy }: Props) {
         </Banner>
       )}
 
+      {/* When the file uses one yes/no column per product type, say so — otherwise a row's products appear
+          out of nowhere and the operator can't tell whether they were read correctly. */}
+      {preview.product_type_columns.length > 0 && (
+        <Banner tone="info" title="Products read from one column per type">
+          This file marks each product type in its own column rather than listing them in one cell. A row's
+          products are whatever its ticked columns say:
+          <ul className={styles.issueGroupList}>
+            {preview.product_type_columns.map((c) => (
+              <li key={c.column}>
+                <code>{c.column}</code> → <code>{c.key}</code>
+              </li>
+            ))}
+          </ul>
+        </Banner>
+      )}
+
       {/* Creating master data is a real, visible act — never a silent side effect of an import. With the
           option ON this warns exactly what will come into existence; with it OFF it explains what turning
           it on would do, which beats leaving the operator to decode N identical error rows. */}

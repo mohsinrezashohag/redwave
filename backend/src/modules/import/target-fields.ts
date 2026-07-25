@@ -23,8 +23,9 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
   // ── Recurring client report → bulk sales validation (match on MPU). — SALE-007 ──
   'client_report:sales': [
     { field: 'mpu_id', type: 'text', required: false, label: 'MPU ID', aliases: ['mpu', 'mpu #', 'mpu id', 'mpu_id', 'house id', 'unit id'], example: 'MPU-1042', dict: 'Client house/unit identifier; matches an entered sale (CTI/VF supply it; RF Now does not — leave blank and match manually).' },
-    { field: 'customer_name', type: 'text', required: false, label: 'Customer', aliases: ['customer', 'name', 'customer name', 'subscriber', 'account name'], example: 'Jane Doe', dict: 'Customer/household name (reference only; aids manual matching).' },
-    { field: 'activation_date', type: 'date', required: false, label: 'Activation date', aliases: ['activation', 'activation date', 'activated', 'install date'], example: '2026-02-14', dict: 'Reference only — drives no logic (sale_date governs the period).' },
+    { field: 'customer_name', type: 'text', required: false, label: 'Customer', aliases: ['customer', 'name', 'customer name', 'subscriber', 'account name'], example: 'Jane Doe', dict: 'Customer/household name. Used to match the sale when the partner supplies no MPU ID.' },
+    { field: 'service_address', type: 'text', required: false, label: 'Service address', aliases: ['address', 'service address', 'street', 'install address', 'property'], example: '23 Shoreline Dr', dict: 'Service address. Combined with the customer name to match a sale when there is no MPU ID.' },
+    { field: 'activation_date', type: 'date', required: false, label: 'Activation date', aliases: ['activation', 'activation date', 'activated', 'install date'], example: '2026-02-14', dict: 'Reference only — drives no logic (sale_date governs the period). Corroborates a no-MPU match.' },
   ],
 
   // ── Go-live master data: clients ──
@@ -57,6 +58,7 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
   // ── Go-live master data: reps ──
   'master_migration:reps': [
     { field: 'rep_code', type: 'code', required: true, label: 'Rep code', aliases: ['code', 'rep code', 'rep_code', 'distributor code', 'agent code'], example: 'RW-D-0001', dict: 'Unique rep code (never reused, #11).' },
+    { field: 'external_code', type: 'code', required: false, label: 'Legacy / agent ID', aliases: ['agent id', 'legacy code', 'external code', 'old code', 'agent'], example: 'Redwave20', dict: 'Optional. The code this rep is called in existing spreadsheets and partner reports. Later imports resolve a rep by EITHER this or the rep code, so old files need no rewriting.' },
     { field: 'full_name', type: 'text', required: true, label: 'Full name', aliases: ['name', 'full name', 'rep', 'distributor', 'agent'], example: 'Riley Rivera', dict: 'Rep full name.' },
     { field: 'hire_date', type: 'date', required: true, label: 'Hire date', aliases: ['hire', 'hire date', 'start date', 'joined'], example: '2025-09-01', dict: 'Hire date.' },
     { field: 'field_manager_code', type: 'code', required: false, label: 'Manager code', aliases: ['manager', 'field manager', 'manager code', 'reports to'], example: 'RW-M-0001', dict: 'Optional field-manager rep/user code (else the importing admin is used).' },
