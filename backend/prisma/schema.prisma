@@ -1619,6 +1619,7 @@ model ImportBatch {
   matched_rows     Int
   error_rows       Int
   reconcile_total  Decimal?            @db.Decimal(12, 2)
+  create_missing   Boolean             @default(false)
   error_summary    Json?
   run_by           String              @db.Uuid
   runner           User                @relation("ImportBatchRunBy", fields: [run_by], references: [id])

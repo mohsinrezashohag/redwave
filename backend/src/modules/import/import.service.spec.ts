@@ -32,7 +32,13 @@ function make(parseRows: Record<string, unknown>[] = [], headers: string[] = [])
     sale: { findMany: jest.fn().mockResolvedValue([]) },
     client: { findMany: jest.fn().mockResolvedValue([]) },
     product: { findMany: jest.fn().mockResolvedValue([]) },
-    productTypeCatalogue: { findMany: jest.fn().mockResolvedValue([{ key: 'internet' }, { key: 'tv' }]) },
+    productTypeCatalogue: {
+      findMany: jest.fn().mockResolvedValue([
+        { key: 'internet', label: 'Internet', behaviour: 'tiered' },
+        { key: 'tv', label: 'TV', behaviour: 'standard_addon' },
+        { key: 'home_phone', label: 'Home Phone', behaviour: 'standard_addon' },
+      ]),
+    },
     rep: { findMany: jest.fn().mockResolvedValue([]) },
     payPeriod: { findMany: jest.fn().mockResolvedValue([]) },
     holdbackLedger: { findMany: jest.fn().mockResolvedValue([]) },
@@ -237,7 +243,7 @@ describe('ImportService.commit — migration handlers', () => {
         source_type: 'master_migration',
         import_type: 'sales',
         client_id: null,
-        import_rows: [{ id: 'r1', match_status: 'matched', mapped_data: { client_code: 'VF', rep_code: 'RW-D-0001', product_type: 'internet', sale_date: '2025-03-12', billed_amount: '60.00' } }],
+        import_rows: [{ id: 'r1', match_status: 'matched', mapped_data: { client_code: 'VF', rep_code: 'RW-D-0001', product_types: 'internet', sale_date: '2025-03-12', billed_amount: '60.00' } }],
       }),
     );
     await service.commit('b1', user);
@@ -248,6 +254,107 @@ describe('ImportService.commit — migration handlers', () => {
     expect(item.historical_billed_amount).toBe('60.00'); // billing-stream reference (#3)
     expect(item.counts_toward_tally).toBe(false); // never counts toward a tier tally (#5/#9)
     expect(item.commission_paid).toBeUndefined(); // NO commission snapshot (#2)
+  });
+
+  /**
+   * The UAT-file shape: "Internet, TV, Home Phone" with ONE billed amount. The money rule is that the
+   * amount is recorded exactly once, on the base item — so Σ over the sale equals the file's row total and
+   * the Business dashboard cannot double-count (#1/#3).
+   */
+  it('HISTORICAL multi-type row → ONE sale, N items, billed amount ONCE on the base item', async () => {
+    const { service, prisma, tx } = make();
+    tx.product.findFirst
+      .mockResolvedValueOnce({ id: 'p-int' })
+      .mockResolvedValueOnce({ id: 'p-tv' })
+      .mockResolvedValueOnce({ id: 'p-hp' });
+    prisma.importBatch.findUnique.mockResolvedValue(
+      stagedBatch({
+        source_type: 'master_migration',
+        import_type: 'sales',
+        client_id: null,
+        import_rows: [
+          {
+            id: 'r1',
+            match_status: 'matched',
+            // Already canonicalised at stage time by the value vocabulary.
+            mapped_data: { client_code: 'VF', rep_code: 'RW-D-0001', product_types: 'internet,tv,home_phone', sale_date: '2025-03-12', billed_amount: '450.00' },
+          },
+        ],
+      }),
+    );
+    await service.commit('b1', user);
+
+    expect(tx.sale.create).toHaveBeenCalledTimes(1); // ONE row = ONE sale, not one per product
+    const data = (tx.sale.create.mock.calls[0][0] as { data: { sale_items: { create: { product_type: string; historical_billed_amount: string | null; counts_toward_tally: boolean }[] } } }).data;
+    const items = data.sale_items.create;
+    expect(items.map((i) => i.product_type)).toEqual(['internet', 'tv', 'home_phone']);
+    expect(items.every((i) => i.counts_toward_tally === false)).toBe(true); // (#5/#9)
+
+    // The base (tiered) item carries the whole amount; the add-ons carry none.
+    expect(items[0].historical_billed_amount).toBe('450.00');
+    expect(items[1].historical_billed_amount).toBeNull();
+    expect(items[2].historical_billed_amount).toBeNull();
+
+    // Σ over the sale == the row's own Billed amount, exactly — no invented cents (#1).
+    const total = items.reduce((sum, i) => sum + Number(i.historical_billed_amount ?? 0), 0);
+    expect(total).toBe(450);
+  });
+
+  /**
+   * `create_missing` — the opt-in that lets a MIGRATION create the reference records its rows point at.
+   * It must never reach the live-sales path, and it must never invent money.
+   */
+  describe('create_missing (historical sales only)', () => {
+    const historicalRow = (over: Record<string, unknown> = {}) => ({
+      id: 'r1',
+      match_status: 'matched',
+      mapped_data: { client_code: 'NEW', rep_code: 'RW-D-9999', product_types: 'internet', sale_date: '2025-03-12', billed_amount: '60.00', ...over },
+    });
+
+    it('creates the missing client, rep and product inside the commit transaction', async () => {
+      const { service, prisma, tx } = make();
+      tx.client.findUnique.mockResolvedValue(null);
+      tx.client.create.mockResolvedValue({ id: 'c-new', client_code: 'NEW' });
+      tx.rep.findUnique.mockResolvedValue(null);
+      tx.rep.create.mockResolvedValue({ id: 'rep-new' });
+      tx.product.findFirst.mockResolvedValue(null);
+      tx.product.create.mockResolvedValue({ id: 'p-new' });
+      prisma.importBatch.findUnique.mockResolvedValue(
+        stagedBatch({ source_type: 'master_migration', import_type: 'sales', client_id: null, create_missing: true, import_rows: [historicalRow()] }),
+      );
+
+      await service.commit('b1', user);
+
+      expect(tx.client.create).toHaveBeenCalledTimes(1);
+      expect(tx.rep.create).toHaveBeenCalledTimes(1);
+      expect(tx.product.create).toHaveBeenCalledTimes(1);
+      // Provisional, obviously-named, and carrying NO money.
+      const client = (tx.client.create.mock.calls[0][0] as { data: { client_code: string; name: string } }).data;
+      expect(client).toMatchObject({ client_code: 'NEW', name: 'NEW' });
+      const product = (tx.product.create.mock.calls[0][0] as { data: { product_type: string } }).data;
+      expect(product.product_type).toBe('internet');
+      // A created product must NEVER get a billing rate — the two rate streams stay separate (#3).
+      expect(tx.clientBillingRate.create).not.toHaveBeenCalled();
+    });
+
+    it('creates NOTHING when the batch was staged without the flag', async () => {
+      const { service, prisma, tx } = make();
+      tx.client.findUnique.mockResolvedValue(null);
+      prisma.importBatch.findUnique.mockResolvedValue(
+        stagedBatch({ source_type: 'master_migration', import_type: 'sales', client_id: null, create_missing: false, import_rows: [historicalRow()] }),
+      );
+      await expect(service.commit('b1', user)).rejects.toBeTruthy(); // the row's client does not exist
+      expect(tx.client.create).not.toHaveBeenCalled();
+      expect(tx.rep.create).not.toHaveBeenCalled();
+    });
+
+    it('is REFUSED for live sales — invented master data must never reach the engine', async () => {
+      const { service } = make();
+      const file = { buffer: Buffer.from('x'), originalname: 'x.csv', mimetype: 'text/csv', size: 1 };
+      await expect(
+        service.preview(file, { source_type: 'sales_entry', import_type: 'sales', create_missing: true } as never),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
   });
 
   it('opening holdback: reconcile_total must match the staged sum (else 422)', async () => {

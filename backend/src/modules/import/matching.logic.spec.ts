@@ -67,16 +67,86 @@ describe('classifyClientRow / classifyProductRow / classifyRepRow', () => {
 });
 
 describe('classifyHistoricalSaleRow (reference-only)', () => {
-  const good = { client_code: 'VF', rep_code: 'RW-D-0001', product_type: 'internet', sale_date: '2025-03-12', billed_amount: '60.00' };
-  const ctx = { clientExists: true, repExists: true, productExists: true };
+  // `product_types` arrives already resolved by the service's value vocabulary, so the classifier sees
+  // canonical keys and is told what failed to resolve.
+  const good = { client_code: 'VF', rep_code: 'RW-D-0001', product_types: 'internet', sale_date: '2025-03-12', billed_amount: '60.00' };
+  const ctx = {
+    clientExists: true,
+    repExists: true,
+    unknownProductTypes: [] as string[],
+    missingProductTypes: [] as string[],
+    resolvedCount: 1,
+    suggestion: 'internet' as string | null,
+  };
   it('valid + existing client/rep/product → matched', () => {
     expect(classifyHistoricalSaleRow(good, ctx).match_status).toBe('matched');
   });
   it('no product for the client+type → error (import products first)', () => {
-    expect(classifyHistoricalSaleRow(good, { ...ctx, productExists: false }).match_status).toBe('error');
+    const res = classifyHistoricalSaleRow(good, { ...ctx, missingProductTypes: ['internet'] });
+    expect(res.match_status).toBe('error');
+    expect(res.issue).toContain('import products first');
   });
   it('bad billed_amount → error', () => {
     expect(classifyHistoricalSaleRow({ ...good, billed_amount: 'x' }, ctx).match_status).toBe('error');
+  });
+
+  // ONE ROW = ONE HOUSEHOLD — the shape the real UAT file uses.
+  it('accepts several resolved types on one row', () => {
+    const row = { ...good, product_types: 'internet,tv,home_phone' };
+    expect(classifyHistoricalSaleRow(row, { ...ctx, resolvedCount: 3 }).match_status).toBe('matched');
+  });
+  it('does NOT require an internet base — history may record a TV-only household (SALE-001a is entry-only)', () => {
+    const row = { ...good, product_types: 'tv' };
+    expect(classifyHistoricalSaleRow(row, ctx).match_status).toBe('matched');
+  });
+  it('an unresolvable type names the FIX, not a missing product', () => {
+    const row = { ...good, product_types: 'Fibre Optic' };
+    const res = classifyHistoricalSaleRow(row, { ...ctx, unknownProductTypes: ['Fibre Optic'], resolvedCount: 0, suggestion: null });
+    expect(res.match_status).toBe('error');
+    expect(res.issue).toContain('unknown product type');
+    expect(res.issue).not.toContain('import products first');
+  });
+  // ── create_missing: opt-in auto-creation of referenced master data (migration only) ──
+  describe('create_missing', () => {
+    it('OFF by default — a missing client/rep/product is still an error', () => {
+      expect(classifyHistoricalSaleRow(good, { ...ctx, clientExists: false }).match_status).toBe('error');
+      expect(classifyHistoricalSaleRow(good, { ...ctx, repExists: false }).match_status).toBe('error');
+      expect(classifyHistoricalSaleRow(good, { ...ctx, missingProductTypes: ['internet'] }).match_status).toBe('error');
+    });
+
+    it('ON — the row matches and says what it will bring into existence', () => {
+      const res = classifyHistoricalSaleRow(good, { ...ctx, clientExists: false, repExists: false, createMissing: true });
+      expect(res.match_status).toBe('matched');
+      expect(res.issue).toBe('will create client VF, rep RW-D-0001');
+    });
+
+    it('ON — a missing product is named by type', () => {
+      const res = classifyHistoricalSaleRow(good, { ...ctx, missingProductTypes: ['tv', 'home_phone'], createMissing: true });
+      expect(res.issue).toBe('will create tv, home_phone products');
+    });
+
+    it('a clean row carries NO note even with the flag on', () => {
+      expect(classifyHistoricalSaleRow(good, { ...ctx, createMissing: true }).issue).toBeNull();
+    });
+
+    // The product-type catalogue is Super-Admin-governed config (#10) — a file may never extend it.
+    it('does NOT let an unknown product TYPE through, flag or no flag', () => {
+      const row = { ...good, product_types: 'Fibre Optic' };
+      const res = classifyHistoricalSaleRow(row, { ...ctx, unknownProductTypes: ['Fibre Optic'], resolvedCount: 0, suggestion: null, createMissing: true });
+      expect(res.match_status).toBe('error');
+      expect(res.issue).toContain('unknown product type');
+    });
+
+    it('still enforces the row-shape rules (a bad date is not creatable data)', () => {
+      const row = { ...good, sale_date: 'nonsense' };
+      expect(classifyHistoricalSaleRow(row, { ...ctx, createMissing: true }).match_status).toBe('error');
+    });
+  });
+
+  it('a partially resolvable cell suggests the canonical form', () => {
+    const row = { ...good, product_types: 'Internet, Fibre Optic' };
+    const res = classifyHistoricalSaleRow(row, { ...ctx, unknownProductTypes: ['Fibre Optic'], suggestion: 'internet' });
+    expect(res.issue).toContain('did you mean internet?');
   });
 });
 

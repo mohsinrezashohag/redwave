@@ -1,24 +1,37 @@
 # `db/` — database migrations
 
 Migrations are **Prisma-managed**. The schema lives at
-[`../backend/prisma/schema.prisma`](../backend/prisma/schema.prisma), and Prisma emits
-versioned, ordered SQL migrations under **`../backend/prisma/migrations/`** (created the first
-time a migration is run — none exist yet, the model set is empty).
+[`../backend/prisma/schema.prisma`](../backend/prisma/schema.prisma), and the versioned, ordered
+SQL lives under **`../backend/prisma/migrations/`** — 30 migrations, from `init` through the
+2026-06 series. This `db/` directory is the documented **home/pointer** for the migration story
+so the repo layout in `CLAUDE.md` §4 stays meaningful alongside Prisma's tooling conventions.
 
-This `db/` directory is the documented **home/pointer** for the migration story so the repo
-layout in `CLAUDE.md` §4 stays meaningful alongside Prisma's tooling conventions.
+## Authoring vs. applying — do not mix these up
 
-## Creating & applying migrations
+| Command | Does | Who |
+| --- | --- | --- |
+| `npm run prisma:migrate` (`migrate dev`) | **Authors** a new migration from a schema change and applies it | developer, **local only** |
+| `npm -w backend run prisma:deploy` (`migrate deploy`) | **Applies** pending migrations; authors nothing, needs no shadow DB | operator / CI / production |
+
+**Operators only ever run `deploy`.** `migrate dev` can reset a database to reconcile drift —
+never point it at a deployed environment.
 
 ```sh
-# From the repo root:
-npm run prisma:migrate          # = prisma migrate dev  (creates + applies a dev migration)
+# Author a change (local)
+cd backend && npx prisma migrate dev --name <change_name>
 
-# Or directly in the backend workspace:
-cd backend
-npx prisma migrate dev --name <change_name>     # author a new migration
-npx prisma migrate deploy                        # apply pending migrations (CI / production)
+# Apply pending migrations (operator / CI / production)
+npm -w backend run prisma:deploy
 ```
+
+A few migrations are **hand-authored SQL** (e.g. the list-pagination indexes: `CREATE INDEX`
+only) specifically so they apply with `migrate deploy` without a shadow database. Keep that
+property when adding index-only or backfill migrations.
+
+After applying, re-run the seed when a change adds catalogue rows — `npm -w backend run
+prisma:seed` is idempotent and seeds the **bootstrap only** (the demo needs `SEED_DEMO=yes` and
+must never run on a deploy). See `CLAUDE.md` §2.5 for the full command set and §4 for what each
+seed writes.
 
 ## Rules (CLAUDE.md §8, §10)
 
@@ -28,3 +41,4 @@ npx prisma migrate deploy                        # apply pending migrations (CI 
 - Schema integrity the migrations must enforce: exact-decimal money columns
   (`Decimal @db.Decimal`), effective-dated config, FK integrity, and **`rep_code` uniqueness
   including against terminated reps** (codes are never reused — §3 #11).
+- **No cascade deletes** — the ledger preserves records; the DB RESTRICTs hard deletes.

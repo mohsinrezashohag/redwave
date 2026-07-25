@@ -118,10 +118,10 @@ export const TEMPLATES: TemplateDef[] = [
     fields: [
       f('client_code', 'Client code', 'VF', 'RF', 'Client (by code).', true),
       f('rep_code', 'Rep code', 'RW-D-0001', 'RW-D-0002', 'Rep (by code).', true),
-      f('product_type', 'Product type', 'internet', 'tv', 'internet / tv / home_phone / greenfield_internet.', true),
+      f('product_types', 'Product type(s)', 'internet', 'internet,tv', 'One or more types on the household — names are matched loosely, so "Internet, TV" works.', true),
       f('sale_date', 'Sale date', '2025-03-12', '2025-04-02', 'The sale date (YYYY-MM-DD).', true),
       f('activation_date', 'Activation date', '2025-03-20', '2025-04-10', 'Reference only.'),
-      f('billed_amount', 'Billed amount', '60.00', '25.00', 'The historical BILLED amount (business reference; NOT rep commission).', true),
+      f('billed_amount', 'Billed amount', '60.00', '85.00', 'The BILLED amount for the WHOLE row (business reference; NOT rep commission). Recorded once, never split across products.', true),
       f('customer_name', 'Customer', 'Jane Doe', 'John Roe', 'Customer/household name (reference).'),
       f('mpu_id', 'MPU ID', 'MPU-1042', '', 'Client identifier (reference).'),
       f('is_greenfield', 'Greenfield', 'false', 'false', 'true/false (reference flag).'),

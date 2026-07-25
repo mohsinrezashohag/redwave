@@ -44,7 +44,7 @@ import { ReconcileDto } from './dto/reconcile.dto';
 import { RemapDto } from './dto/remap.dto';
 import { CreateMappingDto, ListMappingsQuery, UpdateMappingDto } from './dto/mapping.dto';
 import { ListImportsQuery } from './dto/list-imports.query';
-import { ImportBatchResponse, ImportFieldMappingResponse, StagedImportResponse } from './dto/import.response';
+import { ImportBatchResponse, ImportFieldMappingResponse, ImportPreviewResponse, StagedImportResponse } from './dto/import.response';
 
 const MAX_IMPORT_BYTES = 15 * 1024 * 1024; // 15 MB
 
@@ -95,6 +95,48 @@ export class ImportController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.imports.stage(file, dto, user);
+  }
+
+  @Post('preview')
+  @RequirePermission('import', 'create')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_IMPORT_BYTES } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        source_type: { type: 'string' },
+        import_type: { type: 'string' },
+        client_id: { type: 'string' },
+        field_mapping_id: { type: 'string' },
+        sheet: { type: 'string' },
+      },
+    },
+  })
+  @ApiOperation({
+    summary: 'Dry-run an import file (no batch, nothing stored)',
+    description:
+      'Requires import:create. Runs the SAME parse → map → clean → classify path as staging and reports ' +
+      'what it would produce — chosen sheet, detected header row, the mapping, required fields with no ' +
+      'column, a row sample, and the grouped blockers — WITHOUT creating a batch or storing the file. ' +
+      'Lets the operator correct the sheet or mapping before anything is staged.',
+  })
+  @ApiOkResponse({ type: ImportPreviewResponse })
+  preview(
+    @Body() dto: CreateImportDto,
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addFileTypeValidator({ fileType: /(\.(xlsx|xls|csv|tsv|txt)$|spreadsheet|excel|csv|text\/plain)/i })
+        .build({
+          fileIsRequired: true,
+          errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+          exceptionFactory: () => new UnprocessableEntityException('an Excel (.xlsx/.xls) or CSV/TSV file is required'),
+        }),
+    )
+    file: UploadedFileShape,
+  ) {
+    return this.imports.preview(file, dto);
   }
 
   @Get()

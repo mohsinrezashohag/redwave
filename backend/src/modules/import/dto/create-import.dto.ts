@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ImportSourceType, ImportType } from '@prisma/client';
-import { IsEnum, IsOptional, IsUUID, Matches } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 
 const MONEY = /^\d+(\.\d{1,2})?$/;
 
@@ -28,6 +29,34 @@ export class CreateImportDto {
   @IsOptional()
   @IsUUID()
   field_mapping_id?: string;
+
+  @ApiPropertyOptional({
+    example: 'Historical Sales',
+    description:
+      'Worksheet to read (Excel only, case-insensitive). Omit to let the server pick the sheet whose headers best match this target — useful when the workbook also carries an Instructions or Summary tab.',
+  })
+  @IsOptional()
+  @IsString()
+  sheet?: string;
+
+  /**
+   * Opt in to creating the master data a HISTORICAL sales row references but that doesn't exist yet —
+   * the client, the rep, or the client's product for a type. Default OFF: inventing master data is a
+   * deliberate act, so the operator must ask for it after seeing exactly what the preview says will be
+   * created. Rejected (422) on any other target — most importantly LIVE sales, where an invented rep or
+   * product would flow straight into the commission engine.
+   */
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      'HISTORICAL sales only. Create the referenced client / rep / product when it does not exist yet, ' +
+      'instead of erroring the row. Preview first — it lists exactly what would be created. Never ' +
+      'allowed for live sales entry.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === '1')
+  @IsBoolean()
+  create_missing?: boolean;
 
   @ApiPropertyOptional({
     example: '48200.00',

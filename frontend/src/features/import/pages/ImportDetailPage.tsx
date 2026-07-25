@@ -24,8 +24,9 @@ import { MappingEditor } from '../components/MappingEditor';
 import { MatchSaleModal } from '../components/MatchSaleModal';
 import { ReconcileEditModal } from '../components/ReconcileEditModal';
 import { CommitConfirmModal } from '../components/CommitConfirmModal';
+import { IssueGroupsBanner } from '../components/IssueGroupsBanner';
 import { countsOf, outstandingCount } from '../import.logic';
-import { kindOf } from '../import.types';
+import { issueGroupsOf, kindOf } from '../import.types';
 import styles from '../components/import.module.css';
 import type { ImportRow } from '../import.types';
 
@@ -68,6 +69,7 @@ export default function ImportDetailPage() {
   const kind = kindOf(batch);
   const counts = countsOf(batch);
   const outstanding = outstandingCount(batch);
+  const issueGroups = issueGroupsOf(batch.error_summary);
   const staged = batch.status === 'staged';
   const committed = batch.status === 'committed';
 
@@ -112,9 +114,15 @@ export default function ImportDetailPage() {
           Applied {batch.matched_rows} matched row(s){batch.committed_at ? ` on ${displayDate(batch.committed_at)}` : ''}. This batch is read-only; re-committing is a no-op.
         </Banner>
       ) : outstanding > 0 ? (
-        <Banner tone="warning" title={`${outstanding} row(s) still need reconciliation`}>
-          Resolve every unmatched / duplicate / error row (match, edit, or ignore) before committing. The server blocks a commit while any remain.
-        </Banner>
+        // Prefer the SERVER'S grouped problems — one entry per distinct issue, each naming the fix. Fall
+        // back to the generic count only when an older batch has no groups stored.
+        issueGroups.length > 0 ? (
+          <IssueGroupsBanner groups={issueGroups} />
+        ) : (
+          <Banner tone="warning" title={`${outstanding} row(s) still need reconciliation`}>
+            Resolve every unmatched / duplicate / error row (match, edit, or ignore) before committing. The server blocks a commit while any remain.
+          </Banner>
+        )
       ) : (
         <Banner tone="info" title="Ready to commit">
           All rows are reconciled. Committing applies the matched rows atomically.
