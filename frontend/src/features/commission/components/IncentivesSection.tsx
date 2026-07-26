@@ -3,15 +3,13 @@
  * by status, and create/edit/end. Reuses the playbook (Table + DataState + Modal). The scope client name
  * comes from a clients reference read (gated clients:view), not a rate-stream join (#3). Tokens only.
  */
-import { MoreHorizontal, Pencil, Square, Trash2 } from 'lucide-react';
+import { Pencil, Square, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import {
   Badge,
   Button,
   Card,
   ConfirmDialog,
-  DropdownMenu,
-  IconButton,
   Select,
   Table,
   TBody,
@@ -22,6 +20,7 @@ import {
   useToast,
   type MenuEntry,
 } from '../../../components/ui';
+import { RowActions } from '../../../components/data/RowActions';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -135,7 +134,7 @@ export function IncentivesSection() {
                 </TD>
                 <TD align="right">
                   {canEdit ? (
-                    <DropdownMenu trigger={<IconButton label="Incentive actions" icon={<MoreHorizontal size={16} />} size="sm" />} items={rowMenu(inc)} />
+                    <RowActions label="Incentive actions" items={rowMenu(inc)} />
                   ) : (
                     '—'
                   )}

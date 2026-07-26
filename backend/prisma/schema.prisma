@@ -1028,6 +1028,13 @@ model ExpenseReport {
   expense_items ExpenseItem[]
 
   @@index([submitted_by])
+  // ONE folder per STAKEHOLDER per week, enforced by two PARTIAL unique indexes created in
+  // `20260629000000_expense_report_one_per_stakeholder`:
+  //   expense_reports_rep_week_key   UNIQUE (rep_id, week_start)       WHERE rep_id IS NOT NULL
+  //   expense_reports_user_week_key  UNIQUE (submitted_by, week_start) WHERE rep_id IS NULL
+  // Prisma cannot express a partial index, so they live in raw SQL and are INVISIBLE to the schema.
+  // `migrate dev` will therefore offer to drop them as drift — do not accept that; they are the only
+  // thing making the rule true for anything that bypasses ExpenseReportService.create.
   @@map("expense_reports")
 }
 
@@ -1113,6 +1120,9 @@ model ExpenseFieldConfig {
   category_key     String   @unique
   label            String
   requires_receipt Boolean
+  // Whether an item in this category must carry a description. Config, not code — a home-made meal has
+  // nothing to add beyond its category, and a forced description there is noise. — EXP-002a
+  requires_description Boolean @default(true)
   is_active        Boolean
   // Per-type FIELD SCHEMA (EXP-002a): the fields this category captures — an array of field defs
   // { key, label, type, required, options?, soft_cap? }. Config-driven (SA-editable via PATCH), NOT

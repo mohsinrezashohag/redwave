@@ -7,8 +7,8 @@
  */
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Badge, DropdownMenu, IconButton, useToast, type MenuEntry } from '../../../components/ui';
-import { MoreHorizontal } from 'lucide-react';
+import { Badge, useToast, type MenuEntry } from '../../../components/ui';
+import { RowActions } from '../../../components/data/RowActions';
 import { DataTable, type DataColumn } from '../../../components/data/DataTable';
 import { useAuth } from '../../../auth/useAuth';
 import { useCan } from '../../../auth/useCan';
@@ -57,6 +57,13 @@ export function FoldersTable({ filters, canReview }: { filters: ReportFilters; c
     return entries;
   };
 
+  // Do the loaded rows belong to more than one stakeholder? A folder's owner is its rep, or its submitter
+  // when there is no rep (an admin expensing their own).
+  const multiStakeholder = useMemo(
+    () => new Set((list.rows ?? []).map((f) => f.rep_id ?? `user:${f.submitted_by}`)).size > 1,
+    [list.rows],
+  );
+
   const columns: DataColumn<ExpenseReport, SortKey>[] = useMemo(() => {
     const cols: DataColumn<ExpenseReport, SortKey>[] = [
       {
@@ -73,7 +80,11 @@ export function FoldersTable({ filters, canReview }: { filters: ReportFilters; c
         ),
       },
     ];
-    if (canViewReps) cols.push({ id: 'rep', header: 'Rep', render: (f) => repName(f.rep_id) });
+    // A week is now ONE folder per stakeholder, so two rows for the same week can only mean two DIFFERENT
+    // people — exactly when the list must say whose. Shown whenever the viewer can resolve rep names, and
+    // forced on as soon as the loaded rows actually span more than one owner, so same-week rows are never
+    // indistinguishable.
+    if (canViewReps || multiStakeholder) cols.push({ id: 'rep', header: 'Rep', render: (f) => repName(f.rep_id) });
     cols.push(
       { id: 'items', header: 'Items', numeric: true, render: (f) => String(f.item_count) },
       { id: 'total', header: 'Reimbursable', align: 'right', numeric: true, render: (f) => money(f.total_reimbursable_cad) },
@@ -94,7 +105,7 @@ export function FoldersTable({ filters, canReview }: { filters: ReportFilters; c
     );
     return cols;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reps.data, canViewReps]);
+  }, [reps.data, canViewReps, multiStakeholder]);
 
   if (isForbidden(list.error)) {
     return <AccessDenied message="You don’t have permission to view expenses." />;
@@ -112,7 +123,7 @@ export function FoldersTable({ filters, canReview }: { filters: ReportFilters; c
       total={list.total}
       limit={list.limit}
       onPageChange={list.setPage}
-      rowActions={(f) => <DropdownMenu trigger={<IconButton label="Folder actions" icon={<MoreHorizontal size={16} />} size="sm" />} items={rowMenu(f)} />}
+      rowActions={(f) => <RowActions label="Folder actions" items={rowMenu(f)} />}
       isLoading={list.isLoading}
       isError={list.isError}
       error={list.error}

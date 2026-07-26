@@ -7,8 +7,9 @@
  */
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-import { Badge, ConfirmDialog, DropdownMenu, IconButton, useToast, type MenuEntry } from '../../../components/ui';
+import { Eye, Pencil, Trash2 } from 'lucide-react';
+import { Badge, ConfirmDialog, useToast, type MenuEntry } from '../../../components/ui';
+import { RowActions } from '../../../components/data/RowActions';
 import { DataTable, type DataColumn } from '../../../components/data/DataTable';
 import { useAuth } from '../../../auth/useAuth';
 import { useCan } from '../../../auth/useCan';
@@ -18,7 +19,7 @@ import { money } from '../../../lib/format/money';
 import { useExpenseItemsTable, useFieldConfigs } from '../api/useExpenseItems';
 import { useDeleteItem } from '../api/useExpenseMutations';
 import { useClients, useReps } from '../api/useLookups';
-import { categoryLabel } from '../format';
+import { categoryLabel, descriptionLabel } from '../format';
 import { ExpenseStatusBadge } from './ExpenseStatusBadge';
 import { ExpenseValidationBadge } from './ExpenseValidationBadge';
 import { BulkReviewBar } from './BulkReviewBar';
@@ -82,7 +83,7 @@ export function ExpenseItemsTable({ filters, canReview }: { filters: ExpenseFilt
     if (canViewReps) cols.push({ id: 'rep', header: 'Rep', render: (it) => repName(it.rep_id) });
     if (canViewClients) cols.push({ id: 'client', header: 'Client', render: (it) => clientName(it.client_id) });
     cols.push(
-      { id: 'description', header: 'Description', render: (it) => it.description },
+      { id: 'description', header: 'Description', render: (it) => descriptionLabel(it, configs.data) },
       { id: 'status', header: 'Status', sortKey: 'status', render: (it) => <ExpenseStatusBadge status={it.status} /> },
       // Amount in its own currency (a USD item reads "USD 250.00", never a bare "$" — consistent with detail).
       { id: 'amount', header: 'Amount', sortKey: 'amount', numeric: true, render: (it) => money(it.amount, it.original_currency) },
@@ -143,7 +144,7 @@ export function ExpenseItemsTable({ filters, canReview }: { filters: ExpenseFilt
         allSelectableSelected={allSelected}
         bulkActions={canReview ? <BulkReviewBar ids={[...selected]} onDone={() => setSelected(new Set())} /> : undefined}
         rowActions={(it) => (
-          <DropdownMenu trigger={<IconButton label="Row actions" icon={<MoreHorizontal size={16} />} size="sm" />} items={rowMenu(it)} />
+          <RowActions label="Row actions" items={rowMenu(it)} />
         )}
         isLoading={list.isLoading}
         isError={list.isError}

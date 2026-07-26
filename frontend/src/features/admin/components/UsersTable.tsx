@@ -3,15 +3,13 @@
  * PATCH (immediate revoke; the record is kept — never a hard delete). Self-guardrail: you can't deactivate
  * your OWN account (the server has no self-protection, so the UI doesn't offer it). Tokens only.
  */
-import { KeyRound, Link2, LogOut, Mail, MoreHorizontal, Pencil, ShieldOff, UserCheck, UserX } from 'lucide-react';
+import { KeyRound, Link2, LogOut, Mail, Pencil, ShieldOff, UserCheck, UserX } from 'lucide-react';
 import { useState } from 'react';
 import {
   Avatar,
   Badge,
   Banner,
   Button,
-  DropdownMenu,
-  IconButton,
   Modal,
   Table,
   TBody,
@@ -22,6 +20,7 @@ import {
   useToast,
   type MenuEntry,
 } from '../../../components/ui';
+import { RowActions } from '../../../components/data/RowActions';
 import { useAuth } from '../../../auth/useAuth';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { displayDate } from '../../../lib/format/date';
@@ -150,10 +149,7 @@ export function UsersTable({ users, onEdit }: { users: AdminUser[]; onEdit: (u: 
               </TD>
               <TD>{displayDate(u.created_at)}</TD>
               <TD align="right">
-                <DropdownMenu
-                  trigger={<IconButton label="User actions" icon={<MoreHorizontal size={16} />} size="sm" />}
-                  items={rowMenu(u)}
-                />
+                <RowActions label="User actions" items={rowMenu(u)} />
               </TD>
             </TR>
           ))}

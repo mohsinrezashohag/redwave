@@ -2,11 +2,9 @@
  * ProductsTable — a client's products with row actions (edit, soft-deactivate/reactivate). product_type is
  * shown but immutable. Deactivation preserves history (never a delete). Tokens only.
  */
-import { MoreHorizontal, Pencil, Power, PowerOff } from 'lucide-react';
+import { Pencil, Power, PowerOff } from 'lucide-react';
 import {
   Badge,
-  DropdownMenu,
-  IconButton,
   Table,
   TBody,
   TD,
@@ -16,6 +14,7 @@ import {
   useToast,
   type MenuEntry,
 } from '../../../components/ui';
+import { RowActions } from '../../../components/data/RowActions';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { productTypeLabel } from '../../../lib/format/productType';
 import { useUpdateProduct } from '../api/useClientMutations';
@@ -62,10 +61,7 @@ export function ProductsTable({ products, onEdit }: { products: Product[]; onEdi
               <ClientStatusBadge active={p.is_active} />
             </TD>
             <TD align="right">
-              <DropdownMenu
-                trigger={<IconButton label="Product actions" icon={<MoreHorizontal size={16} />} size="sm" />}
-                items={rowMenu(p)}
-              />
+              <RowActions label="Product actions" items={rowMenu(p)} />
             </TD>
           </TR>
         ))}

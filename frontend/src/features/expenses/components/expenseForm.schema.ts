@@ -22,7 +22,7 @@ export interface ItemValue {
   category: string;
   expense_date: string;
   client_id?: string;
-  description: string;
+  description?: string;
   amount?: string;
   /** Currency of `amount` (ISO 4217; default CAD). km items are always CAD. Foreign freezes FX at approval (#12). */
   currency?: string;
@@ -54,7 +54,9 @@ export function makeExpenseSchema(configs: FieldConfig[]) {
       category: z.string().min(1, 'Pick a category'),
       expense_date: z.string().regex(DATE, 'Date required'),
       client_id: z.string().optional(),
-      description: z.string().min(1, 'Required').max(255),
+      // Requiredness is CONFIG-DRIVEN per category (superRefine below), like the receipt — a blank
+      // description is legitimate for a category that declares it optional.
+      description: z.string().max(255).optional(),
       amount: z.string().optional(),
       currency: z.string().optional(),
       receipt_url: z.string().optional(),
@@ -79,6 +81,10 @@ export function makeExpenseSchema(configs: FieldConfig[]) {
         const cfg = configFor(val.category);
         if (!val.amount || !MONEY.test(val.amount)) ctx.addIssue({ code: 'custom', path: ['amount'], message: 'Enter an amount' });
         if (cfg?.requires_receipt && !val.receipt_url) ctx.addIssue({ code: 'custom', path: ['receipt_url'], message: 'Receipt required for this category' });
+        // Absent config = required, so an unconfigured category never silently stops asking.
+        if (cfg?.requires_description !== false && !val.description?.trim()) {
+          ctx.addIssue({ code: 'custom', path: ['description'], message: 'Required' });
+        }
         // Required per-type capture fields → an Alert that blocks submit (EXP-013). Server re-validates.
         for (const def of cfg?.fields ?? []) {
           if (def.required && !val.field_values?.[def.key]?.trim()) {

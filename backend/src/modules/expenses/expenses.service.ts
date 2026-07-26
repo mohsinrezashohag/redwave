@@ -82,6 +82,7 @@ export type ConfigMap = Map<string, CategorySchema>;
 export type ItemForValidation = {
   category: ExpenseCategory;
   amount: Prisma.Decimal;
+  description?: string | null;
   receipt_url: string | null;
   field_values: Prisma.JsonValue;
   km_log?: { billable_km: Prisma.Decimal } | null;
@@ -627,7 +628,7 @@ export class ExpensesService {
         is_personal: item.is_personal ?? false,
         tags: item.tags ?? [],
         field_values: fieldValues,
-        description: item.description,
+        description: item.description ?? '',
         receipt_url: null, // km never requires a receipt
         pay_period_id: payPeriodId,
         km_log: {
@@ -661,7 +662,7 @@ export class ExpensesService {
     }
     // Blocking validation: missing amount / required receipt / required per-type field → 422 with alerts[].
     this.assertNoAlerts(
-      { category: item.category, amount: item.amount ?? null, receipt_url: item.receipt_url ?? null, field_values: item.field_values ?? null, km: null },
+      { category: item.category, amount: item.amount ?? null, description: item.description ?? null, receipt_url: item.receipt_url ?? null, field_values: item.field_values ?? null, km: null },
       config,
     );
     // CLAIM the receipt path: must exist in stored_files AND be the caller's own upload (Admin/SA exempt)
@@ -688,7 +689,7 @@ export class ExpensesService {
       is_personal: item.is_personal ?? false,
       tags: item.tags ?? [],
       field_values: this.pickFieldValues(item.field_values, config),
-      description: item.description,
+      description: item.description ?? '',
       receipt_url: item.receipt_url ?? null,
       pay_period_id: payPeriodId,
     };
@@ -717,7 +718,7 @@ export class ExpensesService {
   /** Load the per-category field schemas (public — reused by the folder service for aggregate validation). */
   async loadConfigs(): Promise<ConfigMap> {
     const rows = await this.prisma.expenseFieldConfig.findMany({
-      select: { category_key: true, requires_receipt: true, is_active: true, fields: true, amount_soft_cap: true },
+      select: { category_key: true, requires_receipt: true, requires_description: true, is_active: true, fields: true, amount_soft_cap: true },
     });
     return new Map(
       rows.map((r) => [
@@ -725,6 +726,7 @@ export class ExpensesService {
         {
           category_key: r.category_key,
           requires_receipt: r.requires_receipt,
+          requires_description: r.requires_description,
           is_active: r.is_active,
           amount_soft_cap: r.amount_soft_cap?.toString() ?? null,
           fields: parseFieldDefs(r.fields),
@@ -758,6 +760,7 @@ export class ExpensesService {
     const input: ValidatableItem = {
       category: item.category,
       amount: item.amount?.toString() ?? null,
+      description: item.description ?? null,
       receipt_url: item.receipt_url,
       field_values: (item.field_values ?? null) as Record<string, unknown> | null,
       km: item.km_log ? { billable_km: item.km_log.billable_km.toString() } : null,

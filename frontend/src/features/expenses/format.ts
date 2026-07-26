@@ -14,6 +14,16 @@ export function categoryLabel(key: string, configs?: FieldConfig[]): string {
 }
 
 /**
+ * What to SHOW for an item's description. A category may declare a description optional (Meals), so a blank
+ * one is legitimate — falling back to the category label keeps lists readable instead of printing an empty
+ * cell that looks like missing data. Display only: the stored value is left exactly as the rep entered it.
+ */
+export function descriptionLabel(item: { description?: string | null; category: string }, configs?: FieldConfig[]): string {
+  const text = item.description?.trim();
+  return text ? text : categoryLabel(item.category, configs);
+}
+
+/**
  * The grouping dimension. Three are date buckets; `category` groups by expense TYPE instead — the question
  * "how much went on meals vs kilometres this month?" the date buckets can't answer.
  */

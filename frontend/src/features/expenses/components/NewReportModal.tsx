@@ -48,7 +48,14 @@ export function NewReportModal({ open, onClose }: { open: boolean; onClose: () =
       { name: name.trim() || `Field week of ${week.week_start}`, week_start: week.week_start, week_end: week.week_end, rep_id: repId },
       {
         onSuccess: (folder) => {
-          toast({ title: 'Report folder created', tone: 'success' });
+          // A week is ONE folder per stakeholder, so a second attempt returns the existing one. Say that
+          // plainly — reporting "created" while landing the user on a folder that already has items in it
+          // is how someone concludes the app made a duplicate.
+          toast(
+            folder.reused
+              ? { title: 'Opened your existing folder for this week', description: 'A week has one folder — your items are all here.', tone: 'info' }
+              : { title: 'Report folder created', tone: 'success' },
+          );
           onClose();
           navigate(`/expenses/reports/${folder.id}`);
         },

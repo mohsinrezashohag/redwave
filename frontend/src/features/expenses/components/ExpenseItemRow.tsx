@@ -41,6 +41,8 @@ export function ExpenseItemRow({
   const category = useWatch({ control, name: `items.${index}.category` });
   const cfg = configs.find((c) => c.category_key === category);
   const requiresReceipt = !!cfg?.requires_receipt;
+  // Absent config = required, so an unconfigured category never silently stops asking.
+  const requiresDescription = cfg?.requires_description !== false;
   const categoryOptions = configs.filter((c) => c.is_active).map((c) => ({ value: c.category_key, label: c.label }));
   // Live WARNINGS (non-blocking; server re-validates). Watch the item's driving values (EXP-013).
   const itemValues = useWatch({ control, name: `items.${index}` });
@@ -101,7 +103,7 @@ export function ExpenseItemRow({
         <KmItemFields index={index} />
       ) : (
         <>
-          <StandardItemFields index={index} requiresReceipt={requiresReceipt} />
+          <StandardItemFields index={index} requiresReceipt={requiresReceipt} requiresDescription={requiresDescription} />
           {/* Per-type CAPTURE fields (EXP-002a), config-driven; metadata only (#1). */}
           <DynamicFields index={index} fields={cfg?.fields ?? []} />
         </>

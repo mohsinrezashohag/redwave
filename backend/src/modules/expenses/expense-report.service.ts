@@ -5,7 +5,7 @@
  * are computed on read. Money reads elsewhere are unchanged (item-level status/period/amount_cad); the folder
  * is a pure grouping layer (#1/#12 untouched). Owns expense_reports; reuses ExpensesService for item ops.
  */
-import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -79,21 +79,36 @@ export class ExpenseReportsService {
 
   // ── Create ──────────────────────────────────────────────────────────────────────
   /**
-   * Create the rep's folder for a week — or RESOLVE to the one they already have. A week is a single
-   * container by design, so a second "new report" for the same (rep, week) is the rep looking for the
-   * folder they already made, not asking for a duplicate: splitting a week across two folders is how items
-   * get submitted twice or missed entirely at review. Returns the existing folder with its live aggregates
-   * (`reused: true`) so the caller can say so instead of silently pretending it created one. — EXP-001
+   * Create the stakeholder's folder for a week — or RESOLVE to the one that already exists. A week is a
+   * single container by design: splitting it across two folders is how items get submitted twice or missed
+   * entirely at review. Returns the existing folder with its live aggregates (`reused: true`) so the caller
+   * can say so instead of silently pretending it created one. — EXP-001
    *
-   * Only a folder OWNED by the same submitter for the same rep+week resolves; another user's folder for
-   * that rep is left alone (an admin creating on behalf still gets their own container).
+   * The key is the STAKEHOLDER — whose expenses these are — not who typed it in:
+   *   * `rep_id` set  → the folder belongs to that REP, whoever opened it;
+   *   * `rep_id` null → it belongs to the USER (an admin expensing their own, with no rep record).
+   *
+   * Keying on `submitted_by` (as this did) meant a rep's own folder and an admin's "on behalf of" folder
+   * for that same rep+week were invisible to each other's check, so one rep's week ended up with several
+   * folders. Two partial unique indexes now enforce the same rule at the database — see the migration
+   * `20260629000000_expense_report_one_per_stakeholder`.
    */
   async create(dto: CreateExpenseReportDto, user: AuthUser) {
     const repId = dto.rep_id ?? user.repId ?? null;
     const weekStart = dateOnly(dto.week_start);
 
+    // Creating FOR a rep now returns that rep's existing folder and its aggregates, so the caller must
+    // actually be entitled to see it — otherwise "create on behalf" would leak another rep's totals.
+    if (dto.rep_id) {
+      const scope = await this.scope.getRepScope(user);
+      if (scope.level !== 'all' && !scope.repIds.includes(dto.rep_id)) {
+        throw new ForbiddenException('you cannot create a report for this rep');
+      }
+    }
+
     const existing = await this.prisma.expenseReport.findFirst({
-      where: { submitted_by: user.id, rep_id: repId, week_start: weekStart },
+      // The stakeholder's folder, regardless of who opened it.
+      where: repId ? { rep_id: repId, week_start: weekStart } : { rep_id: null, submitted_by: user.id, week_start: weekStart },
       orderBy: { created_at: 'asc' }, // the ORIGINAL folder for the week, not the newest duplicate
     });
     if (existing) {

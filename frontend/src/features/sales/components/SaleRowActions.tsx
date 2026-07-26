@@ -3,10 +3,11 @@
  * the server still authorizes every call, CLAUDE §5). View (always), Validate (entered + sales:approve),
  * Delete (entered|validated + sales:delete, with a destructive confirm restating the consequence).
  */
-import { CheckCircle2, Eye, MoreHorizontal, Trash2 } from 'lucide-react';
+import { CheckCircle2, Eye, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, DropdownMenu, IconButton, Modal, ModalClose, useToast } from '../../../components/ui';
+import { Button, Modal, ModalClose, useToast } from '../../../components/ui';
+import { RowActions } from '../../../components/data/RowActions';
 import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useDeleteSale, useValidateSale } from '../api/useSaleMutations';
@@ -46,8 +47,8 @@ export function SaleRowActions({ sale }: { sale: Sale }) {
 
   return (
     <>
-      <DropdownMenu
-        trigger={<IconButton label="Row actions" icon={<MoreHorizontal size={16} />} size="sm" />}
+      <RowActions
+        label="Row actions"
         items={[
           { label: 'View', icon: <Eye size={15} />, onSelect: () => navigate(`/sales/${sale.id}`) },
           ...(canValidate ? [{ label: 'Validate', icon: <CheckCircle2 size={15} />, onSelect: doValidate }] : []),

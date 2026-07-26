@@ -3,8 +3,9 @@
  * target, and the per-row issue. While the batch is staged, a kebab offers the reconcile actions (Match a
  * sale / Edit data / Ignore) — the UI never matches; it asks the backend to reconcile. Tokens only.
  */
-import { EyeOff, Link2, MoreHorizontal, Pencil } from 'lucide-react';
-import { DropdownMenu, IconButton, Table, TBody, TD, TH, THead, TR, type MenuEntry } from '../../../components/ui';
+import { EyeOff, Link2, Pencil } from 'lucide-react';
+import { Table, TBody, TD, TH, THead, TR, type MenuEntry } from '../../../components/ui';
+import { RowActions } from '../../../components/data/RowActions';
 import { RowStatusBadge } from './RowStatusBadge';
 import styles from './import.module.css';
 import type { ImportBatch, ImportRow, KindDef } from '../import.types';
@@ -64,7 +65,7 @@ export function ImportRowsTable({ batch, kind, canEdit, onMatch, onEdit, onIgnor
             </TD>
             {staged && canEdit && (
               <TD align="right">
-                <DropdownMenu trigger={<IconButton label={`Reconcile row ${row.row_number}`} icon={<MoreHorizontal size={16} />} size="sm" />} items={menu(row)} />
+                <RowActions label={`Reconcile row ${row.row_number}`} items={menu(row)} />
               </TD>
             )}
           </TR>

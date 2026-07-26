@@ -13,9 +13,11 @@ import styles from './expenses.module.css';
 export function StandardItemFields({
   index,
   requiresReceipt,
+  requiresDescription,
 }: {
   index: number;
   requiresReceipt: boolean;
+  requiresDescription: boolean;
 }) {
   const { control, register, formState } = useFormContext<ExpenseFormValues>();
   const itemErrors = formState.errors.items?.[index];
@@ -37,8 +39,16 @@ export function StandardItemFields({
         </FormField>
       </div>
 
-      <FormField label="Description" required error={itemErrors?.description?.message}>
-        <Input placeholder="Lunch with client" {...register(`items.${index}.description`)} />
+      {/* Both of these are CONFIG-DRIVEN per category, not hard-coded: a category whose name already says
+          what the item is (Meals) asks for neither. The copy says so warmly rather than just dropping the
+          asterisk — an unexplained missing "*" reads as a bug, not as permission. */}
+      <FormField
+        label="Description"
+        required={requiresDescription}
+        error={itemErrors?.description?.message}
+        help={requiresDescription ? undefined : 'Optional — add a note only if it helps explain the expense.'}
+      >
+        <Input placeholder={requiresDescription ? 'Lunch with client' : 'Optional note'} {...register(`items.${index}.description`)} />
       </FormField>
 
       <Controller
@@ -49,7 +59,11 @@ export function StandardItemFields({
             label="Receipt"
             required={requiresReceipt}
             error={fieldState.error?.message}
-            help={requiresReceipt ? 'Mandatory for this category.' : 'Optional.'}
+            help={
+              requiresReceipt
+                ? 'Mandatory for this category.'
+                : 'Optional — attach one if you have it. No problem if there isn’t one (a home-made meal, or a vendor that gives none).'
+            }
           >
             <ReceiptField value={field.value} onChange={field.onChange} />
           </FormField>

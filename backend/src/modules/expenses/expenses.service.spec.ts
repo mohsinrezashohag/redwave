@@ -444,6 +444,8 @@ describe('ExpensesService.list (scoping — §5)', () => {
 const RICH_MEALS = {
   category_key: 'meals',
   requires_receipt: true,
+  // Mirrors the shipped seed: a meal's category already says what it is, so no description is demanded.
+  requires_description: false,
   is_active: true,
   amount_soft_cap: { toString: () => '30.00' },
   fields: [

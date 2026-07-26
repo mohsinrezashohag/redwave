@@ -19,7 +19,7 @@ import { money } from '../../../lib/format/money';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useExpenseItem, useFieldConfigs } from '../api/useExpenseItems';
 import { useClients, useReps } from '../api/useLookups';
-import { categoryLabel } from '../format';
+import { categoryLabel, descriptionLabel } from '../format';
 import { ExpenseStatusBadge } from '../components/ExpenseStatusBadge';
 import { ExpenseValidationBadge } from '../components/ExpenseValidationBadge';
 import { ReviewActions } from '../components/ReviewActions';
@@ -106,7 +106,7 @@ export default function ExpenseDetailPage() {
                   <dt>Date</dt>
                   <dd className="mono">{displayDate(item.expense_date)}</dd>
                   <dt>Description</dt>
-                  <dd>{item.description}</dd>
+                  <dd>{descriptionLabel(item, configs.data)}</dd>
                   {capturedFields.map((def) => (
                     <div key={def.key} style={{ display: 'contents' }}>
                       <dt>{def.label}</dt>
