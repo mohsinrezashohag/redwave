@@ -70,6 +70,8 @@ premature-logout refresh, the double-scroll tables) — those are the most valua
 33. Expense UAT batch — office origin · per-unit caps · one folder per week · category grouping (built — items 13-18; migration `20260624000000`)
 34. Import — value vocabulary, multi-type rows, sheet/header detection, dry-run preview, opt-in create-missing (built — items from the UAT file; migration `20260625000000`)
 35. Import — real-world file shapes: column-per-type products, rep aliases, no-MPU matching (built — migrations `20260626000000` + `20260627000000`)
+36. Expenses — receipt + description relaxed per category, and inline row actions (built — migration `20260628000000`)
+37. Expenses — one report folder per STAKEHOLDER per week, enforced by the database (built — migration `20260629000000`)
 
 ---
 
@@ -1583,3 +1585,86 @@ stylelint + 85 vitest — all green. `product-columns.logic.spec` uses the file'
 **Left alone deliberately.** The `mixed` import_type is still unsupported. `supplies_mpu_id` is still stored
 but unread — matching now falls back on its own when a row has no MPU, so the flag is not load-bearing.
 Templates are still only on the import home, not inside the wizard.
+
+### Expenses — receipt + description relaxed per category, and inline row actions (built — migration `20260628000000`)
+
+**Two small UX asks, one design rule each.**
+
+**1. A meal may have no receipt and nothing to say.** The expense form demanded both, so a home-made meal
+couldn't be entered at all. The fix is NOT a hard-coded exception for `meals`: receipt-requiredness was
+already per-category config (`expense_field_configs.requires_receipt`), so **description now works the same
+way** — a new `requires_description` column, defaulting to **true** so every existing category is unchanged,
+and the **seed ships Meals with both relaxed**. Which categories relax is configuration a Super Admin owns
+(#10), never a category key compiled into the app.
+
+Three lines held while relaxing it:
+- **Absent config = REQUIRED** everywhere (`requires_description !== false`), so an unconfigured or
+  newly-added category never silently stops asking.
+- **Relaxing the prose never relaxes the money.** A missing amount is still a blocking Alert and the soft
+  cap still warns — spec-locked on both the server and the FE mirror.
+- The server's enforcement moved from the DTO (`@MinLength(1)`) to the **Alert engine**, which is where the
+  equivalent receipt rule already lives, so one mechanism now governs both. `assertNoAlerts` throws the same
+  422. The DTO is optional and a blank description stores `''`; **display falls back to the category label**
+  (`descriptionLabel`) so a list shows "Meals" rather than an empty cell that reads as missing data.
+
+The copy says so warmly rather than just dropping the asterisk — an unexplained missing `*` reads as a bug,
+not as permission: *"Optional — attach one if you have it. No problem if there isn't one (a home-made meal,
+or a vendor that gives none)."*
+
+**2. Row actions behind a kebab when the column is empty.** New shared `components/data/RowActions`
+takes the same `MenuEntry[]` every table already builds and decides **at runtime**: **≤2 actions on a
+desktop viewport render as real buttons**, more than that (Users has five) or any narrower viewport falls
+back to the kebab. Deciding from the actual item count rather than per-table means a menu that later grows
+past the threshold collapses back on its own instead of silently overflowing the column. All 11 kebab call
+sites now route through it; the hand-rolled `DropdownMenu` + `IconButton` pattern is gone from feature code.
+Two, not three, is the default: three crowds the tables that already carry many columns (Sales, Import rows).
+
+**Verified LOCAL:** **955 backend tests** (115 suites) + lint + build + contract regen; FE build + lint +
+stylelint + **89 vitest** — all green. **Operator: `migrate deploy` + re-run `prisma:seed`** (the seed's
+update clause is what flips Meals; the column itself defaults to today's behaviour).
+
+**Note.** The "Invalid input" shown on untouched optional fields in the reported screenshot was already
+fixed at HEAD (`defaultValue=""` in `DynamicFields`, commit `e8977be`) — that screenshot came from an older
+deployed build, so no further change was needed there.
+
+### Expenses — one report folder per STAKEHOLDER per week, enforced by the database (built — migration `20260629000000`)
+
+**The report.** Naimur saw three folders for the same business week. `create` already tried to prevent that,
+but keyed on **`(submitted_by, rep_id, week_start)`** — which includes WHO TYPED IT IN. So a rep creating
+their own folder and an admin creating one "on behalf of" that same rep produced TWO folders for one rep's
+week, each invisible to the other's dedup check. A folder's identity is **whose expenses it holds**, not who
+opened it.
+
+**The stakeholder rule.** `rep_id` set → the folder belongs to that REP, whoever opened it. `rep_id` null →
+it belongs to the USER (an admin expensing their own, with no rep record). `create` now keys on that, so an
+admin opening a folder for a rep who already has one **resolves to it** instead of making a second.
+
+**Enforced in the DB, not just in code.** Two PARTIAL unique indexes —
+`(rep_id, week_start) WHERE rep_id IS NOT NULL` and `(submitted_by, week_start) WHERE rep_id IS NULL`. Two,
+because a plain unique on `(rep_id, week_start)` would not constrain the null-rep rows at all (Postgres
+treats every NULL as distinct). This also closes the **create race**: `findFirst`-then-`create` is not
+atomic, so two rapid submits could both miss the existing row. **Prisma cannot express a partial index**, so
+they live in raw SQL and are invisible to `schema.prisma` — a comment on the model warns that `migrate dev`
+will offer to drop them as drift and that the offer must be refused.
+
+**Existing duplicates are merged by the migration**, because a unique index cannot be created over duplicate
+rows. Items are moved onto the keeper (the OLDEST folder in each group, so the one people have been using
+survives) and only THEN are the emptied folders deleted — the schema has no cascades and the DB RESTRICTs,
+so deleting a folder still holding items would fail rather than lose them.
+
+**A security consequence of the re-key, handled.** Reuse now returns *another person's* folder together with
+its live aggregates, so `create` gained a scope check on `dto.rep_id`: a caller outside `all`/roster scope
+gets **403** instead of a readout of that rep's totals. There was no such check before, because before, the
+call could only ever return the caller's own folder.
+
+**Two UI truths.** The success toast said "Report folder created" even when the server had returned
+`reused: true` — reporting a creation while landing the user on a folder that already has items is how
+someone concludes the app made a duplicate; it now says *"Opened your existing folder for this week."* And
+the folder list's Rep column, previously shown only to `hrm:view` holders, is now **forced on whenever the
+loaded rows span more than one stakeholder** — after this change two rows for one week can only mean two
+different people, which is exactly when the list must say whose.
+
+**Verified LOCAL:** **959 backend tests** (115 suites) + lint + build + contract regen; FE build + lint +
+stylelint + 89 vitest — all green. The regression is spec-locked: an admin creating on behalf of a rep who
+already has that week resolves to the existing folder and calls `create` zero times.
+**Operator: `migrate deploy`** — note it MERGES existing duplicate folders as described.

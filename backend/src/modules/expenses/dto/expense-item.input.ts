@@ -121,11 +121,17 @@ export class ExpenseItemInput {
   @MaxLength(50, { each: true })
   tags?: string[];
 
-  @ApiProperty({ example: 'Lunch with client' })
+  @ApiPropertyOptional({
+    example: 'Lunch with client',
+    description:
+      'What the expense was. Required unless the category config says otherwise (`requires_description`) — ' +
+      'Meals ships relaxed, because its category already says what the item is. Blank is stored as an ' +
+      'empty string; the UI falls back to the category label.',
+  })
+  @IsOptional()
   @IsString()
-  @MinLength(1)
   @MaxLength(255)
-  description!: string;
+  description?: string;
 
   @ApiPropertyOptional({
     type: 'object',

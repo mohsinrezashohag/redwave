@@ -7,6 +7,7 @@ const meals: FieldConfig = {
   category_key: 'meals',
   label: 'Meals',
   requires_receipt: true,
+  requires_description: true,
   is_active: true,
   amount_soft_cap: '30.00',
   created_by: 'sa',
@@ -19,24 +20,24 @@ const meals: FieldConfig = {
 describe('validateFormItem (FE mirror of the Alert/Warning engine)', () => {
   it('alerts on a missing required field + missing amount/receipt', () => {
     const { alerts } = validateFormItem({ category: 'meals' }, meals);
-    expect(alerts.map((a) => a.field).sort()).toEqual(['amount', 'receipt_url', 'vendor']);
+    expect(alerts.map((a) => a.field).sort()).toEqual(['amount', 'description', 'receipt_url', 'vendor']);
   });
 
   it('no alerts when required present', () => {
-    const { alerts } = validateFormItem({ category: 'meals', amount: '25.00', receipt_url: 'r', field_values: { vendor: 'X' } }, meals);
+    const { alerts } = validateFormItem({ category: 'meals', amount: '25.00', description: 'Lunch', receipt_url: 'r', field_values: { vendor: 'X' } }, meals);
     expect(alerts).toHaveLength(0);
   });
 
   it('warns (not alerts) over the amount soft cap — exact cents, no float', () => {
-    const { alerts, warnings } = validateFormItem({ category: 'meals', amount: '30.01', receipt_url: 'r', field_values: { vendor: 'X' } }, meals);
+    const { alerts, warnings } = validateFormItem({ category: 'meals', amount: '30.01', description: 'Lunch', receipt_url: 'r', field_values: { vendor: 'X' } }, meals);
     expect(alerts).toHaveLength(0);
     expect(warnings.map((w) => w.code)).toContain('amount_over_cap');
     // exactly at the cap → no warning
-    expect(validateFormItem({ category: 'meals', amount: '30.00', receipt_url: 'r', field_values: { vendor: 'X' } }, meals).warnings).toHaveLength(0);
+    expect(validateFormItem({ category: 'meals', amount: '30.00', description: 'Lunch', receipt_url: 'r', field_values: { vendor: 'X' } }, meals).warnings).toHaveLength(0);
   });
 
   it('warns on a field over its own soft cap', () => {
-    const { warnings } = validateFormItem({ category: 'meals', amount: '10.00', receipt_url: 'r', field_values: { vendor: 'X', gratuity: '25.00' } }, meals);
+    const { warnings } = validateFormItem({ category: 'meals', amount: '10.00', description: 'Lunch', receipt_url: 'r', field_values: { vendor: 'X', gratuity: '25.00' } }, meals);
     expect(warnings.map((w) => w.field)).toContain('gratuity');
   });
 
@@ -56,6 +57,7 @@ describe('validateFormItem — per-unit soft cap', () => {
     category_key: 'meals',
     label: 'Meals',
     requires_receipt: false,
+    requires_description: false,
     is_active: true,
     amount_soft_cap: '30.00',
     fields: [{ key: 'meals_count', label: 'Meals covered', type: 'number', required: false, multiplies_cap: true }],
@@ -93,5 +95,31 @@ describe('validateFormItem — per-unit soft cap', () => {
     );
     expect(alerts).toHaveLength(0);
     expect(warnings).toHaveLength(0);
+  });
+});
+
+// A category may declare that its items speak for themselves — a home-made meal has no receipt and nothing
+// useful to say beyond "Meals". Both relaxations are CONFIG, never hard-coded against a category key.
+describe('a category that requires neither a receipt nor a description', () => {
+  const relaxed: FieldConfig = { ...meals, requires_receipt: false, requires_description: false, fields: [] };
+
+  it('saves with no receipt and no description', () => {
+    const { alerts } = validateFormItem({ category: 'meals', amount: '12.00' }, relaxed);
+    expect(alerts).toHaveLength(0);
+  });
+
+  it('still alerts on the amount — relaxing the prose never relaxes the money (#1)', () => {
+    const { alerts } = validateFormItem({ category: 'meals' }, relaxed);
+    expect(alerts.map((a) => a.field)).toEqual(['amount']);
+  });
+
+  it('still applies the soft cap, so a warning is unaffected', () => {
+    const { warnings } = validateFormItem({ category: 'meals', amount: '45.00' }, relaxed);
+    expect(warnings.map((w) => w.code)).toContain('amount_over_cap');
+  });
+
+  it('absent config is treated as REQUIRED, so an unconfigured category never stops asking', () => {
+    const { alerts } = validateFormItem({ category: 'other', amount: '5.00' }, undefined);
+    expect(alerts.map((a) => a.field)).toContain('description');
   });
 });

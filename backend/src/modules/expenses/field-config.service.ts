@@ -49,6 +49,7 @@ export class FieldConfigService {
           category_key: dto.category_key,
           label: dto.label,
           requires_receipt: dto.requires_receipt,
+          requires_description: dto.requires_description ?? true,
           is_active: dto.is_active ?? true,
           fields: fields as unknown as Prisma.InputJsonValue,
           amount_soft_cap: dto.amount_soft_cap ?? null,
@@ -81,6 +82,7 @@ export class FieldConfigService {
     const data: Prisma.ExpenseFieldConfigUpdateInput = {};
     if (dto.label !== undefined) data.label = dto.label;
     if (dto.requires_receipt !== undefined) data.requires_receipt = dto.requires_receipt;
+    if (dto.requires_description !== undefined) data.requires_description = dto.requires_description;
     if (dto.is_active !== undefined) data.is_active = dto.is_active;
     if (dto.fields !== undefined) data.fields = this.validateDefs(dto.fields) as unknown as Prisma.InputJsonValue;
     if (dto.amount_soft_cap !== undefined) data.amount_soft_cap = dto.amount_soft_cap; // string or null (clear)

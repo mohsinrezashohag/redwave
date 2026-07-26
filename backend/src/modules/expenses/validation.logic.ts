@@ -29,6 +29,7 @@ export interface ValidationResult {
 export interface ValidatableItem {
   category: string;
   amount: string | null; // reimbursable amount in original_currency (non-km)
+  description?: string | null;
   receipt_url?: string | null;
   field_values?: Record<string, unknown> | null;
   km?: { billable_km: string } | null; // present only on a km item — for the commute-deduction warning
@@ -68,6 +69,11 @@ export function validateExpenseItem(item: ValidatableItem, schema: CategorySchem
     }
     if (schema?.requires_receipt && isEmpty(item.receipt_url)) {
       alerts.push({ code: 'receipt_required', severity: 'alert', field: 'receipt_url', message: 'A receipt is required for this category' });
+    }
+    // Config-driven like the receipt: a category may declare that its items speak for themselves. Absent
+    // config = required, so an unconfigured category never silently stops asking. — EXP-002a
+    if (schema?.requires_description !== false && isEmpty(item.description)) {
+      alerts.push({ code: 'description_required', severity: 'alert', field: 'description', message: 'A description is required for this category' });
     }
     for (const def of fields) {
       if (def.required && isEmpty(fieldVal(item.field_values, def.key))) {

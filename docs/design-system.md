@@ -71,7 +71,7 @@ All colour is referenced through --token CSS variables; components never hard-co
 | --surface-0      | #FFFFFF | Page background / cards.                  |
 | --surface-1      | #F6F8FB | App background behind cards; table zebra. |
 | --surface-2      | #EDF1F6 | Inset panels, disabled fills.             |
-| --border         | #D8E0EA | Default borders, dividers.                |
+| --border         | #1b477c | Default borders, dividers.                |
 | --text-secondary | #5B6B80 | Secondary/label text, captions.           |
 | --text-primary   | #1B2536 | Primary text.                             |
 

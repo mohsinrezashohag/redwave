@@ -10496,6 +10496,10 @@ components:
         description:
           type: string
           example: Lunch with client
+          description: What the expense was. Required unless the category config says
+            otherwise (`requires_description`) — Meals ships relaxed, because
+            its category already says what the item is. Blank is stored as an
+            empty string; the UI falls back to the category label.
         field_values:
           type: object
           additionalProperties: &a325
@@ -10517,7 +10521,6 @@ components:
       required:
         - category
         - expense_date
-        - description
     CreateExpenseItemsDto:
       type: object
       properties:
@@ -10917,6 +10920,10 @@ components:
         description:
           type: string
           example: Lunch with client
+          description: What the expense was. Required unless the category config says
+            otherwise (`requires_description`) — Meals ships relaxed, because
+            its category already says what the item is. Blank is stored as an
+            empty string; the UI falls back to the category label.
         field_values:
           type: object
           additionalProperties: *a325
@@ -10935,7 +10942,6 @@ components:
       required:
         - category
         - expense_date
-        - description
     ReviewDto:
       type: object
       properties:
@@ -11047,9 +11053,10 @@ components:
             $ref: "#/components/schemas/ExpenseItemResponse"
         reused:
           type: boolean
-          description: "CREATE only: true when the caller already had a folder for this
-            rep + week, so the existing one was returned instead of creating a
-            duplicate. A week is a single container by design (EXP-001)."
+          description: "CREATE only: true when this STAKEHOLDER (the rep, or the user when
+            there is no rep) already had a folder for the week, so the existing
+            one was returned instead of a second being made. A week is a single
+            container by design, whoever opens it (EXP-001)."
       required:
         - id
         - name
@@ -11152,6 +11159,9 @@ components:
           type: string
         requires_receipt:
           type: boolean
+        requires_description:
+          type: boolean
+          description: Whether an item in this category must carry a description.
         is_active:
           type: boolean
         fields:
@@ -11171,6 +11181,7 @@ components:
         - category_key
         - label
         - requires_receipt
+        - requires_description
         - is_active
         - fields
         - amount_soft_cap
@@ -11233,6 +11244,10 @@ components:
           type: boolean
           example: true
           description: Whether items in this category require a receipt.
+        requires_description:
+          type: boolean
+          description: Whether an item in this category must carry a description. Default
+            true.
         is_active:
           type: boolean
           example: true
@@ -11258,6 +11273,9 @@ components:
           example: Meals
         requires_receipt:
           type: boolean
+        requires_description:
+          type: boolean
+          description: Whether an item in this category must carry a description.
         is_active:
           type: boolean
         fields:

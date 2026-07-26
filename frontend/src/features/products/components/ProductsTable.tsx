@@ -4,18 +4,17 @@
  * → the owning client's detail. Bulk soft-deactivate (clients:edit) via a typed ConfirmDialog. Reuses the
  * clients-domain ProductFormModal + mutations. Convenience gating only — the server is the real gate (§5).
  */
-import { ExternalLink, MoreHorizontal, Pencil, Power, PowerOff } from 'lucide-react';
+import { ExternalLink, Pencil, Power, PowerOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Badge,
   Button,
   ConfirmDialog,
-  DropdownMenu,
-  IconButton,
   useToast,
   type MenuEntry,
 } from '../../../components/ui';
+import { RowActions } from '../../../components/data/RowActions';
 import { DataTable, type DataColumn } from '../../../components/data/DataTable';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useCan } from '../../../auth/useCan';
@@ -117,10 +116,7 @@ export function ProductsTable({ filters }: { filters: ProductsFilters }) {
         onToggleAll={canEdit ? toggleAll : undefined}
         allSelectableSelected={allActiveSelected}
         rowActions={(p) => (
-          <DropdownMenu
-            trigger={<IconButton label="Product actions" icon={<MoreHorizontal size={16} />} size="sm" />}
-            items={rowMenu(p)}
-          />
+          <RowActions label="Product actions" items={rowMenu(p)} />
         )}
         bulkActions={
           <>

@@ -1,0 +1,9 @@
+/* Right-aligned to sit under the ACTIONS header, and never wrapping — a row action that wraps to a
+   second line changes the row height and makes the table jump. */
+.inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  white-space: nowrap;
+}

@@ -17,6 +17,7 @@ const mealsSchema = (over: Partial<CategorySchema> = {}): CategorySchema => ({
 const item = (over: Partial<ValidatableItem> = {}): ValidatableItem => ({
   category: 'meals',
   amount: '25.00',
+  description: 'Lunch with client',
   receipt_url: 'receipts/2026/01/x.jpg',
   field_values: { vendor: 'Tim Hortons' },
   ...over,
@@ -131,5 +132,38 @@ describe('validateExpenseItem — a per-unit soft cap (one item, several meals)'
       mealsSchema(), // no field flagged multiplies_cap
     );
     expect(warnings.map((w) => w.code)).toEqual(['amount_over_cap']);
+  });
+});
+
+/**
+ * A category may declare that its items speak for themselves — a home-made meal has no receipt and nothing
+ * useful to add beyond "Meals". Both relaxations are CONFIG (EXP-002a), never hard-coded against a key.
+ */
+describe('validateExpenseItem — a category that requires neither receipt nor description', () => {
+  const relaxed = mealsSchema({ requires_receipt: false, requires_description: false, fields: [] });
+
+  it('no alerts with neither a receipt nor a description', () => {
+    const { alerts } = validateExpenseItem(item({ receipt_url: null, description: null, field_values: {} }), relaxed);
+    expect(alerts).toHaveLength(0);
+  });
+
+  it('relaxing the prose never relaxes the MONEY — a missing amount is still an alert (#1)', () => {
+    const { alerts } = validateExpenseItem(item({ amount: '', receipt_url: null, description: null, field_values: {} }), relaxed);
+    expect(alerts.map((a) => a.field)).toEqual(['amount']);
+  });
+
+  it('the soft cap still applies, so an over-cap item is still WARNED', () => {
+    const { warnings } = validateExpenseItem(item({ amount: '45.00', receipt_url: null, description: null, field_values: {} }), relaxed);
+    expect(warnings.map((w) => w.code)).toContain('amount_over_cap');
+  });
+
+  it('a description is still ACCEPTED when the rep wants to add one', () => {
+    const { alerts } = validateExpenseItem(item({ receipt_url: null, description: 'Team lunch', field_values: {} }), relaxed);
+    expect(alerts).toHaveLength(0);
+  });
+
+  it('absent schema is treated as REQUIRED — an unconfigured category never stops asking', () => {
+    const { alerts } = validateExpenseItem(item({ description: null }), undefined);
+    expect(alerts.map((a) => a.field)).toContain('description');
   });
 });

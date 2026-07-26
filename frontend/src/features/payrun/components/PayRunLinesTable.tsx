@@ -4,8 +4,9 @@
  * A row's "details" opens the per-rep breakdown drawer. The footer totals are a DISPLAY sum (sumMoney —
  * integer cents, no float #1), never a recomputation. The UI computes no money (#1/#5).
  */
-import { Gift, MoreHorizontal, Search } from 'lucide-react';
-import { DropdownMenu, IconButton, Table, TBody, TD, TH, THead, TR, type MenuEntry } from '../../../components/ui';
+import { Gift, Search } from 'lucide-react';
+import { Table, TBody, TD, TH, THead, TR, type MenuEntry } from '../../../components/ui';
+import { RowActions } from '../../../components/data/RowActions';
 import { money, sumMoney } from '../../../lib/format/money';
 import { NetPayoutCell } from './NetPayoutCell';
 import styles from './payrun.module.css';
@@ -56,7 +57,7 @@ export function PayRunLinesTable({ lines, onSelect, onBonus, canBonus }: Props) 
               <NetPayoutCell value={l.net_payout} />
             </TD>
             <TD align="right">
-              <DropdownMenu trigger={<IconButton label={`Actions for ${l.rep.rep_code}`} icon={<MoreHorizontal size={16} />} size="sm" />} items={rowMenu(l)} />
+              <RowActions label={`Actions for ${l.rep.rep_code}`} items={rowMenu(l)} />
             </TD>
           </TR>
         ))}

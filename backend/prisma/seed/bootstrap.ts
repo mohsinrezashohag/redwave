@@ -102,6 +102,8 @@ const EXPENSE_FIELD_CONFIGS: {
   category_key: string;
   label: string;
   requires_receipt: boolean;
+  /** Omitted = required (the default for every category). */
+  requires_description?: boolean;
   fields: SeedFieldDef[];
   amount_soft_cap?: string;
 }[] = [
@@ -109,7 +111,11 @@ const EXPENSE_FIELD_CONFIGS: {
   {
     category_key: 'meals',
     label: 'Meals',
-    requires_receipt: true,
+    // A meal is often home-made or from a vendor that gives no receipt, and its category already says what
+    // it is — so neither a receipt nor a description is demanded here. Both are still ACCEPTED and both
+    // remain mandatory for every other category. — EXP-002a
+    requires_receipt: false,
+    requires_description: false,
     amount_soft_cap: '30.00', // PER MEAL — over it → a soft Warning (BRD §7.1 dinner cap)
     fields: [
       { key: 'vendor', label: 'Vendor', type: 'text', required: true },
@@ -399,11 +405,12 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
       : { fields: cfg.fields as unknown as Prisma.InputJsonValue, amount_soft_cap: cfg.amount_soft_cap ?? null };
     await prisma.expenseFieldConfig.upsert({
       where: { category_key: cfg.category_key },
-      update: { label: cfg.label, requires_receipt: cfg.requires_receipt, ...seedSchema },
+      update: { label: cfg.label, requires_receipt: cfg.requires_receipt, requires_description: cfg.requires_description ?? true, ...seedSchema },
       create: {
         category_key: cfg.category_key,
         label: cfg.label,
         requires_receipt: cfg.requires_receipt,
+        requires_description: cfg.requires_description ?? true,
         is_active: true,
         fields: cfg.fields as unknown as Prisma.InputJsonValue,
         amount_soft_cap: cfg.amount_soft_cap ?? null,

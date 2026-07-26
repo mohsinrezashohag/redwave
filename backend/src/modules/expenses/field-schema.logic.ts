@@ -29,6 +29,8 @@ export interface ExpenseFieldDef {
 export interface CategorySchema {
   category_key: string;
   requires_receipt: boolean;
+  /** Whether an item in this category must carry a description. Absent = required. */
+  requires_description?: boolean;
   is_active: boolean;
   amount_soft_cap?: string | null; // category-level cap on the item amount → Warning
   fields: ExpenseFieldDef[];

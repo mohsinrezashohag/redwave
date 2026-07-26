@@ -21,7 +21,7 @@ These live in the repo and the tooling can open them directly:
 - **`docs/data-model.md`** — data dictionary (12 modules, 48 entities, surrogate UUID PKs). The visual ERD is **`docs/Redwave_Data_Model.drawio`** (open in diagrams.net).
 - **`docs/architecture.md`** — layers, module boundaries, REST/OpenAPI contract. Visual: **`docs/Redwave_Architecture.drawio`**.
 - **`docs/design-system.md`** — design language, tokens (light + dark), component library, states, screen blueprints. Visual colour swatches are in the companion `.docx`.
-- **`docs/build-log.md`** — the per-batch build history (35 entries, oldest first): what each batch established and **why**, the bugs it fixed and their causes, its migration, what it deferred. Not loaded into context — read the relevant entry before reworking an area. The **rules** distilled from it live in §13/§14 here, which win on any disagreement.
+- **`docs/build-log.md`** — the per-batch build history (37 entries, oldest first): what each batch established and **why**, the bugs it fixed and their causes, its migration, what it deferred. Not loaded into context — read the relevant entry before reworking an area. The **rules** distilled from it live in §13/§14 here, which win on any disagreement.
 
 The client-facing `.docx`/`.drawio` originals may also be kept in `docs/`; the `.md` files above are the canonical in-repo reference for building.
 
@@ -421,7 +421,7 @@ The design system and every shared primitive are **built**. Build screens on the
 reinvent them. Authoritative visual spec: `docs/design-system.md`. `npm run dev:frontend` → the
 `/showcase` route renders every component in light + dark.
 
-> **This section is the RULES. The per-batch history is `docs/build-log.md`** — 35 entries in
+> **This section is the RULES. The per-batch history is `docs/build-log.md`** — 37 entries in
 > build order recording what each batch established, why, which migration it needed, and how it
 > was verified. Read the relevant entry there before reworking an area; it usually explains why
 > the obvious simpler approach was already tried and rejected. Rules here win over anything
@@ -502,12 +502,18 @@ pattern.
 ### 13.3 Shared primitives — use these, don't rebuild them
 
 `DataTable` (columns, server sort + pager, controlled selection, row/bulk actions, and a dedicated
-**forbidden** state) · `ConfirmDialog` (with **`requireTyped`** for irreversible/financial actions)
+**forbidden** state) · `RowActions` (inline buttons or kebab — see below) · `ConfirmDialog` (with **`requireTyped`** for irreversible/financial actions)
 · `ExportMenu` + `exportRows` · `DatePicker` (value is always `'YYYY-MM-DD'`; **never** a native
 `<input type=date>` — OS-locale bug) · `PayPeriodSelect` · `SelectWithOther` · `EffectiveDatedTable`
 + `RateStatusBadge` · `StatCard` (the KPI tile) · `Avatar` · `FileUpload` · `HistoryTab` (per-record
 audit trail) · `SegmentedControl` · `MultiSelect` · `MoneyInput` · `SignaturePad`.
 
+- **Row actions go through `RowActions`, never a hand-rolled kebab.** It takes the same `MenuEntry[]` as
+  `DropdownMenu` and decides at RUNTIME: **≤2 actions on a desktop-width viewport render as real buttons**;
+  more than that, or any narrower viewport, falls back to the kebab. Deciding from the actual item count
+  (not per table) means a menu that grows past the threshold collapses back on its own instead of quietly
+  overflowing the column. A table with a genuinely empty actions column may pass `maxInline={3}`; never
+  more — past that the column starts driving the table's layout, which is what the kebab exists to prevent.
 - **Status badges are per-domain and not interchangeable.** `StatusPill` is **sale-only**; pay
   runs, periods, clawbacks, documents, expenses and rates each have their own badge component.
 - **z-index ladder:** floating menus (dropdown/select/popover = 1300) sit **above** modal/drawer
@@ -630,10 +636,20 @@ forbids.
 - **The chatbot is a thin surface.** Its only network call is `POST /v1/chatbot/query`. It performs
   **no data access of its own** and enforces no scope — the backend's intent-only, entitlement-gated
   tools are the guarantee. Refusals arrive as normal 200s and render as ordinary bubbles.
-- **Expenses are folder-first.** An item is created inside a report (folder) and the folder is
-  submitted and reviewed as a unit; folder status is **derived**, never stored. The km amount is
+- **Expenses are folder-first, ONE folder per stakeholder per week.** An item is created inside a
+  report (folder) and the folder is submitted and reviewed as a unit; folder status is **derived**,
+  never stored. A week is a single container: the key is **whose expenses these are** (the `rep_id`,
+  or the `submitted_by` when there is no rep) — **never who created it**, or a rep's own folder and
+  an admin's on-behalf folder for that same week coexist. Two partial unique indexes enforce it in
+  the DB; a second create RESOLVES to the existing folder and returns `reused: true`, which the UI
+  must report honestly rather than claiming it created one. The km amount is
   **server-authoritative** (client-side preview is indicative only). Validation **Alerts block
   save; Warnings never do**. Approval is approver judgement — validation does not gate it.
+  **Whether an item needs a receipt or a description is per-category CONFIG**
+  (`requires_receipt` / `requires_description`), never a category key hard-coded in the app — Meals
+  ships with both relaxed. **Absent config means REQUIRED**, so a new category never silently stops
+  asking, and relaxing either one never relaxes the **money**: a missing amount is still a blocking
+  Alert and the soft cap still warns. A blank description displays as the category label.
 - **Effective-dated config is APPEND-A-NEW-FUTURE-ROW** (#10). The UI shows a read-only
   current/pending/past table plus an "add rate" form; a future row supersedes the scope's pending
   row and bounds the current one **server-side**. Only **pending** rows may be edited or deleted.

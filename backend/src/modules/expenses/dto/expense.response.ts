@@ -236,6 +236,9 @@ export class FieldConfigResponse {
   @ApiProperty()
   requires_receipt!: boolean;
 
+  @ApiProperty({ description: 'Whether an item in this category must carry a description.' })
+  requires_description!: boolean;
+
   @ApiProperty()
   is_active!: boolean;
 

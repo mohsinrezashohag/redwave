@@ -4,13 +4,11 @@
  * editor). DELETE is offered only for CUSTOM roles (built-in → the server 409s and the UI doesn't offer
  * it). `roles:view` to see; create/delete gated by `useCan`. Reuses the playbook.
  */
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button,
-  DropdownMenu,
-  IconButton,
   Modal,
   PageHeader,
   Table,
@@ -22,6 +20,7 @@ import {
   useToast,
   type MenuEntry,
 } from '../../../components/ui';
+import { RowActions } from '../../../components/data/RowActions';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
 import { isForbidden, useApiErrorToast } from '../../../lib/api/apiError';
@@ -110,10 +109,7 @@ export default function RolesPage() {
                 <TD numeric>{r._count.role_permissions}</TD>
                 <TD numeric>{r._count.user_roles}</TD>
                 <TD align="right">
-                  <DropdownMenu
-                    trigger={<IconButton label="Role actions" icon={<MoreHorizontal size={16} />} size="sm" />}
-                    items={rowMenu(r)}
-                  />
+                  <RowActions label="Role actions" items={rowMenu(r)} />
                 </TD>
               </TR>
             ))}

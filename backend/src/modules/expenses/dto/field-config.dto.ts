@@ -76,6 +76,11 @@ export class CreateFieldConfigDto {
   @IsBoolean()
   requires_receipt!: boolean;
 
+  @ApiPropertyOptional({ description: 'Whether an item in this category must carry a description. Default true.' })
+  @IsOptional()
+  @IsBoolean()
+  requires_description?: boolean;
+
   @ApiPropertyOptional({ example: true, default: true })
   @IsOptional()
   @IsBoolean()
@@ -108,6 +113,11 @@ export class UpdateFieldConfigDto {
   @IsOptional()
   @IsBoolean()
   requires_receipt?: boolean;
+
+  @ApiPropertyOptional({ description: 'Whether an item in this category must carry a description.' })
+  @IsOptional()
+  @IsBoolean()
+  requires_description?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()

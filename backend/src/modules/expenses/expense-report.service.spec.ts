@@ -1,4 +1,4 @@
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { ExpenseReportsService } from './expense-report.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 
@@ -84,12 +84,14 @@ describe('ExpenseReportsService', () => {
       expect(res.item_count).toBe(2);
     });
 
-    it('matches on submitter + rep + week_start', async () => {
+    // The KEY is the stakeholder — whose expenses these are — NOT who typed it in. Keying on submitted_by
+    // is what let a rep's own folder and an admin's on-behalf folder for that same rep+week coexist.
+    it('matches on REP + week_start, ignoring who is creating it', async () => {
       const { service, prisma } = make();
       await service.create({ name: 'W', week_start: '2026-07-06', week_end: '2026-07-12' }, user);
       expect(prisma.expenseReport.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { submitted_by: 'u1', rep_id: 'rep-1', week_start: d('2026-07-06') },
+          where: { rep_id: 'rep-1', week_start: d('2026-07-06') },
           orderBy: { created_at: 'asc' }, // the ORIGINAL folder, not the newest duplicate
         }),
       );
@@ -100,6 +102,48 @@ describe('ExpenseReportsService', () => {
       const res = await service.create({ name: 'W', week_start: '2026-07-13', week_end: '2026-07-19' }, user);
       expect(prisma.expenseReport.create).toHaveBeenCalled();
       expect(res.reused).toBe(false);
+    });
+
+    // THE REGRESSION: an admin opening a folder "on behalf of" a rep who already has one for that week
+    // used to miss it (their submitted_by differed) and create a second folder for that rep's week.
+    it('an ADMIN creating on behalf of a rep resolves to that rep’s existing folder', async () => {
+      const admin = { id: 'admin-9', repId: null, isSuperAdmin: true, roleNames: [], permissions: new Set<string>() } as unknown as AuthUser;
+      const { service, prisma } = make({ existingForWeek: folder, items: [item()] });
+      const res = await service.create({ name: 'W', week_start: '2026-07-06', week_end: '2026-07-12', rep_id: 'rep-1' }, admin);
+
+      expect(prisma.expenseReport.create).not.toHaveBeenCalled();
+      expect(res).toMatchObject({ id: 'r1', reused: true });
+      expect(prisma.expenseReport.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { rep_id: 'rep-1', week_start: d('2026-07-06') } }),
+      );
+    });
+
+    // A user with no rep record (an admin expensing their own) is their OWN stakeholder.
+    it('with no rep, the stakeholder is the USER — keyed on submitted_by', async () => {
+      const noRep = { id: 'u9', repId: null, isSuperAdmin: true, roleNames: [], permissions: new Set<string>() } as unknown as AuthUser;
+      const { service, prisma } = make();
+      await service.create({ name: 'W', week_start: '2026-07-06', week_end: '2026-07-12' }, noRep);
+      expect(prisma.expenseReport.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { rep_id: null, submitted_by: 'u9', week_start: d('2026-07-06') } }),
+      );
+    });
+
+    // Reuse now returns ANOTHER person's folder and its totals, so entitlement must be checked first.
+    it('refuses to create for a rep outside the caller’s scope (would leak that rep’s totals)', async () => {
+      const { service, scope } = make();
+      scope.getRepScope.mockResolvedValue({ level: 'roster', repIds: ['rep-2'] });
+      const manager = { id: 'm1', repId: null, isSuperAdmin: false, roleNames: [], permissions: new Set<string>() } as unknown as AuthUser;
+      await expect(
+        service.create({ name: 'W', week_start: '2026-07-06', week_end: '2026-07-12', rep_id: 'rep-1' }, manager),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('allows a rep inside the caller’s roster', async () => {
+      const { service, scope, prisma } = make();
+      scope.getRepScope.mockResolvedValue({ level: 'roster', repIds: ['rep-1'] });
+      const manager = { id: 'm1', repId: null, isSuperAdmin: false, roleNames: [], permissions: new Set<string>() } as unknown as AuthUser;
+      await service.create({ name: 'W', week_start: '2026-07-06', week_end: '2026-07-12', rep_id: 'rep-1' }, manager);
+      expect(prisma.expenseReport.create).toHaveBeenCalled();
     });
   });
 
