@@ -8,7 +8,7 @@
  * free-form JSON blob → `additionalProperties:true`.
  */
 import { ApiProperty } from '@nestjs/swagger';
-import { ExpenseCategory, ExpenseReportStatus, ExportFormat, TripType } from '@prisma/client';
+import { ExpenseReportStatus, ExportFormat, TripType } from '@prisma/client';
 import { PageMetaResponse } from '../../../common/pagination/page.response';
 
 export class KmStopResponse {
@@ -103,8 +103,8 @@ export class ExpenseItemResponse {
   @ApiProperty({ description: 'The user who submitted this item.' })
   submitted_by!: string;
 
-  @ApiProperty({ enum: ExpenseCategory })
-  category!: ExpenseCategory;
+  @ApiProperty({ type: String, example: 'meals', description: 'Expense category key (catalogue-driven, not an enum).' })
+  category!: string;
 
   @ApiProperty({ type: String, nullable: true })
   client_id!: string | null;
@@ -232,6 +232,16 @@ export class FieldConfigResponse {
 
   @ApiProperty()
   label!: string;
+
+  @ApiProperty({
+    enum: ['km', 'standard'],
+    description:
+      'What the category DOES. `km` drives the mileage path (route, commute deduction, server-computed amount, one per rep/day); `standard` is an ordinary expense. Clients must branch on THIS, never on category_key.',
+  })
+  behaviour!: 'km' | 'standard';
+
+  @ApiProperty({ description: 'A day-one built-in: its key and behaviour are locked.' })
+  is_system!: boolean;
 
   @ApiProperty()
   requires_receipt!: boolean;

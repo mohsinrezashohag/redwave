@@ -6,6 +6,8 @@ const meals: FieldConfig = {
   id: 'c1',
   category_key: 'meals',
   label: 'Meals',
+  behaviour: 'standard', // mileage follows BEHAVIOUR, not the key — packet 10
+  is_system: true,
   requires_receipt: true,
   requires_description: true,
   is_active: true,
@@ -121,5 +123,28 @@ describe('a category that requires neither a receipt nor a description', () => {
   it('absent config is treated as REQUIRED, so an unconfigured category never stops asking', () => {
     const { alerts } = validateFormItem({ category: 'other', amount: '5.00' }, undefined);
     expect(alerts.map((a) => a.field)).toContain('description');
+  });
+});
+
+// This mirror must agree with the server (validation.logic.ts) on what counts as mileage: the category's
+// BEHAVIOUR, never its name. A drift here shows the user alerts the server would not raise, or hides ones
+// it will. — packet 10
+describe('validateFormItem — mileage is decided by behaviour, not the category key', () => {
+  const mileage: FieldConfig = { ...meals, category_key: 'mileage', label: 'Mileage', behaviour: 'km', requires_receipt: true, amount_soft_cap: null, fields: [] };
+  const kmNamedStandard: FieldConfig = { ...meals, category_key: 'km', label: 'Km', behaviour: 'standard', amount_soft_cap: null, fields: [] };
+
+  it('a km-BEHAVIOUR category needs no amount, receipt or description — whatever it is called', () => {
+    const { alerts } = validateFormItem({ category: 'mileage' }, mileage);
+    expect(alerts).toHaveLength(0);
+  });
+
+  it('a category NAMED km with standard behaviour is an ordinary item and still demands an amount', () => {
+    const { alerts } = validateFormItem({ category: 'km' }, kmNamedStandard);
+    expect(alerts.map((a) => a.field)).toContain('amount');
+  });
+
+  it('falls back to the key only when no config resolved (the server rejects that case anyway)', () => {
+    const { alerts } = validateFormItem({ category: 'km' }, undefined);
+    expect(alerts.map((a) => a.field)).not.toContain('amount');
   });
 });

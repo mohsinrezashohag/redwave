@@ -3862,16 +3862,10 @@ paths:
         - name: category
           required: false
           in: query
+          description: Expense category key from the catalogue.
           schema:
+            example: meals
             type: string
-            enum:
-              - km
-              - meals
-              - hotel
-              - flight
-              - rental
-              - gas
-              - other
         - name: rep_id
           required: false
           in: query
@@ -3973,16 +3967,10 @@ paths:
         - name: category
           required: false
           in: query
+          description: Expense category key from the catalogue.
           schema:
+            example: meals
             type: string
-            enum:
-              - km
-              - meals
-              - hotel
-              - flight
-              - rental
-              - gas
-              - other
         - name: rep_id
           required: false
           in: query
@@ -10458,15 +10446,9 @@ components:
       properties:
         category:
           type: string
-          enum: &a324
-            - km
-            - meals
-            - hotel
-            - flight
-            - rental
-            - gas
-            - other
           example: meals
+          description: Expense category key from the catalogue (GET
+            /v1/expense-field-configs).
         client_id:
           type: string
           description: Optional client this expense is attributed to.
@@ -10505,9 +10487,9 @@ components:
             empty string; the UI falls back to the category label.
         field_values:
           type: object
-          additionalProperties: &a325
+          additionalProperties: &a324
             type: string
-          example: &a326
+          example: &a325
             vendor: Tim Hortons
             city: Winnipeg
           description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
@@ -10675,14 +10657,8 @@ components:
           description: The user who submitted this item.
         category:
           type: string
-          enum:
-            - km
-            - meals
-            - hotel
-            - flight
-            - rental
-            - gas
-            - other
+          example: meals
+          description: Expense category key (catalogue-driven, not an enum).
         client_id:
           type: string
           nullable: true
@@ -10889,8 +10865,9 @@ components:
       properties:
         category:
           type: string
-          enum: *a324
           example: meals
+          description: Expense category key from the catalogue (GET
+            /v1/expense-field-configs).
         client_id:
           type: string
           description: Optional client this expense is attributed to.
@@ -10929,8 +10906,8 @@ components:
             empty string; the UI falls back to the category label.
         field_values:
           type: object
-          additionalProperties: *a325
-          example: *a326
+          additionalProperties: *a324
+          example: *a325
           description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
             category schema (EXP-002a). METADATA ONLY — never summed into the
             amount (#1). Unknown keys are dropped server-side."
@@ -11160,6 +11137,18 @@ components:
           example: meals
         label:
           type: string
+        behaviour:
+          type: string
+          enum:
+            - km
+            - standard
+          description: What the category DOES. `km` drives the mileage path (route,
+            commute deduction, server-computed amount, one per rep/day);
+            `standard` is an ordinary expense. Clients must branch on THIS,
+            never on category_key.
+        is_system:
+          type: boolean
+          description: "A day-one built-in: its key and behaviour are locked."
         requires_receipt:
           type: boolean
         requires_description:
@@ -11183,6 +11172,8 @@ components:
         - id
         - category_key
         - label
+        - behaviour
+        - is_system
         - requires_receipt
         - requires_description
         - is_active
@@ -11552,7 +11543,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: &a327
+          enum: &a326
             - draft
             - finalized
             - exported
@@ -11695,7 +11686,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: *a327
+          enum: *a326
         executed_by:
           type: string
         created_at:
@@ -13009,14 +13000,14 @@ components:
           type: string
         source_type:
           type: string
-          enum: &a328
+          enum: &a327
             - client_report
             - master_migration
             - balance_migration
             - sales_entry
         import_type:
           type: string
-          enum: &a329
+          enum: &a328
             - reps
             - clients
             - products
@@ -13036,7 +13027,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: &a330
+          enum: &a329
             - staged
             - committed
             - failed
@@ -13057,13 +13048,13 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: &a331
+          additionalProperties: &a330
             type: number
           nullable: true
           description: Counts by classification (matched/unmatched/...).
         applied_mapping:
           type: object
-          additionalProperties: &a332
+          additionalProperties: &a331
             type: string
           nullable: true
           description: "The `{ systemField: sourceColumn }` mapping actually applied to
@@ -13282,10 +13273,10 @@ components:
           type: string
         source_type:
           type: string
-          enum: *a328
+          enum: *a327
         import_type:
           type: string
-          enum: *a329
+          enum: *a328
         client_id:
           type: string
           nullable: true
@@ -13294,7 +13285,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: *a330
+          enum: *a329
         total_rows:
           type: number
           example: 3
@@ -13311,12 +13302,12 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: *a331
+          additionalProperties: *a330
           nullable: true
           description: Counts by classification (matched/unmatched/...).
         applied_mapping:
           type: object
-          additionalProperties: *a332
+          additionalProperties: *a331
           nullable: true
           description: "The `{ systemField: sourceColumn }` mapping actually applied to
             this batch."
@@ -14216,14 +14207,14 @@ components:
           type: string
         report_type:
           type: string
-          enum: &a333
+          enum: &a332
             - business_summary
             - leaderboard
             - payrun_summary
             - expense_summary
         format:
           type: string
-          enum: &a334
+          enum: &a333
             - csv
             - excel
             - pdf
@@ -14249,11 +14240,11 @@ components:
       properties:
         report_type:
           type: string
-          enum: *a333
+          enum: *a332
           description: Which report was generated.
         format:
           type: string
-          enum: *a334
+          enum: *a333
         filename:
           type: string
           maxLength: 200

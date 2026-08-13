@@ -28,6 +28,11 @@ export interface ExpenseFieldDef {
 /** The resolved schema for one category (config row → typed). */
 export interface CategorySchema {
   category_key: string;
+  /**
+   * What the category DOES. The code branches on THIS, never on `category_key` — so an SA-added category
+   * cannot silently acquire km handling, and renaming one cannot lose it. — packet 10
+   */
+  behaviour: 'km' | 'standard';
   requires_receipt: boolean;
   /** Whether an item in this category must carry a description. Absent = required. */
   requires_description?: boolean;

@@ -52,13 +52,14 @@ export function ExpenseItemRow({
       amount: itemValues?.amount,
       receipt_url: itemValues?.receipt_url,
       field_values: itemValues?.field_values,
-      billable_km: category === 'km' ? billableKm(itemValues?.total_km, itemValues?.trip_type) : null,
+      billable_km: cfg?.behaviour === 'km' ? billableKm(itemValues?.total_km, itemValues?.trip_type) : null,
     },
     cfg,
   ).warnings;
   // Per-item currency (km is always CAD server-side → the picker is locked for km).
   const currencies = useCurrencies();
-  const isKm = category === 'km';
+  // Mileage follows the catalogue BEHAVIOUR, not the key — same rule the server applies. — packet 10
+  const isKm = cfg?.behaviour === 'km';
   const currentCurrency = useWatch({ control, name: `items.${index}.currency` });
   // Always include CAD + the item's current currency, so an edited foreign item's value still renders even
   // while the catalogue loads or the fetch fails — never a CAD-only list that drops the value (H1).
@@ -99,7 +100,7 @@ export function ExpenseItemRow({
         )}
       </div>
 
-      {category === 'km' ? (
+      {isKm ? (
         <KmItemFields index={index} />
       ) : (
         <>

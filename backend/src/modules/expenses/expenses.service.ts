@@ -17,7 +17,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { ExpenseCategory, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
@@ -58,7 +58,7 @@ const SORTABLE = ['expense_date', 'amount', 'status', 'category', 'created_at'] 
 
 /** The content (non-lifecycle) of one item, ready to write. km_log is nested-created for km items. */
 interface ItemContent {
-  category: ExpenseCategory;
+  category: string;
   client_id: string | null;
   expense_date: Date;
   amount: string;
@@ -80,7 +80,7 @@ export type ConfigMap = Map<string, CategorySchema>;
 
 /** A validatable Prisma-row shape (km_log optionally included). */
 export type ItemForValidation = {
-  category: ExpenseCategory;
+  category: string;
   amount: Prisma.Decimal;
   description?: string | null;
   receipt_url: string | null;
@@ -112,8 +112,8 @@ export class ExpensesService {
     const configs = await this.loadConfigs();
 
     // KM dedup: one km item per (rep, expense_date) — within the batch and against existing items.
-    this.assertNoDupKmWithinBatch(dto.items);
-    await this.assertNoExistingKmForDays(repId, dto.items);
+    this.assertNoDupKmWithinBatch(dto.items, configs);
+    await this.assertNoExistingKmForDays(repId, dto.items, configs);
 
     // Resolve each item's pay period from ITS OWN expense_date (EXP-009), cached per distinct date.
     const periodCache = new Map<string, string | null>();
@@ -352,8 +352,8 @@ export class ExpensesService {
     await this.assertCanEditItem(item, user); // owner while unapproved; Admin/SA once approved — §5
 
     const configs = await this.loadConfigs();
-    if (dto.category === ExpenseCategory.km) {
-      await this.assertNoExistingKmForDays(item.rep_id, [dto], id);
+    if (this.isKmItem(dto.category, configs)) {
+      await this.assertNoExistingKmForDays(item.rep_id, [dto], configs, id);
     }
     const periodCache = new Map<string, string | null>();
     const payPeriodId = await this.resolvePayPeriodId(dto.expense_date, periodCache);
@@ -548,11 +548,24 @@ export class ExpensesService {
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────────
+  /**
+   * The category keys whose BEHAVIOUR is km. Normally exactly one (`km`), but resolved from the catalogue
+   * rather than assumed, so the mileage rules follow behaviour wherever an SA puts it. — packet 10
+   */
+  private kmCategoryKeys(configs: ConfigMap): string[] {
+    return [...configs.values()].filter((c) => c.behaviour === 'km').map((c) => c.category_key);
+  }
+
+  /** True when this item is a mileage claim — by catalogue BEHAVIOUR, never by category name. */
+  private isKmItem(category: string, configs: ConfigMap): boolean {
+    return configs.get(category)?.behaviour === 'km';
+  }
+
   /** Within one batch: one mileage claim per day (duplicate km dates → 422). — EXP-004 */
-  private assertNoDupKmWithinBatch(items: ExpenseItemInput[]): void {
+  private assertNoDupKmWithinBatch(items: ExpenseItemInput[], configs: ConfigMap): void {
     const seen = new Set<string>();
     for (const item of items) {
-      if (item.category !== ExpenseCategory.km) continue;
+      if (!this.isKmItem(item.category, configs)) continue;
       if (seen.has(item.expense_date)) {
         throw new UnprocessableEntityException(
           `only one km log is allowed per day (duplicate ${item.expense_date})`,
@@ -566,13 +579,16 @@ export class ExpensesService {
   private async assertNoExistingKmForDays(
     repId: string | null,
     items: ExpenseItemInput[],
+    configs: ConfigMap,
     excludeItemId?: string,
   ): Promise<void> {
-    const kmDates = items.filter((i) => i.category === ExpenseCategory.km).map((i) => dateOnly(i.expense_date));
+    const kmDates = items.filter((i) => this.isKmItem(i.category, configs)).map((i) => dateOnly(i.expense_date));
     if (kmDates.length === 0) return;
+    const kmKeys = this.kmCategoryKeys(configs);
     const clash = await this.prisma.expenseItem.findFirst({
       where: {
-        category: ExpenseCategory.km,
+        // One mileage claim per rep per day across EVERY km-behaviour category, not just one key.
+        category: { in: kmKeys },
         rep_id: repId,
         expense_date: { in: kmDates },
         status: { not: 'rejected' },
@@ -594,7 +610,7 @@ export class ExpensesService {
     payPeriodId: string | null,
     user: AuthUser,
   ): Promise<ItemContent> {
-    if (item.category === ExpenseCategory.km) {
+    if (this.isKmItem(item.category, configs)) {
       // km item: a km log is required; amount is COMPUTED (never trusted from the client). — EXP-004
       if (!item.km) {
         throw new UnprocessableEntityException('a km item requires a km log');
@@ -610,14 +626,16 @@ export class ExpensesService {
       // → the $0.45 default). Two-stream (#3); the amount is always computed server-side (#1). — EXP-004
       const ratePerKm = await this.kmRates.resolveRepRate(item.client_id ?? null, dateOnly(item.expense_date));
       const { deductionKm, billableKm, computedAmount } = computeKm(totalKm, tripType, ratePerKm);
-      const fieldValues = this.pickFieldValues(item.field_values, configs.get(ExpenseCategory.km));
+      const fieldValues = this.pickFieldValues(item.field_values, configs.get(item.category));
       // Alerts block save (e.g. an SA-added required km field). km has no amount/receipt alert (computed). — EXP-013
       this.assertNoAlerts(
-        { category: 'km', amount: computedAmount.toFixed(2), receipt_url: null, field_values: item.field_values ?? null, km: { billable_km: billableKm.toString() } },
-        configs.get(ExpenseCategory.km),
+        { category: item.category, amount: computedAmount.toFixed(2), receipt_url: null, field_values: item.field_values ?? null, km: { billable_km: billableKm.toString() } },
+        configs.get(item.category),
       );
       return {
-        category: ExpenseCategory.km,
+        // The category the user actually chose — not a hardcoded 'km' — so a second km-behaviour category
+        // keeps its own key on the item.
+        category: item.category,
         client_id: item.client_id ?? null,
         expense_date: dateOnly(item.expense_date),
         amount: computedAmount.toFixed(2),
@@ -718,13 +736,14 @@ export class ExpensesService {
   /** Load the per-category field schemas (public — reused by the folder service for aggregate validation). */
   async loadConfigs(): Promise<ConfigMap> {
     const rows = await this.prisma.expenseFieldConfig.findMany({
-      select: { category_key: true, requires_receipt: true, requires_description: true, is_active: true, fields: true, amount_soft_cap: true },
+      select: { category_key: true, behaviour: true, requires_receipt: true, requires_description: true, is_active: true, fields: true, amount_soft_cap: true },
     });
     return new Map(
       rows.map((r) => [
         r.category_key,
         {
           category_key: r.category_key,
+          behaviour: r.behaviour,
           requires_receipt: r.requires_receipt,
           requires_description: r.requires_description,
           is_active: r.is_active,

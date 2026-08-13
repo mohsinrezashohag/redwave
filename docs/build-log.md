@@ -1790,3 +1790,52 @@ config-migration cases; full backend suite + typecheck + lint + build + contract
 stylelint + vitest.
 **Operator: `migrate deploy`** — three additive enum values, `ADD VALUE IF NOT EXISTS`, not used in the
 same migration, so it is safe inside the migrate-deploy transaction (PostgreSQL 12+).
+
+### Expenses — categories become CONFIG, not code (built — packet 10; migration `20260702000000`)
+
+**Smaller than the packet assumed, because most of it already existed.** `expense_field_configs` was already
+the category catalogue — `category_key` unique, label, receipt/description rules, per-type `fields[]`, soft
+cap, `is_active`, with SA CRUD that could create a new key today. The only thing keeping the list closed was
+that **`expense_items.category` was the `ExpenseCategory` enum**, so a new key was catalogue-only until
+someone shipped a migration. `field-config.service.ts` said so in its own header. `category` is now a String
+FK to `category_key`, and adding "parking" is a config change.
+
+**Two of the packet's premises were wrong, both in our favour.** It said `meals` drives `multiplies_cap` —
+it does not; `multiplies_cap` has been a **field-level** flag since the per-type-fields batch, bound to no
+category name, so there was nothing to generalise. And its Postgres warning (`ALTER TYPE … ADD VALUE` cannot
+be USED in the transaction that adds it) applies to **option A**, which this is not. Option B was taken, as
+the packet recommended.
+
+**Behaviour, never the name.** A new column `expense_field_configs.behaviour` (`km` | `standard`) is what
+the code branches on — `expenses.service` (km log create/edit, the one-per-(rep,date) rule, the
+server-authoritative amount) and `validation.logic`. So an SA-added category cannot silently acquire mileage
+handling, and a renamed one cannot lose it. This mirrors `product_type_catalogue` (key + behaviour +
+is_system), which solved the same problem for products — deliberately not a second pattern. `is_system`
+locks the seven day-one categories. Spec-locked in both directions: a category **named** `km` with standard
+behaviour gets no mileage handling, and one named `mileage` with km behaviour gets all of it, keeps its own
+key on the item, and is covered by the same one-claim-per-day rule.
+
+**The real migration trap was the column, not the enum.** `expense_items.category` is an enum column holding
+live rows. `USING category::text` preserves every value verbatim — the seven enum labels are exactly the
+seven `category_key`s, so no backfill and no data change — but the FK is only safe if the two sets actually
+match. The migration therefore **verifies that before constraining**, raising a readable exception naming
+the offending value rather than letting the constraint abort with a generic error. `ON DELETE RESTRICT`
+matches the schema-wide no-cascades rule, so a category in use cannot be deleted out from under its items.
+
+**Why the form layer may still key on the `km` string.** `behaviour` is deliberately **not settable through
+the field-config API** — `create` and `update` build their `data` explicitly and never write it — so an
+SA-created category is always `standard` and the seeded `km` row is the only km-behaviour category that can
+exist. That is what lets `expenseForm.schema.ts` (zod, no config in scope) keep its shape rules keyed on the
+key. It is safe by construction, not by luck, and `field-config.service.spec.ts` now locks it: if someone
+exposes `behaviour` on those DTOs, those tests fail and force the form schema to be threaded in the same
+change. The live validation mirror (`validation.ts`) and `ExpenseItemRow` already use behaviour.
+
+**No pricing is touched.** Categories carry no rate; `amount_soft_cap` is an existing warning threshold,
+unchanged. The FE needed no enum edit because `ExpenseCategory` was already an alias of the generated
+schema type (§13.2) — it followed the contract automatically.
+
+**Verified LOCAL:** 142 expenses tests (13 suites) incl. 8 new; full backend suite + typecheck + lint +
+build + contract regen; FE build + lint + stylelint + vitest.
+**Operator: `migrate deploy`** — changes a live column's type and adds an FK. Re-run `prisma:seed`
+afterwards so the seven built-ins get `behaviour`/`is_system` (the migration sets them too, so this is
+belt-and-braces on an already-seeded database).

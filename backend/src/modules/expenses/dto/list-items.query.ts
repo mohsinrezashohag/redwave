@@ -4,8 +4,8 @@
  * scope-restricted in the query (§5); the `sort` allowlist lives in the service. — SRS §11
  */
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { ExpenseCategory, ExpenseReportStatus } from '@prisma/client';
-import { IsEnum, IsOptional, IsUUID, Matches } from 'class-validator';
+import { ExpenseReportStatus } from '@prisma/client';
+import { IsEnum, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 import { PaginationQuery } from '../../../common/pagination/pagination.query';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -16,10 +16,10 @@ export class ListExpenseItemsQuery extends PaginationQuery {
   @IsEnum(ExpenseReportStatus)
   status?: ExpenseReportStatus;
 
-  @ApiPropertyOptional({ enum: ExpenseCategory })
+  @ApiPropertyOptional({ example: 'meals', description: 'Expense category key from the catalogue.' })
   @IsOptional()
-  @IsEnum(ExpenseCategory)
-  category?: ExpenseCategory;
+  @IsString()
+  category?: string;
 
   @ApiPropertyOptional({ description: 'Filter by rep.' })
   @IsOptional()

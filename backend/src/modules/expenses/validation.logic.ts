@@ -59,7 +59,11 @@ function capUnits(item: ValidatableItem, fields: ExpenseFieldDef[]): number {
 export function validateExpenseItem(item: ValidatableItem, schema: CategorySchema | undefined): ValidationResult {
   const alerts: ValidationRule[] = [];
   const warnings: ValidationRule[] = [];
-  const isKm = item.category === 'km';
+  // Mileage is decided by the category's BEHAVIOUR, never by its name — a category called "km" with
+  // standard behaviour is an ordinary item, and an SA-named "mileage" with km behaviour is a km item.
+  // Falls back to the key only when no schema was resolved (unknown category), which the service rejects
+  // separately anyway. — packet 10
+  const isKm = schema ? schema.behaviour === 'km' : item.category === 'km';
   const fields = schema?.fields ?? [];
 
   // ── ALERTS (block save) ─────────────────────────────────────────────────────────

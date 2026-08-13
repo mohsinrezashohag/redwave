@@ -104,10 +104,12 @@ const EXPENSE_FIELD_CONFIGS: {
   requires_receipt: boolean;
   /** Omitted = required (the default for every category). */
   requires_description?: boolean;
+  /** Omitted = `standard`. Only Kilometres carries km behaviour. — packet 10 */
+  behaviour?: 'km' | 'standard';
   fields: SeedFieldDef[];
   amount_soft_cap?: string;
 }[] = [
-  { category_key: 'km', label: 'Kilometres', requires_receipt: false, fields: [] },
+  { category_key: 'km', label: 'Kilometres', requires_receipt: false, behaviour: 'km', fields: [] },
   {
     category_key: 'meals',
     label: 'Meals',
@@ -405,12 +407,23 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
       : { fields: cfg.fields as unknown as Prisma.InputJsonValue, amount_soft_cap: cfg.amount_soft_cap ?? null };
     await prisma.expenseFieldConfig.upsert({
       where: { category_key: cfg.category_key },
-      update: { label: cfg.label, requires_receipt: cfg.requires_receipt, requires_description: cfg.requires_description ?? true, ...seedSchema },
+      // behaviour + is_system are RE-ASSERTED on update: they are structural, not SA preferences, and a
+      // built-in silently losing km behaviour would break mileage for everyone. — packet 10
+      update: {
+        label: cfg.label,
+        requires_receipt: cfg.requires_receipt,
+        requires_description: cfg.requires_description ?? true,
+        behaviour: cfg.behaviour ?? 'standard',
+        is_system: true,
+        ...seedSchema,
+      },
       create: {
         category_key: cfg.category_key,
         label: cfg.label,
         requires_receipt: cfg.requires_receipt,
         requires_description: cfg.requires_description ?? true,
+        behaviour: cfg.behaviour ?? 'standard',
+        is_system: true, // the seven day-one categories
         is_active: true,
         fields: cfg.fields as unknown as Prisma.InputJsonValue,
         amount_soft_cap: cfg.amount_soft_cap ?? null,

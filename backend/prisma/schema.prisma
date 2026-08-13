@@ -157,14 +157,14 @@ enum ExpenseReportStatus {
   sent_back
 }
 
-enum ExpenseCategory {
+// What a category DOES, as opposed to what it is called. `km` drives the map/route path, the −30/−60
+// commute deduction, the server-authoritative amount and the one-per-(rep,date) rule; `standard` is an
+// ordinary receipted expense. Behaviour — never the category KEY — is what the code branches on, so an
+// SA-added category can never silently acquire km handling and a renamed one can never lose it. Mirrors
+// `product_type_catalogue.behaviour`, which solved the same problem for products. — packet 10, SRS EXP-002a
+enum ExpenseCategoryBehaviour {
   km
-  meals
-  hotel
-  flight
-  rental
-  gas
-  other
+  standard
 }
 
 enum TripType {
@@ -1057,7 +1057,10 @@ model ExpenseItem {
   rep               Rep?                @relation(fields: [rep_id], references: [id])
   submitted_by      String              @db.Uuid
   submitter         User                @relation("ExpenseItemSubmittedBy", fields: [submitted_by], references: [id])
-  category          ExpenseCategory
+  // FK → the SA-governed category catalogue, NOT an enum: adding "parking" is a config change, not a
+  // migration. Behaviour (km vs standard) travels with the catalogue row. — packet 10
+  category          String
+  category_ref      ExpenseFieldConfig  @relation(fields: [category], references: [category_key])
   client_id         String?             @db.Uuid
   client            Client?             @relation(fields: [client_id], references: [id])
   expense_date      DateTime            @db.Date
@@ -1126,6 +1129,11 @@ model ExpenseFieldConfig {
   id               String   @id @default(uuid()) @db.Uuid
   category_key     String   @unique
   label            String
+  // What this category DOES. The code branches on this, never on the key — see ExpenseCategoryBehaviour.
+  behaviour        ExpenseCategoryBehaviour @default(standard)
+  // The seven day-one categories: their key + behaviour are locked (the SA may still edit label/fields/
+  // caps/active). Mirrors product_type_catalogue.is_system. — packet 10
+  is_system        Boolean  @default(false)
   requires_receipt Boolean
   // Whether an item in this category must carry a description. Config, not code — a home-made meal has
   // nothing to add beyond its category, and a forced description there is noise. — EXP-002a
@@ -1139,6 +1147,8 @@ model ExpenseFieldConfig {
   amount_soft_cap  Decimal? @db.Decimal(12, 2)
   created_by       String   @db.Uuid
   creator          User     @relation("ExpenseFieldConfigCreatedBy", fields: [created_by], references: [id])
+
+  items            ExpenseItem[]
 
   @@map("expense_field_configs")
 }
