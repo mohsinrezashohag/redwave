@@ -49,6 +49,9 @@ export type ImportKind =
   | 'create_clients'
   | 'create_products'
   | 'billing_rate'
+  | 'km_rate'
+  | 'commission_tier_schedule'
+  | 'commission_flat_rate'
   | 'create_reps'
   | 'historical_sales'
   | 'opening_holdback';
@@ -118,6 +121,41 @@ export const KINDS: KindDef[] = [
     needsClient: false,
     needsReconcileTotal: false,
     commitEffect: 'writes each back-dated client billing rate, in one transaction',
+  },
+  // The REP-stream counterparts of the billing-rate migration above. The admin screens reject a past
+  // effective_from (422) to protect closed periods; these are the audited path that may load history (#10).
+  {
+    kind: 'km_rate',
+    label: 'Historical km rates (migration)',
+    description: 'Load back-dated per-km rates — rep reimbursement and client billing are separate streams.',
+    source_type: 'master_migration',
+    import_type: 'km_rates',
+    needsClient: false, // the client scope is per-row, and blank means the global default
+    needsReconcileTotal: false,
+    commitEffect: 'writes each back-dated km rate, in one transaction',
+    note: 'Leave Client code blank for the global default rate. The rep and client_bill streams stay separate and are never combined.',
+  },
+  {
+    kind: 'commission_tier_schedule',
+    label: 'Historical tier schedules (migration)',
+    description: 'Load back-dated commission tier schedules — one row per schedule, brackets in one cell.',
+    source_type: 'master_migration',
+    import_type: 'commission_tiers',
+    needsClient: false,
+    needsReconcileTotal: false,
+    commitEffect: 'writes each back-dated tier schedule and its brackets, in one transaction',
+    note: 'One row is a WHOLE schedule: brackets go in the Tiers cell as 0-6:110|7-16:125|17-35:145|36+:160. They must cover every tally with no gaps or overlaps, and tier numbers are assigned by rate (highest = Tier 1).',
+  },
+  {
+    kind: 'commission_flat_rate',
+    label: 'Historical commission flat rates (migration)',
+    description: 'Load back-dated flat rates paid to the rep per add-on or greenfield activation.',
+    source_type: 'master_migration',
+    import_type: 'commission_flat_rates',
+    needsClient: false,
+    needsReconcileTotal: false,
+    commitEffect: 'writes each back-dated commission flat rate, in one transaction',
+    note: 'This is what the REP is paid — never a client billing rate. Product types must already exist in the catalogue; an import never adds one.',
   },
   {
     kind: 'create_reps',

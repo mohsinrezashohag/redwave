@@ -47,6 +47,11 @@ describe('KmRateService.resolveRepRate (the money path)', () => {
 });
 
 describe('KmRateService.create (effective-dated, back-date guarded)', () => {
+  // DO NOT relax this because the import can now back-date. `master_migration:km_rates`
+  // (handlers/km-rate.handler.ts) is a SECOND, AUDITED path — every row lands as an `import_rows` record
+  // on a committed batch. This guard is the first path and stays, so a rate typed into the admin screen
+  // can never silently rewrite a closed period. Two paths, one of them audited; not one relaxed path.
+  // — docs/claude-code/04-backdate-import.md, CLAUDE §3 #10
   it('rejects a back-dated effective_from with 422 (#10)', async () => {
     const { service } = make();
     await expect(

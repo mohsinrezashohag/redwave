@@ -72,6 +72,80 @@ export function classifyBillingRateRow(
   return matched();
 }
 
+// ── master_migration + km_rates / commission_tiers / commission_flat_rates ──────────────────────
+// The REP-stream counterparts of the billing-rate migration path above. The live services reject a past
+// `effective_from` (422) to protect closed periods; these targets are the audited way to load history
+// (#10). Everything below is shape + existence only — the WRITE is the handler's job.
+// — docs/claude-code/04-backdate-import.md
+
+/** Both km streams. `rep` is what a rep is reimbursed; `client_bill` is what the client is charged (#3). */
+const KM_STREAMS = new Set(['rep', 'client_bill']);
+/** rate_per_km is Decimal(6,3) — up to 3 dp, unlike money's 2. */
+const RATE_PER_KM = /^\d+(\.\d{1,3})?$/;
+
+/** `client_code` is OPTIONAL on all three: blank = the GLOBAL row every client falls back to. */
+export function classifyKmRateRow(mapped: RawRow, ctx: { clientExists: boolean }): Classification {
+  const client_code = str(mapped, 'client_code');
+  const stream = str(mapped, 'stream');
+  const rate_per_km = str(mapped, 'rate_per_km');
+  const effective_from = str(mapped, 'effective_from');
+  const effective_to = str(mapped, 'effective_to');
+
+  if (!stream) return error('stream is required (rep or client_bill)');
+  if (!KM_STREAMS.has(stream)) return error(`stream must be 'rep' or 'client_bill', not "${stream}"`);
+  if (!rate_per_km || !RATE_PER_KM.test(rate_per_km)) return error('rate_per_km must be a decimal string (≤3 dp)');
+  if (!effective_from || !DATE.test(effective_from)) return error('effective_from must be YYYY-MM-DD');
+  if (effective_to && !DATE.test(effective_to)) return error('effective_to must be YYYY-MM-DD');
+  if (client_code && !ctx.clientExists) return error(`client ${client_code} not found`);
+  return matched();
+}
+
+/**
+ * One row = one WHOLE schedule (brackets in the `tiers` cell), so the gate can accept or reject a schedule
+ * as a unit rather than leaving a partial one behind. `parseTiers` is injected so this stays pure — the
+ * service passes the real `parseTierSpec`, whose own message is already operator-readable.
+ */
+export function classifyCommissionTierRow(
+  mapped: RawRow,
+  ctx: { clientExists: boolean; parseTiers: (cell: string) => unknown },
+): Classification {
+  const client_code = str(mapped, 'client_code');
+  const tiers = str(mapped, 'tiers');
+  const effective_from = str(mapped, 'effective_from');
+  const effective_to = str(mapped, 'effective_to');
+
+  if (!tiers) return error('tiers is required, e.g. "0-6:110|7-16:125|17-35:145|36+:160"');
+  if (!effective_from || !DATE.test(effective_from)) return error('effective_from must be YYYY-MM-DD');
+  if (effective_to && !DATE.test(effective_to)) return error('effective_to must be YYYY-MM-DD');
+  if (client_code && !ctx.clientExists) return error(`client ${client_code} not found`);
+  try {
+    ctx.parseTiers(tiers);
+  } catch (e) {
+    return error(e instanceof Error ? e.message : 'tiers could not be parsed');
+  }
+  return matched();
+}
+
+/** `product_type` must already be in the SA-governed catalogue — an import never invents one (§14 rule 7). */
+export function classifyCommissionFlatRateRow(
+  mapped: RawRow,
+  ctx: { clientExists: boolean; productTypeExists: boolean },
+): Classification {
+  const client_code = str(mapped, 'client_code');
+  const product_type = str(mapped, 'product_type');
+  const amount = str(mapped, 'amount');
+  const effective_from = str(mapped, 'effective_from');
+  const effective_to = str(mapped, 'effective_to');
+
+  if (!product_type) return error('product_type is required');
+  if (!amount || !MONEY.test(amount)) return error('amount must be a decimal string (≤2 dp)');
+  if (!effective_from || !DATE.test(effective_from)) return error('effective_from must be YYYY-MM-DD');
+  if (effective_to && !DATE.test(effective_to)) return error('effective_to must be YYYY-MM-DD');
+  if (!ctx.productTypeExists) return error(`product type "${product_type}" is not in the catalogue`);
+  if (client_code && !ctx.clientExists) return error(`client ${client_code} not found`);
+  return matched();
+}
+
 // ── master_migration + clients (create/upsert clients) ───────────────────────────────────────────
 export function classifyClientRow(mapped: RawRow, ctx: { existingClientId: string | null }): Classification {
   const client_code = str(mapped, 'client_code');

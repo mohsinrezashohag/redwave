@@ -38,6 +38,9 @@ const tiersDto = SCHEDULE_C_V2.tiers.map((t) => ({
 }));
 
 describe('TierScheduleService.create (COMM-001 / COMM-006)', () => {
+  // DO NOT relax this because the import can now back-date. `master_migration:commission_tiers`
+  // (handlers/commission-config.handler.ts) is a SECOND, AUDITED path; this one is the live admin screen
+  // and must keep refusing to rewrite a closed period. — docs/claude-code/04-backdate-import.md, #10
   it('rejects a back-dated schedule (422)', async () => {
     const { service } = make();
     await expect(

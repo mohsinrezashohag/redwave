@@ -1728,3 +1728,65 @@ machine, over 5 s under a parallel suite. They were the only two slow enough to 
 why the failure looked load-dependent and passed on a standalone re-run. Fixed with `jest.setTimeout(30_000)`
 in that spec, keeping the real bcrypt cost under test rather than weakening it to fit an arbitrary limit.
 **Operator: `migrate deploy`** (additive nullable column, no backfill, no downtime).
+
+### Import — back-dated REP-stream config: km rates, tier schedules, commission flat rates (built — packet 04; migration `20260701000000`)
+
+**The asymmetry this closes.** `effective-dates.util.ts` rejects a past `effective_from` with 422 across
+every effective-dated config, which is correct — it protects closed periods (#10). But
+`client_billing_rate` already had a sanctioned way in (`handlers/billing-rate.handler.ts`, described in its
+own header as the audited migration path) and the **REP stream had none**. That is what broke UAT: Siam set
+a km rate mid-week and every expense before that date became unpriceable. At go-live the same applies to
+every historical rate and tier schedule — which is why this was worth doing before the packets ahead of it
+in the original ordering.
+
+**The guard is untouched.** This adds a SECOND, audited path — every row lands as an `import_rows` record
+on a committed `import_batches` — it does not relax the first. Both live services still 422 a back-dated
+create, and their specs now carry a DO-NOT-RELAX note pointing here, because the likeliest future mistake
+is deleting those assertions as "obsolete" once the import can back-date.
+
+**Three targets, not one, and not four.** `TARGET_FIELDS` is keyed `${source}:${import_type}` and each key
+holds ONE flat field list that drives cleaning, mapping auto-suggestion and the template — so one pair per
+row SHAPE. A single `commission_config` pair covering tiers + flat rates would have made nearly every
+column optional and wrecked the header scoring that picks a mapping.
+
+**`product_types` was dropped from the packet, deliberately.** `product_type_catalogue` has no effective
+dating at all (`key`/`label`/`behaviour`/`is_system`/`is_active`) — the `parseEffectiveWindow` call in
+`product-type.service` is for the optional INLINE flat rate, not the type. So there was no back-date guard
+to bypass and nothing for this packet to fix. Bulk catalogue loading is a different feature, and the
+catalogue stays SA-governed (§14 rule 7). Its own packet if Redwave wants it.
+
+**One row = one whole tier schedule.** A schedule is a `commission_tier_configs` row owning N
+`commission_tiers`, but every import target here is "1 row = 1 entity = 1 gate unit" — the reconcile gate
+accepts or rejects a row on its own. Bracket-per-row would mean one bad row leaves a *partial* schedule and
+the gate can no longer judge a row by itself. So the whole schedule travels in one cell
+(`0-6:110|7-16:125|17-35:145|36+:160`), exactly as IMP-013 put a bundle's `product_types` in one cell for
+the same reason (§14 rule 9). **Tier numbers are derived from the rate order** (highest rate = Tier 1,
+Schedule C v2), so a file can never disagree with itself about which bracket is "tier 2", and the pure
+`parseTierSpec` hands off to the SAME `validateTierBrackets` the live API uses — an import can never store
+a schedule the UI would have refused. The classifier runs that parse at CLASSIFY time, so a bad cell is an
+`error` the gate blocks before any write, not a throw mid-commit.
+
+**Round-trip, not just a write.** The packet's requirement is not "a row was written" but "an expense that
+predates today can now be priced" and "the engine picks the schedule up for a historical `sale_date`". So
+the specs feed exactly what the handler wrote to the REAL selectors — `selectKmRate` and
+`selectEffectiveRate` — and assert both directions: a date after `effective_from` resolves to the imported
+row, and a date before it still resolves to nothing, so an import cannot retroactively price everything.
+
+**Two invariants held explicitly.** The km handler writes `rep` and `client_bill` as separate rows on
+separate scopes and nothing joins them (#3); the commission handler touches no `client_billing_rates` at
+all. A client-scoped tier schedule scopes only the RATE LOOKUP — the internet tally stays cross-client (#5),
+which is the engine's business and not the handler's. Rates are exact decimal STRINGS → Prisma `Decimal`,
+never `parseFloat` (#1). A blank `client_code` is the GLOBAL row throughout, so a missing code is legal and
+only a code resolving to nothing is an error. An unknown product type rolls the whole batch back rather
+than being created (§14 rule 7).
+
+**No new RBAC permission** — the three targets ride the existing `import:create` / `import:approve`, and
+the commit transaction, `evaluateGate` and re-commit idempotency are unchanged. FE gets three `KINDS`
+entries + three `TemplateDef`s, so the wizard, the downloadable template and the mapping editor field list
+all appear automatically.
+
+**Verified LOCAL:** 227 import tests (14 suites) incl. 13 new `tier-spec.logic` cases and 9 new
+config-migration cases; full backend suite + typecheck + lint + build + contract regen; FE build + lint +
+stylelint + vitest.
+**Operator: `migrate deploy`** — three additive enum values, `ADD VALUE IF NOT EXISTS`, not used in the
+same migration, so it is safe inside the migrate-deploy transaction (PostgreSQL 12+).

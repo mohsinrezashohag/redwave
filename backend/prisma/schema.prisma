@@ -260,6 +260,13 @@ enum ImportType {
   holdback
   clawback
   mixed
+  // Back-dated REP-stream config migration. The live services reject a past effective_from (422) to protect
+  // closed periods; these are the audited import path that may write history, mirroring billing_rates (#10).
+  // One value per row SHAPE — TARGET_FIELDS is keyed `${source}:${import_type}` and holds one field list
+  // each. — docs/claude-code/04-backdate-import.md
+  km_rates
+  commission_tiers
+  commission_flat_rates
 }
 
 enum ImportBatchStatus {

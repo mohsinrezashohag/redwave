@@ -6582,6 +6582,9 @@ paths:
               - holdback
               - clawback
               - mixed
+              - km_rates
+              - commission_tiers
+              - commission_flat_rates
       responses:
         "200":
           description: ""
@@ -13022,6 +13025,9 @@ components:
             - holdback
             - clawback
             - mixed
+            - km_rates
+            - commission_tiers
+            - commission_flat_rates
         client_id:
           type: string
           nullable: true
