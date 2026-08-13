@@ -1301,7 +1301,12 @@ model ClientStatementLine {
 
   // Who / where / what (frozen snapshots — the sale may change later; the issued document may not).
   sale_date           DateTime? @db.Date
-  rep_code            String? // Agent ID
+  // The client's own workbooks key agents by the PARTNER-FACING code (`Redwave20` = reps.external_code),
+  // not the internal rep_code (`RW-D-0001`) — a client cannot match RW-D-0001 against their roster. The
+  // renderer prints `rep_external_code ?? rep_code`, so statements issued before this column existed (and
+  // reps with no external_code) still render exactly as they were issued (#2). — docs/claude-code/system-audit.md §2.1
+  rep_external_code   String? // Agent ID (reps.external_code) — what the client sees
+  rep_code            String? // internal rep_code, retained for our own tie-out + the pre-existing fallback
   rep_name            String? // Agent Name
   customer_name       String // kept: UI, QuickBooks CSV, back-compat
   customer_first_name String?

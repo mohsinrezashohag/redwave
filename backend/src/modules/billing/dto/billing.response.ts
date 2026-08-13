@@ -29,7 +29,21 @@ export class ClientStatementLineResponse {
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   sale_date!: string | null;
 
-  @ApiProperty({ type: String, nullable: true, example: 'RW-D-0007', description: 'Agent ID (reps.rep_code).' })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'Redwave20',
+    description:
+      'Agent ID as the CLIENT sees it (reps.external_code). Null on lines issued before this was captured, and for reps with no partner code — render `rep_external_code ?? rep_code`.',
+  })
+  rep_external_code!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'RW-D-0007',
+    description: 'Internal rep code (reps.rep_code) — our own tie-out, and the Agent ID fallback.',
+  })
   rep_code!: string | null;
 
   @ApiProperty({ type: String, nullable: true, description: 'Agent name.' })

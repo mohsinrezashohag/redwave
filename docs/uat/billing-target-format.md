@@ -18,7 +18,7 @@ One row per sale.
 | # | Column | Source |
 |---|---|---|
 | 1 | Sale Date | `sales.sale_date` |
-| 2 | Agent ID | `reps.rep_code` |
+| 2 | Agent ID | **`reps.external_code`** (`Redwave20`) — the code the CLIENT's roster is keyed by, verified against `Client billing report.xlsx` cell `B3`. **Not** the internal `reps.rep_code` (`RW-D-0001`), which a partner cannot match. Frozen as `client_statement_lines.rep_external_code`; lines issued before that column existed fall back to their frozen `rep_code` so an issued statement re-renders unchanged (#2). |
 | 3 | Agent Name | `reps.full_name` |
 | 4 | Customer's First Name | separate field |
 | 5 | Customer's Last Name | separate field |

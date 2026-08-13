@@ -1,0 +1,19 @@
+{
+  // TYPECHECK-ONLY config — widens coverage to the code `nest build` deliberately does not compile.
+  //
+  // `tsconfig.json` includes `src/**/*` only, which makes TypeScript infer `rootDir: src` and emit
+  // `dist/main.js` (what `start:prod` runs). Adding prisma/ and scripts/ there would move the emit to
+  // `dist/src/main.js` and break production start — so the wider net lives here, with `noEmit`.
+  //
+  // Why it exists: `prisma/seed/*` and `scripts/*` run under `--transpile-only`, so a signature drift in
+  // a service they call is invisible until someone runs the seed. That is exactly how the demo seed's
+  // `documents.upload(dto, bytes, user)` call survived the move to the claim-based upload pipeline.
+  // Run via `npm -w backend run typecheck`. — CLAUDE §2.5
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false
+  },
+  "include": ["src/**/*", "prisma/**/*", "scripts/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

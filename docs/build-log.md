@@ -1668,3 +1668,63 @@ different people, which is exactly when the list must say whose.
 stylelint + 89 vitest — all green. The regression is spec-locked: an admin creating on behalf of a rep who
 already has that week resolves to the existing folder and calls `create` zero times.
 **Operator: `migrate deploy`** — note it MERGES existing duplicate folders as described.
+
+### UAT-file audit fixes — the client-facing Agent ID, and the demo seed that could not run (built — migration `20260630000000`)
+
+**Where this came from.** The four `docs/uat/*.xlsx` workbooks had never been parsed — the packets in
+`docs/claude-code/` were written against their *descriptions*. Parsing them cell-by-cell (formulas included)
+produced `docs/claude-code/system-audit.md` and turned up two defects in shipped code, fixed here. The other
+findings are packet work and are sequenced in that document.
+
+**1. The client statement printed the wrong Agent ID.** `Client billing report.xlsx` cell `B3` is
+`Redwave20`, resolved to a name by an `XLOOKUP` over the client's own 43-agent roster — that is
+**`reps.external_code`**. We froze and printed `reps.rep_code` (`RW-D-0001`) in the column headed
+**Agent ID**, so a partner reconciling our statement against their roster could not match a single agent.
+`docs/uat/billing-target-format.md` documented it as `rep_code`, which is how it was built that way; that
+line is corrected. Notably the existing fixtures already used `rep_code: 'Redwave15'` — the intent was
+always the partner code, only the wiring disagreed.
+
+**Additive column, not a repointed one.** `client_statement_lines.rep_external_code` is **new and
+nullable**, and the renderer prints `rep_external_code ?? rep_code`. Repointing the existing column at a
+different source would have left one column meaning two different things depending on issue date, and would
+have changed what an already-issued statement re-renders as — the mutation the append-only rule forbids
+(#2 / §14.2). With a new column, every historical line keeps NULL and re-renders byte-identically, and the
+same fallback is the correct runtime answer for a rep with no partner code yet (`external_code` is nullable;
+reps are created by import). **No backfill, deliberately** — re-issuing a corrected statement is the
+sanctioned path, and that call is Redwave's, not ours. Spec-locked both ways: the partner code is printed,
+and a line without one still renders its frozen `rep_code`. Reconciliation and pay-run lines are
+**untouched** — those are the rep stream, where `rep_code` is the right identifier.
+
+**2. `SEED_DEMO=yes` could not complete.** `demo.ts` called `documents.upload(dto, stubPdf, sa)` against a
+**two**-argument `upload(dto, user)` whose first act is `files.claim(dto.file_path, …)`. It was not merely
+argument drift: the documents module had moved to the claim-based pipeline, where `upload` takes a
+*previously registered path*, never bytes — so no argument fix alone would work. The seed now registers the
+stub PDF first: through the **real `FilesService`** when storage is configured (bytes + row + audit), and as
+a metadata-only `stored_files` row when it is not — `claim` is a pure DB check, so the demo still gets a
+signable document and only the bytes are absent, which the `…/file-url` endpoint already degrades on.
+`FilesService` is a deliberate 503 without storage and must not be softened to accommodate a seed.
+
+**Why it stayed hidden, and the hole closed.** `tsconfig.json` includes `src/**/*` only and the seed runs
+`--transpile-only`, so `prisma/` and `scripts/` were never typechecked. **`tsconfig.json` could not simply
+be widened**: with `src` alone TypeScript infers `rootDir: src` and emits `dist/main.js`, which is what
+`start:prod` runs — adding `prisma/` moves the emit to `dist/src/main.js` and breaks production start. So
+the wider net is a separate **`tsconfig.typecheck.json`** (`noEmit`, includes `src` + `prisma` + `scripts`)
+behind **`npm -w backend run typecheck`**. It passed with zero errors once the seed was fixed, so nothing
+else had drifted.
+
+**Two latent wipe bugs found while making the seed re-runnable.** `wipe.ts` deleted `signature_requests`
+without first deleting `signature_fields`, which references them — no cascades and the DB RESTRICTs, so any
+placed field would have made `seed:reset` fail outright. And `stored_files` was not wiped at all, so each
+demo run would leave an orphan row. Both added.
+
+**Verified LOCAL:** **961 backend tests** (115 suites, +2 new) + typecheck + lint + build + contract regen;
+FE build + lint + stylelint + 89 vitest — all green.
+
+**The `mfa.service.spec` flake, diagnosed and fixed while it blocked this gate.** It fired on three separate
+full runs here, always the same two tests. The cause was **not** the TOTP window that §12 assumed: there is
+no `testTimeout` in the jest config, so Jest's **default 5 s** applied, while `enable()` bcrypt-hashes **ten
+recovery codes at cost 10** and those two tests then verify against the hashes — 4.5 s and 3.5 s on an idle
+machine, over 5 s under a parallel suite. They were the only two slow enough to cross it, which is exactly
+why the failure looked load-dependent and passed on a standalone re-run. Fixed with `jest.setTimeout(30_000)`
+in that spec, keeping the real bcrypt cost under test rather than weakening it to fit an arbitrary limit.
+**Operator: `migrate deploy`** (additive nullable column, no backfill, no downtime).

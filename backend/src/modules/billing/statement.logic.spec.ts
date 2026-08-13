@@ -21,7 +21,8 @@ const components = (over: Partial<SaleComponents> = {}): SaleComponents => ({
 const sale = (over: Partial<SaleInput> = {}): SaleInput => ({
   sale_id: 's1',
   sale_date: '2026-06-29',
-  rep_code: 'Redwave15',
+  rep_external_code: 'Redwave15', // what the CLIENT sees
+  rep_code: 'RW-D-0015', // our internal code
   rep_name: 'Atikur Rahman',
   customer_name: 'Liam Tremblay',
   customer_first_name: 'Liam',

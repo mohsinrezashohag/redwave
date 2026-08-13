@@ -56,7 +56,9 @@ export function StatementLinesTable({ lines, currency = 'CAD' }: { lines: Client
             <TD><span className="mono">{l.sale_date ? displayDate(l.sale_date) : '—'}</span></TD>
             <TD>
               <div>{l.rep_name ?? '—'}</div>
-              <div className={styles.subtle}>{l.rep_code ?? ''}</div>
+              {/* Show the Agent ID the CLIENT sees on the issued document, with the frozen internal
+                  code as the fallback for lines issued before it was captured. — system-audit.md §2.1 */}
+              <div className={styles.subtle}>{l.rep_external_code ?? l.rep_code ?? ''}</div>
             </TD>
             <TD>
               {l.customer_first_name || l.customer_last_name

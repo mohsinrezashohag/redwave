@@ -21,6 +21,7 @@ import { statementNo } from '../doc-number';
 
 export interface StatementLineForExport {
   sale_date: string | null; // 'YYYY-MM-DD'
+  rep_external_code: string | null;
   rep_code: string | null;
   rep_name: string | null;
   customer_name: string;
@@ -159,7 +160,10 @@ export class StatementExcelRenderer {
     for (const l of s.lines) {
       const row = ws.addRow([
         asDate(l.sale_date),
-        l.rep_code ?? '',
+        // "Agent ID" is the PARTNER's code (`Redwave20`). Lines issued before that column existed hold
+        // NULL, so they still render their original frozen rep_code — an issued document never changes
+        // what it renders (#2). — system-audit.md §2.1
+        l.rep_external_code ?? l.rep_code ?? '',
         l.rep_name ?? '',
         l.customer_first_name ?? '',
         l.customer_last_name ?? '',

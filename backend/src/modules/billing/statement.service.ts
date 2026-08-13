@@ -54,6 +54,7 @@ function lineToMoneyStrings(l: StatementLineDraft) {
   return {
     sort_order: l.sort_order,
     sale_date: l.sale_date,
+    rep_external_code: l.rep_external_code,
     rep_code: l.rep_code,
     rep_name: l.rep_name,
     customer_name: l.customer_name,
@@ -215,7 +216,7 @@ export class StatementService {
         province_state: true,
         postal_code: true,
         sale_date: true,
-        rep: { select: { rep_code: true, full_name: true } },
+        rep: { select: { rep_code: true, external_code: true, full_name: true } },
         sale_items: {
           where: { item_status: { not: 'clawed_back' } },
           select: { product_id: true, product_type: true, product: { select: { name: true } } },
@@ -357,6 +358,9 @@ export class StatementService {
       saleInputs.push({
         sale_id: sale.id,
         sale_date: dateIso(sale.sale_date),
+        // Agent ID on a CLIENT-facing document is the partner's code (`Redwave20`), not ours
+        // (`RW-D-0001`) — the client's roster is keyed by it. — system-audit.md §2.1
+        rep_external_code: sale.rep.external_code,
         rep_code: sale.rep.rep_code,
         rep_name: sale.rep.full_name,
         customer_name: sale.customer_name,
