@@ -92,6 +92,28 @@ export class SaleResponse {
   @ApiProperty()
   rep_id!: string;
 
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'Redwave20',
+    description:
+      "Agent ID as the CLIENT sees it (reps.external_code) — what a partner's own roster is keyed by. " +
+      'Null for a rep with no partner code; render `rep_external_code ?? rep_code`, the same pairing the ' +
+      'client statement freezes.',
+  })
+  rep_external_code?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'RW-D-0001',
+    description: 'Internal rep code (reps.rep_code) — our own tie-out, and the Agent ID fallback.',
+  })
+  rep_code?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'The rep who sold it.' })
+  rep_name?: string | null;
+
   @ApiProperty()
   client_id!: string;
 

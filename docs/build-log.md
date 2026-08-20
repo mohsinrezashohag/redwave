@@ -1884,3 +1884,41 @@ The toast reports what actually happened; it never says "done" over a partial ru
 
 **Verified LOCAL:** 13 new specs; full backend suite + typecheck + lint + build + contract regen; FE build +
 lint + stylelint + vitest. **No migration** — this is an endpoint over existing tables.
+
+### Small items — sales-export agent columns · geocoded office origin · expense-doc tie-out (built; NO migration)
+
+Three long-standing gaps recorded as open after the UAT batch, cleared together. None needed a schema
+change — in two of the three the columns already existed and only the wiring was missing.
+
+**1. The sales export carries the agent.** `SaleResponse` exposed only `rep_id`, so the client-bill-shaped
+export omitted the Agent ID / Agent Name pair the STATEMENT freezes — the two could not be read side by
+side. `SALE_INCLUDE` now selects the rep and `attachPeriods` (the single shaper every sales read passes
+through) flattens `rep_external_code` / `rep_code` / `rep_name` onto the response. The export prints
+`rep_external_code ?? rep_code`, **the same fallback the statement uses**, so a sales export and a bill line
+up agent-for-agent. Still no billing rate anywhere near it (#3).
+
+**2. The office origin is geocoded.** `expense_settings.office_lat` / `office_lng` and the PATCH DTO already
+accepted coordinates; only `OfficeOriginCard` never captured them, so the defaulted first km stop was an
+address with no lat/lng and the server fell back to the rep's typed total. The card now uses Places
+autocomplete (same `MAPS_LOADER_ID` / libraries as `MapStops`) and sends the coordinates, so the office
+contributes to the server's authoritative route derivation like any geocoded stop. **Typing by hand clears
+any previously picked coordinates** — keeping a stale lat/lng would silently send route derivation to where
+the office is not. Without a browser Maps key it degrades to the plain text field and stores no
+coordinates, exactly as before.
+
+**3. The client expense document is inside the tie-out.** `/v1/reconciliation/*` covered statements and pay
+runs only, so a `CEXP-` document had no integrity check at all. New `GET /v1/reconciliation/expense-documents`
+(`billing:view`, no new permission) ties frozen total = Σ frozen `line_detail` = the live re-derive, reusing
+`ClientExpenseDocService.preview` (now exported from `BillingModule`) rather than reimplementing the
+derivation.
+
+Three deliberate choices there. It is a **separate** pure function `tieOutExpenseDoc`, not a generalised
+`tieOutStatement` — an expense document is a different stream with its own selection and its own sequence,
+and merging them would invite one to be re-priced with the other's rules (the same reasoning as #3). It is
+keyed by the **PAY period**, not the Mon–Sun billing week a statement uses — the two calendars are never
+substituted (§14 rule 1). And an un-derivable live total (a km item whose client rate went missing) is
+reported as a **discrepancy**, never silently passed as a match: "could not check" must not read as
+"checked and fine". `line_detail` is jsonb, so its amounts are read defensively rather than trusted.
+
+**Verified LOCAL:** 6 new tie-out specs; full backend suite + typecheck + lint + build + contract regen; FE
+build + lint + stylelint + vitest. **No migration.**

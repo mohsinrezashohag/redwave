@@ -75,6 +75,10 @@ export default function SalesListPage() {
   const exportColumns: ExportColumn<Sale>[] = [
     { header: 'Sale ID', value: (s) => s.sale_code },
     { header: 'Sale date', value: (s) => displayDate(s.sale_date) },
+    // The partner-facing Agent ID first, falling back to our internal code — the SAME pairing the client
+    // statement freezes, so a sales export lines up against a bill agent-for-agent.
+    { header: 'Agent ID', value: (s) => s.rep_external_code ?? s.rep_code ?? '' },
+    { header: 'Agent Name', value: (s) => s.rep_name ?? '' },
     { header: 'Customer', value: (s) => s.customer_name },
     { header: 'Channel', value: (s) => clientCode(s.client_id) },
     { header: 'Client', value: (s) => clientName(s.client_id) },

@@ -40,6 +40,8 @@ import { ExpenseDocPdfRenderer } from './renderers/expense-doc-pdf.renderer';
     QuickbooksCsvRenderer,
     ExpenseDocPdfRenderer,
   ],
-  exports: [StatementService], // Reconciliation reuses priceClientPeriod for the live re-price (billing stream only).
+  // Reconciliation reuses priceClientPeriod (live statement re-price) and preview (live expense re-derive).
+  // Both are billing-stream reads; neither exposes a commission path (#3).
+  exports: [StatementService, ClientExpenseDocService],
 })
 export class BillingModule {}

@@ -7968,6 +7968,41 @@ paths:
       summary: Tie a client statement to its lines and the live re-priced sales
       tags: &a330
         - Reconciliation
+  /v1/reconciliation/expense-documents:
+    get:
+      description: Requires billing:view. CEXP total = Σ its frozen line detail = the
+        live re-derive; flags drift so a stale document can be re-issued. Keyed
+        by the PAY period the document covers, not the billing week.
+      operationId: ReconciliationController_expenseDocuments_v1
+      parameters:
+        - name: client_id
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: pay_period_id
+          required: true
+          in: query
+          description: The PAY period the expense document covers.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseDocTieOutResponse"
+        "400": *a323
+        "401": *a324
+        "403": *a325
+        "404": *a326
+        "409": *a327
+        "422": *a328
+      security: *a329
+      summary: Tie a client expense document to its frozen lines and the live
+        re-derived expenses
+      tags: *a330
   /v1/reconciliation/pay-runs/{id}:
     get:
       description: Requires payrun:view. Recomputes each line’s net from its
@@ -10167,6 +10202,24 @@ components:
           description: Reference only — drives no logic.
         rep_id:
           type: string
+        rep_external_code:
+          type: string
+          nullable: true
+          example: Redwave20
+          description: Agent ID as the CLIENT sees it (reps.external_code) — what a
+            partner's own roster is keyed by. Null for a rep with no partner
+            code; render `rep_external_code ?? rep_code`, the same pairing the
+            client statement freezes.
+        rep_code:
+          type: string
+          nullable: true
+          example: RW-D-0001
+          description: Internal rep code (reps.rep_code) — our own tie-out, and the Agent
+            ID fallback.
+        rep_name:
+          type: string
+          nullable: true
+          description: The rep who sold it.
         client_id:
           type: string
         customer_name:
@@ -14827,6 +14880,76 @@ components:
         - live_total
         - total_equals_lines
         - statement_matches_live
+        - ok
+        - discrepancies
+    ExpenseDocTieOutRefResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        document_number:
+          type: number
+          nullable: true
+          description: The gapless CEXP- number, minted at issue.
+        status:
+          type: string
+          enum:
+            - issued
+            - superseded
+      required:
+        - id
+        - document_number
+        - status
+    ExpenseDocTieOutResponse:
+      type: object
+      properties:
+        client_id:
+          type: string
+        pay_period_id:
+          type: string
+          description: The PAY period the document covers — NOT the Mon–Sun billing week
+            (§14 rule 1).
+        document:
+          nullable: true
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/ExpenseDocTieOutRefResponse"
+        document_number:
+          type: number
+          nullable: true
+        frozen_total:
+          type: string
+          description: The frozen document total, in the document's currency.
+        lines_sum:
+          type: string
+          description: Sum of the frozen line detail.
+        live_total:
+          type: string
+          nullable: true
+          description: The live re-derived expense total now (null if it could not be
+            derived — e.g. a missing km rate).
+        total_equals_lines:
+          type: boolean
+        document_matches_live:
+          type: boolean
+        ok:
+          type: boolean
+          description: True only when every check passed.
+        discrepancies:
+          description: Human-readable description of each failed check.
+          type: array
+          items:
+            type: string
+      required:
+        - client_id
+        - pay_period_id
+        - document
+        - document_number
+        - frozen_total
+        - lines_sum
+        - live_total
+        - total_equals_lines
+        - document_matches_live
         - ok
         - discrepancies
     PayRunLineTieOutResponse:

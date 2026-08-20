@@ -54,8 +54,15 @@ function customerNameFields(dto: { customer_name?: string; customer_first_name?:
 // wrong pay period under UTC. — CLAUDE §11
 // Each item carries its product's NAME as well as its type key: the client bill prints the internet SPEED
 // ("Fibre 1gig/2.5gig"), and a per-speed sales export has to name it too — the type key alone can't. — SALE-004
+/** The rep identity carried on every sale read (see SALE_INCLUDE). */
+type RepIdentity = { rep_code: string; external_code: string | null; full_name: string };
+
 const SALE_INCLUDE = {
   sale_items: { include: { product: { select: { name: true } } } },
+  // The rep who sold it. `external_code` is the PARTNER-facing Agent ID (what a client's own roster is
+  // keyed by); `rep_code` is our internal one and the fallback. Carrying both lets the sales export line
+  // up with a client statement agent-for-agent — the statement freezes the same pair. — packet: small items
+  rep: { select: { rep_code: true, external_code: true, full_name: true } },
 } as const;
 
 @Injectable()
@@ -444,13 +451,18 @@ export class SalesService {
     throw new ConflictException('could not generate a unique sale_code; please retry');
   }
 
-  private async attachPeriods<T extends { sale_date: Date }>(sales: T[]) {
+  private async attachPeriods<T extends { sale_date: Date; rep?: RepIdentity | null }>(sales: T[]) {
     const periods = await this.prisma.payPeriod.findMany({
       select: { id: true, period_number: true, start_date: true, end_date: true },
     });
     return sales.map((sale) => ({
       ...sale,
       pay_period: resolvePayPeriod(sale.sale_date, periods),
+      // FLATTEN the rep onto the response so an export can print the Agent ID / Agent Name pair without
+      // a second lookup — the same pair the client statement freezes, so the two line up agent-for-agent.
+      rep_external_code: sale.rep?.external_code ?? null,
+      rep_code: sale.rep?.rep_code ?? null,
+      rep_name: sale.rep?.full_name ?? null,
     }));
   }
 
