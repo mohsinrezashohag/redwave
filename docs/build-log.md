@@ -1839,3 +1839,48 @@ build + contract regen; FE build + lint + stylelint + vitest.
 **Operator: `migrate deploy`** — changes a live column's type and adds an FK. Re-run `prisma:seed`
 afterwards so the seven built-ins get `behaviour`/`is_system` (the migration sets them too, so this is
 belt-and-braces on an already-seeded database).
+
+### Billing — bulk statement generation (built — packet 06; NO migration)
+
+**The gap Siam hit in UAT.** `billing-generation.controller.ts` exposed only `POST /v1/clients/:id/statements`
+— one client at a time — so closing a billing week meant generating each statement by hand. New
+**`POST /v1/billing-periods/{id}/statements/generate-all`** issues every active client's statement for the
+week in one action, on the existing `billing:create` (Admin/Super Admin) — **no new permission**.
+
+**It COMPOSES `generate()` per client rather than reimplementing anything** — pricing, gapless numbering,
+FX freezing and supersession are all the existing code path. Three properties fall out of that, each
+spec-locked in the new `bulk-statements.spec.ts` (13 tests):
+
+1. **A failing client fails ALONE.** `generate()` owns its own `$transaction`, so a client with an unpriced
+   product aborts only itself. That is the point of the batch: a partial run is the NORMAL outcome, and an
+   operator fixes one rate instead of losing the week. The 422's structured `unpriced[]` is carried through
+   into the per-client failure entry, so the UI links each failure straight to the rate screen that fixes it
+   (§13.5) rather than reporting an opaque error.
+2. **FX freezes PER DOCUMENT (#12).** Each `generate()` resolves its own client's currency at its own issue
+   moment. The endpoint deliberately accepts **no batch-level fx override** — one rate spread across clients
+   billing in different currencies is precisely the mistake #12 exists to prevent, and CTI is USD. A client
+   needing a manual rate goes through the per-client endpoint. A spec asserts `generate` is never called
+   with a 4th argument.
+3. **Numbering stays gapless.** Clients are issued **sequentially**: `SequenceService.next` row-locks the
+   counter so concurrent callers are safe regardless, but serial issue means the batch never contends with
+   itself and the numbers within a run are deterministic. Specs assert 20 clients get 20 unique, strictly
+   consecutive numbers, and that a mid-batch failure burns none.
+
+**Bulk generation is NOT a bulk re-issue.** A client already holding an `issued` statement for the week is
+**skipped** — never renumbered, never duplicated — so re-running after fixing a rate is safe. Correcting an
+issued statement stays the deliberate per-client action, so a whole week can't be silently superseded by a
+mis-click.
+
+**One nullable that had to be handled honestly rather than cast away:** `client_statements.statement_number`
+is `Int?` — null *only* on legacy rows issued before gapless numbering, which are immutable and so were
+never back-filled. Such a client is still correctly skipped; the result reports `statement_number: null` and
+the UI renders "existing statement". The generated entries assert non-null, which is true by construction
+since `generate()` mints inside its own transaction.
+
+**FE:** a secondary "Generate all" action on `/billing` (the primary stays the single-client generate, which
+is also the only route to a re-issue) opening `BulkGenerateModal` — a week picker, then a result split into
+three explicit groups (issued / skipped / failed) with each failure's unpriced products listed and linked.
+The toast reports what actually happened; it never says "done" over a partial run.
+
+**Verified LOCAL:** 13 new specs; full backend suite + typecheck + lint + build + contract regen; FE build +
+lint + stylelint + vitest. **No migration** — this is an endpoint over existing tables.

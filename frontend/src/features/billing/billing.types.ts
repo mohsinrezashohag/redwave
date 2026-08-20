@@ -45,3 +45,10 @@ export interface BillingFilters {
 export type GenerateBillingBody = components['schemas']['GenerateBillingDto'];
 /** Statement export format — `excel` (the client workbook) | `quickbooks` (a QB-mappable CSV, no tax). */
 export type StatementExportFormat = components['schemas']['StatementExportDto']['format'];
+
+/**
+ * The outcome of issuing every active client's statement for one billing week (packet 06). A PARTIAL run is
+ * the normal case — one client missing a rate must not cost the rest — so all three outcomes are reported.
+ */
+export type BulkStatementResult = components['schemas']['BulkStatementResultResponse'];
+export type BulkFailedEntry = components['schemas']['BulkFailedEntry'];

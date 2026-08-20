@@ -367,3 +367,82 @@ export class BillingExportResultResponse {
   @ApiProperty({ type: String, nullable: true, description: 'Storage object path (null when storage is unconfigured — the file still downloads on demand).' })
   file_path!: string | null;
 }
+
+/** One client that WAS issued in a bulk run. */
+export class BulkGeneratedEntry {
+  @ApiProperty()
+  client_id!: string;
+
+  @ApiProperty({ example: 'VF' })
+  client_code!: string;
+
+  @ApiProperty()
+  statement_id!: string;
+
+  @ApiProperty({ type: Number, example: 412 })
+  statement_number!: number;
+}
+
+/** One client SKIPPED because it already holds a current statement for the week (never renumbered). */
+export class BulkSkippedEntry {
+  @ApiProperty()
+  client_id!: string;
+
+  @ApiProperty({ example: 'RF' })
+  client_code!: string;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 405,
+    description:
+      'The statement it already holds. Null only for a legacy row issued before gapless numbering — the ' +
+      'client is still correctly skipped.',
+  })
+  statement_number!: number | null;
+}
+
+/** One client that FAILED, alone — the rest of the batch still issued. */
+export class BulkFailedEntry {
+  @ApiProperty()
+  client_id!: string;
+
+  @ApiProperty({ example: 'CTI' })
+  client_code!: string;
+
+  @ApiProperty({ example: 'cannot generate: some sold products have no effective client_billing_rate' })
+  message!: string;
+
+  @ApiPropertyOptional({
+    type: 'array',
+    items: { type: 'object', additionalProperties: true },
+    description:
+      'The structured unpriced[] detail when that was the cause — product_id / product_name / sale_date, ' +
+      'so the UI can link straight to the rate that needs adding.',
+  })
+  unpriced?: unknown;
+}
+
+/**
+ * The result of issuing every active client's statement for one billing week. Reports all three outcomes
+ * explicitly: a partial run is the NORMAL case (one missing rate must not cost the whole batch).
+ */
+export class BulkStatementResultResponse {
+  @ApiProperty()
+  billing_period_id!: string;
+
+  @ApiProperty({ type: Number, example: 17 })
+  period_number!: number;
+
+  @ApiProperty({ type: Number, description: 'Active clients considered.' })
+  total_clients!: number;
+
+  @ApiProperty({ type: [BulkGeneratedEntry] })
+  generated!: BulkGeneratedEntry[];
+
+  @ApiProperty({ type: [BulkSkippedEntry], description: 'Already issued for this week — re-running is safe.' })
+  skipped!: BulkSkippedEntry[];
+
+  @ApiProperty({ type: [BulkFailedEntry], description: 'Failed in isolation; each carries its reason.' })
+  failed!: BulkFailedEntry[];
+}

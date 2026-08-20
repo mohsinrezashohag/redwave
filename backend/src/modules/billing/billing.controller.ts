@@ -5,7 +5,7 @@
  * stream the REAL rendered file (Excel / PDF / QuickBooks CSV) from the FROZEN, immutable record. Billing is
  * per-CLIENT partner data, gated by billing:* (no rep scoping).
  */
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { ApiErrorResponses } from '../../common/errors/api-error-responses.decorator';
@@ -16,7 +16,12 @@ import { InvoiceService } from './invoice.service';
 import { BillingExportService, RenderedFile, StatementFormat } from './billing-export.service';
 import { ListBillingQuery } from './dto/list.query';
 import { StatementExportDto } from './dto/export.dto';
-import { BillingPeriodResponse, ClientInvoiceResponse, ClientStatementResponse } from './dto/billing.response';
+import {
+  BillingPeriodResponse,
+  BulkStatementResultResponse,
+  ClientInvoiceResponse,
+  ClientStatementResponse,
+} from './dto/billing.response';
 
 /** Stream a rendered file as a download attachment. */
 function sendFile(res: Response, file: RenderedFile): void {
@@ -105,6 +110,26 @@ export class BillingPeriodsController {
   @ApiOkResponse({ type: BillingPeriodResponse, isArray: true })
   list() {
     return this.statements.listPeriods();
+  }
+
+  @Post(':id/statements/generate-all')
+  @HttpCode(200)
+  @RequirePermission('billing', 'create')
+  @ApiOperation({
+    summary: "Issue EVERY active client's statement for this billing week",
+    description:
+      'Requires billing:create (Admin/Super Admin). Composes the per-client issue, so one client with an ' +
+      'unpriced product fails ALONE and the rest still issue; each failure carries its unpriced[] detail. ' +
+      'A client already holding a current statement for the week is SKIPPED — re-running never renumbers ' +
+      'or duplicates. FX freezes per document (#12), so no batch-level rate override is accepted: a client ' +
+      'needing a manual rate is issued through the per-client endpoint.',
+  })
+  @ApiOkResponse({ type: BulkStatementResultResponse })
+  generateAll(
+    @Param('id', ParseUUIDPipe) billingPeriodId: string,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.statements.generateAllForPeriod(billingPeriodId, actorId);
   }
 }
 

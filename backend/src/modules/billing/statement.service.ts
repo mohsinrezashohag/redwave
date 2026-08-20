@@ -508,4 +508,106 @@ export class StatementService {
   listPeriods() {
     return this.prisma.billingPeriod.findMany({ orderBy: { period_number: 'asc' } });
   }
+
+  /**
+   * Issue EVERY active client's statement for one billing week in a single action (BILL bulk generation).
+   *
+   * COMPOSES `generate()` per client — it does not re-implement pricing, numbering, FX or supersession.
+   * Three properties follow from that, and each is spec-locked:
+   *
+   * 1. **One client's failure is isolated.** `generate()` owns its own `$transaction`, so a client whose
+   *    product has no effective rate (the `unpriced[]` 422) aborts ONLY itself; the rest still issue. That
+   *    is the whole point of the batch — an operator fixes one rate rather than losing the run.
+   * 2. **FX freezes PER DOCUMENT (#12).** Each `generate()` resolves the rate for its own client's currency
+   *    at its own issue moment. This method deliberately takes **no batch-level fx override**: one rate
+   *    spread across clients billing in different currencies is exactly the mistake #12 exists to prevent.
+   *    A client needing a manual rate is issued through the per-client endpoint.
+   * 3. **Numbering stays gapless.** Clients are processed SEQUENTIALLY. `SequenceService.next` row-locks
+   *    the counter so concurrent callers are safe regardless, but issuing serially means the batch never
+   *    contends with itself — and the ordering of numbers within a run is then deterministic.
+   *
+   * Re-running is SAFE: a client already holding an `issued` statement for the week is SKIPPED, never
+   * renumbered or duplicated. Bulk generation is therefore not a bulk RE-issue — correcting an issued
+   * statement stays the deliberate per-client action, so a whole week is never silently superseded.
+   */
+  async generateAllForPeriod(billingPeriodId: string, actorId: string) {
+    const period = await this.prisma.billingPeriod.findUnique({ where: { id: billingPeriodId } });
+    if (!period) {
+      throw new NotFoundException('Billing period not found');
+    }
+
+    const clients = await this.prisma.client.findMany({
+      where: { is_active: true },
+      select: { id: true, client_code: true, name: true },
+      orderBy: { client_code: 'asc' },
+    });
+
+    // Which clients already hold a CURRENT statement for this week — skipped, not renumbered.
+    const existing = await this.prisma.clientStatement.findMany({
+      where: { billing_period_id: billingPeriodId, status: 'issued' },
+      select: { client_id: true, statement_number: true },
+    });
+    const alreadyIssued = new Map(existing.map((s) => [s.client_id, s.statement_number]));
+
+    const generated: { client_id: string; client_code: string; statement_id: string; statement_number: number }[] = [];
+    // `statement_number` is nullable ONLY on legacy rows (issued before gapless numbering; immutable, so
+    // never back-filled). Such a client is still correctly SKIPPED — we just cannot name its number.
+    const skipped: { client_id: string; client_code: string; statement_number: number | null }[] = [];
+    const failed: { client_id: string; client_code: string; message: string; unpriced?: unknown }[] = [];
+
+    for (const client of clients) {
+      const issuedNumber = alreadyIssued.get(client.id);
+      if (issuedNumber !== undefined) {
+        skipped.push({ client_id: client.id, client_code: client.client_code, statement_number: issuedNumber });
+        continue;
+      }
+      try {
+        const statement = await this.generate(client.id, billingPeriodId, actorId);
+        generated.push({
+          client_id: client.id,
+          client_code: client.client_code,
+          statement_id: statement.id,
+          // Non-null by construction: `generate()` mints the number inside its own transaction, so a
+          // statement it returns always carries one (unlike the legacy rows above).
+          statement_number: statement.statement_number!,
+        });
+      } catch (error) {
+        // Carry the STRUCTURED detail through (billing's `unpriced[]`), so the UI can link each failure to
+        // the rate screen that fixes it instead of showing an opaque error. — §13.5
+        const response = error instanceof UnprocessableEntityException ? error.getResponse() : null;
+        const detail = typeof response === 'object' && response !== null ? (response as Record<string, unknown>) : null;
+        failed.push({
+          client_id: client.id,
+          client_code: client.client_code,
+          message: (detail?.message as string) ?? (error as Error).message,
+          ...(detail?.unpriced ? { unpriced: detail.unpriced } : {}),
+        });
+      }
+    }
+
+    await this.audit.log({
+      actorId,
+      entityType: 'client_statements',
+      entityId: billingPeriodId, // the batch is keyed by the period it covers
+      action: 'create',
+      after: {
+        bulk: true,
+        billing_period_id: billingPeriodId,
+        period_number: period.period_number,
+        generated: generated.length,
+        skipped: skipped.length,
+        failed: failed.length,
+        statement_numbers: generated.map((g) => g.statement_number),
+      },
+    });
+
+    return {
+      billing_period_id: billingPeriodId,
+      period_number: period.period_number,
+      total_clients: clients.length,
+      generated,
+      skipped,
+      failed,
+    };
+  }
 }
