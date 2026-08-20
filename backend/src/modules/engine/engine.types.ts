@@ -77,9 +77,24 @@ export interface EngineConfig {
   tiersByClient?: Record<string, TierBracket[]>;
   /** clientId → that client's own flat rates, keyed by product type. */
   flatRatesByClient?: Record<string, FlatRates>;
+  /**
+   * PER-PRODUCT tier rate overrides: productId → tierNumber → rate. The tally and the bracket BOUNDARIES
+   * are untouched — the one cross-client tally still picks the tier (#5); this only answers what that tier
+   * pays for THIS product. A product with no entry falls back to the ladder's own rate.
+   */
+  tierRatesByProduct?: TierRatesByProduct;
+  /** clientId → the same per-product tier map, for a client that pays differently for the same product. */
+  tierRatesByClientProduct?: Record<string, TierRatesByProduct>;
+  /** productId → this product's own flat rate, overriding its product-type rate. */
+  flatRatesByProduct?: Record<string, Decimal>;
+  /** clientId → productId → rate. The most specific add-on rate there is. */
+  flatRatesByClientProduct?: Record<string, Record<string, Decimal>>;
   holdback: HoldbackSplit;
   incentives?: IncentiveConfig[];
 }
+
+/** productId → tierNumber → rate for that product in that bracket. */
+export type TierRatesByProduct = Record<string, Record<number, Decimal>>;
 
 /** One activation (sale_item), already filtered to the period by the caller (sale_date governs). */
 export interface ActivationInput {
@@ -87,6 +102,12 @@ export interface ActivationInput {
   productType: string; // product-type key (only 'internet'/'greenfield_internet' are special)
   clientId: string; // incentive scope + per-client RATE lookup — NEVER the tally (tally is cross-client, #5)
   saleDate: string; // 'YYYY-MM-DD' — used for the incentive window only
+  /**
+   * The specific product sold, for the per-product RATE lookup — again never the tally. Optional: an
+   * activation without one (or whose product has no rate row) falls back to the product-type rate, which
+   * is exactly how every activation was priced before per-product rates existed.
+   */
+  productId?: string | null;
 }
 
 export interface PeriodInput {

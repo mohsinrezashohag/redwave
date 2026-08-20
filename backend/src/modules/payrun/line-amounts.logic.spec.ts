@@ -53,6 +53,9 @@ function seededConfigPrisma() {
         },
       ]),
     },
+    // No per-product overrides: these end-to-end fixtures must reproduce the SAME money as before
+    // per-product rates existed. That equality is the point of the test.
+    commissionTierRate: { findMany: jest.fn().mockResolvedValue([]) },
     holdbackConfig: {
       findMany: jest.fn().mockResolvedValue([
         {

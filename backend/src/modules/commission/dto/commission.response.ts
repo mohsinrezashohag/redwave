@@ -6,7 +6,7 @@
  * STRINGS. `advance_pct`/`holdback_pct` are NON-money Decimal(5,4) — still STRINGS, never numbers. The
  * effective-dated configs carry a server-derived `status` (current|pending|past).
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IncentiveStatus, IncentiveTargetType } from '@prisma/client';
 
 /** The status the server derives for an effective-dated row (mirrors the FE `RateStatus`). */
@@ -73,6 +73,15 @@ export class FlatRateResponse {
 
   @ApiProperty({ type: String, example: 'tv', description: 'Product-type catalogue key.' })
   product_type!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'ONE product this rate prices; null = the rate for the whole product TYPE (the fallback). A product ' +
+      'rate wins over its type rate.',
+  })
+  product_id!: string | null;
 
   @ApiProperty({ type: String, example: '100.00', description: 'Decimal string — the flat rate.' })
   amount!: string;
@@ -158,4 +167,54 @@ export class IncentiveResponse {
 
   @ApiProperty()
   created_by!: string;
+}
+
+
+/** A product summary carried on a tier rate so a list is readable without a second lookup. */
+export class TierRateProductResponse {
+  @ApiProperty({ example: 'Fibre 1gig' })
+  name!: string;
+
+  @ApiProperty({ example: 'internet' })
+  product_type!: string;
+}
+
+/**
+ * A PER-PRODUCT tier rate — what one bracket pays for one product. It resolves a RATE only: the internet
+ * tally stays one cross-client count and the bracket boundaries stay on the tier schedule (#5).
+ */
+export class TierRateResponse {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "Client this rate applies to; null = the rate for every client for this product.",
+  })
+  client_id!: string | null;
+
+  @ApiProperty()
+  product_id!: string;
+
+  @ApiPropertyOptional({ type: () => TierRateProductResponse })
+  product?: TierRateProductResponse;
+
+  @ApiProperty({ type: Number, example: 2, description: 'Which bracket this rate is for (1 = highest).' })
+  tier_number!: number;
+
+  @ApiProperty({ type: String, example: '145.00', description: 'Decimal string — never a float (#1).' })
+  amount!: string;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  effective_from!: string;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  effective_to!: string | null;
+
+  @ApiProperty()
+  created_by!: string;
+
+  @ApiProperty({ enum: RATE_STATUS })
+  status!: RateStatus;
 }

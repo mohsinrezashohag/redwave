@@ -547,6 +547,8 @@ export class PayRunService {
             counts_toward_tally: item.counts_toward_tally,
             client_id: sale.client_id,
             sale_date: iso(sale.sale_date),
+            // For the per-product RATE lookup only — the tally is untouched (#5).
+            product_id: item.product_id,
           }),
         );
       }

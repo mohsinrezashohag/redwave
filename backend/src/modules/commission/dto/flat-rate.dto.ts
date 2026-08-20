@@ -22,6 +22,16 @@ export class CreateFlatRateDto {
   @Matches(/^[a-z][a-z0-9_]*$/, { message: 'product_type must be a lowercase snake_case catalogue key' })
   product_type!: string;
 
+  @ApiPropertyOptional({
+    description:
+      'ONE product this rate applies to. OMIT for the rate that covers the whole product TYPE (the ' +
+      'fallback). A product rate WINS over its type rate and supersedes only other rates for the same ' +
+      'product — it never bounds or replaces the type-wide rate. The product must be of `product_type`.',
+  })
+  @IsOptional()
+  @IsUUID()
+  product_id?: string;
+
   @ApiProperty({ example: '30.00', description: 'Exact decimal STRING — never a float.' })
   @Matches(MONEY, { message: 'amount must be a decimal string with up to 2 decimal places' })
   amount!: string;
@@ -36,7 +46,7 @@ export class CreateFlatRateDto {
   effective_to?: string;
 }
 
-/** Edit a PENDING flat rate (amount / effective window). product_type (the scope) is immutable. */
+/** Edit a PENDING flat rate (amount / effective window). The SCOPE (product_type + product_id) is immutable. */
 export class UpdateFlatRateDto {
   @ApiPropertyOptional({ example: '35.00', description: 'Exact decimal STRING (≤2 dp).' })
   @IsOptional()

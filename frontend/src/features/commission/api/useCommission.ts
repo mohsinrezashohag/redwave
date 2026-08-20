@@ -10,7 +10,7 @@ import { unwrap } from '../../../lib/query/unwrap';
 import { unwrapList } from '../../../lib/query/unwrapList';
 import { commissionKeys } from './keys';
 import type { RateStatus } from '../../../components/ui';
-import type { FlatRate, HoldbackConfig, HoldbackReleaseSetting, Incentive, IncentiveStatus, TierConfig } from '../commission.types';
+import type { FlatRate, HoldbackConfig, HoldbackReleaseSetting, Incentive, IncentiveStatus, TierConfig, TierRate } from '../commission.types';
 
 /**
  * Tier schedules for a CLIENT SCOPE: a client id for that client's own ladder, the literal `'global'` for
@@ -29,6 +29,22 @@ export function useFlatRates(status: RateStatus | 'all' = 'all', clientId?: stri
     queryKey: commissionKeys.flatRates(status, clientId),
     queryFn: () =>
       unwrap<FlatRate[]>(api.GET('/v1/commission/flat-rates', { params: { query: { status, client_id: clientId } } })),
+    enabled,
+  });
+}
+
+export function useTierRates(
+  status: RateStatus | 'all' = 'all',
+  clientId?: string,
+  productId?: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: commissionKeys.tierRates(status, clientId, productId),
+    queryFn: () =>
+      unwrap<TierRate[]>(
+        api.GET('/v1/commission/tier-rates', { params: { query: { status, client_id: clientId, product_id: productId } } }),
+      ),
     enabled,
   });
 }

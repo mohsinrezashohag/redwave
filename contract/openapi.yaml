@@ -2863,6 +2863,137 @@ paths:
       security: *a113
       summary: Delete a PENDING flat rate
       tags: *a114
+  /v1/commission/tier-rates:
+    get:
+      description: Requires commission:view. Scope = (client, product, tier); a
+        missing row falls back to the schedule rate.
+      operationId: CommissionController_listTierRates_v1
+      parameters:
+        - name: status
+          required: false
+          in: query
+          schema:
+            default: all
+            type: string
+            enum:
+              - past
+              - current
+              - pending
+              - all
+        - name: client_id
+          required: false
+          in: query
+          description: "Scope filter: a client id, the literal 'global', or omit for every
+            scope."
+          schema:
+            type: string
+        - name: product_id
+          required: false
+          in: query
+          description: Only rates for this product.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TierRateResponse"
+        "400": *a107
+        "401": *a108
+        "403": *a109
+        "404": *a110
+        "409": *a111
+        "422": *a112
+      security: *a113
+      summary: Per-product tier rates (current + pending)
+      tags: *a114
+    post:
+      description: Requires commission:edit. TIERED products only (an add-on uses a
+        flat rate). The tier must exist in the schedule. Back-dating is rejected
+        (422) — a closed period is never rewritten (#10).
+      operationId: CommissionController_createTierRate_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTierRateDto"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TierRateResponse"
+        "400": *a107
+        "401": *a108
+        "403": *a109
+        "404": *a110
+        "409": *a111
+        "422": *a112
+      security: *a113
+      summary: Set an effective-dated per-product tier rate
+      tags: *a114
+  /v1/commission/tier-rates/{id}:
+    patch:
+      description: Requires commission:edit. Only a pending rate can be edited;
+        current/past → 422 (supersede).
+      operationId: CommissionController_updateTierRate_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTierRateDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TierRateResponse"
+        "400": *a107
+        "401": *a108
+        "403": *a109
+        "404": *a110
+        "409": *a111
+        "422": *a112
+      security: *a113
+      summary: Edit a PENDING per-product tier rate
+      tags: *a114
+    delete:
+      description: Requires commission:edit. Only a pending rate can be deleted;
+        current/past → 422.
+      operationId: CommissionController_removeTierRate_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ""
+        "400": *a107
+        "401": *a108
+        "403": *a109
+        "404": *a110
+        "409": *a111
+        "422": *a112
+      security: *a113
+      summary: Delete a PENDING per-product tier rate
+      tags: *a114
   /v1/commission/holdback-config:
     get:
       description: Requires commission:view.
@@ -9675,6 +9806,11 @@ components:
           type: string
           example: tv
           description: Product-type catalogue key.
+        product_id:
+          type: string
+          nullable: true
+          description: ONE product this rate prices; null = the rate for the whole product
+            TYPE (the fallback). A product rate wins over its type rate.
         amount:
           type: string
           example: "100.00"
@@ -9695,6 +9831,7 @@ components:
         - id
         - client_id
         - product_type
+        - product_id
         - amount
         - effective_from
         - effective_to
@@ -9712,6 +9849,13 @@ components:
           example: tv
           description: Product-type catalogue key. A tiered type (e.g. internet) is
             rejected (422).
+        product_id:
+          type: string
+          description: ONE product this rate applies to. OMIT for the rate that covers the
+            whole product TYPE (the fallback). A product rate WINS over its type
+            rate and supersedes only other rates for the same product — it never
+            bounds or replaces the type-wide rate. The product must be of
+            `product_type`.
         amount:
           type: string
           example: "30.00"
@@ -9742,6 +9886,107 @@ components:
           type: string
           example: 2026-12-31
           description: YYYY-MM-DD; null/omit = open-ended.
+    TierRateProductResponse:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Fibre 1gig
+        product_type:
+          type: string
+          example: internet
+      required:
+        - name
+        - product_type
+    TierRateResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        client_id:
+          type: string
+          nullable: true
+          description: Client this rate applies to; null = the rate for every client for
+            this product.
+        product_id:
+          type: string
+        product:
+          $ref: "#/components/schemas/TierRateProductResponse"
+        tier_number:
+          type: number
+          example: 2
+          description: Which bracket this rate is for (1 = highest).
+        amount:
+          type: string
+          example: "145.00"
+          description: Decimal string — never a float (#1).
+        effective_from:
+          type: string
+          format: date-time
+        effective_to:
+          type: string
+          format: date-time
+          nullable: true
+        created_by:
+          type: string
+        status:
+          type: string
+          enum: *a331
+      required:
+        - id
+        - client_id
+        - product_id
+        - tier_number
+        - amount
+        - effective_from
+        - effective_to
+        - created_by
+        - status
+    CreateTierRateDto:
+      type: object
+      properties:
+        client_id:
+          type: string
+          description: Client this rate applies to. OMIT for the rate that applies to
+            every client for this product (the per-product fallback). A client's
+            rate wins over it.
+        product_id:
+          type: string
+          description: The product this rate prices. Must be a TIERED product type.
+        tier_number:
+          type: number
+          example: 2
+          description: Which bracket this rate is for — matches the tier schedule (1 =
+            highest).
+        amount:
+          type: string
+          example: "145.00"
+          description: Exact decimal STRING — never a float.
+        effective_from:
+          type: string
+          example: 2026-07-01
+          description: YYYY-MM-DD; must be today or future.
+        effective_to:
+          type: string
+          example: 2026-12-31
+      required:
+        - product_id
+        - tier_number
+        - amount
+        - effective_from
+    UpdateTierRateDto:
+      type: object
+      properties:
+        amount:
+          type: string
+          example: "150.00"
+        effective_from:
+          type: string
+          example: 2026-07-01
+        effective_to:
+          type: string
+          example: 2026-12-31
+          description: null/omit = open-ended.
     HoldbackConfigResponse:
       type: object
       properties:

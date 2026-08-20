@@ -19,6 +19,7 @@ import {
   IncentiveConfig,
   ProductType as EngineProductType,
   TierBracket,
+  TierRatesByProduct,
 } from '../engine/engine.types';
 
 const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
@@ -64,7 +65,13 @@ export class CommissionConfigProvider {
     // key. Built over whatever flat types are configured & effective on the date (NOT a hard-coded trio),
     // so SA-added types are supported. A sold type missing from BOTH the client map and the global map
     // throws in the engine. The engine determines tiers — flat rates here are pay rates only (#3/#5).
-    const flatRows = await this.prisma.commissionFlatRate.findMany();
+    // PARTITION FIRST: a row carrying a product_id prices ONE product and must never be mixed into the
+    // product-TYPE maps, or the most specific rate would masquerade as the rate for the whole type.
+    const allFlatRows = await this.prisma.commissionFlatRate.findMany();
+    // `?? null` on purpose: treat a MISSING product_id exactly like an explicit null (a type-wide rate).
+    // Anything else would misfile a row as product-specific and silently stop the type rate applying.
+    const flatRows = allFlatRows.filter((r) => (r.product_id ?? null) === null);
+    const flatProductRows = allFlatRows.filter((r) => (r.product_id ?? null) !== null);
     const flatRates: FlatRates = {};
     const flatRatesByClient: Record<string, FlatRates> = {};
     const flatScopes = [...new Set(flatRows.map((r) => `${scopeKeyOf(r)}|${r.product_type}`))];
@@ -80,6 +87,52 @@ export class CommissionConfigProvider {
         flatRates[productType] = amount;
       } else {
         (flatRatesByClient[scope] ??= {})[productType] = amount;
+      }
+    }
+
+    // 2b. PER-PRODUCT add-on rates — the most specific add-on rate there is, resolved per (scope, product).
+    const flatRatesByProduct: Record<string, Decimal> = {};
+    const flatRatesByClientProduct: Record<string, Record<string, Decimal>> = {};
+    const flatProductScopes = [...new Set(flatProductRows.map((r) => `${scopeKeyOf(r)}|${r.product_id}`))];
+    for (const scopeKey of flatProductScopes) {
+      const [scope, productId] = scopeKey.split('|');
+      const effective = selectEffectiveRate(
+        flatProductRows.filter((r) => scopeKeyOf(r) === scope && r.product_id === productId),
+        on,
+      );
+      if (!effective) continue;
+      const amount = toDecimal(effective.amount);
+      if (scope === GLOBAL_SCOPE) {
+        flatRatesByProduct[productId] = amount;
+      } else {
+        (flatRatesByClientProduct[scope] ??= {})[productId] = amount;
+      }
+    }
+
+    // 2c. PER-PRODUCT TIER RATES — what a given bracket pays for one product. These OVERRIDE the ladder's
+    // own rate_per_activation; they do NOT touch the boundaries, so the one cross-client tally still picks
+    // the tier for every product alike (#5). A product with no row here simply keeps the ladder rate.
+    const tierRateRows = await this.prisma.commissionTierRate.findMany();
+    const tierRatesByProduct: TierRatesByProduct = {};
+    const tierRatesByClientProduct: Record<string, TierRatesByProduct> = {};
+    const tierScopes = [
+      ...new Set(tierRateRows.map((r) => `${scopeKeyOf(r)}|${r.product_id}|${r.tier_number}`)),
+    ];
+    for (const scopeKey of tierScopes) {
+      const [scope, productId, tierText] = scopeKey.split('|');
+      const tierNumber = Number(tierText);
+      const effective = selectEffectiveRate(
+        tierRateRows.filter(
+          (r) => scopeKeyOf(r) === scope && r.product_id === productId && r.tier_number === tierNumber,
+        ),
+        on,
+      );
+      if (!effective) continue;
+      const amount = toDecimal(effective.amount);
+      if (scope === GLOBAL_SCOPE) {
+        (tierRatesByProduct[productId] ??= {})[tierNumber] = amount;
+      } else {
+        ((tierRatesByClientProduct[scope] ??= {})[productId] ??= {})[tierNumber] = amount;
       }
     }
 
@@ -107,6 +160,17 @@ export class CommissionConfigProvider {
       amount: toDecimal(i.amount),
     }));
 
-    return { tiers, flatRates, tiersByClient, flatRatesByClient, holdback, incentives };
+    return {
+      tiers,
+      flatRates,
+      tiersByClient,
+      flatRatesByClient,
+      tierRatesByProduct,
+      tierRatesByClientProduct,
+      flatRatesByProduct,
+      flatRatesByClientProduct,
+      holdback,
+      incentives,
+    };
   }
 }

@@ -1922,3 +1922,54 @@ reported as a **discrepancy**, never silently passed as a match: "could not chec
 
 **Verified LOCAL:** 6 new tie-out specs; full backend suite + typecheck + lint + build + contract regen; FE
 build + lint + stylelint + vitest. **No migration.**
+
+### Commission — PER-PRODUCT rep rates (built; migration `20260703000000`)
+
+Redwave confirmed a rep can be paid differently for a 150mb than a 1gig activation, and that the two rate
+streams stay separate: what we bill the client and what we pay the rep are different numbers per product,
+and the margin is the difference. Client billing was already per product; the REP side was not — internet
+paid one volume-tiered rate for every speed, and add-ons paid one flat rate per product TYPE.
+
+**The rule, in Redwave's words: the TALLY decides which bracket, the PRODUCT decides the rate.** So the
+half that did NOT change is the important half. The internet tally is still ONE cross-client count over
+every internet activation (#5); the bracket boundaries still live on `commission_tiers` and still decide
+which tier that tally lands in for every product alike; greenfield is still excluded and flat-rated (#9);
+a cancellation still never re-tiers (#6). Only the rate lookup gained a dimension — exactly what the
+existing per-CLIENT scoping already does, which resolves a rate and never the tally.
+
+**Additive by construction, which is the safety story.** New `commission_tier_rates` rows are OVERRIDES:
+the ladder's own `rate_per_activation` remains the fallback, and `commission_flat_rates.product_id` is
+nullable with NULL keeping its existing meaning (the whole type). With no rows and no product_id, every
+payout is byte-for-byte what it was — and that is why **all four mandatory §6 fixtures, the engine purity
+guard, and the provider/pay-run end-to-end fixtures pass unchanged**. Resolution is most-specific-first:
+`(client+product) → (product) → ladder` for tiers, and `(client+product) → (product) → (client+type) →
+(type)` for add-ons.
+
+**Three guards, each turning a silent no-op into a 422.** A configured rate that can never resolve is worse
+than a missing one — it looks configured and pays nothing:
+- a tier rate must target a **TIERED** product (an add-on is flat-rated);
+- the **tier must exist** in the schedule (no tally could reach a bracket that was never defined);
+- **a product belongs to exactly one client**, so a rate scoped to a different client is rejected. That
+  last one also means the per-client dimension is largely implied by the product — it is kept because it
+  mirrors the existing pattern and costs nothing, but it can no longer be set to something unreachable.
+The same product/type consistency check was added to product-scoped flat rates.
+
+**A scope-key bug that would have cost money, caught while extending flat rates.** Supersession keys on the
+scope, so adding `product_id` to the table meant adding it to the scope in `create`, `update` AND `remove`.
+Without it a new premium-TV rate would have superseded the TYPE-wide TV rate and silently stopped every
+other TV product being paid — a failure that shows up as missing money, not as an error. Spec-locked in
+all three places.
+
+**Engine:** `ActivationInput` gains an optional `productId` (rate lookup only), `EngineConfig` gains four
+optional maps, and `computeItem`/`flatRateFor` resolve them. 10 new engine tests, including that the tally
+stays one cross-client cross-product count and that the same product pays differently in different
+brackets. **Provider:** partitions flat rows by `(product_id ?? null)` — treating a MISSING product_id like
+an explicit null, or a mock without the field would misfile every row as product-specific.
+
+**FE:** a "Per-product rates" card directly under the tier schedule it refines, with the modal picking
+client → product → tier. The empty state says every product is paid the schedule rate, because no rows is
+the correct default rather than a gap.
+
+**Verified LOCAL:** 24 new specs; full backend suite + typecheck + lint + build + contract regen; FE build +
+lint + stylelint + vitest. **Operator: `migrate deploy`.** No seed change — rates are entered through the
+admin UI.

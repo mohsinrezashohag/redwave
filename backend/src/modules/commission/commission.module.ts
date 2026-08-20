@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CommissionController, IncentivesController, ProductTypesController } from './commission.controller';
 import { TierScheduleService } from './tier-schedule.service';
 import { FlatRateService } from './flat-rate.service';
+import { TierRateService } from './tier-rate.service';
 import { HoldbackService } from './holdback.service';
 import { IncentiveService } from './incentive.service';
 import { ProductTypeService } from './product-type.service';
@@ -12,6 +13,7 @@ import { CommissionConfigProvider } from './commission-config.provider';
   providers: [
     TierScheduleService,
     FlatRateService,
+    TierRateService,
     HoldbackService,
     IncentiveService,
     ProductTypeService,

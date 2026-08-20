@@ -315,6 +315,7 @@ model User {
   billing_rates_created         ClientBillingRate[]        @relation("BillingRateCreatedBy")
   tier_configs_created          CommissionTierConfig[]     @relation("TierConfigCreatedBy")
   flat_rates_created            CommissionFlatRate[]       @relation("FlatRateCreatedBy")
+  tier_rates_created            CommissionTierRate[]       @relation("TierRateCreatedBy")
   holdback_release_set          HoldbackReleaseSetting[]   @relation("HoldbackReleaseSetBy")
   incentives_created            Incentive[]                @relation("IncentiveCreatedBy")
   sales_validated               Sale[]                     @relation("SaleValidatedBy")
@@ -632,6 +633,7 @@ model Client {
   // no path from here to client_billing_rates; the two rate streams stay separate (#3).
   commission_tier_configs CommissionTierConfig[]
   commission_flat_rates   CommissionFlatRate[]
+  commission_tier_rates   CommissionTierRate[]
   client_statements       ClientStatement[]
   client_invoices         ClientInvoice[]
   client_expense_docs     ClientExpenseDocument[]
@@ -689,6 +691,10 @@ model Product {
 
   client_billing_rates ClientBillingRate[]
   sale_items           SaleItem[]
+  // REP-PAY rates for this product. A separate stream from client_billing_rates above — the two are
+  // never joined in any code path (#3); they merely hang off the same product.
+  commission_tier_rates CommissionTierRate[]
+  commission_flat_rates CommissionFlatRate[]
 
   @@index([client_id, is_active]) // nested per-client product list
   @@index([product_type]) // cross-client product list filter
@@ -758,6 +764,10 @@ model CommissionFlatRate {
   client           Client?              @relation(fields: [client_id], references: [id])
   product_type     String // FK → product_type_catalogue.key
   product_type_ref ProductTypeCatalogue @relation(fields: [product_type], references: [key])
+  // null = the rate for the whole product TYPE (the fallback, and everything that existed before
+  // per-product rates). Set = this ONE product's rate, which wins over the type rate. — per-product rep rates
+  product_id       String?              @db.Uuid
+  product          Product?             @relation(fields: [product_id], references: [id])
   amount           Decimal              @db.Decimal(12, 2)
   effective_from   DateTime             @db.Date
   effective_to     DateTime?            @db.Date
@@ -765,7 +775,36 @@ model CommissionFlatRate {
   creator          User                 @relation("FlatRateCreatedBy", fields: [created_by], references: [id])
 
   @@index([product_type, client_id, effective_from]) // scope selection
+  @@index([product_id, client_id, effective_from]) // per-product scope selection
   @@map("commission_flat_rates")
+}
+
+// PER-PRODUCT REP TIER RATE — an OVERRIDE of the tier ladder's own `rate_per_activation` for one product.
+//
+// The volume TALLY and the bracket BOUNDARIES are unchanged and still live on commission_tier_configs /
+// commission_tiers: all internet activations count into ONE cross-client number, which picks the tier (#5).
+// This table only answers "given that tier, what does THIS product pay?" — the same shape as the existing
+// per-client scoping, which resolves the rate and never the tally.
+//
+// A missing row is not an error: the ladder's own rate_per_activation is the fallback, so a product with no
+// override pays exactly what it paid before this table existed.
+model CommissionTierRate {
+  id             String    @id @default(uuid()) @db.Uuid
+  // null = applies to every client (the per-product fallback). Set = this client only, which wins.
+  client_id      String?   @db.Uuid
+  client         Client?   @relation(fields: [client_id], references: [id])
+  product_id     String    @db.Uuid
+  product        Product   @relation(fields: [product_id], references: [id])
+  // Which bracket this rate is for — matches commission_tiers.tier_number (1 = highest).
+  tier_number    Int
+  amount         Decimal   @db.Decimal(12, 2)
+  effective_from DateTime  @db.Date
+  effective_to   DateTime? @db.Date
+  created_by     String    @db.Uuid
+  creator        User      @relation("TierRateCreatedBy", fields: [created_by], references: [id])
+
+  @@index([product_id, client_id, tier_number, effective_from]) // scope selection
+  @@map("commission_tier_rates")
 }
 
 model HoldbackConfig {

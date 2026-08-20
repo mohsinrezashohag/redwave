@@ -428,3 +428,140 @@ describe('CommissionEngineService', () => {
     expect(r.items).toHaveLength(4);
   });
 });
+
+/**
+ * PER-PRODUCT REP RATES — a rep can be paid differently for a 150mb than a 1gig activation.
+ *
+ * The rule Redwave confirmed: the TALLY decides which bracket, the PRODUCT decides the rate. So everything
+ * that made the tally what it is stays untouched — one cross-client count (#5), greenfield excluded (#9),
+ * no re-tiering on cancellation (#6) — and only the rate lookup gains a dimension. These tests exist to
+ * prove that separation holds, because collapsing it is how a period would silently re-tier.
+ */
+describe('CommissionEngineService — per-product rates', () => {
+  const engine = new CommissionEngineService();
+  const GIG = 'prod-1gig';
+  const MB150 = 'prod-150mb';
+
+  const withProduct = (a: ActivationInput, productId: string): ActivationInput => ({ ...a, productId });
+
+  it('pays each internet product its OWN rate for the bracket the tally picked', () => {
+    // 20 internet → Tier 2. 1gig keeps the ladder's 145; 150mb is overridden to 120.
+    const activations = [
+      ...mkMany(internet, 12).map((a) => withProduct(a, GIG)),
+      ...mkMany(internet, 8).map((a) => withProduct(a, MB150)),
+    ];
+    const result = engine.computePeriod({
+      activations,
+      config: baseConfig({ tierRatesByProduct: { [MB150]: { 2: d('120') } } }),
+    });
+
+    expect(result.internetTally).toBe(20); // ONE tally over both products
+    expect(result.items.every((i) => i.tierAtPayment === 2)).toBe(true); // ONE tier
+    expect(money(result.grossCommission)).toBe('2700.00'); // 12×145 + 8×120
+  });
+
+  it('a product with no override still pays the ladder rate — nothing changes without config', () => {
+    const activations = mkMany(internet, 20).map((a) => withProduct(a, GIG));
+    const result = engine.computePeriod({ activations, config: baseConfig() });
+    expect(money(result.grossCommission)).toBe('2900.00'); // 20 × 145, exactly as before
+  });
+
+  it('an activation carrying NO productId falls back to the ladder rate', () => {
+    const result = engine.computePeriod({
+      activations: mkMany(internet, 20),
+      config: baseConfig({ tierRatesByProduct: { [MB150]: { 2: d('120') } } }),
+    });
+    expect(money(result.grossCommission)).toBe('2900.00');
+  });
+
+  // Most specific wins: (client + product) → (product) → ladder.
+  it("a client's own product rate beats the cross-client product rate", () => {
+    const activations = [
+      ...mkMany(internet, 10, 'VF').map((a) => withProduct(a, GIG)),
+      ...mkMany(internet, 10, 'RF').map((a) => withProduct(a, GIG)),
+    ];
+    const result = engine.computePeriod({
+      activations,
+      config: baseConfig({
+        tierRatesByProduct: { [GIG]: { 2: d('140') } },
+        tierRatesByClientProduct: { RF: { [GIG]: { 2: d('130') } } },
+      }),
+    });
+    expect(result.internetTally).toBe(20);
+    expect(money(result.grossCommission)).toBe('2700.00'); // 10×140 (VF) + 10×130 (RF)
+  });
+
+  // The property that must not break: a per-product RATE must never become a per-product TALLY.
+  it('the tally stays ONE cross-client, cross-product count (#5)', () => {
+    // 3 VF 1gig + 9 RF 150mb = 12 → Tier 3 for BOTH, even though each pays its own rate.
+    const activations = [
+      ...mkMany(internet, 3, 'VF').map((a) => withProduct(a, GIG)),
+      ...mkMany(internet, 9, 'RF').map((a) => withProduct(a, MB150)),
+    ];
+    const result = engine.computePeriod({
+      activations,
+      config: baseConfig({ tierRatesByProduct: { [MB150]: { 3: d('100') } } }),
+    });
+
+    expect(result.internetTally).toBe(12);
+    expect(result.items.every((i) => i.tierAtPayment === 3)).toBe(true);
+    expect(money(result.grossCommission)).toBe('1275.00'); // 3×125 + 9×100
+  });
+
+  it('the SAME product pays a different rate in a different bracket', () => {
+    const rates = { [MB150]: { 3: d('100'), 2: d('120') } };
+    const ten = engine.computePeriod({
+      activations: mkMany(internet, 10).map((a) => withProduct(a, MB150)),
+      config: baseConfig({ tierRatesByProduct: rates }),
+    });
+    const twenty = engine.computePeriod({
+      activations: mkMany(internet, 20).map((a) => withProduct(a, MB150)),
+      config: baseConfig({ tierRatesByProduct: rates }),
+    });
+    expect(money(ten.grossCommission)).toBe('1000.00'); // Tier 3 → 100
+    expect(money(twenty.grossCommission)).toBe('2400.00'); // Tier 2 → 120
+  });
+
+  // #9 — greenfield is flat-rated and tally-excluded; a per-product rate must not drag it into the tier path.
+  it('greenfield stays excluded from the tally and flat-rated', () => {
+    const activations = [
+      ...mkMany(internet, 6).map((a) => withProduct(a, GIG)),
+      ...mkMany(greenfield_internet, 2).map((a) => withProduct(a, 'prod-gf')),
+    ];
+    const result = engine.computePeriod({
+      activations,
+      config: baseConfig({ tierRatesByProduct: { 'prod-gf': { 4: d('999') } } }),
+    });
+    expect(result.internetTally).toBe(6); // greenfield not counted
+    expect(money(result.grossCommission)).toBe('860.00'); // 6×110 + 2×100 — the 999 never applies
+  });
+
+  // Add-ons resolve most-specific-first too: (client+product) → (product) → (client+type) → (type).
+  it('an add-on product rate beats its product-TYPE rate', () => {
+    const result = engine.computePeriod({
+      activations: [withProduct(mk(tv), 'prod-tv-premium'), mk(tv)],
+      config: baseConfig({ flatRatesByProduct: { 'prod-tv-premium': d('45') } }),
+    });
+    expect(money(result.grossCommission)).toBe('75.00'); // 45 (premium) + 30 (type fallback)
+  });
+
+  it("a client's own add-on product rate is the most specific of all", () => {
+    const result = engine.computePeriod({
+      activations: [withProduct(mk(tv, 'RF'), 'prod-tv'), withProduct(mk(tv, 'VF'), 'prod-tv')],
+      config: baseConfig({
+        flatRatesByProduct: { 'prod-tv': d('40') },
+        flatRatesByClientProduct: { RF: { 'prod-tv': d('55') } },
+      }),
+    });
+    expect(money(result.grossCommission)).toBe('95.00'); // 55 (RF) + 40 (product fallback)
+  });
+
+  it('still throws when a product type has no rate at any level (never silently zero)', () => {
+    expect(() =>
+      engine.computePeriod({
+        activations: [withProduct(mk('protection_plan' as ProductType), 'prod-pp')],
+        config: baseConfig(),
+      }),
+    ).toThrow(/No flat rate/);
+  });
+});
