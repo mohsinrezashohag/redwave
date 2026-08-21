@@ -807,6 +807,63 @@ model CommissionTierRate {
   @@map("commission_tier_rates")
 }
 
+
+// PAYROLL REPORT LINE — the frozen wide line behind Redwave's own payroll workbook, one row per SALE.
+//
+// Deliberately mirrors client_statement_lines in SHAPE and in nothing else. This is the REP-PAY stream:
+// every amount here comes from the frozen sale_items snapshot (rate_applied / commission_paid), never
+// from client_billing_rates, and no code path joins the two (#3). Client 350 vs rep 125 on the same sale
+// is the business model; mixing them was the previous system's defect.
+//
+// Frozen, and written at pay-run FINALIZE, because that is when the snapshots freeze (#2/#8). Before
+// finalize there is genuinely no money to report — the report is empty and says so rather than
+// recomputing a number that is not owed yet.
+model PayrollReportLine {
+  id         String  @id @default(uuid()) @db.Uuid
+  pay_run_id String  @db.Uuid
+  pay_run    PayRun  @relation(fields: [pay_run_id], references: [id])
+  sale_id    String  @db.Uuid
+  sale       Sale    @relation(fields: [sale_id], references: [id])
+  /// Render order as frozen (sale_date, then sale_code) — stable across re-renders.
+  sort_order Int     @default(0)
+
+  // Who / where / what. `Agent ID` is the PARTNER-FACING code (reps.external_code, "Redwave11") — both of
+  // Redwave's own workbooks key agents that way; the internal rep_code is retained for our tie-out and as
+  // the render fallback. Customer and Address are ONE column each here, unlike the client statement which
+  // splits the name — the payroll sheet holds a first name only. — system-audit.md §1.1
+  sale_date         DateTime? @db.Date
+  rep_external_code String?
+  rep_code          String?
+  rep_name          String?
+  customer_name     String
+  address           String?
+  channel           String? // clients.client_code
+  product_name      String? // the internet speed product on this sale
+
+  // Presence flags — the workbook's Internet / TV / Home Phone columns.
+  has_internet   Boolean @default(false)
+  has_tv         Boolean @default(false)
+  has_home_phone Boolean @default(false)
+  // Greenfield is an ADDITION to Redwave's sheet (confirmed in Meeting 4). Flat-rated and excluded from
+  // the tier tally (#9), so it is reported as its own column rather than folded into internet.
+  is_greenfield  Boolean @default(false)
+
+  // Per-component REP amounts, each read from the frozen snapshot. total_100 is their exact sum (#1), and
+  // advance_70 / holdback_30 are the split as the engine computed it — never re-derived at render time.
+  internet_rate Decimal? @db.Decimal(12, 2)
+  tv_rate       Decimal? @db.Decimal(12, 2)
+  hp_rate       Decimal? @db.Decimal(12, 2)
+  greenfield    Decimal? @db.Decimal(12, 2)
+  spiff         Decimal? @db.Decimal(12, 2) // the frozen incentive on this sale (ADDITION to their sheet)
+  other_total   Decimal? @db.Decimal(12, 2) // Σ remaining priced items, so nothing is silently dropped
+  total_100     Decimal  @db.Decimal(12, 2)
+  advance_70    Decimal  @db.Decimal(12, 2)
+  holdback_30   Decimal  @db.Decimal(12, 2)
+
+  @@index([pay_run_id, sort_order])
+  @@map("payroll_report_lines")
+}
+
 model HoldbackConfig {
   id             String    @id @default(uuid()) @db.Uuid
   advance_pct    Decimal   @db.Decimal(5, 4)
@@ -884,6 +941,8 @@ model Sale {
   sale_items             SaleItem[]
   clawbacks              Clawback[]
   client_statement_lines ClientStatementLine[]
+  // The REP-PAY line for this sale. A sibling of the client-billing line above, never joined to it (#3).
+  payroll_report_lines   PayrollReportLine[]
 
   @@index([rep_id, sale_date])
   @@index([client_id, mpu_id])
@@ -969,7 +1028,8 @@ model PayRun {
   executor      User         @relation("PayRunExecutedBy", fields: [executed_by], references: [id])
   created_at    DateTime     @default(now())
 
-  pay_run_lines     PayRunLine[]
+  pay_run_lines        PayRunLine[]
+  payroll_report_lines PayrollReportLine[]
   sales             Sale[]
   holdback_released HoldbackLedger[] @relation("HoldbackReleasedIn")
   clawbacks         Clawback[]

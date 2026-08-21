@@ -241,3 +241,118 @@ export class ExportResultResponse {
   @ApiProperty({ type: String, description: 'The rendered export payload (CSV text or JSON string).' })
   content!: string;
 }
+
+/**
+ * ONE ROW of Redwave's payroll workbook — one SALE, with the rep amount each component earned and the
+ * 70/30 split. Every money field is the FROZEN snapshot as a decimal STRING (#1/#2); nothing is recomputed
+ * at read time, and no client billing rate is reachable from here (#3).
+ */
+export class PayrollReportLineResponse {
+  @ApiProperty()
+  sale_id!: string;
+
+  @ApiProperty({ type: String, nullable: true, example: '2026-03-02' })
+  sale_date!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'Redwave11',
+    description: "Agent ID as Redwave's own workbooks key it (reps.external_code). Render `?? rep_code`.",
+  })
+  rep_external_code!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'RW-D-0001', description: 'Internal code; the fallback.' })
+  rep_code!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  rep_name!: string | null;
+
+  @ApiProperty({ description: 'ONE column in this workbook — not split first/last like the client statement.' })
+  customer_name!: string;
+
+  @ApiProperty({ type: String, nullable: true, description: 'One string: street, city, province, postal.' })
+  address!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'VF', description: 'clients.client_code.' })
+  channel!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'Fibre 1gig/2.5gig' })
+  product_name!: string | null;
+
+  @ApiProperty()
+  has_internet!: boolean;
+
+  @ApiProperty()
+  has_tv!: boolean;
+
+  @ApiProperty()
+  has_home_phone!: boolean;
+
+  @ApiProperty({ description: 'Flat-rated and excluded from the tier tally (#9) — its own column.' })
+  is_greenfield!: boolean;
+
+  @ApiProperty({ type: String, example: '125.00' })
+  internet_rate!: string;
+
+  @ApiProperty({ type: String, example: '30.00' })
+  tv_rate!: string;
+
+  @ApiProperty({ type: String, example: '30.00' })
+  hp_rate!: string;
+
+  @ApiProperty({ type: String, example: '100.00' })
+  greenfield!: string;
+
+  @ApiProperty({ type: String, example: '0.00', description: 'The frozen incentive on this sale.' })
+  spiff!: string;
+
+  @ApiProperty({ type: String, example: '0.00', description: 'Priced items with no column of their own.' })
+  other_total!: string;
+
+  @ApiProperty({ type: String, example: '185.00', description: 'The exact sum of the components above.' })
+  total_100!: string;
+
+  @ApiProperty({ type: String, example: '129.50' })
+  advance_70!: string;
+
+  @ApiProperty({ type: String, example: '55.50' })
+  holdback_30!: string;
+}
+
+/** The payroll report for one pay run — the workbook's rows plus its row-1 SUBTOTAL strip. */
+export class PayrollReportResponse {
+  @ApiProperty()
+  pay_run_id!: string;
+
+  @ApiProperty({ type: Number, example: 6 })
+  period_number!: number;
+
+  @ApiProperty({ type: String, example: '2026-03-01' })
+  period_start!: string;
+
+  @ApiProperty({ type: String, example: '2026-03-14' })
+  period_end!: string;
+
+  @ApiProperty({ type: String, example: 'finalized' })
+  run_status!: string;
+
+  @ApiProperty({
+    description:
+      'False until the run finalizes. Lines are frozen AT finalize, so before then there is genuinely no ' +
+      'money to report — the UI says so rather than showing zeros as though nothing was earned.',
+  })
+  is_finalized!: boolean;
+
+  @ApiProperty({ type: [PayrollReportLineResponse] })
+  lines!: PayrollReportLineResponse[];
+
+  @ApiProperty({ type: String, description: 'Row-1 strip: Σ Total 100 %.' })
+  total_100!: string;
+
+  @ApiProperty({ type: String, description: 'Row-1 strip: Σ 0.7.' })
+  advance_70!: string;
+
+  @ApiProperty({ type: String, description: 'Row-1 strip: Σ 0.3.' })
+  holdback_30!: string;
+}

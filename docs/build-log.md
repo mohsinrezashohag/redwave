@@ -2005,3 +2005,81 @@ ladder defines it; the global ladder is used when the client has no schedule of 
 
 **Verified LOCAL:** 18 tier-rate specs (+4); full backend suite + typecheck + lint + build + contract regen;
 FE build + lint + vitest. No migration, no contract change.
+
+### DATA — RF Now's tier schedule corrected (no code change)
+
+RF Now's live client-scoped schedule held a SINGLE bracket (`0–∞ @ 145`), so RF activations were paid a
+flat rate with no volume tiering while every other client was graduated — a rep's 3rd and 40th RF
+activation both paid $145, where VF paid $110 and $160. Redwave confirmed every client is tiered alike, so
+this was bad data, not a negotiated deal.
+
+**Corrected by SUPERSESSION, never by editing or deleting** (#10). A one-off guarded script drove the real
+`TierScheduleService.create()` rather than writing Prisma directly, so bracket validation ran, the current
+row was BOUNDED rather than mutated, and the change landed in `audit_log` exactly as it would from the admin
+UI. That audit row — not the script, which was removed after running — is the durable record.
+
+Two judgement calls worth recording:
+- **Effective from the start of the next pay period (2026-08-30, period 18), not today.** A pay run resolves
+  ONE config for a whole period, so a mid-period change would re-price activations already made under the
+  old rate.
+- **The new ladder was COPIED from the live global config**, not hard-coded, so it cannot drift from
+  whatever Schedule C v2 actually says.
+
+Verified through the real resolution path, not the table: `CommissionConfigProvider.getEngineConfig`
+returns RF's flat bracket on 2026-08-25 and the full 110/125/145/160 ladder on 2026-09-01. Past pay is
+untouched regardless — paid `sale_items` carry frozen snapshots (#2).
+
+**Still open:** VF also carries a client-scoped config that merely duplicates the global ladder. Harmless
+today, but it is a second place to keep in sync, and the next edit to the global ladder will silently not
+reach VF. More broadly, there is **no way to RETIRE a client-scoped schedule** once it is current — only to
+supersede it with another one — so a client can never be returned to the global fallback. Worth an admin
+affordance if per-client ladders stay rare.
+
+### Pay Run — payroll report in Redwave's Excel format (built — packet 02; migration `20260704000000`)
+
+**The largest confirmed gap from Meeting 4** — nothing existed for it. Redwave keeps a payroll workbook by
+hand; this produces it. The prerequisite (Agent columns on `SaleResponse`) was already done in the
+small-items batch, so this packet did not rebuild that plumbing.
+
+**Mirrors the billing trio exactly, and shares nothing with it.** Pure logic (`payroll-report.logic.ts`) →
+frozen wide line (`payroll_report_lines`) → renderer (`renderers/payroll-excel.renderer.ts`) → endpoints →
+FE action, the same four-part shape as statements. But it is the REP-PAY stream throughout: every amount
+comes from `sale_items.rate_applied` / `incentive_amount`, and no code path reaches the client-billing
+tables (#3). **`payroll.no-billing.spec.ts` is the mirror of `billing.no-commission.spec.ts`** — a source
+scan for billing imports and Prisma delegates, a purity check on the logic module, and the packet's own DoD
+grep kept EXECUTABLE so it cannot quietly stop being true. (Comments were reworded to say "the
+client-billing rate tables" rather than naming the table, so the naive grep stays clean too.)
+
+**Written at FINALIZE, from the same engine result that freezes the snapshots** (#2/#8), inside the same
+transaction. That is what makes the report and the pay incapable of disagreeing — nothing is recomputed at
+render time. A draft run therefore has no lines: the read returns `is_finalized: false` and the FE does not
+offer the download, because an empty sheet would misrepresent the state rather than reflect it. Same
+principle as the sales export being blank on unpaid sales.
+
+**Two details taken from their actual file rather than assumed**, both places where copying the statement
+renderer would have been wrong: the row-1 strip is `SUBTOTAL` on the three MONEY columns with **no
+`COUNTIF`** on the flag columns (the billing sheet has them, the payroll sheet does not), and `Customer` /
+`Address` are **one column each** (the statement splits the customer name; this sheet holds a first name
+only).
+
+**The spec fixture asserts their strip — 375.00 / 262.50 / 112.50 — not their per-row rates.** Their
+`Internet Rate` is typed by hand and inconsistent: a literal `125` in one row, a hard-coded `=IF(...)` 145
+in another, which are Schedule C v2 Tier 3 and Tier 2 switched manually. **The system computes what they
+retype**, so per-row equality would assert their bookkeeping rather than our correctness — the packet says
+so explicitly and the spec header records why.
+
+**Greenfield and Spiff are the two ADDITIONS** (Meeting 4), inserted before `Total 100 %`. Greenfield gets
+its own column because it is flat-rated and tally-excluded (#9) — folding it into internet would misreport
+both. An `Other` column appears only when a priced item has no column of its own, so nothing is silently
+dropped while the common case stays the exact 18-column target.
+
+**The 70/30 split is derived, not computed twice:** the advance is rounded half-up and the holdback is the
+remainder, so the two always sum to the total exactly — the same derivation the engine uses, spec-locked
+across awkward amounts. The row-1 strip sums the printed LINES rather than re-summing components, so the
+sheet is internally consistent after per-line rounding.
+
+**No new permission** — preview rides `payrun:view`, the download `payrun:export`, alongside the ADP export.
+`docs/uat/payroll-target-format.md` written, mirroring the billing one.
+
+**Verified LOCAL:** 19 new specs; full backend suite + typecheck + lint + build + contract regen; FE build +
+lint + stylelint + vitest. **Operator: `migrate deploy`.**

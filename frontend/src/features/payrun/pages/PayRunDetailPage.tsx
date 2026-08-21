@@ -7,10 +7,11 @@
  */
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileDown, Lock, RefreshCw } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, FileDown, Lock, RefreshCw } from 'lucide-react';
 import { Banner, Button, PageHeader, StatCard, TableError, TableSkeleton, useToast } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
 import { isForbidden, useApiErrorToast } from '../../../lib/api/apiError';
+import { downloadFile } from '../../../lib/api/downloadFile';
 import { money, sumMoney } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
@@ -36,6 +37,24 @@ export default function PayRunDetailPage() {
   const canApprove = useCan('payrun:approve');
   const canExport = useCan('payrun:export');
   const canCreate = useCan('payrun:create');
+  const [payrollBusy, setPayrollBusy] = useState(false);
+
+  /**
+   * Redwave's own payroll workbook, streamed from the lines FROZEN at finalize. Offered only on a
+   * finalized run — before that there are no frozen lines and nothing is owed, so an empty sheet would
+   * misrepresent the state rather than reflect it.
+   */
+  const onPayrollReport = async () => {
+    setPayrollBusy(true);
+    try {
+      await downloadFile(`/v1/pay-runs/${id}/payroll-report/download`);
+      toast({ title: 'Payroll report downloaded', tone: 'success' });
+    } catch (e) {
+      onError(e);
+    } finally {
+      setPayrollBusy(false);
+    }
+  };
 
   const runQ = usePayRun(id, canView);
   const periodsQ = usePayPeriods(canView);
@@ -106,6 +125,16 @@ export default function PayRunDetailPage() {
             {isDraft && canApprove && (
               <Button variant="primary" leftIcon={<Lock size={16} />} onClick={() => setFinalizeOpen(true)}>
                 Finalize
+              </Button>
+            )}
+            {!isDraft && canExport && (
+              <Button
+                variant="secondary"
+                leftIcon={<FileSpreadsheet size={16} />}
+                loading={payrollBusy}
+                onClick={onPayrollReport}
+              >
+                Payroll report
               </Button>
             )}
             {!isDraft && canExport && (

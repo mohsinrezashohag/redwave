@@ -10,6 +10,7 @@ import {
 } from './pay-run.controller';
 import { PayPeriodService } from './pay-period.service';
 import { PayRunService } from './pay-run.service';
+import { PayrollExcelRenderer } from './renderers/payroll-excel.renderer';
 
 @Module({
   // Composes the pure engine + the config provider (does not reimplement their logic).
@@ -17,7 +18,7 @@ import { PayRunService } from './pay-run.service';
   // (re-binding the seams Pay Run left open). Pay Run's own finalize logic is unchanged.
   imports: [EngineModule, CommissionModule, ClawbackModule, ExpensesModule],
   controllers: [PayPeriodController, PayRunController, HoldbackLedgerController],
-  providers: [PayPeriodService, PayRunService],
+  providers: [PayPeriodService, PayRunService, PayrollExcelRenderer],
   exports: [PayRunService],
 })
 export class PayRunModule {}

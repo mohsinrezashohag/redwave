@@ -65,6 +65,8 @@ function make(opts: { runStatus?: string; dueHolds?: unknown[]; bonuses?: unknow
       updateMany: jest.fn(),
     },
     saleItem: { update: jest.fn() },
+    // The payroll-report line frozen alongside the snapshots (same tx, same engine result).
+    payrollReportLine: { deleteMany: jest.fn(), create: jest.fn() },
     holdbackLedger: {
       findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn(),
@@ -105,7 +107,9 @@ function make(opts: { runStatus?: string; dueHolds?: unknown[]; bonuses?: unknow
       .fn()
       .mockResolvedValue(opts.scopeRepIds ? { level: 'roster', repIds: opts.scopeRepIds } : { level: 'all' }),
   };
-  const config = { getEngineConfig: jest.fn().mockResolvedValue({}) };
+  // The engine is mocked, so only the holdback split is read from the config here — it is what the
+  // payroll line's 70/30 columns are derived from.
+  const config = { getEngineConfig: jest.fn().mockResolvedValue({ holdback: { advancePct: new Decimal('0.70') } }) };
   const engine = { computePeriod: jest.fn().mockReturnValue(ENGINE_RESULT) };
   const emitter = { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() };
   const clawbackSeam = opts.clawbackTotal

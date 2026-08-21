@@ -3,12 +3,14 @@
  * payrun:approve gates the money actions (finalize, bonus). Every route declares its permission;
  * the global guard enforces it and the service scopes data per caller.
  */
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiHeader,
   ApiOkResponse,
+  ApiProduces,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
@@ -18,9 +20,11 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { PayPeriodService } from './pay-period.service';
 import { PayRunService } from './pay-run.service';
+import { PayrollExcelRenderer } from './renderers/payroll-excel.renderer';
 import { CreatePayRunDto } from './dto/create-pay-run.dto';
 import { SetBonusDto } from './dto/bonus.dto';
 import { ExportPayRunDto } from './dto/export.dto';
+import { PayrollReportResponse } from './dto/pay-run.response';
 import { ListHoldbackQuery } from './dto/list-holdback.query';
 import {
   ExportResultResponse,
@@ -56,7 +60,10 @@ export class PayPeriodController {
 @ApiErrorResponses()
 @Controller('pay-runs')
 export class PayRunController {
-  constructor(private readonly payRuns: PayRunService) {}
+  constructor(
+    private readonly payRuns: PayRunService,
+    private readonly payrollExcel: PayrollExcelRenderer,
+  ) {}
 
   @Get()
   @RequirePermission('payrun', 'view')
@@ -148,6 +155,47 @@ export class PayRunController {
   @ApiOkResponse({ type: PayRunResponse })
   finalize(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.payRuns.finalize(id, user);
+  }
+
+  /**
+   * The PAYROLL REPORT — Redwave's own workbook, read from the lines FROZEN at finalize.
+   *
+   * `payrun:view` for the preview, `payrun:export` for the file, mirroring the ADP export beside it. Rep-pay
+   * stream only; nothing here reaches the client-billing rate tables (#3).
+   */
+  @Get(':id/payroll-report')
+  @RequirePermission('payrun', 'view')
+  @ApiOperation({
+    summary: "Preview the payroll report (Redwave's workbook shape)",
+    description:
+      'Requires payrun:view. One row per SALE from the FROZEN snapshot — never recomputed (#2). A run that ' +
+      'has not finalized has no lines yet and reports is_finalized=false rather than showing zeros.',
+  })
+  @ApiOkResponse({ type: PayrollReportResponse })
+  payrollReport(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.payRuns.payrollReport(id, user);
+  }
+
+  @Get(':id/payroll-report/download')
+  @RequirePermission('payrun', 'export')
+  @ApiProduces('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  @ApiOperation({
+    summary: 'Download the payroll report workbook (.xlsx)',
+    description:
+      'Requires payrun:export. Header on row 2 with the SUBTOTAL strip on row 1, matching Redwave’s file.',
+  })
+  async payrollReportDownload(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthUser,
+    @Res() res: Response,
+  ): Promise<void> {
+    const report = await this.payRuns.payrollReport(id, user);
+    const bytes = await this.payrollExcel.render({ ...report, generated_at: new Date().toISOString() });
+    const filename = `redwave-payroll-period-${report.period_number}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', String(bytes.length));
+    res.end(bytes);
   }
 
   @Post(':id/export')

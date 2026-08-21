@@ -5355,6 +5355,57 @@ paths:
       security: *a201
       summary: Finalize a pay run (the money action)
       tags: *a202
+  /v1/pay-runs/{id}/payroll-report:
+    get:
+      description: Requires payrun:view. One row per SALE from the FROZEN snapshot —
+        never recomputed (#2). A run that has not finalized has no lines yet and
+        reports is_finalized=false rather than showing zeros.
+      operationId: PayRunController_payrollReport_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayrollReportResponse"
+        "400": *a195
+        "401": *a196
+        "403": *a197
+        "404": *a198
+        "409": *a199
+        "422": *a200
+      security: *a201
+      summary: Preview the payroll report (Redwave's workbook shape)
+      tags: *a202
+  /v1/pay-runs/{id}/payroll-report/download:
+    get:
+      description: Requires payrun:export. Header on row 2 with the SUBTOTAL strip on
+        row 1, matching Redwave’s file.
+      operationId: PayRunController_payrollReportDownload_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+        "400": *a195
+        "401": *a196
+        "403": *a197
+        "404": *a198
+        "409": *a199
+        "422": *a200
+      security: *a201
+      summary: Download the payroll report workbook (.xlsx)
+      tags: *a202
   /v1/pay-runs/{id}/export:
     post:
       description: Requires payrun:export. Configurable format; marks the run
@@ -12141,6 +12192,154 @@ components:
           description: Reason / note for the bonus.
       required:
         - amount
+    PayrollReportLineResponse:
+      type: object
+      properties:
+        sale_id:
+          type: string
+        sale_date:
+          type: string
+          nullable: true
+          example: 2026-03-02
+        rep_external_code:
+          type: string
+          nullable: true
+          example: Redwave11
+          description: Agent ID as Redwave's own workbooks key it (reps.external_code).
+            Render `?? rep_code`.
+        rep_code:
+          type: string
+          nullable: true
+          example: RW-D-0001
+          description: Internal code; the fallback.
+        rep_name:
+          type: string
+          nullable: true
+        customer_name:
+          type: string
+          description: ONE column in this workbook — not split first/last like the client
+            statement.
+        address:
+          type: string
+          nullable: true
+          description: "One string: street, city, province, postal."
+        channel:
+          type: string
+          nullable: true
+          example: VF
+          description: clients.client_code.
+        product_name:
+          type: string
+          nullable: true
+          example: Fibre 1gig/2.5gig
+        has_internet:
+          type: boolean
+        has_tv:
+          type: boolean
+        has_home_phone:
+          type: boolean
+        is_greenfield:
+          type: boolean
+          description: Flat-rated and excluded from the tier tally (#9) — its own column.
+        internet_rate:
+          type: string
+          example: "125.00"
+        tv_rate:
+          type: string
+          example: "30.00"
+        hp_rate:
+          type: string
+          example: "30.00"
+        greenfield:
+          type: string
+          example: "100.00"
+        spiff:
+          type: string
+          example: "0.00"
+          description: The frozen incentive on this sale.
+        other_total:
+          type: string
+          example: "0.00"
+          description: Priced items with no column of their own.
+        total_100:
+          type: string
+          example: "185.00"
+          description: The exact sum of the components above.
+        advance_70:
+          type: string
+          example: "129.50"
+        holdback_30:
+          type: string
+          example: "55.50"
+      required:
+        - sale_id
+        - sale_date
+        - rep_external_code
+        - rep_code
+        - rep_name
+        - customer_name
+        - address
+        - channel
+        - product_name
+        - has_internet
+        - has_tv
+        - has_home_phone
+        - is_greenfield
+        - internet_rate
+        - tv_rate
+        - hp_rate
+        - greenfield
+        - spiff
+        - other_total
+        - total_100
+        - advance_70
+        - holdback_30
+    PayrollReportResponse:
+      type: object
+      properties:
+        pay_run_id:
+          type: string
+        period_number:
+          type: number
+          example: 6
+        period_start:
+          type: string
+          example: 2026-03-01
+        period_end:
+          type: string
+          example: 2026-03-14
+        run_status:
+          type: string
+          example: finalized
+        is_finalized:
+          type: boolean
+          description: False until the run finalizes. Lines are frozen AT finalize, so
+            before then there is genuinely no money to report — the UI says so
+            rather than showing zeros as though nothing was earned.
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/PayrollReportLineResponse"
+        total_100:
+          type: string
+          description: "Row-1 strip: Σ Total 100 %."
+        advance_70:
+          type: string
+          description: "Row-1 strip: Σ 0.7."
+        holdback_30:
+          type: string
+          description: "Row-1 strip: Σ 0.3."
+      required:
+        - pay_run_id
+        - period_number
+        - period_start
+        - period_end
+        - run_status
+        - is_finalized
+        - lines
+        - total_100
+        - advance_70
+        - holdback_30
     ExportPayRunDto:
       type: object
       properties:
