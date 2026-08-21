@@ -16,7 +16,13 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
-import { deriveStatus, planSupersession, previousDay, toUtcDateOnly } from '../../common/effective-dating';
+import {
+  deriveStatus,
+  planSupersession,
+  previousDay,
+  selectEffectiveRate,
+  toUtcDateOnly,
+} from '../../common/effective-dating';
 import { parseEffectiveWindow } from './effective-dates.util';
 import { assertPending, resolveEditWindow } from './effective-edit.util';
 import { scopeWhere } from './client-scope.logic';
@@ -49,7 +55,6 @@ export class TierRateService {
 
   async create(dto: CreateTierRateDto, actorId: string) {
     const product = await this.assertTieredProduct(dto.product_id);
-    await this.assertTierExists(dto.tier_number);
     const { from, to, today } = parseEffectiveWindow(dto.effective_from, dto.effective_to);
     const clientId = await resolveClientScope(this.prisma, dto.client_id);
     // A product belongs to exactly ONE client, so the product already implies the client. A rate scoped to
@@ -60,6 +65,9 @@ export class TierRateService {
         `product '${dto.product_id}' belongs to another client; a rate scoped to this client would never apply`,
       );
     }
+
+    // Checked LAST because it needs both the product's client and the date the rate starts.
+    await this.assertTierExists(dto.tier_number, product.client_id, from);
 
     // Scope = (client, product, tier). All three matter: a rate for Tier 2 must not bound Tier 3, and one
     // client's rate must not bound another's or the cross-client one.
@@ -204,14 +212,37 @@ export class TierRateService {
   }
 
   /**
-   * The tier must exist in the CURRENT schedule. A rate for a bracket that was never defined can never be
-   * reached: the tally would have to land in a tier that does not exist.
+   * The tier must exist in the ladder that will ACTUALLY price this product — which is the product's
+   * client's own schedule if it has one, else the global fallback. This mirrors the engine exactly
+   * (`tiersByClient[clientId] ?? tiers`), and the mirroring is the whole point.
+   *
+   * Checking "does this tier number exist in ANY schedule" is not good enough, and the difference is not
+   * academic: a client whose ladder has fewer brackets than the global one would accept a rate for a
+   * bracket its activations can never land in. The rate would look configured, pass validation, and
+   * silently pay the schedule rate forever — the exact "looks configured, pays nothing" failure the
+   * surrounding guards exist to prevent. Validated on the rate's START date, since that is when it
+   * begins to apply and the schedule in force then is the one that matters.
    */
-  private async assertTierExists(tierNumber: number): Promise<void> {
-    const tier = await this.prisma.commissionTier.findFirst({ where: { tier_number: tierNumber } });
-    if (!tier) {
+  private async assertTierExists(tierNumber: number, productClientId: string, on: Date): Promise<void> {
+    const configs = await this.prisma.commissionTierConfig.findMany({
+      where: { OR: [{ client_id: productClientId }, { client_id: null }] },
+      include: { tiers: { select: { tier_number: true } } },
+    });
+    const effectiveFor = (scope: string | null) =>
+      selectEffectiveRate(configs.filter((c) => c.client_id === scope), on);
+    // Most specific wins, same as the engine: the client's own ladder, else the global one.
+    const schedule = effectiveFor(productClientId) ?? effectiveFor(null);
+    if (!schedule) {
       throw new UnprocessableEntityException(
-        `tier ${tierNumber} is not defined in any tier schedule — add the bracket first`,
+        `no tier schedule is in force on ${on.toISOString().slice(0, 10)} for this product's client`,
+      );
+    }
+    if (!schedule.tiers.some((t) => t.tier_number === tierNumber)) {
+      const available = [...new Set(schedule.tiers.map((t) => t.tier_number))].sort((a, b) => a - b);
+      throw new UnprocessableEntityException(
+        `tier ${tierNumber} is not in the schedule that prices this product ` +
+          `(it has ${available.length === 0 ? 'no tiers' : `tier ${available.join(', ')}`}) — ` +
+          'a rate for it could never apply',
       );
     }
   }

@@ -1973,3 +1973,35 @@ the correct default rather than a gap.
 **Verified LOCAL:** 24 new specs; full backend suite + typecheck + lint + build + contract regen; FE build +
 lint + stylelint + vitest. **Operator: `migrate deploy`.** No seed change — rates are entered through the
 admin UI.
+
+### Commission — the per-product tier guard now checks the ladder that ACTUALLY prices the product (fix)
+
+**The hole.** The per-product rep-rate batch shipped `assertTierExists`, which asked "does this tier number
+exist in ANY tier schedule". Rates do not resolve that way. The engine picks the ladder for the
+ACTIVATION's client (`tiersByClient[clientId] ?? tiers`), so the only tiers that can ever be reached for a
+product are the ones in ITS client's schedule — its own if it has one, else the global fallback.
+
+**Why it mattered in practice, not just in theory.** The live database has a client-scoped schedule for RF
+Now containing a single bracket (`0–∞`), so RF activations can only ever be stamped Tier 1. Under the old
+guard an admin could create a Tier 2 or Tier 3 per-product rate for an RF product: it would pass validation,
+be stored, appear configured in the UI — and never resolve, silently paying the schedule rate forever. That
+is precisely the "looks configured, pays nothing" failure the surrounding guards exist to prevent, which is
+what makes a too-loose check worse than none: it grants false confidence.
+
+(The RF schedule itself is bad data — Redwave confirmed every client is tiered alike, so RF should carry the
+full Schedule C v2 ladder. That is a data correction, made by superseding the current row (#10), not a code
+change, and it is tracked separately. VF also has a client-scoped config that merely duplicates the global
+one — harmless today, but a second place that must be kept in sync.)
+
+**The fix.** `assertTierExists(tierNumber, productClientId, on)` resolves the schedule exactly as the engine
+does — the product's client's own effective config, else the global one — and checks the bracket is in THAT
+ladder. Validated on the rate's **start date**, since that is when it begins to apply and the schedule in
+force then is the one that matters. The error names the tiers the ladder actually has, so the fix is obvious
+from the message. No effective schedule at all is its own 422 rather than a silent pass.
+
+**Spec-locked, including the case the first version missed:** a Tier 3 rate is REJECTED for a client whose
+own ladder has only Tier 1, even though Tier 3 exists globally; the same tier is accepted when the client's
+ladder defines it; the global ladder is used when the client has no schedule of its own.
+
+**Verified LOCAL:** 18 tier-rate specs (+4); full backend suite + typecheck + lint + build + contract regen;
+FE build + lint + vitest. No migration, no contract change.

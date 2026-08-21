@@ -27,8 +27,19 @@ function make() {
         .fn()
         .mockResolvedValue({ client_id: 'VF', product_type: 'internet', product_type_ref: { behaviour: 'tiered' } }),
     },
-    // The bracket must exist in the schedule, else the rate could never be reached.
-    commissionTier: { findFirst: jest.fn().mockResolvedValue({ id: 't2', tier_number: 2 }) },
+    // The bracket must exist in the ladder that actually prices this product — the client's own schedule
+    // if it has one, else the global fallback. Default: only a global Schedule C v2 (four brackets).
+    commissionTierConfig: {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 'global',
+          client_id: null,
+          effective_from: new Date('2024-01-01T00:00:00.000Z'),
+          effective_to: null,
+          tiers: [{ tier_number: 1 }, { tier_number: 2 }, { tier_number: 3 }, { tier_number: 4 }],
+        },
+      ]),
+    },
     client: { findUnique: jest.fn().mockResolvedValue({ id: 'VF', is_active: true }) },
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
@@ -108,11 +119,67 @@ describe('TierRateService.create', () => {
     await expect(service.create(dto(), 'actor')).rejects.toThrow(/Unknown product/);
   });
 
-  // A rate for a bracket the schedule never defines can never be reached by any tally.
-  it('rejects a tier that no schedule defines — 422', async () => {
+  // A rate for a bracket the ladder never defines can never be reached by any tally.
+  it('rejects a tier the global schedule does not define — 422', async () => {
+    const { service } = make();
+    await expect(service.create(dto({ tier_number: 9 }), 'actor')).rejects.toThrow(/never apply/);
+  });
+
+  /**
+   * THE CASE THE FIRST VERSION OF THIS GUARD MISSED. Rates resolve against the ladder for the PRODUCT'S
+   * CLIENT — the client's own schedule when it has one, else global. A guard that merely asked "does this
+   * tier exist somewhere" would accept a Tier 3 rate for a client whose ladder has only Tier 1: it would
+   * pass validation, never resolve, and silently pay the schedule rate forever.
+   */
+  it("rejects a tier missing from the CLIENT's own ladder, even though it exists globally", async () => {
     const { service, prisma } = make();
-    prisma.commissionTier.findFirst.mockResolvedValue(null);
-    await expect(service.create(dto({ tier_number: 9 }), 'actor')).rejects.toThrow(/not defined/);
+    prisma.commissionTierConfig.findMany.mockResolvedValue([
+      {
+        id: 'global',
+        client_id: null,
+        effective_from: new Date('2024-01-01T00:00:00.000Z'),
+        effective_to: null,
+        tiers: [{ tier_number: 1 }, { tier_number: 2 }, { tier_number: 3 }, { tier_number: 4 }],
+      },
+      // This client overrides with a single flat bracket — its activations can only ever be Tier 1.
+      {
+        id: 'client-own',
+        client_id: 'VF',
+        effective_from: new Date('2026-08-02T00:00:00.000Z'),
+        effective_to: null,
+        tiers: [{ tier_number: 1 }],
+      },
+    ]);
+    await expect(service.create(dto({ tier_number: 3 }), 'actor')).rejects.toThrow(/never apply/);
+  });
+
+  it("accepts the tier that client's own ladder DOES define", async () => {
+    const { service, prisma, tx } = make();
+    prisma.commissionTierConfig.findMany.mockResolvedValue([
+      {
+        id: 'client-own',
+        client_id: 'VF',
+        effective_from: new Date('2026-08-02T00:00:00.000Z'),
+        effective_to: null,
+        tiers: [{ tier_number: 1 }],
+      },
+    ]);
+    await service.create(dto({ tier_number: 1 }), 'actor');
+    const arg = tx.commissionTierRate.create.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(arg.data.tier_number).toBe(1);
+  });
+
+  it('falls back to the GLOBAL ladder when the client has no schedule of its own', async () => {
+    const { service, tx } = make();
+    await service.create(dto({ tier_number: 4 }), 'actor');
+    const arg = tx.commissionTierRate.create.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(arg.data.tier_number).toBe(4);
+  });
+
+  it('rejects when no schedule is in force at all — never a rate against nothing', async () => {
+    const { service, prisma } = make();
+    prisma.commissionTierConfig.findMany.mockResolvedValue([]);
+    await expect(service.create(dto(), 'actor')).rejects.toThrow(/no tier schedule is in force/);
   });
 
   // #10 — a closed period is never rewritten.
