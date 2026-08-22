@@ -46,6 +46,7 @@ const MODULE_NAMES: Record<ModuleKey, string> = {
   settings: 'System Settings',
   notifications: 'Notifications',
   audit: 'Audit Trail',
+  pay_statements: 'My Pay Statements',
 };
 
 type Grant = [ModuleKey, PermissionAction];
@@ -87,6 +88,7 @@ const SALES_REP_GRANTS: Grant[] = [
   ...g('expenses', 'view', 'create'),
   ...g('documents', 'view', 'create'), // DOC-002
   ...g('reports', 'view'), // RPT-001/007
+  ...g('pay_statements', 'view'), // OWN statement only — the endpoint takes no repId (packet 03)
 ];
 
 const ROLE_DESCRIPTIONS: Record<string, string> = {

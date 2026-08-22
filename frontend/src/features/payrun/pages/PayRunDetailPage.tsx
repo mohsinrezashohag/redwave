@@ -20,6 +20,7 @@ import { useDraftRun } from '../api/usePayRunMutations';
 import { PayRunStatusBadge } from '../components/PayRunStatusBadge';
 import { PayRunLinesTable } from '../components/PayRunLinesTable';
 import { LineBreakdownDrawer } from '../components/LineBreakdownDrawer';
+import { RepStatementDrawer } from '../components/RepStatementDrawer';
 import { HoldbackPanel } from '../components/HoldbackPanel';
 import { HoldbackSummaryPanel } from '../components/HoldbackSummaryPanel';
 import { BonusModal } from '../components/BonusModal';
@@ -38,6 +39,7 @@ export default function PayRunDetailPage() {
   const canExport = useCan('payrun:export');
   const canCreate = useCan('payrun:create');
   const [payrollBusy, setPayrollBusy] = useState(false);
+  const [statementRepId, setStatementRepId] = useState<string | null>(null);
 
   /**
    * Redwave's own payroll workbook, streamed from the lines FROZEN at finalize. Offered only on a
@@ -177,12 +179,25 @@ export default function PayRunDetailPage() {
           No reps had validated sales in this period, so there&rsquo;s nothing to pay. Enter and validate sales for this period, then recompute.
         </Banner>
       ) : (
-        <PayRunLinesTable lines={lines} onSelect={(l) => setSelectedLineId(l.id)} onBonus={(l) => setBonusLineId(l.id)} canBonus={isDraft && canApprove} />
+        <PayRunLinesTable
+          lines={lines}
+          onSelect={(l) => setSelectedLineId(l.id)}
+          onBonus={(l) => setBonusLineId(l.id)}
+          // Only on a FINALIZED run: the statement reads lines frozen at finalize, so a draft has none.
+          onStatement={!isDraft && canExport ? (l) => setStatementRepId(l.rep.id) : undefined}
+          canBonus={isDraft && canApprove}
+        />
       )}
 
       <HoldbackSummaryPanel runId={run.id} />
 
       <HoldbackPanel lines={lines} periods={periods} />
+
+      <RepStatementDrawer
+        runId={id ?? ''}
+        repId={statementRepId}
+        onClose={() => setStatementRepId(null)}
+      />
 
       <LineBreakdownDrawer line={selectedLine} open={selectedLine !== null} onClose={() => setSelectedLineId(null)} isDraft={isDraft} periods={periods} />
       <BonusModal runId={run.id} line={bonusLine} onClose={() => setBonusLineId(null)} />

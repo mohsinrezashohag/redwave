@@ -27,6 +27,12 @@ export const MODULE_KEYS = [
   'settings',
   'notifications', // gates the manual broadcast (notifications:broadcast); per-user reads stay self-scoped
   'audit', // the append-only audit trail — audit:view/export gate the SA audit log; Super Admin only by default
+  // A rep's OWN pay statement. Its own module row so statement access is grantable WITHOUT payrun access —
+  // a rep must never reach the pay run, other reps' lines, or any org-wide total. Deliberately uses the
+  // standard `view` action rather than a bespoke `read_self`: the self endpoint takes NO repId at all and
+  // resolves the rep from the token, so "someone else's" cannot be expressed in the API. That is stronger
+  // than a permission name, and it avoids a PermissionAction enum migration. — packet 03
+  'pay_statements',
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];

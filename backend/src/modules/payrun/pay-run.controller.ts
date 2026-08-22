@@ -24,7 +24,11 @@ import { PayrollExcelRenderer } from './renderers/payroll-excel.renderer';
 import { CreatePayRunDto } from './dto/create-pay-run.dto';
 import { SetBonusDto } from './dto/bonus.dto';
 import { ExportPayRunDto } from './dto/export.dto';
-import { PayrollReportResponse } from './dto/pay-run.response';
+import {
+  PayrollReportResponse,
+  RepPayStatementResponse,
+  RepPayStatementSummaryResponse,
+} from './dto/pay-run.response';
 import { ListHoldbackQuery } from './dto/list-holdback.query';
 import {
   ExportResultResponse,
@@ -198,6 +202,23 @@ export class PayRunController {
     res.end(bytes);
   }
 
+  @Get(':id/reps/:repId/statement')
+  @RequirePermission('payrun', 'view')
+  @ApiOperation({
+    summary: "Issue ONE rep's pay statement for this run (admin)",
+    description:
+      'Requires payrun:view — an admin gate a rep does not hold. Built from the SAME frozen payroll lines ' +
+      'as the payroll report, filtered to one rep, so the two reconcile by construction (#2). Contains no ' +
+      'client rate (#3).',
+  })
+  @ApiOkResponse({ type: RepPayStatementResponse })
+  repStatement(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('repId', ParseUUIDPipe) repId: string,
+  ) {
+    return this.payRuns.repPayStatement(id, repId);
+  }
+
   @Post(':id/export')
   @HttpCode(200)
   @RequirePermission('payrun', 'export')
@@ -232,5 +253,46 @@ export class HoldbackLedgerController {
   @ApiOkResponse({ type: HoldbackLedgerResponse, isArray: true })
   list(@Query() query: ListHoldbackQuery, @CurrentUser() user: AuthUser) {
     return this.payRuns.listHoldbackLedger(query, user);
+  }
+}
+
+
+/**
+ * A rep's OWN pay statements. A SEPARATE controller on purpose, and note what its routes do not have:
+ * there is no `repId` parameter anywhere. The rep is resolved from the authenticated token, so another
+ * rep's statement cannot be requested through this surface at all — stronger than validating an id.
+ *
+ * Gated by `pay_statements:view`, its own module row, so statement access is grantable WITHOUT any pay-run
+ * access. A rep never reaches the run itself, another rep's lines, or any org-wide total (§5, #3).
+ */
+@ApiTags('Pay Run & Holdback')
+@ApiBearerAuth()
+@ApiErrorResponses()
+@Controller('pay-statements')
+export class PayStatementsController {
+  constructor(private readonly payRuns: PayRunService) {}
+
+  @Get()
+  @RequirePermission('pay_statements', 'view')
+  @ApiOperation({
+    summary: 'List MY pay statements',
+    description: 'Requires pay_statements:view. Own only — the rep comes from the token, never a parameter.',
+  })
+  @ApiOkResponse({ type: RepPayStatementSummaryResponse, isArray: true })
+  mine(@CurrentUser() user: AuthUser) {
+    return this.payRuns.myPayStatements(user);
+  }
+
+  @Get(':runId')
+  @RequirePermission('pay_statements', 'view')
+  @ApiOperation({
+    summary: 'Get MY pay statement for one run',
+    description:
+      'Requires pay_statements:view. The run is named, the REP is not — it is always the caller. A user ' +
+      'with no linked rep gets 403, not an empty list.',
+  })
+  @ApiOkResponse({ type: RepPayStatementResponse })
+  mineForRun(@Param('runId', ParseUUIDPipe) runId: string, @CurrentUser() user: AuthUser) {
+    return this.payRuns.myPayStatement(runId, user);
   }
 }

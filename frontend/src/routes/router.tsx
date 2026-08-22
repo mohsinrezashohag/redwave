@@ -43,6 +43,7 @@ const CommissionConfigPage = lazy(() => import('../features/commission/pages/Com
 const ProductTypesPage = lazy(() => import('../features/productTypes/pages/ProductTypesPage'));
 const KmRatesPage = lazy(() => import('../features/kmRates/pages/KmRatesPage'));
 const PayRunListPage = lazy(() => import('../features/payrun/pages/PayRunListPage'));
+const MyPayStatementsPage = lazy(() => import('../features/payrun/pages/MyPayStatementsPage'));
 const PayRunDetailPage = lazy(() => import('../features/payrun/pages/PayRunDetailPage'));
 const ClawbackListPage = lazy(() => import('../features/clawback/pages/ClawbackListPage'));
 const ClawbackEntryPage = lazy(() => import('../features/clawback/pages/ClawbackEntryPage'));
@@ -127,6 +128,7 @@ export const router = createBrowserRouter([
           { path: 'expenses/:id', element: lazyEl(<ExpenseDetailPage />) },
           { path: 'expenses/:id/edit', element: lazyEl(<ExpenseEditPage />) },
           { path: 'pay-runs', element: lazyEl(<PayRunListPage />) },
+          { path: 'my-pay-statements', element: lazyEl(<MyPayStatementsPage />) },
           { path: 'pay-runs/:id', element: lazyEl(<PayRunDetailPage />) },
           { path: 'clawbacks', element: lazyEl(<ClawbackListPage />) },
           { path: 'clawbacks/new', element: lazyEl(<ClawbackEntryPage />) },

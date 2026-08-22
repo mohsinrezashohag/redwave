@@ -356,3 +356,122 @@ export class PayrollReportResponse {
   @ApiProperty({ type: String, description: 'Row-1 strip: Σ 0.3.' })
   holdback_30!: string;
 }
+
+/**
+ * ONE LINE of a REP-FACING pay statement — deliberately a SEPARATE DTO from the admin payroll line, not a
+ * reuse of it. Packet 03: "do not let the rep-facing endpoint reuse an admin serializer that happens to
+ * include extra fields." What is ABSENT is the specification: no agent identifiers for anyone else, no
+ * client rate, no margin, no org-wide total (#3).
+ */
+export class RepPayStatementLineResponse {
+  @ApiProperty()
+  sale_id!: string;
+
+  @ApiProperty({ type: String, nullable: true, example: '2026-03-02' })
+  sale_date!: string | null;
+
+  @ApiProperty({ description: 'The customer this rep sold to.' })
+  customer_name!: string;
+
+  @ApiProperty({ type: String, nullable: true })
+  address!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'VF' })
+  channel!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'Fibre 1gig/2.5gig' })
+  product_name!: string | null;
+
+  @ApiProperty()
+  has_internet!: boolean;
+
+  @ApiProperty()
+  has_tv!: boolean;
+
+  @ApiProperty()
+  has_home_phone!: boolean;
+
+  @ApiProperty()
+  is_greenfield!: boolean;
+
+  @ApiProperty({ type: String, example: '125.00', description: 'What the REP earned — never a client rate.' })
+  internet_rate!: string;
+
+  @ApiProperty({ type: String, example: '30.00' })
+  tv_rate!: string;
+
+  @ApiProperty({ type: String, example: '30.00' })
+  hp_rate!: string;
+
+  @ApiProperty({ type: String, example: '0.00' })
+  greenfield!: string;
+
+  @ApiProperty({ type: String, example: '0.00' })
+  spiff!: string;
+
+  @ApiProperty({ type: String, example: '0.00' })
+  other_total!: string;
+
+  @ApiProperty({ type: String, example: '185.00', description: 'The price this sale earned, at 100%.' })
+  total_100!: string;
+
+  @ApiProperty({ type: String, example: '129.50', description: 'Paid now — the 70% advance.' })
+  advance_70!: string;
+
+  @ApiProperty({ type: String, example: '55.50', description: 'Held — released on the holdback schedule.' })
+  holdback_30!: string;
+}
+
+/** One rep's statement for one pay run: per sale, what it paid, their 70%, and the 30% held. */
+export class RepPayStatementResponse {
+  @ApiProperty()
+  pay_run_id!: string;
+
+  @ApiProperty({ type: Number, example: 6 })
+  period_number!: number;
+
+  @ApiProperty({ type: String, example: '2026-03-01' })
+  period_start!: string;
+
+  @ApiProperty({ type: String, example: '2026-03-14' })
+  period_end!: string;
+
+  @ApiProperty({ type: String, nullable: true, example: 'RW-D-0001' })
+  rep_code!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  rep_name!: string | null;
+
+  @ApiProperty({ description: 'False until the run finalizes — nothing is owed before then.' })
+  is_finalized!: boolean;
+
+  @ApiProperty({ type: [RepPayStatementLineResponse] })
+  lines!: RepPayStatementLineResponse[];
+
+  @ApiProperty({ type: String })
+  total_100!: string;
+
+  @ApiProperty({ type: String })
+  advance_70!: string;
+
+  @ApiProperty({ type: String })
+  holdback_30!: string;
+}
+
+/** A statement the caller can open — the list a logged-in rep sees. */
+export class RepPayStatementSummaryResponse {
+  @ApiProperty()
+  pay_run_id!: string;
+
+  @ApiProperty({ type: Number, example: 6 })
+  period_number!: number;
+
+  @ApiProperty({ type: String, example: '2026-03-01' })
+  period_start!: string;
+
+  @ApiProperty({ type: String, example: '2026-03-14' })
+  period_end!: string;
+
+  @ApiProperty({ type: String, example: 'finalized' })
+  run_status!: string;
+}

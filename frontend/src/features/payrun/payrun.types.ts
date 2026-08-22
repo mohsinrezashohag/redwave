@@ -59,3 +59,7 @@ export type ExportResult = components['schemas']['ExportResultResponse'];
 export type CreatePayRunBody = components['schemas']['CreatePayRunDto'];
 export type SetBonusBody = components['schemas']['SetBonusDto'];
 export type ExportPayRunBody = components['schemas']['ExportPayRunDto'];
+
+/** A rep-facing statement: per sale, what it paid, their 70%, the 30% held. No client rate, ever (#3). */
+export type RepPayStatement = components['schemas']['RepPayStatementResponse'];
+export type RepPayStatementSummary = components['schemas']['RepPayStatementSummaryResponse'];

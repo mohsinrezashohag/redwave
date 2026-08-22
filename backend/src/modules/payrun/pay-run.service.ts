@@ -9,7 +9,7 @@
  * and freeze/holdback are further guarded (sales become Paid; one ledger row per rep+origin).
  * Money math uses decimal.js; conversion to Prisma Decimal (`.toFixed(2)`) happens only on write.
  */
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { HoldbackReleaseStatus, Prisma } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -416,6 +416,134 @@ export class PayRunService {
       advance_70: sum((l) => l.advance_70),
       holdback_30: sum((l) => l.holdback_30),
     };
+  }
+
+  /**
+   * ONE REP's pay statement for a run — what was sold, what it paid, their 70%, and the 30% held.
+   *
+   * Built from the SAME frozen `payroll_report_lines` as the payroll report, filtered to one rep, so the
+   * two reconcile by construction rather than by agreement between two calculations (#2). Nothing is
+   * recomputed.
+   *
+   * SELF-SCOPING IS RESOLVED FROM THE TOKEN, never from a caller-supplied id — see `myPayStatement`, which
+   * takes no repId at all. This admin-facing method DOES take one, and is gated by `payrun:view`, which a
+   * rep does not have.
+   *
+   * #3 — the returned shape carries no client rate, no margin and no org-wide total. A rep-facing document
+   * is the rep stream only.
+   */
+  private async buildRepStatement(runId: string, repId: string) {
+    const run = await this.prisma.payRun.findUnique({
+      where: { id: runId },
+      include: { pay_period: true },
+    });
+    if (!run) {
+      throw new NotFoundException('Pay run not found');
+    }
+
+    const lines = await this.prisma.payrollReportLine.findMany({
+      where: { pay_run_id: runId, sale_id: { in: (await this.saleIdsForRep(runId, repId)) } },
+      orderBy: { sort_order: 'asc' },
+    });
+
+    const rep = await this.prisma.rep.findUnique({
+      where: { id: repId },
+      select: { rep_code: true, external_code: true, full_name: true },
+    });
+
+    const sum = (pick: (l: (typeof lines)[number]) => Prisma.Decimal) =>
+      lines.reduce((acc, l) => acc.plus(pick(l)), new Prisma.Decimal(0)).toFixed(2);
+
+    return {
+      pay_run_id: run.id,
+      period_number: run.pay_period.period_number,
+      period_start: iso(run.pay_period.start_date),
+      period_end: iso(run.pay_period.end_date),
+      rep_code: rep?.rep_code ?? null,
+      rep_name: rep?.full_name ?? null,
+      // Empty until the run finalizes — before that nothing is owed, and a zeroed statement would read as
+      // "you earned nothing" rather than "not yet calculated".
+      is_finalized: lines.length > 0,
+      lines: lines.map((l) => ({
+        sale_id: l.sale_id,
+        sale_date: l.sale_date ? iso(l.sale_date) : null,
+        customer_name: l.customer_name,
+        address: l.address,
+        channel: l.channel,
+        product_name: l.product_name,
+        has_internet: l.has_internet,
+        has_tv: l.has_tv,
+        has_home_phone: l.has_home_phone,
+        is_greenfield: l.is_greenfield,
+        // The REP amount for each component — never a client rate (#3).
+        internet_rate: (l.internet_rate ?? new Prisma.Decimal(0)).toFixed(2),
+        tv_rate: (l.tv_rate ?? new Prisma.Decimal(0)).toFixed(2),
+        hp_rate: (l.hp_rate ?? new Prisma.Decimal(0)).toFixed(2),
+        greenfield: (l.greenfield ?? new Prisma.Decimal(0)).toFixed(2),
+        spiff: (l.spiff ?? new Prisma.Decimal(0)).toFixed(2),
+        other_total: (l.other_total ?? new Prisma.Decimal(0)).toFixed(2),
+        total_100: l.total_100.toFixed(2),
+        advance_70: l.advance_70.toFixed(2),
+        holdback_30: l.holdback_30.toFixed(2),
+      })),
+      total_100: sum((l) => l.total_100),
+      advance_70: sum((l) => l.advance_70),
+      holdback_30: sum((l) => l.holdback_30),
+    };
+  }
+
+  /** The sales in this run that belong to ONE rep — the filter that scopes a statement. */
+  private async saleIdsForRep(runId: string, repId: string): Promise<string[]> {
+    const sales = await this.prisma.sale.findMany({
+      where: { pay_run_id: runId, rep_id: repId },
+      select: { id: true },
+    });
+    return sales.map((s) => s.id);
+  }
+
+  /** ADMIN: any rep's statement for a run. Gated by payrun:view at the controller. */
+  async repPayStatement(runId: string, repId: string) {
+    return this.buildRepStatement(runId, repId);
+  }
+
+  /**
+   * SELF-SERVICE: the caller's OWN statement. Takes NO repId — the rep is resolved from the authenticated
+   * user, so "someone else's statement" cannot be expressed by this endpoint at all. That is the whole
+   * protection, and it is stronger than validating an id would be.
+   *
+   * A user with no linked rep is 403, not an empty 200: an empty list would imply "you have no statements"
+   * when the truth is "you are not a rep".
+   */
+  async myPayStatement(runId: string, user: AuthUser) {
+    if (!user.repId) {
+      throw new ForbiddenException('Your account is not linked to a rep');
+    }
+    return this.buildRepStatement(runId, user.repId);
+  }
+
+  /** SELF-SERVICE: the finalized runs the caller has a statement for, newest first. */
+  async myPayStatements(user: AuthUser) {
+    if (!user.repId) {
+      throw new ForbiddenException('Your account is not linked to a rep');
+    }
+    const sales = await this.prisma.sale.findMany({
+      where: { rep_id: user.repId, pay_run_id: { not: null } },
+      select: { pay_run_id: true },
+      distinct: ['pay_run_id'],
+    });
+    const runIds = sales.map((s) => s.pay_run_id).filter((id): id is string => id !== null);
+    const runs = await this.prisma.payRun.findMany({
+      where: { id: { in: runIds } },
+      include: { pay_period: true },
+      orderBy: { run_date: 'desc' },
+    });
+    return runs.map((r) => ({
+      pay_run_id: r.id,
+      period_number: r.pay_period.period_number,
+      period_start: iso(r.pay_period.start_date),
+      period_end: iso(r.pay_period.end_date),
+      run_status: r.status,
+    }));
   }
 
   async exportRun(runId: string, dto: ExportPayRunDto, user: AuthUser) {

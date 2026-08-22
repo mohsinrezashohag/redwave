@@ -2083,3 +2083,40 @@ sheet is internally consistent after per-line rounding.
 
 **Verified LOCAL:** 19 new specs; full backend suite + typecheck + lint + build + contract regen; FE build +
 lint + stylelint + vitest. **Operator: `migrate deploy`.**
+
+### Pay Run — per-rep pay statement, admin-issued and rep self-service (built — packet 03; NO migration)
+
+Answers what Siam asked for directly — *"70% for this sale, the price was $88, the other 30% held"* — **per
+sale, not a period summary**. Built entirely on packet 02's frozen `payroll_report_lines`, filtered to one
+rep, so a statement and the payroll report reconcile **by construction** rather than by two calculations
+agreeing (#2). Nothing is recomputed and no migration was needed.
+
+**The security shape is the packet, and two of its three guarantees are STRUCTURAL rather than checks that
+could be removed:**
+
+- **The self-service surface takes no `repId` at all.** `PayStatementsController` (`/v1/pay-statements`,
+  `/v1/pay-statements/{runId}`) names the RUN but never the rep — that comes from the token. "Rep A requests
+  rep B" is not a request this API can express, which is stronger than validating an id would be. A spec
+  asserts the controller source contains no `repId`, because a missing parameter cannot be quietly deleted
+  the way a guard clause can.
+- **The rep-facing DTO is its own type**, not a reuse of the admin payroll line — the packet says so
+  explicitly. A spec asserts the response's exact allowed key set, so a field added to the admin serializer
+  later cannot leak into a rep's document without someone also editing that list.
+- A user with **no linked rep is 403, not an empty 200**: "you have no statements" and "you are not a rep"
+  are different facts and should not look alike.
+
+**A deliberate deviation from the packet, recorded here because it changes the permission model.** Packet 03
+suggests a bespoke `pay_statements:read_self`. That would need a new `PermissionAction` enum value and its
+migration (as `broadcast` and `business` did). Instead this uses a new **module key `pay_statements` with
+the standard `view` action** on an endpoint that has no repId — functionally stronger (the parameter does
+not exist rather than being validated) and seed-data only. Its own module row matters: statement access is
+grantable **without** any pay-run access, so a rep never reaches the run, another rep's lines, or an
+org-wide total. Granted to Sales Rep by default.
+
+**FE:** a "Pay statement" row action on the pay-run detail page, offered only on a FINALIZED run (a draft
+has no frozen lines), plus `/my-pay-statements` for a logged-in rep. Row selection is a real `<button>`
+rather than a click handler on the row, so it is keyboard-reachable and announced (§7).
+
+**Verified LOCAL:** 9 new security specs; full backend suite + typecheck + lint + build + contract regen; FE
+build + lint + stylelint + vitest. **Operator: re-run `prisma:seed`** so the new `pay_statements` module and
+its Sales Rep grant exist (idempotent bootstrap; no migration).
