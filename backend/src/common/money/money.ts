@@ -1,16 +1,4 @@
-/**
- * Central money policy — the SINGLE rounding/formatting authority for every presentation + export path
- * (statements, invoices, QuickBooks CSV, reconciliation). The rule: keep EXACT decimal in storage and
- * arithmetic; round to 2 dp HALF_UP ONLY at the presentation boundary. This half-up rule is also the ONE
- * used to compute a frozen `amount_cad` (see `common/fx`). — BRD §8.2, CLAUDE §1
- *
- * Multi-currency with a frozen FX snapshot (Meeting 3, #12): documents bill in a client's currency and
- * roll up to CAD via a rate captured once at issue/approval. **CAD is the reconciliation/base currency** —
- * every CAD roll-up reads the frozen `amount_cad`; the original currency + rate are retained for audit.
- *
- * (The isolated Commission Engine carries its own identical `roundMoneyHalfUp` to preserve its
- * zero-dependency purity — §6; it is the SAME rule, a different stream — #3.)
- */
+
 import { Decimal } from 'decimal.js';
 
 /** Decimal places + rounding mode for ALL money. */
