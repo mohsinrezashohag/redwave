@@ -6,7 +6,7 @@
  */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileText, Layers } from 'lucide-react';
 import { Badge, Button, IconButton, PageHeader, useToast } from '../../../components/ui';
 import { DataTable, type DataColumn } from '../../../components/data/DataTable';
 import { useCan } from '../../../auth/useCan';
@@ -20,6 +20,7 @@ import { downloadStatementExcel } from '../billing.download';
 import { statementNo } from '../billing.logic';
 import { ClientPeriodPicker } from '../components/ClientPeriodPicker';
 import { GenerateBillingModal } from '../components/GenerateBillingModal';
+import { BulkGenerateModal } from '../components/BulkGenerateModal';
 import type { ClientStatement } from '../billing.types';
 import styles from '../components/billing.module.css';
 
@@ -31,6 +32,7 @@ export default function BillingListPage() {
   const [clientId, setClientId] = useState<string | undefined>();
   const [periodId, setPeriodId] = useState<string | undefined>();
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const clientsQ = useClients('all', canView);
   const periodsQ = useBillingPeriods(canView);
@@ -71,9 +73,16 @@ export default function BillingListPage() {
         subtitle="Generate and view what Redwave bills each program partner (CAD, no GST). Priced by the server from client billing rates — this screen computes nothing."
         actions={
           canCreate ? (
-            <Button variant="primary" leftIcon={<FileText size={16} />} onClick={() => setGenerateOpen(true)}>
-              Generate statement
-            </Button>
+            <>
+              {/* Bulk first in the DOM but visually secondary: the whole-week run is the common case, the
+                  single-client one stays the primary deliberate action (and the only way to re-issue). */}
+              <Button variant="secondary" leftIcon={<Layers size={16} />} onClick={() => setBulkOpen(true)}>
+                Generate all
+              </Button>
+              <Button variant="primary" leftIcon={<FileText size={16} />} onClick={() => setGenerateOpen(true)}>
+                Generate statement
+              </Button>
+            </>
           ) : undefined
         }
       />
@@ -117,6 +126,13 @@ export default function BillingListPage() {
         clients={clientsQ.data ?? []}
         periods={periodsQ.data ?? []}
         presetClientId={clientId}
+        presetPeriodId={periodId}
+      />
+
+      <BulkGenerateModal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        periods={periodsQ.data ?? []}
         presetPeriodId={periodId}
       />
     </div>

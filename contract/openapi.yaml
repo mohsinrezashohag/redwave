@@ -2863,6 +2863,137 @@ paths:
       security: *a113
       summary: Delete a PENDING flat rate
       tags: *a114
+  /v1/commission/tier-rates:
+    get:
+      description: Requires commission:view. Scope = (client, product, tier); a
+        missing row falls back to the schedule rate.
+      operationId: CommissionController_listTierRates_v1
+      parameters:
+        - name: status
+          required: false
+          in: query
+          schema:
+            default: all
+            type: string
+            enum:
+              - past
+              - current
+              - pending
+              - all
+        - name: client_id
+          required: false
+          in: query
+          description: "Scope filter: a client id, the literal 'global', or omit for every
+            scope."
+          schema:
+            type: string
+        - name: product_id
+          required: false
+          in: query
+          description: Only rates for this product.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TierRateResponse"
+        "400": *a107
+        "401": *a108
+        "403": *a109
+        "404": *a110
+        "409": *a111
+        "422": *a112
+      security: *a113
+      summary: Per-product tier rates (current + pending)
+      tags: *a114
+    post:
+      description: Requires commission:edit. TIERED products only (an add-on uses a
+        flat rate). The tier must exist in the schedule. Back-dating is rejected
+        (422) — a closed period is never rewritten (#10).
+      operationId: CommissionController_createTierRate_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTierRateDto"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TierRateResponse"
+        "400": *a107
+        "401": *a108
+        "403": *a109
+        "404": *a110
+        "409": *a111
+        "422": *a112
+      security: *a113
+      summary: Set an effective-dated per-product tier rate
+      tags: *a114
+  /v1/commission/tier-rates/{id}:
+    patch:
+      description: Requires commission:edit. Only a pending rate can be edited;
+        current/past → 422 (supersede).
+      operationId: CommissionController_updateTierRate_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTierRateDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TierRateResponse"
+        "400": *a107
+        "401": *a108
+        "403": *a109
+        "404": *a110
+        "409": *a111
+        "422": *a112
+      security: *a113
+      summary: Edit a PENDING per-product tier rate
+      tags: *a114
+    delete:
+      description: Requires commission:edit. Only a pending rate can be deleted;
+        current/past → 422.
+      operationId: CommissionController_removeTierRate_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ""
+        "400": *a107
+        "401": *a108
+        "403": *a109
+        "404": *a110
+        "409": *a111
+        "422": *a112
+      security: *a113
+      summary: Delete a PENDING per-product tier rate
+      tags: *a114
   /v1/commission/holdback-config:
     get:
       description: Requires commission:view.
@@ -3862,16 +3993,10 @@ paths:
         - name: category
           required: false
           in: query
+          description: Expense category key from the catalogue.
           schema:
+            example: meals
             type: string
-            enum:
-              - km
-              - meals
-              - hotel
-              - flight
-              - rental
-              - gas
-              - other
         - name: rep_id
           required: false
           in: query
@@ -3973,16 +4098,10 @@ paths:
         - name: category
           required: false
           in: query
+          description: Expense category key from the catalogue.
           schema:
+            example: meals
             type: string
-            enum:
-              - km
-              - meals
-              - hotel
-              - flight
-              - rental
-              - gas
-              - other
         - name: rep_id
           required: false
           in: query
@@ -5236,6 +5355,91 @@ paths:
       security: *a201
       summary: Finalize a pay run (the money action)
       tags: *a202
+  /v1/pay-runs/{id}/payroll-report:
+    get:
+      description: Requires payrun:view. One row per SALE from the FROZEN snapshot —
+        never recomputed (#2). A run that has not finalized has no lines yet and
+        reports is_finalized=false rather than showing zeros.
+      operationId: PayRunController_payrollReport_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayrollReportResponse"
+        "400": *a195
+        "401": *a196
+        "403": *a197
+        "404": *a198
+        "409": *a199
+        "422": *a200
+      security: *a201
+      summary: Preview the payroll report (Redwave's workbook shape)
+      tags: *a202
+  /v1/pay-runs/{id}/payroll-report/download:
+    get:
+      description: Requires payrun:export. Header on row 2 with the SUBTOTAL strip on
+        row 1, matching Redwave’s file.
+      operationId: PayRunController_payrollReportDownload_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+        "400": *a195
+        "401": *a196
+        "403": *a197
+        "404": *a198
+        "409": *a199
+        "422": *a200
+      security: *a201
+      summary: Download the payroll report workbook (.xlsx)
+      tags: *a202
+  /v1/pay-runs/{id}/reps/{repId}/statement:
+    get:
+      description: Requires payrun:view — an admin gate a rep does not hold. Built
+        from the SAME frozen payroll lines as the payroll report, filtered to
+        one rep, so the two reconcile by construction (#2). Contains no client
+        rate (#3).
+      operationId: PayRunController_repStatement_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: repId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepPayStatementResponse"
+        "400": *a195
+        "401": *a196
+        "403": *a197
+        "404": *a198
+        "409": *a199
+        "422": *a200
+      security: *a201
+      summary: Issue ONE rep's pay statement for this run (admin)
+      tags: *a202
   /v1/pay-runs/{id}/export:
     post:
       description: Requires payrun:export. Configurable format; marks the run
@@ -5269,6 +5473,90 @@ paths:
       security: *a201
       summary: Generate the ADP export for a finalized run
       tags: *a202
+  /v1/pay-statements:
+    get:
+      description: Requires pay_statements:view. Own only — the rep comes from the
+        token, never a parameter.
+      operationId: PayStatementsController_mine_v1
+      parameters: []
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RepPayStatementSummaryResponse"
+        "400": &a203
+          description: Bad Request — validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "401": &a204
+          description: Unauthorized — missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "403": &a205
+          description: Forbidden — RBAC denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "404": &a206
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "409": &a207
+          description: Conflict — invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "422": &a208
+          description: Unprocessable Entity — domain rule violated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+      security: &a209
+        - bearer: []
+      summary: List MY pay statements
+      tags: &a210
+        - Pay Run & Holdback
+  /v1/pay-statements/{runId}:
+    get:
+      description: Requires pay_statements:view. The run is named, the REP is not — it
+        is always the caller. A user with no linked rep gets 403, not an empty
+        list.
+      operationId: PayStatementsController_mineForRun_v1
+      parameters:
+        - name: runId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepPayStatementResponse"
+        "400": *a203
+        "401": *a204
+        "403": *a205
+        "404": *a206
+        "409": *a207
+        "422": *a208
+      security: *a209
+      summary: Get MY pay statement for one run
+      tags: *a210
   /v1/holdback-ledger:
     get:
       description: Requires payrun:view. Holds, schedule, release status.
@@ -5363,141 +5651,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatementPreviewResponse"
-        "400": &a203
-          description: Bad Request — validation failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a204
-          description: Unauthorized — missing/invalid token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a205
-          description: Forbidden — RBAC denied
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a206
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a207
-          description: Conflict — invalid state transition
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a208
-          description: Unprocessable Entity — domain rule violated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a209
-        - bearer: []
-      summary: Preview a statement (NOT persisted; no number minted)
-      tags: &a210
-        - Billing & Statements
-  /v1/clients/{id}/statements:
-    post:
-      description: Requires billing:create. Priced solely from client_billing_rates
-        effective on each sale_date; no GST. ISSUES a NEW gapless-numbered
-        immutable version; any prior version is marked superseded.
-      operationId: BillingGenerationController_generateStatement_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GenerateBillingDto"
-      responses:
-        "201":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ClientStatementResponse"
-        "400": *a203
-        "401": *a204
-        "403": *a205
-        "404": *a206
-        "409": *a207
-        "422": *a208
-      security: *a209
-      summary: Issue a client statement (one line per customer)
-      tags: *a210
-  /v1/clients/{id}/invoices:
-    post:
-      description: Requires billing:create. total_commission = the client-billing
-        statement total (billing stream only; never the rep commission payout).
-        Regenerating replaces the existing invoice.
-      operationId: BillingGenerationController_generateInvoice_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GenerateBillingDto"
-      responses:
-        "201":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ClientInvoiceResponse"
-        "400": *a203
-        "401": *a204
-        "403": *a205
-        "404": *a206
-        "409": *a207
-        "422": *a208
-      security: *a209
-      summary: Generate a one-line commission invoice
-      tags: *a210
-  /v1/statements:
-    get:
-      description: Requires billing:view.
-      operationId: StatementsController_list_v1
-      parameters:
-        - name: client_id
-          required: false
-          in: query
-          description: Filter by client.
-          schema:
-            type: string
-        - name: billing_period_id
-          required: false
-          in: query
-          description: Filter by billing week ("Bill 17").
-          schema:
-            type: string
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ClientStatementResponse"
         "400": &a211
           description: Bad Request — validation failed
           content:
@@ -5536,21 +5689,29 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
       security: &a217
         - bearer: []
-      summary: List generated statements (every version; newest first)
+      summary: Preview a statement (NOT persisted; no number minted)
       tags: &a218
         - Billing & Statements
-  /v1/statements/{id}:
-    get:
-      description: Requires billing:view.
-      operationId: StatementsController_findOne_v1
+  /v1/clients/{id}/statements:
+    post:
+      description: Requires billing:create. Priced solely from client_billing_rates
+        effective on each sale_date; no GST. ISSUES a NEW gapless-numbered
+        immutable version; any prior version is marked superseded.
+      operationId: BillingGenerationController_generateStatement_v1
       parameters:
         - name: id
           required: true
           in: path
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateBillingDto"
       responses:
-        "200":
+        "201":
           description: ""
           content:
             application/json:
@@ -5563,36 +5724,14 @@ paths:
         "409": *a215
         "422": *a216
       security: *a217
-      summary: Get a statement with its lines
+      summary: Issue a client statement (one line per customer)
       tags: *a218
-  /v1/statements/{id}/download:
-    get:
-      description: Requires billing:view. ?format=excel (default) | quickbooks.
-        Streams the file.
-      operationId: StatementsController_download_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      responses:
-        "200":
-          description: ""
-        "400": *a211
-        "401": *a212
-        "403": *a213
-        "404": *a214
-        "409": *a215
-        "422": *a216
-      security: *a217
-      summary: Download the statement file (re-render from the frozen record)
-      tags: *a218
-  /v1/statements/{id}/export:
+  /v1/clients/{id}/invoices:
     post:
-      description: Requires billing:export. format=excel|quickbooks. Records the
-        export; streams the file.
-      operationId: StatementsController_export_v1
+      description: Requires billing:create. total_commission = the client-billing
+        statement total (billing stream only; never the rep commission payout).
+        Regenerating replaces the existing invoice.
+      operationId: BillingGenerationController_generateInvoice_v1
       parameters:
         - name: id
           required: true
@@ -5604,10 +5743,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StatementExportDto"
+              $ref: "#/components/schemas/GenerateBillingDto"
       responses:
         "201":
           description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientInvoiceResponse"
         "400": *a211
         "401": *a212
         "403": *a213
@@ -5615,13 +5758,12 @@ paths:
         "409": *a215
         "422": *a216
       security: *a217
-      summary: Export a statement (records a billing_exports artifact + streams the
-        file)
+      summary: Generate a one-line commission invoice
       tags: *a218
-  /v1/invoices:
+  /v1/statements:
     get:
       description: Requires billing:view.
-      operationId: InvoicesController_list_v1
+      operationId: StatementsController_list_v1
       parameters:
         - name: client_id
           required: false
@@ -5643,7 +5785,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/ClientInvoiceResponse"
+                  $ref: "#/components/schemas/ClientStatementResponse"
         "400": &a219
           description: Bad Request — validation failed
           content:
@@ -5682,13 +5824,13 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
       security: &a225
         - bearer: []
-      summary: List generated invoices (every version; newest first)
+      summary: List generated statements (every version; newest first)
       tags: &a226
         - Billing & Statements
-  /v1/invoices/{id}:
+  /v1/statements/{id}:
     get:
       description: Requires billing:view.
-      operationId: InvoicesController_findOne_v1
+      operationId: StatementsController_findOne_v1
       parameters:
         - name: id
           required: true
@@ -5701,7 +5843,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ClientInvoiceResponse"
+                $ref: "#/components/schemas/ClientStatementResponse"
         "400": *a219
         "401": *a220
         "403": *a221
@@ -5709,12 +5851,13 @@ paths:
         "409": *a223
         "422": *a224
       security: *a225
-      summary: Get an invoice
+      summary: Get a statement with its lines
       tags: *a226
-  /v1/invoices/{id}/download:
+  /v1/statements/{id}/download:
     get:
-      description: Requires billing:view.
-      operationId: InvoicesController_download_v1
+      description: Requires billing:view. ?format=excel (default) | quickbooks.
+        Streams the file.
+      operationId: StatementsController_download_v1
       parameters:
         - name: id
           required: true
@@ -5731,92 +5874,13 @@ paths:
         "409": *a223
         "422": *a224
       security: *a225
-      summary: Download the invoice PDF (re-render from the frozen record)
+      summary: Download the statement file (re-render from the frozen record)
       tags: *a226
-  /v1/invoices/{id}/export:
+  /v1/statements/{id}/export:
     post:
-      description: Requires billing:export.
-      operationId: InvoicesController_export_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      responses:
-        "201":
-          description: ""
-        "400": *a219
-        "401": *a220
-        "403": *a221
-        "404": *a222
-        "409": *a223
-        "422": *a224
-      security: *a225
-      summary: Export an invoice PDF (records a billing_exports artifact + streams it)
-      tags: *a226
-  /v1/billing-periods:
-    get:
-      description: Requires billing:view. Separate from pay periods — a bill straddles
-        two of them.
-      operationId: BillingPeriodsController_list_v1
-      parameters: []
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/BillingPeriodResponse"
-        "400":
-          description: Bad Request — validation failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401":
-          description: Unauthorized — missing/invalid token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403":
-          description: Forbidden — RBAC denied
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404":
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409":
-          description: Conflict — invalid state transition
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422":
-          description: Unprocessable Entity — domain rule violated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security:
-        - bearer: []
-      summary: List the billing weeks ("Bill 17", Mon–Sun)
-      tags:
-        - Billing & Statements
-  /v1/clients/{id}/expense-documents/preview:
-    post:
-      description: Requires billing:create. Returns the grouped km + food lines (per
-        rep/day) + total in the client currency, plus any food excluded for a
-        currency mismatch. A km item with no client-bill rate → 422.
-      operationId: ExpenseDocGenerationController_preview_v1
+      description: Requires billing:export. format=excel|quickbooks. Records the
+        export; streams the file.
+      operationId: StatementsController_export_v1
       parameters:
         - name: id
           required: true
@@ -5828,14 +5892,46 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GenerateExpenseDocDto"
+              $ref: "#/components/schemas/StatementExportDto"
+      responses:
+        "201":
+          description: ""
+        "400": *a219
+        "401": *a220
+        "403": *a221
+        "404": *a222
+        "409": *a223
+        "422": *a224
+      security: *a225
+      summary: Export a statement (records a billing_exports artifact + streams the
+        file)
+      tags: *a226
+  /v1/invoices:
+    get:
+      description: Requires billing:view.
+      operationId: InvoicesController_list_v1
+      parameters:
+        - name: client_id
+          required: false
+          in: query
+          description: Filter by client.
+          schema:
+            type: string
+        - name: billing_period_id
+          required: false
+          in: query
+          description: Filter by billing week ("Bill 17").
+          schema:
+            type: string
       responses:
         "200":
           description: ""
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExpenseDocPreviewResponse"
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClientInvoiceResponse"
         "400": &a227
           description: Bad Request — validation failed
           content:
@@ -5874,59 +5970,17 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
       security: &a233
         - bearer: []
-      summary: Preview a client expense document (NOT persisted; no number minted)
+      summary: List generated invoices (every version; newest first)
       tags: &a234
         - Billing & Statements
-  /v1/clients/{id}/expense-documents:
-    post:
-      description: Requires billing:create. km is priced from the CLIENT-BILL km rate;
-        food is native-currency (mismatches excluded). No receipts, no
-        commission (#3). ISSUES a NEW gapless CEXP-numbered immutable version;
-        any prior version is marked superseded. FX is frozen at issue (#12).
-      operationId: ExpenseDocGenerationController_generate_v1
+  /v1/invoices/{id}:
+    get:
+      description: Requires billing:view.
+      operationId: InvoicesController_findOne_v1
       parameters:
         - name: id
           required: true
           in: path
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GenerateExpenseDocDto"
-      responses:
-        "201":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ClientExpenseDocumentResponse"
-        "400": *a227
-        "401": *a228
-        "403": *a229
-        "404": *a230
-        "409": *a231
-        "422": *a232
-      security: *a233
-      summary: Issue a client expense document (km + food only, per rep/day)
-      tags: *a234
-  /v1/expense-documents:
-    get:
-      description: Requires billing:view.
-      operationId: ExpenseDocumentsController_list_v1
-      parameters:
-        - name: client_id
-          required: false
-          in: query
-          description: Filter by client.
-          schema:
-            type: string
-        - name: billing_period_id
-          required: false
-          in: query
-          description: Filter by billing week ("Bill 17").
           schema:
             type: string
       responses:
@@ -5935,9 +5989,75 @@ paths:
           content:
             application/json:
               schema:
+                $ref: "#/components/schemas/ClientInvoiceResponse"
+        "400": *a227
+        "401": *a228
+        "403": *a229
+        "404": *a230
+        "409": *a231
+        "422": *a232
+      security: *a233
+      summary: Get an invoice
+      tags: *a234
+  /v1/invoices/{id}/download:
+    get:
+      description: Requires billing:view.
+      operationId: InvoicesController_download_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+        "400": *a227
+        "401": *a228
+        "403": *a229
+        "404": *a230
+        "409": *a231
+        "422": *a232
+      security: *a233
+      summary: Download the invoice PDF (re-render from the frozen record)
+      tags: *a234
+  /v1/invoices/{id}/export:
+    post:
+      description: Requires billing:export.
+      operationId: InvoicesController_export_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: ""
+        "400": *a227
+        "401": *a228
+        "403": *a229
+        "404": *a230
+        "409": *a231
+        "422": *a232
+      security: *a233
+      summary: Export an invoice PDF (records a billing_exports artifact + streams it)
+      tags: *a234
+  /v1/billing-periods:
+    get:
+      description: Requires billing:view. Separate from pay periods — a bill straddles
+        two of them.
+      operationId: BillingPeriodsController_list_v1
+      parameters: []
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/ClientExpenseDocumentResponse"
+                  $ref: "#/components/schemas/BillingPeriodResponse"
         "400": &a235
           description: Bad Request — validation failed
           content:
@@ -5976,13 +6096,19 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
       security: &a241
         - bearer: []
-      summary: List expense documents (every version; newest first)
+      summary: List the billing weeks ("Bill 17", Mon–Sun)
       tags: &a242
         - Billing & Statements
-  /v1/expense-documents/{id}:
-    get:
-      description: Requires billing:view.
-      operationId: ExpenseDocumentsController_findOne_v1
+  /v1/billing-periods/{id}/statements/generate-all:
+    post:
+      description: "Requires billing:create (Admin/Super Admin). Composes the
+        per-client issue, so one client with an unpriced product fails ALONE and
+        the rest still issue; each failure carries its unpriced[] detail. A
+        client already holding a current statement for the week is SKIPPED —
+        re-running never renumbers or duplicates. FX freezes per document (#12),
+        so no batch-level rate override is accepted: a client needing a manual
+        rate is issued through the per-client endpoint."
+      operationId: BillingPeriodsController_generateAll_v1
       parameters:
         - name: id
           required: true
@@ -5995,7 +6121,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ClientExpenseDocumentResponse"
+                $ref: "#/components/schemas/BulkStatementResultResponse"
         "400": *a235
         "401": *a236
         "403": *a237
@@ -6003,74 +6129,33 @@ paths:
         "409": *a239
         "422": *a240
       security: *a241
-      summary: Get an expense document (with its frozen line detail)
+      summary: Issue EVERY active client's statement for this billing week
       tags: *a242
-  /v1/expense-documents/{id}/download:
-    get:
-      description: Requires billing:view.
-      operationId: ExpenseDocumentsController_download_v1
+  /v1/clients/{id}/expense-documents/preview:
+    post:
+      description: Requires billing:create. Returns the grouped km + food lines (per
+        rep/day) + total in the client currency, plus any food excluded for a
+        currency mismatch. A km item with no client-bill rate → 422.
+      operationId: ExpenseDocGenerationController_preview_v1
       parameters:
         - name: id
           required: true
           in: path
           schema:
             type: string
-      responses:
-        "200":
-          description: ""
-        "400": *a235
-        "401": *a236
-        "403": *a237
-        "404": *a238
-        "409": *a239
-        "422": *a240
-      security: *a241
-      summary: Download the expense document PDF (re-render from the frozen record)
-      tags: *a242
-  /v1/expense-documents/{id}/export:
-    post:
-      description: Requires billing:export.
-      operationId: ExpenseDocumentsController_export_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      responses:
-        "201":
-          description: ""
-        "400": *a235
-        "401": *a236
-        "403": *a237
-        "404": *a238
-        "409": *a239
-        "422": *a240
-      security: *a241
-      summary: Export the expense document PDF (records a billing_exports artifact +
-        streams it)
-      tags: *a242
-  /v1/documents:
-    post:
-      description: Requires documents:create. The PDF arrives via POST /v1/files
-        (purpose=document); this CLAIMS that stored path (own upload, PDF mime —
-        else 422) and freezes it as the immutable original (DOC-001/004). Status
-        draft, owner = caller.
-      operationId: DocumentsController_upload_v1
-      parameters: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateDocumentDto"
+              $ref: "#/components/schemas/GenerateExpenseDocDto"
       responses:
-        "201":
+        "200":
           description: ""
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DocumentResponse"
+                $ref: "#/components/schemas/ExpenseDocPreviewResponse"
         "400": &a243
           description: Bad Request — validation failed
           content:
@@ -6109,8 +6194,243 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
       security: &a249
         - bearer: []
-      summary: Create a document from an uploaded PDF
+      summary: Preview a client expense document (NOT persisted; no number minted)
       tags: &a250
+        - Billing & Statements
+  /v1/clients/{id}/expense-documents:
+    post:
+      description: Requires billing:create. km is priced from the CLIENT-BILL km rate;
+        food is native-currency (mismatches excluded). No receipts, no
+        commission (#3). ISSUES a NEW gapless CEXP-numbered immutable version;
+        any prior version is marked superseded. FX is frozen at issue (#12).
+      operationId: ExpenseDocGenerationController_generate_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateExpenseDocDto"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientExpenseDocumentResponse"
+        "400": *a243
+        "401": *a244
+        "403": *a245
+        "404": *a246
+        "409": *a247
+        "422": *a248
+      security: *a249
+      summary: Issue a client expense document (km + food only, per rep/day)
+      tags: *a250
+  /v1/expense-documents:
+    get:
+      description: Requires billing:view.
+      operationId: ExpenseDocumentsController_list_v1
+      parameters:
+        - name: client_id
+          required: false
+          in: query
+          description: Filter by client.
+          schema:
+            type: string
+        - name: billing_period_id
+          required: false
+          in: query
+          description: Filter by billing week ("Bill 17").
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClientExpenseDocumentResponse"
+        "400": &a251
+          description: Bad Request — validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "401": &a252
+          description: Unauthorized — missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "403": &a253
+          description: Forbidden — RBAC denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "404": &a254
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "409": &a255
+          description: Conflict — invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "422": &a256
+          description: Unprocessable Entity — domain rule violated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+      security: &a257
+        - bearer: []
+      summary: List expense documents (every version; newest first)
+      tags: &a258
+        - Billing & Statements
+  /v1/expense-documents/{id}:
+    get:
+      description: Requires billing:view.
+      operationId: ExpenseDocumentsController_findOne_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientExpenseDocumentResponse"
+        "400": *a251
+        "401": *a252
+        "403": *a253
+        "404": *a254
+        "409": *a255
+        "422": *a256
+      security: *a257
+      summary: Get an expense document (with its frozen line detail)
+      tags: *a258
+  /v1/expense-documents/{id}/download:
+    get:
+      description: Requires billing:view.
+      operationId: ExpenseDocumentsController_download_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+        "400": *a251
+        "401": *a252
+        "403": *a253
+        "404": *a254
+        "409": *a255
+        "422": *a256
+      security: *a257
+      summary: Download the expense document PDF (re-render from the frozen record)
+      tags: *a258
+  /v1/expense-documents/{id}/export:
+    post:
+      description: Requires billing:export.
+      operationId: ExpenseDocumentsController_export_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: ""
+        "400": *a251
+        "401": *a252
+        "403": *a253
+        "404": *a254
+        "409": *a255
+        "422": *a256
+      security: *a257
+      summary: Export the expense document PDF (records a billing_exports artifact +
+        streams it)
+      tags: *a258
+  /v1/documents:
+    post:
+      description: Requires documents:create. The PDF arrives via POST /v1/files
+        (purpose=document); this CLAIMS that stored path (own upload, PDF mime —
+        else 422) and freezes it as the immutable original (DOC-001/004). Status
+        draft, owner = caller.
+      operationId: DocumentsController_upload_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDocumentDto"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentResponse"
+        "400": &a259
+          description: Bad Request — validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "401": &a260
+          description: Unauthorized — missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "403": &a261
+          description: Forbidden — RBAC denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "404": &a262
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "409": &a263
+          description: Conflict — invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "422": &a264
+          description: Unprocessable Entity — domain rule violated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+      security: &a265
+        - bearer: []
+      summary: Create a document from an uploaded PDF
+      tags: &a266
         - Documents & E-Signature
     get:
       description: Requires documents:view. Scoped to owned or shared-with
@@ -6154,15 +6474,15 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/DocumentResponse"
-        "400": *a243
-        "401": *a244
-        "403": *a245
-        "404": *a246
-        "409": *a247
-        "422": *a248
-      security: *a249
+        "400": *a259
+        "401": *a260
+        "403": *a261
+        "404": *a262
+        "409": *a263
+        "422": *a264
+      security: *a265
       summary: List documents
-      tags: *a250
+      tags: *a266
   /v1/documents/{id}/file-url:
     get:
       description: Requires documents:view + visibility. Returns a short-TTL signed
@@ -6181,15 +6501,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FileUrlResponse"
-        "400": *a243
-        "401": *a244
-        "403": *a245
-        "404": *a246
-        "409": *a247
-        "422": *a248
-      security: *a249
+        "400": *a259
+        "401": *a260
+        "403": *a261
+        "404": *a262
+        "409": *a263
+        "422": *a264
+      security: *a265
       summary: Get an access-controlled URL for the original document
-      tags: *a250
+      tags: *a266
   /v1/documents/{id}/completed-file-url:
     get:
       description: Requires documents:view + visibility. 404 until the request
@@ -6208,15 +6528,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FileUrlResponse"
-        "400": *a243
-        "401": *a244
-        "403": *a245
-        "404": *a246
-        "409": *a247
-        "422": *a248
-      security: *a249
+        "400": *a259
+        "401": *a260
+        "403": *a261
+        "404": *a262
+        "409": *a263
+        "422": *a264
+      security: *a265
       summary: Get an access-controlled URL for the final all-signatures copy
-      tags: *a250
+      tags: *a266
   /v1/documents/{id}:
     get:
       description: Requires documents:view. 404 if not visible to the caller.
@@ -6234,15 +6554,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentResponse"
-        "400": *a243
-        "401": *a244
-        "403": *a245
-        "404": *a246
-        "409": *a247
-        "422": *a248
-      security: *a249
+        "400": *a259
+        "401": *a260
+        "403": *a261
+        "404": *a262
+        "409": *a263
+        "422": *a264
+      security: *a265
       summary: Get a document (requests + per-signer status)
-      tags: *a250
+      tags: *a266
   /v1/documents/{id}/signature-requests:
     post:
       description: Requires documents:create AND ownership of the document (else 403).
@@ -6267,15 +6587,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SignatureRequestResponse"
-        "400": *a243
-        "401": *a244
-        "403": *a245
-        "404": *a246
-        "409": *a247
-        "422": *a248
-      security: *a249
+        "400": *a259
+        "401": *a260
+        "403": *a261
+        "404": *a262
+        "409": *a263
+        "422": *a264
+      security: *a265
       summary: Share + request a signature from one or many recipients
-      tags: *a250
+      tags: *a266
   /v1/signature-requests/{id}/sign:
     post:
       description: Authenticated; the caller must be a recipient of this request (else
@@ -6302,46 +6622,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SignActionResultResponse"
-        "400": &a251
+        "400": &a267
           description: Bad Request — validation failed
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a252
+        "401": &a268
           description: Unauthorized — missing/invalid token
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a253
+        "403": &a269
           description: Forbidden — RBAC denied
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a254
+        "404": &a270
           description: Not Found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a255
+        "409": &a271
           description: Conflict — invalid state transition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a256
+        "422": &a272
           description: Unprocessable Entity — domain rule violated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a257
+      security: &a273
         - bearer: []
       summary: Sign or decline a signature request
-      tags: &a258
+      tags: &a274
         - Documents & E-Signature
   /v1/signature-requests/{id}/sign-upload:
     post:
@@ -6372,15 +6692,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SignActionResultResponse"
-        "400": *a251
-        "401": *a252
-        "403": *a253
-        "404": *a254
-        "409": *a255
-        "422": *a256
-      security: *a257
+        "400": *a267
+        "401": *a268
+        "403": *a269
+        "404": *a270
+        "409": *a271
+        "422": *a272
+      security: *a273
       summary: Complete your signature by uploading an externally-signed PDF
-      tags: *a258
+      tags: *a274
   /v1/signature-requests/{id}/cancel:
     post:
       description: Authenticated; only the requester, the document owner, or an admin
@@ -6399,15 +6719,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CancelSignatureResultResponse"
-        "400": *a251
-        "401": *a252
-        "403": *a253
-        "404": *a254
-        "409": *a255
-        "422": *a256
-      security: *a257
+        "400": *a267
+        "401": *a268
+        "403": *a269
+        "404": *a270
+        "409": *a271
+        "422": *a272
+      security: *a273
       summary: Cancel a signature request
-      tags: *a258
+      tags: *a274
   /v1/signatures/{id}/file-url:
     get:
       description: Authenticated; visible to the document owner, a recipient, or an
@@ -6503,46 +6823,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StagedImportResponse"
-        "400": &a259
+        "400": &a275
           description: Bad Request — validation failed
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a260
+        "401": &a276
           description: Unauthorized — missing/invalid token
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a261
+        "403": &a277
           description: Forbidden — RBAC denied
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a262
+        "404": &a278
           description: Not Found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a263
+        "409": &a279
           description: Conflict — invalid state transition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a264
+        "422": &a280
           description: Unprocessable Entity — domain rule violated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a265
+      security: &a281
         - bearer: []
       summary: Upload + stage an import batch (Excel/CSV)
-      tags: &a266
+      tags: &a282
         - Data Import & Integration
     get:
       description: Requires import:view.
@@ -6582,6 +6902,9 @@ paths:
               - holdback
               - clawback
               - mixed
+              - km_rates
+              - commission_tiers
+              - commission_flat_rates
       responses:
         "200":
           description: ""
@@ -6591,15 +6914,15 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ImportBatchResponse"
-        "400": *a259
-        "401": *a260
-        "403": *a261
-        "404": *a262
-        "409": *a263
-        "422": *a264
-      security: *a265
+        "400": *a275
+        "401": *a276
+        "403": *a277
+        "404": *a278
+        "409": *a279
+        "422": *a280
+      security: *a281
       summary: Import/migration history
-      tags: *a266
+      tags: *a282
   /v1/imports/preview:
     post:
       description: Requires import:create. Runs the SAME parse → map → clean →
@@ -6637,15 +6960,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ImportPreviewResponse"
-        "400": *a259
-        "401": *a260
-        "403": *a261
-        "404": *a262
-        "409": *a263
-        "422": *a264
-      security: *a265
+        "400": *a275
+        "401": *a276
+        "403": *a277
+        "404": *a278
+        "409": *a279
+        "422": *a280
+      security: *a281
       summary: Dry-run an import file (no batch, nothing stored)
-      tags: *a266
+      tags: *a282
   /v1/imports/{id}:
     get:
       description: Requires import:view. Rows with match status, counts, and reconcile
@@ -6664,15 +6987,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ImportBatchResponse"
-        "400": *a259
-        "401": *a260
-        "403": *a261
-        "404": *a262
-        "409": *a263
-        "422": *a264
-      security: *a265
+        "400": *a275
+        "401": *a276
+        "403": *a277
+        "404": *a278
+        "409": *a279
+        "422": *a280
+      security: *a281
       summary: Preview a staged batch
-      tags: *a266
+      tags: *a282
   /v1/imports/{id}/error-report:
     get:
       description: Requires import:view. The unmatched/duplicate/error rows for
@@ -6687,15 +7010,15 @@ paths:
       responses:
         "200":
           description: ""
-        "400": *a259
-        "401": *a260
-        "403": *a261
-        "404": *a262
-        "409": *a263
-        "422": *a264
-      security: *a265
+        "400": *a275
+        "401": *a276
+        "403": *a277
+        "404": *a278
+        "409": *a279
+        "422": *a280
+      security: *a281
       summary: Download a CSV of the rows still needing attention
-      tags: *a266
+      tags: *a282
   /v1/imports/{id}/remap:
     post:
       description: Requires import:edit. Re-maps + re-cleans + re-classifies the
@@ -6720,15 +7043,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StagedImportResponse"
-        "400": *a259
-        "401": *a260
-        "403": *a261
-        "404": *a262
-        "409": *a263
-        "422": *a264
-      security: *a265
+        "400": *a275
+        "401": *a276
+        "403": *a277
+        "404": *a278
+        "409": *a279
+        "422": *a280
+      security: *a281
       summary: Re-apply a mapping to the staged rows
-      tags: *a266
+      tags: *a282
   /v1/imports/{id}/reconcile:
     post:
       description: "Requires import:edit. Resolutions: match / edit / ignore.
@@ -6753,15 +7076,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ImportBatchResponse"
-        "400": *a259
-        "401": *a260
-        "403": *a261
-        "404": *a262
-        "409": *a263
-        "422": *a264
-      security: *a265
+        "400": *a275
+        "401": *a276
+        "403": *a277
+        "404": *a278
+        "409": *a279
+        "422": *a280
+      security: *a281
       summary: Resolve unmatched/ambiguous rows
-      tags: *a266
+      tags: *a282
   /v1/imports/{id}/commit:
     post:
       description: Requires import:approve. Blocked (422) while any row is unresolved
@@ -6781,15 +7104,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ImportBatchResponse"
-        "400": *a259
-        "401": *a260
-        "403": *a261
-        "404": *a262
-        "409": *a263
-        "422": *a264
-      security: *a265
+        "400": *a275
+        "401": *a276
+        "403": *a277
+        "404": *a278
+        "409": *a279
+        "422": *a280
+      security: *a281
       summary: Commit the batch (atomic + idempotent; reconcile-gated)
-      tags: *a266
+      tags: *a282
   /v1/import-mappings:
     get:
       description: Requires import:view.
@@ -6819,46 +7142,46 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ImportFieldMappingResponse"
-        "400": &a267
+        "400": &a283
           description: Bad Request — validation failed
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a268
+        "401": &a284
           description: Unauthorized — missing/invalid token
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a269
+        "403": &a285
           description: Forbidden — RBAC denied
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a270
+        "404": &a286
           description: Not Found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a271
+        "409": &a287
           description: Conflict — invalid state transition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a272
+        "422": &a288
           description: Unprocessable Entity — domain rule violated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a273
+      security: &a289
         - bearer: []
       summary: List saved field mappings
-      tags: &a274
+      tags: &a290
         - Data Import & Integration
     post:
       description: Requires import:create.
@@ -6877,15 +7200,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ImportFieldMappingResponse"
-        "400": *a267
-        "401": *a268
-        "403": *a269
-        "404": *a270
-        "409": *a271
-        "422": *a272
-      security: *a273
+        "400": *a283
+        "401": *a284
+        "403": *a285
+        "404": *a286
+        "409": *a287
+        "422": *a288
+      security: *a289
       summary: Save a reusable field mapping
-      tags: *a274
+      tags: *a290
   /v1/import-mappings/{id}:
     patch:
       description: Requires import:edit.
@@ -6909,15 +7232,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ImportFieldMappingResponse"
-        "400": *a267
-        "401": *a268
-        "403": *a269
-        "404": *a270
-        "409": *a271
-        "422": *a272
-      security: *a273
+        "400": *a283
+        "401": *a284
+        "403": *a285
+        "404": *a286
+        "409": *a287
+        "422": *a288
+      security: *a289
       summary: Update a saved field mapping
-      tags: *a274
+      tags: *a290
     delete:
       description: Requires import:edit.
       operationId: ImportMappingsController_remove_v1
@@ -6934,15 +7257,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
-        "400": *a267
-        "401": *a268
-        "403": *a269
-        "404": *a270
-        "409": *a271
-        "422": *a272
-      security: *a273
+        "400": *a283
+        "401": *a284
+        "403": *a285
+        "404": *a286
+        "409": *a287
+        "422": *a288
+      security: *a289
       summary: Delete a saved field mapping
-      tags: *a274
+      tags: *a290
   /v1/dashboards/rep:
     get:
       description: Authenticated; scoped to the caller’s own rep.
@@ -6955,46 +7278,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RepDashboardResponse"
-        "400": &a275
+        "400": &a291
           description: Bad Request — validation failed
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a276
+        "401": &a292
           description: Unauthorized — missing/invalid token
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a277
+        "403": &a293
           description: Forbidden — RBAC denied
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a278
+        "404": &a294
           description: Not Found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a279
+        "409": &a295
           description: Conflict — invalid state transition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a280
+        "422": &a296
           description: Unprocessable Entity — domain rule violated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a281
+      security: &a297
         - bearer: []
       summary: Rep's own dashboard
-      tags: &a282
+      tags: &a298
         - Reporting & Dashboards
   /v1/dashboards/manager:
     get:
@@ -7008,15 +7331,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ManagerDashboardResponse"
-        "400": *a275
-        "401": *a276
-        "403": *a277
-        "404": *a278
-        "409": *a279
-        "422": *a280
-      security: *a281
+        "400": *a291
+        "401": *a292
+        "403": *a293
+        "404": *a294
+        "409": *a295
+        "422": *a296
+      security: *a297
       summary: Manager dashboard
-      tags: *a282
+      tags: *a298
   /v1/dashboards/business:
     get:
       description: Requires reports:business (Super Admin only).
@@ -7047,15 +7370,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BusinessDashboardResponse"
-        "400": *a275
-        "401": *a276
-        "403": *a277
-        "404": *a278
-        "409": *a279
-        "422": *a280
-      security: *a281
+        "400": *a291
+        "401": *a292
+        "403": *a293
+        "404": *a294
+        "409": *a295
+        "422": *a296
+      security: *a297
       summary: Business / executive dashboard
-      tags: *a282
+      tags: *a298
   /v1/dashboards/business/trends:
     get:
       description: Requires reports:business (Super Admin). Headline series +
@@ -7078,15 +7401,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BusinessTrendsResponse"
-        "400": *a275
-        "401": *a276
-        "403": *a277
-        "404": *a278
-        "409": *a279
-        "422": *a280
-      security: *a281
+        "400": *a291
+        "401": *a292
+        "403": *a293
+        "404": *a294
+        "409": *a295
+        "422": *a296
+      security: *a297
       summary: Cross-period business trends
-      tags: *a282
+      tags: *a298
   /v1/dashboards/admin:
     get:
       description: Requires reports:view AND Admin/Super Admin.
@@ -7099,15 +7422,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminDashboardResponse"
-        "400": *a275
-        "401": *a276
-        "403": *a277
-        "404": *a278
-        "409": *a279
-        "422": *a280
-      security: *a281
+        "400": *a291
+        "401": *a292
+        "403": *a293
+        "404": *a294
+        "409": *a295
+        "422": *a296
+      security: *a297
       summary: Admin operational home (queues)
-      tags: *a282
+      tags: *a298
   /v1/leaderboard:
     get:
       description: Requires reports:view. Ranked by internet activation count for the
@@ -7182,46 +7505,46 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/SalesTargetResponse"
-        "400": &a283
+        "400": &a299
           description: Bad Request — validation failed
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a284
+        "401": &a300
           description: Unauthorized — missing/invalid token
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a285
+        "403": &a301
           description: Forbidden — RBAC denied
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a286
+        "404": &a302
           description: Not Found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a287
+        "409": &a303
           description: Conflict — invalid state transition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a288
+        "422": &a304
           description: Unprocessable Entity — domain rule violated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a289
+      security: &a305
         - bearer: []
       summary: List sales targets (scoped)
-      tags: &a290
+      tags: &a306
         - Reporting & Dashboards
     put:
       description: Requires hrm:edit; a manager may only set targets for reps they manage.
@@ -7240,15 +7563,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SalesTargetResponse"
-        "400": *a283
-        "401": *a284
-        "403": *a285
-        "404": *a286
-        "409": *a287
-        "422": *a288
-      security: *a289
+        "400": *a299
+        "401": *a300
+        "403": *a301
+        "404": *a302
+        "409": *a303
+        "422": *a304
+      security: *a305
       summary: Set / replace a rep target for a period
-      tags: *a290
+      tags: *a306
   /v1/report-exports:
     get:
       description: Latest 50 recorded exports — own records for non-admin callers, all
@@ -7264,46 +7587,46 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ReportExportResponse"
-        "400": &a291
+        "400": &a307
           description: Bad Request — validation failed
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a292
+        "401": &a308
           description: Unauthorized — missing/invalid token
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a293
+        "403": &a309
           description: Forbidden — RBAC denied
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a294
+        "404": &a310
           description: Not Found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a295
+        "409": &a311
           description: Conflict — invalid state transition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a296
+        "422": &a312
           description: Unprocessable Entity — domain rule violated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a297
+      security: &a313
         - bearer: []
       summary: List recent report exports
-      tags: &a298
+      tags: &a314
         - Reporting & Dashboards
     post:
       description: Authenticated; the permission is enforced PER report type in the
@@ -7325,15 +7648,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReportExportResponse"
-        "400": *a291
-        "401": *a292
-        "403": *a293
-        "404": *a294
-        "409": *a295
-        "422": *a296
-      security: *a297
+        "400": *a307
+        "401": *a308
+        "403": *a309
+        "404": *a310
+        "409": *a311
+        "422": *a312
+      security: *a313
       summary: Record an on-demand report export
-      tags: *a298
+      tags: *a314
   /v1/notifications:
     get:
       description: Authenticated; only the caller’s own. Paginated
@@ -7384,46 +7707,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NotificationPageResponse"
-        "400": &a299
+        "400": &a315
           description: Bad Request — validation failed
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a300
+        "401": &a316
           description: Unauthorized — missing/invalid token
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a301
+        "403": &a317
           description: Forbidden — RBAC denied
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a302
+        "404": &a318
           description: Not Found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a303
+        "409": &a319
           description: Conflict — invalid state transition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a304
+        "422": &a320
           description: Unprocessable Entity — domain rule violated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a305
+      security: &a321
         - bearer: []
       summary: My notifications
-      tags: &a306
+      tags: &a322
         - Reporting & Dashboards
   /v1/notifications/unread-count:
     get:
@@ -7437,15 +7760,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UnreadCountResponse"
-        "400": *a299
-        "401": *a300
-        "403": *a301
-        "404": *a302
-        "409": *a303
-        "422": *a304
-      security: *a305
+        "400": *a315
+        "401": *a316
+        "403": *a317
+        "404": *a318
+        "409": *a319
+        "422": *a320
+      security: *a321
       summary: My unread count
-      tags: *a306
+      tags: *a322
   /v1/notifications/mark-all-read:
     post:
       description: Authenticated; marks all the caller’s unread notifications read.
@@ -7458,15 +7781,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BulkMarkResultResponse"
-        "400": *a299
-        "401": *a300
-        "403": *a301
-        "404": *a302
-        "409": *a303
-        "422": *a304
-      security: *a305
+        "400": *a315
+        "401": *a316
+        "403": *a317
+        "404": *a318
+        "409": *a319
+        "422": *a320
+      security: *a321
       summary: Mark all read
-      tags: *a306
+      tags: *a322
   /v1/notifications/mark-read:
     post:
       description: Authenticated; own-scoped bulk toggle.
@@ -7485,15 +7808,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BulkMarkResultResponse"
-        "400": *a299
-        "401": *a300
-        "403": *a301
-        "404": *a302
-        "409": *a303
-        "422": *a304
-      security: *a305
+        "400": *a315
+        "401": *a316
+        "403": *a317
+        "404": *a318
+        "409": *a319
+        "422": *a320
+      security: *a321
       summary: Bulk mark read/unread
-      tags: *a306
+      tags: *a322
   /v1/notifications/broadcast:
     post:
       description: Requires notifications:broadcast (Super Admin). Fans out to a role
@@ -7513,15 +7836,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BroadcastResultResponse"
-        "400": *a299
-        "401": *a300
-        "403": *a301
-        "404": *a302
-        "409": *a303
-        "422": *a304
-      security: *a305
+        "400": *a315
+        "401": *a316
+        "403": *a317
+        "404": *a318
+        "409": *a319
+        "422": *a320
+      security: *a321
       summary: Send a manual broadcast
-      tags: *a306
+      tags: *a322
   /v1/notifications/{id}:
     patch:
       description: Authenticated; only the caller’s own.
@@ -7545,15 +7868,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppNotificationResponse"
-        "400": *a299
-        "401": *a300
-        "403": *a301
-        "404": *a302
-        "409": *a303
-        "422": *a304
-      security: *a305
+        "400": *a315
+        "401": *a316
+        "403": *a317
+        "404": *a318
+        "409": *a319
+        "422": *a320
+      security: *a321
       summary: Mark a notification read/unread
-      tags: *a306
+      tags: *a322
   /v1/notification-settings:
     get:
       description: Requires settings:view (Super Admin).
@@ -7568,46 +7891,46 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/NotificationSettingResponse"
-        "400": &a307
+        "400": &a323
           description: Bad Request — validation failed
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a308
+        "401": &a324
           description: Unauthorized — missing/invalid token
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a309
+        "403": &a325
           description: Forbidden — RBAC denied
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a310
+        "404": &a326
           description: Not Found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a311
+        "409": &a327
           description: Conflict — invalid state transition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a312
+        "422": &a328
           description: Unprocessable Entity — domain rule violated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a313
+      security: &a329
         - bearer: []
       summary: Notification event settings
-      tags: &a314
+      tags: &a330
         - Reporting & Dashboards
     patch:
       description: Requires settings:edit (Super Admin). Per-event in-app/email
@@ -7629,15 +7952,15 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/NotificationSettingResponse"
-        "400": *a307
-        "401": *a308
-        "403": *a309
-        "404": *a310
-        "409": *a311
-        "422": *a312
-      security: *a313
+        "400": *a323
+        "401": *a324
+        "403": *a325
+        "404": *a326
+        "409": *a327
+        "422": *a328
+      security: *a329
       summary: Configure event×channel settings
-      tags: *a314
+      tags: *a330
   /v1/chatbot/query:
     post:
       description: Authenticated. Answers from Redwave data within the caller’s scope
@@ -7904,47 +8227,82 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatementTieOutResponse"
-        "400": &a315
+        "400": &a331
           description: Bad Request — validation failed
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a316
+        "401": &a332
           description: Unauthorized — missing/invalid token
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a317
+        "403": &a333
           description: Forbidden — RBAC denied
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a318
+        "404": &a334
           description: Not Found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a319
+        "409": &a335
           description: Conflict — invalid state transition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a320
+        "422": &a336
           description: Unprocessable Entity — domain rule violated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a321
+      security: &a337
         - bearer: []
       summary: Tie a client statement to its lines and the live re-priced sales
-      tags: &a322
+      tags: &a338
         - Reconciliation
+  /v1/reconciliation/expense-documents:
+    get:
+      description: Requires billing:view. CEXP total = Σ its frozen line detail = the
+        live re-derive; flags drift so a stale document can be re-issued. Keyed
+        by the PAY period the document covers, not the billing week.
+      operationId: ReconciliationController_expenseDocuments_v1
+      parameters:
+        - name: client_id
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: pay_period_id
+          required: true
+          in: query
+          description: The PAY period the expense document covers.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseDocTieOutResponse"
+        "400": *a331
+        "401": *a332
+        "403": *a333
+        "404": *a334
+        "409": *a335
+        "422": *a336
+      security: *a337
+      summary: Tie a client expense document to its frozen lines and the live
+        re-derived expenses
+      tags: *a338
   /v1/reconciliation/pay-runs/{id}:
     get:
       description: Requires payrun:view. Recomputes each line’s net from its
@@ -7963,15 +8321,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PayRunTieOutResponse"
-        "400": *a315
-        "401": *a316
-        "403": *a317
-        "404": *a318
-        "409": *a319
-        "422": *a320
-      security: *a321
+        "400": *a331
+        "401": *a332
+        "403": *a333
+        "404": *a334
+        "409": *a335
+        "422": *a336
+      security: *a337
       summary: Tie a pay run to its lines (net = components; run total = Σ net)
-      tags: *a322
+      tags: *a338
 info:
   title: Redwave ERP / HRM API
   description: Versioned REST contract for the Redwave platform. Each protected
@@ -9524,7 +9882,7 @@ components:
           type: string
         status:
           type: string
-          enum: &a323
+          enum: &a339
             - current
             - pending
             - past
@@ -9617,6 +9975,11 @@ components:
           type: string
           example: tv
           description: Product-type catalogue key.
+        product_id:
+          type: string
+          nullable: true
+          description: ONE product this rate prices; null = the rate for the whole product
+            TYPE (the fallback). A product rate wins over its type rate.
         amount:
           type: string
           example: "100.00"
@@ -9632,11 +9995,12 @@ components:
           type: string
         status:
           type: string
-          enum: *a323
+          enum: *a339
       required:
         - id
         - client_id
         - product_type
+        - product_id
         - amount
         - effective_from
         - effective_to
@@ -9654,6 +10018,13 @@ components:
           example: tv
           description: Product-type catalogue key. A tiered type (e.g. internet) is
             rejected (422).
+        product_id:
+          type: string
+          description: ONE product this rate applies to. OMIT for the rate that covers the
+            whole product TYPE (the fallback). A product rate WINS over its type
+            rate and supersedes only other rates for the same product — it never
+            bounds or replaces the type-wide rate. The product must be of
+            `product_type`.
         amount:
           type: string
           example: "30.00"
@@ -9684,6 +10055,107 @@ components:
           type: string
           example: 2026-12-31
           description: YYYY-MM-DD; null/omit = open-ended.
+    TierRateProductResponse:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Fibre 1gig
+        product_type:
+          type: string
+          example: internet
+      required:
+        - name
+        - product_type
+    TierRateResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        client_id:
+          type: string
+          nullable: true
+          description: Client this rate applies to; null = the rate for every client for
+            this product.
+        product_id:
+          type: string
+        product:
+          $ref: "#/components/schemas/TierRateProductResponse"
+        tier_number:
+          type: number
+          example: 2
+          description: Which bracket this rate is for (1 = highest).
+        amount:
+          type: string
+          example: "145.00"
+          description: Decimal string — never a float (#1).
+        effective_from:
+          type: string
+          format: date-time
+        effective_to:
+          type: string
+          format: date-time
+          nullable: true
+        created_by:
+          type: string
+        status:
+          type: string
+          enum: *a339
+      required:
+        - id
+        - client_id
+        - product_id
+        - tier_number
+        - amount
+        - effective_from
+        - effective_to
+        - created_by
+        - status
+    CreateTierRateDto:
+      type: object
+      properties:
+        client_id:
+          type: string
+          description: Client this rate applies to. OMIT for the rate that applies to
+            every client for this product (the per-product fallback). A client's
+            rate wins over it.
+        product_id:
+          type: string
+          description: The product this rate prices. Must be a TIERED product type.
+        tier_number:
+          type: number
+          example: 2
+          description: Which bracket this rate is for — matches the tier schedule (1 =
+            highest).
+        amount:
+          type: string
+          example: "145.00"
+          description: Exact decimal STRING — never a float.
+        effective_from:
+          type: string
+          example: 2026-07-01
+          description: YYYY-MM-DD; must be today or future.
+        effective_to:
+          type: string
+          example: 2026-12-31
+      required:
+        - product_id
+        - tier_number
+        - amount
+        - effective_from
+    UpdateTierRateDto:
+      type: object
+      properties:
+        amount:
+          type: string
+          example: "150.00"
+        effective_from:
+          type: string
+          example: 2026-07-01
+        effective_to:
+          type: string
+          example: 2026-12-31
+          description: null/omit = open-ended.
     HoldbackConfigResponse:
       type: object
       properties:
@@ -9706,7 +10178,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: *a323
+          enum: *a339
       required:
         - id
         - advance_pct
@@ -10144,6 +10616,24 @@ components:
           description: Reference only — drives no logic.
         rep_id:
           type: string
+        rep_external_code:
+          type: string
+          nullable: true
+          example: Redwave20
+          description: Agent ID as the CLIENT sees it (reps.external_code) — what a
+            partner's own roster is keyed by. Null for a rep with no partner
+            code; render `rep_external_code ?? rep_code`, the same pairing the
+            client statement freezes.
+        rep_code:
+          type: string
+          nullable: true
+          example: RW-D-0001
+          description: Internal rep code (reps.rep_code) — our own tie-out, and the Agent
+            ID fallback.
+        rep_name:
+          type: string
+          nullable: true
+          description: The rep who sold it.
         client_id:
           type: string
         customer_name:
@@ -10455,15 +10945,9 @@ components:
       properties:
         category:
           type: string
-          enum: &a324
-            - km
-            - meals
-            - hotel
-            - flight
-            - rental
-            - gas
-            - other
           example: meals
+          description: Expense category key from the catalogue (GET
+            /v1/expense-field-configs).
         client_id:
           type: string
           description: Optional client this expense is attributed to.
@@ -10502,9 +10986,9 @@ components:
             empty string; the UI falls back to the category label.
         field_values:
           type: object
-          additionalProperties: &a325
+          additionalProperties: &a340
             type: string
-          example: &a326
+          example: &a341
             vendor: Tim Hortons
             city: Winnipeg
           description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
@@ -10672,14 +11156,8 @@ components:
           description: The user who submitted this item.
         category:
           type: string
-          enum:
-            - km
-            - meals
-            - hotel
-            - flight
-            - rental
-            - gas
-            - other
+          example: meals
+          description: Expense category key (catalogue-driven, not an enum).
         client_id:
           type: string
           nullable: true
@@ -10886,8 +11364,9 @@ components:
       properties:
         category:
           type: string
-          enum: *a324
           example: meals
+          description: Expense category key from the catalogue (GET
+            /v1/expense-field-configs).
         client_id:
           type: string
           description: Optional client this expense is attributed to.
@@ -10926,8 +11405,8 @@ components:
             empty string; the UI falls back to the category label.
         field_values:
           type: object
-          additionalProperties: *a325
-          example: *a326
+          additionalProperties: *a340
+          example: *a341
           description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
             category schema (EXP-002a). METADATA ONLY — never summed into the
             amount (#1). Unknown keys are dropped server-side."
@@ -11157,6 +11636,18 @@ components:
           example: meals
         label:
           type: string
+        behaviour:
+          type: string
+          enum:
+            - km
+            - standard
+          description: What the category DOES. `km` drives the mileage path (route,
+            commute deduction, server-computed amount, one per rep/day);
+            `standard` is an ordinary expense. Clients must branch on THIS,
+            never on category_key.
+        is_system:
+          type: boolean
+          description: "A day-one built-in: its key and behaviour are locked."
         requires_receipt:
           type: boolean
         requires_description:
@@ -11180,6 +11671,8 @@ components:
         - id
         - category_key
         - label
+        - behaviour
+        - is_system
         - requires_receipt
         - requires_description
         - is_active
@@ -11549,7 +12042,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: &a327
+          enum: &a342
             - draft
             - finalized
             - exported
@@ -11692,7 +12185,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: *a327
+          enum: *a342
         executed_by:
           type: string
         created_at:
@@ -11817,6 +12310,282 @@ components:
           description: Reason / note for the bonus.
       required:
         - amount
+    PayrollReportLineResponse:
+      type: object
+      properties:
+        sale_id:
+          type: string
+        sale_date:
+          type: string
+          nullable: true
+          example: 2026-03-02
+        rep_external_code:
+          type: string
+          nullable: true
+          example: Redwave11
+          description: Agent ID as Redwave's own workbooks key it (reps.external_code).
+            Render `?? rep_code`.
+        rep_code:
+          type: string
+          nullable: true
+          example: RW-D-0001
+          description: Internal code; the fallback.
+        rep_name:
+          type: string
+          nullable: true
+        customer_name:
+          type: string
+          description: ONE column in this workbook — not split first/last like the client
+            statement.
+        address:
+          type: string
+          nullable: true
+          description: "One string: street, city, province, postal."
+        channel:
+          type: string
+          nullable: true
+          example: VF
+          description: clients.client_code.
+        product_name:
+          type: string
+          nullable: true
+          example: Fibre 1gig/2.5gig
+        has_internet:
+          type: boolean
+        has_tv:
+          type: boolean
+        has_home_phone:
+          type: boolean
+        is_greenfield:
+          type: boolean
+          description: Flat-rated and excluded from the tier tally (#9) — its own column.
+        internet_rate:
+          type: string
+          example: "125.00"
+        tv_rate:
+          type: string
+          example: "30.00"
+        hp_rate:
+          type: string
+          example: "30.00"
+        greenfield:
+          type: string
+          example: "100.00"
+        spiff:
+          type: string
+          example: "0.00"
+          description: The frozen incentive on this sale.
+        other_total:
+          type: string
+          example: "0.00"
+          description: Priced items with no column of their own.
+        total_100:
+          type: string
+          example: "185.00"
+          description: The exact sum of the components above.
+        advance_70:
+          type: string
+          example: "129.50"
+        holdback_30:
+          type: string
+          example: "55.50"
+      required:
+        - sale_id
+        - sale_date
+        - rep_external_code
+        - rep_code
+        - rep_name
+        - customer_name
+        - address
+        - channel
+        - product_name
+        - has_internet
+        - has_tv
+        - has_home_phone
+        - is_greenfield
+        - internet_rate
+        - tv_rate
+        - hp_rate
+        - greenfield
+        - spiff
+        - other_total
+        - total_100
+        - advance_70
+        - holdback_30
+    PayrollReportResponse:
+      type: object
+      properties:
+        pay_run_id:
+          type: string
+        period_number:
+          type: number
+          example: 6
+        period_start:
+          type: string
+          example: 2026-03-01
+        period_end:
+          type: string
+          example: 2026-03-14
+        run_status:
+          type: string
+          example: finalized
+        is_finalized:
+          type: boolean
+          description: False until the run finalizes. Lines are frozen AT finalize, so
+            before then there is genuinely no money to report — the UI says so
+            rather than showing zeros as though nothing was earned.
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/PayrollReportLineResponse"
+        total_100:
+          type: string
+          description: "Row-1 strip: Σ Total 100 %."
+        advance_70:
+          type: string
+          description: "Row-1 strip: Σ 0.7."
+        holdback_30:
+          type: string
+          description: "Row-1 strip: Σ 0.3."
+      required:
+        - pay_run_id
+        - period_number
+        - period_start
+        - period_end
+        - run_status
+        - is_finalized
+        - lines
+        - total_100
+        - advance_70
+        - holdback_30
+    RepPayStatementLineResponse:
+      type: object
+      properties:
+        sale_id:
+          type: string
+        sale_date:
+          type: string
+          nullable: true
+          example: 2026-03-02
+        customer_name:
+          type: string
+          description: The customer this rep sold to.
+        address:
+          type: string
+          nullable: true
+        channel:
+          type: string
+          nullable: true
+          example: VF
+        product_name:
+          type: string
+          nullable: true
+          example: Fibre 1gig/2.5gig
+        has_internet:
+          type: boolean
+        has_tv:
+          type: boolean
+        has_home_phone:
+          type: boolean
+        is_greenfield:
+          type: boolean
+        internet_rate:
+          type: string
+          example: "125.00"
+          description: What the REP earned — never a client rate.
+        tv_rate:
+          type: string
+          example: "30.00"
+        hp_rate:
+          type: string
+          example: "30.00"
+        greenfield:
+          type: string
+          example: "0.00"
+        spiff:
+          type: string
+          example: "0.00"
+        other_total:
+          type: string
+          example: "0.00"
+        total_100:
+          type: string
+          example: "185.00"
+          description: The price this sale earned, at 100%.
+        advance_70:
+          type: string
+          example: "129.50"
+          description: Paid now — the 70% advance.
+        holdback_30:
+          type: string
+          example: "55.50"
+          description: Held — released on the holdback schedule.
+      required:
+        - sale_id
+        - sale_date
+        - customer_name
+        - address
+        - channel
+        - product_name
+        - has_internet
+        - has_tv
+        - has_home_phone
+        - is_greenfield
+        - internet_rate
+        - tv_rate
+        - hp_rate
+        - greenfield
+        - spiff
+        - other_total
+        - total_100
+        - advance_70
+        - holdback_30
+    RepPayStatementResponse:
+      type: object
+      properties:
+        pay_run_id:
+          type: string
+        period_number:
+          type: number
+          example: 6
+        period_start:
+          type: string
+          example: 2026-03-01
+        period_end:
+          type: string
+          example: 2026-03-14
+        rep_code:
+          type: string
+          nullable: true
+          example: RW-D-0001
+        rep_name:
+          type: string
+          nullable: true
+        is_finalized:
+          type: boolean
+          description: False until the run finalizes — nothing is owed before then.
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/RepPayStatementLineResponse"
+        total_100:
+          type: string
+        advance_70:
+          type: string
+        holdback_30:
+          type: string
+      required:
+        - pay_run_id
+        - period_number
+        - period_start
+        - period_end
+        - rep_code
+        - rep_name
+        - is_finalized
+        - lines
+        - total_100
+        - advance_70
+        - holdback_30
     ExportPayRunDto:
       type: object
       properties:
@@ -11849,6 +12618,29 @@ components:
         - format
         - line_count
         - content
+    RepPayStatementSummaryResponse:
+      type: object
+      properties:
+        pay_run_id:
+          type: string
+        period_number:
+          type: number
+          example: 6
+        period_start:
+          type: string
+          example: 2026-03-01
+        period_end:
+          type: string
+          example: 2026-03-14
+        run_status:
+          type: string
+          example: finalized
+      required:
+        - pay_run_id
+        - period_number
+        - period_start
+        - period_end
+        - run_status
     HoldbackLedgerResponse:
       type: object
       properties:
@@ -12079,11 +12871,19 @@ components:
           type: string
           format: date-time
           nullable: true
+        rep_external_code:
+          type: string
+          nullable: true
+          example: Redwave20
+          description: Agent ID as the CLIENT sees it (reps.external_code). Null on lines
+            issued before this was captured, and for reps with no partner code —
+            render `rep_external_code ?? rep_code`.
         rep_code:
           type: string
           nullable: true
           example: RW-D-0007
-          description: Agent ID (reps.rep_code).
+          description: Internal rep code (reps.rep_code) — our own tie-out, and the Agent
+            ID fallback.
         rep_name:
           type: string
           nullable: true
@@ -12159,6 +12959,7 @@ components:
         - sale_id
         - sort_order
         - sale_date
+        - rep_external_code
         - rep_code
         - rep_name
         - customer_name
@@ -12395,6 +13196,98 @@ components:
         - start_date
         - end_date
         - status
+    BulkGeneratedEntry:
+      type: object
+      properties:
+        client_id:
+          type: string
+        client_code:
+          type: string
+          example: VF
+        statement_id:
+          type: string
+        statement_number:
+          type: number
+          example: 412
+      required:
+        - client_id
+        - client_code
+        - statement_id
+        - statement_number
+    BulkSkippedEntry:
+      type: object
+      properties:
+        client_id:
+          type: string
+        client_code:
+          type: string
+          example: RF
+        statement_number:
+          type: number
+          nullable: true
+          example: 405
+          description: The statement it already holds. Null only for a legacy row issued
+            before gapless numbering — the client is still correctly skipped.
+      required:
+        - client_id
+        - client_code
+        - statement_number
+    BulkFailedEntry:
+      type: object
+      properties:
+        client_id:
+          type: string
+        client_code:
+          type: string
+          example: CTI
+        message:
+          type: string
+          example: "cannot generate: some sold products have no effective
+            client_billing_rate"
+        unpriced:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: The structured unpriced[] detail when that was the cause —
+            product_id / product_name / sale_date, so the UI can link straight
+            to the rate that needs adding.
+      required:
+        - client_id
+        - client_code
+        - message
+    BulkStatementResultResponse:
+      type: object
+      properties:
+        billing_period_id:
+          type: string
+        period_number:
+          type: number
+          example: 17
+        total_clients:
+          type: number
+          description: Active clients considered.
+        generated:
+          type: array
+          items:
+            $ref: "#/components/schemas/BulkGeneratedEntry"
+        skipped:
+          description: Already issued for this week — re-running is safe.
+          type: array
+          items:
+            $ref: "#/components/schemas/BulkSkippedEntry"
+        failed:
+          description: Failed in isolation; each carries its reason.
+          type: array
+          items:
+            $ref: "#/components/schemas/BulkFailedEntry"
+      required:
+        - billing_period_id
+        - period_number
+        - total_clients
+        - generated
+        - skipped
+        - failed
     GenerateExpenseDocDto:
       type: object
       properties:
@@ -12997,14 +13890,14 @@ components:
           type: string
         source_type:
           type: string
-          enum: &a328
+          enum: &a343
             - client_report
             - master_migration
             - balance_migration
             - sales_entry
         import_type:
           type: string
-          enum: &a329
+          enum: &a344
             - reps
             - clients
             - products
@@ -13013,6 +13906,9 @@ components:
             - holdback
             - clawback
             - mixed
+            - km_rates
+            - commission_tiers
+            - commission_flat_rates
         client_id:
           type: string
           nullable: true
@@ -13021,7 +13917,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: &a330
+          enum: &a345
             - staged
             - committed
             - failed
@@ -13042,13 +13938,13 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: &a331
+          additionalProperties: &a346
             type: number
           nullable: true
           description: Counts by classification (matched/unmatched/...).
         applied_mapping:
           type: object
-          additionalProperties: &a332
+          additionalProperties: &a347
             type: string
           nullable: true
           description: "The `{ systemField: sourceColumn }` mapping actually applied to
@@ -13267,10 +14163,10 @@ components:
           type: string
         source_type:
           type: string
-          enum: *a328
+          enum: *a343
         import_type:
           type: string
-          enum: *a329
+          enum: *a344
         client_id:
           type: string
           nullable: true
@@ -13279,7 +14175,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: *a330
+          enum: *a345
         total_rows:
           type: number
           example: 3
@@ -13296,12 +14192,12 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: *a331
+          additionalProperties: *a346
           nullable: true
           description: Counts by classification (matched/unmatched/...).
         applied_mapping:
           type: object
-          additionalProperties: *a332
+          additionalProperties: *a347
           nullable: true
           description: "The `{ systemField: sourceColumn }` mapping actually applied to
             this batch."
@@ -14201,14 +15097,14 @@ components:
           type: string
         report_type:
           type: string
-          enum: &a333
+          enum: &a348
             - business_summary
             - leaderboard
             - payrun_summary
             - expense_summary
         format:
           type: string
-          enum: &a334
+          enum: &a349
             - csv
             - excel
             - pdf
@@ -14234,11 +15130,11 @@ components:
       properties:
         report_type:
           type: string
-          enum: *a333
+          enum: *a348
           description: Which report was generated.
         format:
           type: string
-          enum: *a334
+          enum: *a349
         filename:
           type: string
           maxLength: 200
@@ -14697,6 +15593,76 @@ components:
         - live_total
         - total_equals_lines
         - statement_matches_live
+        - ok
+        - discrepancies
+    ExpenseDocTieOutRefResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        document_number:
+          type: number
+          nullable: true
+          description: The gapless CEXP- number, minted at issue.
+        status:
+          type: string
+          enum:
+            - issued
+            - superseded
+      required:
+        - id
+        - document_number
+        - status
+    ExpenseDocTieOutResponse:
+      type: object
+      properties:
+        client_id:
+          type: string
+        pay_period_id:
+          type: string
+          description: The PAY period the document covers — NOT the Mon–Sun billing week
+            (§14 rule 1).
+        document:
+          nullable: true
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/ExpenseDocTieOutRefResponse"
+        document_number:
+          type: number
+          nullable: true
+        frozen_total:
+          type: string
+          description: The frozen document total, in the document's currency.
+        lines_sum:
+          type: string
+          description: Sum of the frozen line detail.
+        live_total:
+          type: string
+          nullable: true
+          description: The live re-derived expense total now (null if it could not be
+            derived — e.g. a missing km rate).
+        total_equals_lines:
+          type: boolean
+        document_matches_live:
+          type: boolean
+        ok:
+          type: boolean
+          description: True only when every check passed.
+        discrepancies:
+          description: Human-readable description of each failed check.
+          type: array
+          items:
+            type: string
+      required:
+        - client_id
+        - pay_period_id
+        - document
+        - document_number
+        - frozen_total
+        - lines_sum
+        - live_total
+        - total_equals_lines
+        - document_matches_live
         - ok
         - discrepancies
     PayRunLineTieOutResponse:

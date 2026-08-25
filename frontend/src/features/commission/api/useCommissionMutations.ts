@@ -24,6 +24,9 @@ import type {
   UpdateHoldbackConfigBody,
   UpdateIncentiveBody,
   UpdateTierScheduleBody,
+  CreateTierRateBody,
+  UpdateTierRateBody,
+  TierRate,
 } from '../commission.types';
 
 export function useCreateTierSchedule() {
@@ -76,6 +79,31 @@ export function useDeleteFlatRate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => unwrap<void>(api.DELETE('/v1/commission/flat-rates/{id}', { params: { path: { id } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
+  });
+}
+
+export function useCreateTierRate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateTierRateBody) => unwrap<TierRate>(api.POST('/v1/commission/tier-rates', { body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
+  });
+}
+
+export function useUpdateTierRate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateTierRateBody }) =>
+      unwrap<TierRate>(api.PATCH('/v1/commission/tier-rates/{id}', { params: { path: { id } }, body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
+  });
+}
+
+export function useDeleteTierRate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => unwrap<void>(api.DELETE('/v1/commission/tier-rates/{id}', { params: { path: { id } } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
   });
 }

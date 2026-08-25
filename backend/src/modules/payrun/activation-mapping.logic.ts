@@ -14,6 +14,9 @@ export interface SaleItemForMapping {
   counts_toward_tally: boolean;
   client_id: string;
   sale_date: string; // 'YYYY-MM-DD'
+  // The specific product sold, for the per-product RATE lookup. Never the tally (#5) — that is still the
+  // one cross-client count over product_type. Nullable, and a null simply falls back to the type rate.
+  product_id?: string | null;
 }
 
 export function mapToEngineProductType(
@@ -32,5 +35,6 @@ export function toActivationInput(item: SaleItemForMapping): ActivationInput {
     productType: mapToEngineProductType(item.product_type, item.counts_toward_tally),
     clientId: item.client_id,
     saleDate: item.sale_date,
+    productId: item.product_id ?? null,
   };
 }

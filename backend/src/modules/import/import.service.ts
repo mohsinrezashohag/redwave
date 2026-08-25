@@ -32,8 +32,11 @@ import {
   Classification,
   classifyBillingRateRow,
   classifyClientRow,
+  classifyCommissionFlatRateRow,
+  classifyCommissionTierRow,
   classifyHistoricalSaleRow,
   classifyHoldbackRow,
+  classifyKmRateRow,
   classifyLiveSaleRow,
   classifyProductRow,
   classifyRepRow,
@@ -57,6 +60,9 @@ import { evaluateGate } from './reconcile-gate.logic';
 import { applyBulkValidation } from './handlers/bulk-validation.handler';
 import { applyLiveSale } from './handlers/live-sales.handler';
 import { applyBillingRate } from './handlers/billing-rate.handler';
+import { applyKmRate } from './handlers/km-rate.handler';
+import { applyCommissionFlatRate, applyCommissionTierSchedule } from './handlers/commission-config.handler';
+import { parseTierSpec } from './tier-spec.logic';
 import { applyHoldback } from './handlers/holdback.handler';
 import { applyClient, applyHistoricalSale, applyProduct, applyRep } from './handlers/master.handlers';
 import { CreateImportDto } from './dto/create-import.dto';
@@ -72,7 +78,11 @@ type Kind =
   | 'create_products'
   | 'billing_rate'
   | 'create_reps'
-  | 'opening_holdback';
+  | 'opening_holdback'
+  // Back-dated REP-stream config migration (the counterparts of `billing_rate`, #10).
+  | 'km_rate'
+  | 'commission_tier_schedule'
+  | 'commission_flat_rate';
 
 const str = (row: RawRow, key: string): string | null => {
   const v = row[key];
@@ -153,6 +163,10 @@ function pairingKind(source: ImportSourceType, type: ImportType): Kind | null {
   if (source === 'master_migration' && type === 'billing_rates') return 'billing_rate';
   if (source === 'master_migration' && type === 'reps') return 'create_reps';
   if (source === 'balance_migration' && type === 'holdback') return 'opening_holdback';
+  // Back-dated config migration — one pair per row SHAPE (TARGET_FIELDS holds one field list per pair).
+  if (source === 'master_migration' && type === 'km_rates') return 'km_rate';
+  if (source === 'master_migration' && type === 'commission_tiers') return 'commission_tier_schedule';
+  if (source === 'master_migration' && type === 'commission_flat_rates') return 'commission_flat_rate';
   return null;
 }
 
@@ -511,6 +525,12 @@ export class ImportService {
         return applyLiveSale(tx, mapped, user, this.sales, batchId);
       case 'billing_rate':
         return applyBillingRate(tx, mapped, user.id);
+      case 'km_rate':
+        return applyKmRate(tx, mapped, user.id);
+      case 'commission_tier_schedule':
+        return applyCommissionTierSchedule(tx, mapped, user.id);
+      case 'commission_flat_rate':
+        return applyCommissionFlatRate(tx, mapped, user.id);
       case 'create_clients':
         return applyClient(tx, mapped);
       case 'create_products':
@@ -597,6 +617,12 @@ export class ImportService {
         return this.classifySales(mappedRows, clientId);
       case 'billing_rate':
         return this.classifyBillingRates(mappedRows);
+      case 'km_rate':
+        return this.classifyKmRates(mappedRows);
+      case 'commission_tier_schedule':
+        return this.classifyCommissionTiers(mappedRows);
+      case 'commission_flat_rate':
+        return this.classifyCommissionFlatRates(mappedRows);
       case 'opening_holdback':
         return this.classifyHoldbacks(mappedRows);
       case 'create_clients':
@@ -729,6 +755,42 @@ export class ImportService {
       const cid = byCode.get(up(str(r, 'client_code')));
       const name = str(r, 'product_name');
       return classifyBillingRateRow(r, { clientExists: !!cid, productExists: !!(cid && name && prodKey.has(`${cid}|${name}`)) });
+    });
+  }
+
+  /**
+   * The three back-dated CONFIG targets (#10). `client_code` is optional on all of them — blank means the
+   * GLOBAL scope — so a missing code is legal and only a code that resolves to nothing is an error.
+   */
+  private async classifyKmRates(mappedRows: RawRow[]): Promise<Classification[]> {
+    const byCode = await this.clientsByCode(uniqCodes(mappedRows, 'client_code'));
+    return mappedRows.map((r) => {
+      const code = str(r, 'client_code');
+      return classifyKmRateRow(r, { clientExists: !code || byCode.has(up(code)) });
+    });
+  }
+
+  private async classifyCommissionTiers(mappedRows: RawRow[]): Promise<Classification[]> {
+    const byCode = await this.clientsByCode(uniqCodes(mappedRows, 'client_code'));
+    return mappedRows.map((r) => {
+      const code = str(r, 'client_code');
+      // parseTierSpec is injected so the classifier stays pure — and it is the SAME parse the handler
+      // runs, so a schedule the gate accepted can never fail to write.
+      return classifyCommissionTierRow(r, { clientExists: !code || byCode.has(up(code)), parseTiers: parseTierSpec });
+    });
+  }
+
+  private async classifyCommissionFlatRates(mappedRows: RawRow[]): Promise<Classification[]> {
+    const byCode = await this.clientsByCode(uniqCodes(mappedRows, 'client_code'));
+    const types = new Set(
+      (await this.prisma.productTypeCatalogue.findMany({ select: { key: true } })).map((t) => t.key),
+    );
+    return mappedRows.map((r) => {
+      const code = str(r, 'client_code');
+      return classifyCommissionFlatRateRow(r, {
+        clientExists: !code || byCode.has(up(code)),
+        productTypeExists: types.has(str(r, 'product_type') ?? ''),
+      });
     });
   }
 

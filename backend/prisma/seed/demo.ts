@@ -13,6 +13,10 @@
 import { INestApplicationContext } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { createHash, randomUUID } from 'crypto';
+import { StorageService } from '../../src/common/storage/storage.service';
+import { FilesService } from '../../src/modules/files/files.service';
+import { buildObjectPath } from '../../src/modules/files/stored-files.logic';
 import { AuthUser } from '../../src/common/rbac/auth-user.type';
 import { BUILTIN_ROLES } from '../../src/common/rbac/rbac.constants';
 import { winnipegDateOnly } from '../../src/common/timezone';
@@ -68,6 +72,8 @@ export async function seedDemo(
   const statements = app.get(StatementService);
   const documents = app.get(DocumentsService);
   const notifications = app.get(NotificationsService);
+  const storage = app.get(StorageService);
+  const files = app.get(FilesService);
 
   // ── Catalogue: clients + products + billing rates (the BILLING stream — separate from commission, #3) ──
   const genesis = dateOnly('2024-01-01'); // back-dated so the rate is always current (#10)
@@ -329,15 +335,41 @@ export async function seedDemo(
   await expenseReports.submit(folder2.id, sa); // → submitted (feeds the approval queue)
 
   // ── A document with a PENDING signature request (→ admin queue + a signature_requested notification). ──
-  // A minimal valid PDF (header + EOF) — stored gracefully (local:// ref when storage is unconfigured).
+  // `DocumentsService.upload` CLAIMS a path already registered by the unified pipeline (POST /v1/files) —
+  // it does not take bytes. So the seed must register the stub PDF first, exactly as a real upload would.
+  const pdfBuffer = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
   const stubPdf = {
-    buffer: Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'),
+    buffer: pdfBuffer,
     originalname: 'compensation-agreement-2026.pdf',
     mimetype: 'application/pdf',
-    size: 46,
+    size: pdfBuffer.length,
   };
+  // With storage configured, go through the REAL pipeline (bytes + row + audit). Without it, FilesService
+  // is a deliberate 503 (it never mints stub references), so record the metadata row directly: `claim` is a
+  // pure DB check, so the demo still gets a signable document — only the bytes are absent, and the
+  // documents `…/file-url` endpoint already degrades gracefully when they are.
+  let documentPath: string;
+  if (storage.isConfigured()) {
+    documentPath = (await files.upload(stubPdf, { purpose: 'document' }, sa)).path;
+  } else {
+    documentPath = buildObjectPath('document', stubPdf.mimetype, new Date(), randomUUID());
+    await prisma.storedFile.create({
+      data: {
+        bucket: storage.bucketName,
+        path: documentPath,
+        original_name: stubPdf.originalname,
+        mime: stubPdf.mimetype,
+        size_bytes: stubPdf.size,
+        sha256: createHash('sha256').update(stubPdf.buffer).digest('hex'),
+        uploaded_by: sa.id,
+      },
+    });
+  }
   const rep1UserId = (await prisma.rep.findUniqueOrThrow({ where: { rep_code: 'RW-D-0001' }, select: { user_id: true } })).user_id;
-  const doc = await documents.upload({ title: 'Compensation Agreement 2026', doc_type: 'compensation_agreement' }, stubPdf, sa);
+  const doc = await documents.upload(
+    { title: 'Compensation Agreement 2026', doc_type: 'compensation_agreement', file_path: documentPath },
+    sa,
+  );
   if (rep1UserId) {
     await documents.requestSignature(doc.id, { recipient_user_ids: [rep1UserId], message: 'Please review and sign your 2026 compensation agreement.' }, sa);
   }

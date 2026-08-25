@@ -11,6 +11,7 @@ import { useCan } from '../../../auth/useCan';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { TierSchedulesSection } from '../components/TierSchedulesSection';
 import { FlatRatesSection } from '../components/FlatRatesSection';
+import { TierRatesSection } from '../components/TierRatesSection';
 import { HoldbackSplitSection } from '../components/HoldbackSplitSection';
 import { ReleaseSettingSection } from '../components/ReleaseSettingSection';
 import { IncentivesSection } from '../components/IncentivesSection';
@@ -37,6 +38,7 @@ export default function CommissionConfigPage() {
         <ScopeSelector value={scope} onChange={setScope} />
       </Card>
       <TierSchedulesSection scope={scope} />
+      <TierRatesSection scope={scope} />
       <FlatRatesSection scope={scope} />
       <HoldbackSplitSection />
       <ReleaseSettingSection />

@@ -9,6 +9,8 @@ function make() {
     commissionFlatRate: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn() },
     // The flat-ratable check reads behaviour from the catalogue (default: a standard add-on).
     productTypeCatalogue: { findUnique: jest.fn().mockResolvedValue({ behaviour: 'standard_addon', is_active: true }) },
+    // Only consulted for a PRODUCT-scoped rate; type-scoped rates never touch it.
+    product: { findUnique: jest.fn().mockResolvedValue({ product_type: 'tv', is_active: true }) },
     // Scope validation reads the client (unknown/inactive → 422, never a silent global write).
     client: { findUnique: jest.fn().mockResolvedValue({ id: 'VF', is_active: true }) },
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
@@ -73,8 +75,8 @@ describe('FlatRateService.create (COMM-002)', () => {
     expect(arg.data.amount).toBe('35.00');
     expect(typeof arg.data.amount).toBe('string');
     expect(prisma.commissionFlatRate.findMany).toHaveBeenCalledWith(
-      // scope = (client_id, product_type); null client = the GLOBAL rate
-      expect.objectContaining({ where: { client_id: null, product_type: 'tv' } }),
+      // scope = (client_id, product_type, product_id); null client = GLOBAL, null product = the whole TYPE
+      expect.objectContaining({ where: { client_id: null, product_type: 'tv', product_id: null } }),
     );
   });
 });
@@ -126,7 +128,7 @@ describe('FlatRateService — per-client scope isolation', () => {
     await service.create({ client_id: 'VF', product_type: 'tv' as never, amount: '45.00', effective_from: iso(1) }, 'actor');
 
     expect(prisma.commissionFlatRate.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { client_id: 'VF', product_type: 'tv' } }),
+      expect.objectContaining({ where: { client_id: 'VF', product_type: 'tv', product_id: null } }),
     );
     const arg = tx.commissionFlatRate.create.mock.calls[0][0] as { data: { client_id: unknown } };
     expect(arg.data.client_id).toBe('VF');
@@ -152,5 +154,61 @@ describe('FlatRateService — per-client scope isolation', () => {
     const where = (tx.commissionFlatRate.updateMany.mock.calls[0][0] as { where: Record<string, unknown> }).where;
     expect(where.client_id).toBe('VF');
     expect(where.product_type).toBe('tv');
+  });
+});
+
+
+/**
+ * The scope key gained product_id, and this is what that buys: a rate for ONE product must not supersede
+ * or bound the rate for the whole TYPE. Without it, adding a premium-TV rate would silently stop every
+ * other TV product being paid — the failure would show up as missing money, not as an error.
+ */
+describe('FlatRateService — a PRODUCT rate never supersedes the TYPE rate', () => {
+  it('scopes supersession to (client, product_type, product_id) when a product is given', async () => {
+    const { service, prisma, tx } = make();
+    prisma.commissionFlatRate.findMany.mockResolvedValue([]);
+    tx.commissionFlatRate.create.mockResolvedValue({
+      id: 'new',
+      product_type: 'tv',
+      product_id: 'prod-tv-premium',
+      amount: '45.00',
+      effective_from: new Date(iso(1)),
+      effective_to: null,
+    });
+
+    await service.create(
+      { product_type: 'tv' as never, product_id: 'prod-tv-premium', amount: '45.00', effective_from: iso(1) },
+      'actor',
+    );
+
+    expect(prisma.commissionFlatRate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { client_id: null, product_type: 'tv', product_id: 'prod-tv-premium' } }),
+    );
+    const arg = tx.commissionFlatRate.create.mock.calls[0][0] as { data: { product_id: unknown } };
+    expect(arg.data.product_id).toBe('prod-tv-premium');
+  });
+
+  it('rejects a product whose type does not match the rate (422) — it would never resolve', async () => {
+    const { service, prisma } = make();
+    prisma.product.findUnique = jest.fn().mockResolvedValue({ product_type: 'internet', is_active: true });
+
+    await expect(
+      service.create(
+        { product_type: 'tv' as never, product_id: 'prod-fibre', amount: '45.00', effective_from: iso(1) },
+        'actor',
+      ),
+    ).rejects.toThrow(/not 'tv'/);
+  });
+
+  it('rejects an unknown product (422)', async () => {
+    const { service, prisma } = make();
+    prisma.product.findUnique = jest.fn().mockResolvedValue(null);
+
+    await expect(
+      service.create(
+        { product_type: 'tv' as never, product_id: 'nope', amount: '45.00', effective_from: iso(1) },
+        'actor',
+      ),
+    ).rejects.toThrow(/Unknown product/);
   });
 });

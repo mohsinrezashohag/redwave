@@ -2,6 +2,14 @@ import { UnauthorizedException } from '@nestjs/common';
 import { authenticator } from 'otplib';
 import { MfaService } from './mfa.service';
 
+// `enable()` bcrypt-hashes TEN recovery codes at cost 10, and the verify tests then compare against those
+// hashes — ~3.5–4.5 s of deliberate work on an idle machine. Jest's DEFAULT timeout is 5 s (there is no
+// `testTimeout` in the jest config), so under a full parallel suite those two tests crossed it and failed
+// intermittently while passing standalone. That is the "mfa.service.spec flake" — a timeout against real
+// crypto cost, NOT a TOTP window roll. Raising the budget here keeps the real bcrypt cost under test
+// instead of weakening it to fit an arbitrary limit. — docs/build-log.md (UAT-file audit fixes)
+jest.setTimeout(30_000);
+
 type MfaRow = { user_id: string; secret: string; enabled: boolean; confirmed_at: Date | null };
 type RecoveryRow = { id: string; user_id: string; code_hash: string; used_at: Date | null };
 

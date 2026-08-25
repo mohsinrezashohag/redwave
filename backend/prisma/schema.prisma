@@ -157,14 +157,14 @@ enum ExpenseReportStatus {
   sent_back
 }
 
-enum ExpenseCategory {
+// What a category DOES, as opposed to what it is called. `km` drives the map/route path, the −30/−60
+// commute deduction, the server-authoritative amount and the one-per-(rep,date) rule; `standard` is an
+// ordinary receipted expense. Behaviour — never the category KEY — is what the code branches on, so an
+// SA-added category can never silently acquire km handling and a renamed one can never lose it. Mirrors
+// `product_type_catalogue.behaviour`, which solved the same problem for products. — packet 10, SRS EXP-002a
+enum ExpenseCategoryBehaviour {
   km
-  meals
-  hotel
-  flight
-  rental
-  gas
-  other
+  standard
 }
 
 enum TripType {
@@ -260,6 +260,13 @@ enum ImportType {
   holdback
   clawback
   mixed
+  // Back-dated REP-stream config migration. The live services reject a past effective_from (422) to protect
+  // closed periods; these are the audited import path that may write history, mirroring billing_rates (#10).
+  // One value per row SHAPE — TARGET_FIELDS is keyed `${source}:${import_type}` and holds one field list
+  // each. — docs/claude-code/04-backdate-import.md
+  km_rates
+  commission_tiers
+  commission_flat_rates
 }
 
 enum ImportBatchStatus {
@@ -308,6 +315,7 @@ model User {
   billing_rates_created         ClientBillingRate[]        @relation("BillingRateCreatedBy")
   tier_configs_created          CommissionTierConfig[]     @relation("TierConfigCreatedBy")
   flat_rates_created            CommissionFlatRate[]       @relation("FlatRateCreatedBy")
+  tier_rates_created            CommissionTierRate[]       @relation("TierRateCreatedBy")
   holdback_release_set          HoldbackReleaseSetting[]   @relation("HoldbackReleaseSetBy")
   incentives_created            Incentive[]                @relation("IncentiveCreatedBy")
   sales_validated               Sale[]                     @relation("SaleValidatedBy")
@@ -625,6 +633,7 @@ model Client {
   // no path from here to client_billing_rates; the two rate streams stay separate (#3).
   commission_tier_configs CommissionTierConfig[]
   commission_flat_rates   CommissionFlatRate[]
+  commission_tier_rates   CommissionTierRate[]
   client_statements       ClientStatement[]
   client_invoices         ClientInvoice[]
   client_expense_docs     ClientExpenseDocument[]
@@ -682,6 +691,10 @@ model Product {
 
   client_billing_rates ClientBillingRate[]
   sale_items           SaleItem[]
+  // REP-PAY rates for this product. A separate stream from client_billing_rates above — the two are
+  // never joined in any code path (#3); they merely hang off the same product.
+  commission_tier_rates CommissionTierRate[]
+  commission_flat_rates CommissionFlatRate[]
 
   @@index([client_id, is_active]) // nested per-client product list
   @@index([product_type]) // cross-client product list filter
@@ -751,6 +764,10 @@ model CommissionFlatRate {
   client           Client?              @relation(fields: [client_id], references: [id])
   product_type     String // FK → product_type_catalogue.key
   product_type_ref ProductTypeCatalogue @relation(fields: [product_type], references: [key])
+  // null = the rate for the whole product TYPE (the fallback, and everything that existed before
+  // per-product rates). Set = this ONE product's rate, which wins over the type rate. — per-product rep rates
+  product_id       String?              @db.Uuid
+  product          Product?             @relation(fields: [product_id], references: [id])
   amount           Decimal              @db.Decimal(12, 2)
   effective_from   DateTime             @db.Date
   effective_to     DateTime?            @db.Date
@@ -758,7 +775,93 @@ model CommissionFlatRate {
   creator          User                 @relation("FlatRateCreatedBy", fields: [created_by], references: [id])
 
   @@index([product_type, client_id, effective_from]) // scope selection
+  @@index([product_id, client_id, effective_from]) // per-product scope selection
   @@map("commission_flat_rates")
+}
+
+// PER-PRODUCT REP TIER RATE — an OVERRIDE of the tier ladder's own `rate_per_activation` for one product.
+//
+// The volume TALLY and the bracket BOUNDARIES are unchanged and still live on commission_tier_configs /
+// commission_tiers: all internet activations count into ONE cross-client number, which picks the tier (#5).
+// This table only answers "given that tier, what does THIS product pay?" — the same shape as the existing
+// per-client scoping, which resolves the rate and never the tally.
+//
+// A missing row is not an error: the ladder's own rate_per_activation is the fallback, so a product with no
+// override pays exactly what it paid before this table existed.
+model CommissionTierRate {
+  id             String    @id @default(uuid()) @db.Uuid
+  // null = applies to every client (the per-product fallback). Set = this client only, which wins.
+  client_id      String?   @db.Uuid
+  client         Client?   @relation(fields: [client_id], references: [id])
+  product_id     String    @db.Uuid
+  product        Product   @relation(fields: [product_id], references: [id])
+  // Which bracket this rate is for — matches commission_tiers.tier_number (1 = highest).
+  tier_number    Int
+  amount         Decimal   @db.Decimal(12, 2)
+  effective_from DateTime  @db.Date
+  effective_to   DateTime? @db.Date
+  created_by     String    @db.Uuid
+  creator        User      @relation("TierRateCreatedBy", fields: [created_by], references: [id])
+
+  @@index([product_id, client_id, tier_number, effective_from]) // scope selection
+  @@map("commission_tier_rates")
+}
+
+
+// PAYROLL REPORT LINE — the frozen wide line behind Redwave's own payroll workbook, one row per SALE.
+//
+// Deliberately mirrors client_statement_lines in SHAPE and in nothing else. This is the REP-PAY stream:
+// every amount here comes from the frozen sale_items snapshot (rate_applied / commission_paid), never
+// from client_billing_rates, and no code path joins the two (#3). Client 350 vs rep 125 on the same sale
+// is the business model; mixing them was the previous system's defect.
+//
+// Frozen, and written at pay-run FINALIZE, because that is when the snapshots freeze (#2/#8). Before
+// finalize there is genuinely no money to report — the report is empty and says so rather than
+// recomputing a number that is not owed yet.
+model PayrollReportLine {
+  id         String  @id @default(uuid()) @db.Uuid
+  pay_run_id String  @db.Uuid
+  pay_run    PayRun  @relation(fields: [pay_run_id], references: [id])
+  sale_id    String  @db.Uuid
+  sale       Sale    @relation(fields: [sale_id], references: [id])
+  /// Render order as frozen (sale_date, then sale_code) — stable across re-renders.
+  sort_order Int     @default(0)
+
+  // Who / where / what. `Agent ID` is the PARTNER-FACING code (reps.external_code, "Redwave11") — both of
+  // Redwave's own workbooks key agents that way; the internal rep_code is retained for our tie-out and as
+  // the render fallback. Customer and Address are ONE column each here, unlike the client statement which
+  // splits the name — the payroll sheet holds a first name only. — system-audit.md §1.1
+  sale_date         DateTime? @db.Date
+  rep_external_code String?
+  rep_code          String?
+  rep_name          String?
+  customer_name     String
+  address           String?
+  channel           String? // clients.client_code
+  product_name      String? // the internet speed product on this sale
+
+  // Presence flags — the workbook's Internet / TV / Home Phone columns.
+  has_internet   Boolean @default(false)
+  has_tv         Boolean @default(false)
+  has_home_phone Boolean @default(false)
+  // Greenfield is an ADDITION to Redwave's sheet (confirmed in Meeting 4). Flat-rated and excluded from
+  // the tier tally (#9), so it is reported as its own column rather than folded into internet.
+  is_greenfield  Boolean @default(false)
+
+  // Per-component REP amounts, each read from the frozen snapshot. total_100 is their exact sum (#1), and
+  // advance_70 / holdback_30 are the split as the engine computed it — never re-derived at render time.
+  internet_rate Decimal? @db.Decimal(12, 2)
+  tv_rate       Decimal? @db.Decimal(12, 2)
+  hp_rate       Decimal? @db.Decimal(12, 2)
+  greenfield    Decimal? @db.Decimal(12, 2)
+  spiff         Decimal? @db.Decimal(12, 2) // the frozen incentive on this sale (ADDITION to their sheet)
+  other_total   Decimal? @db.Decimal(12, 2) // Σ remaining priced items, so nothing is silently dropped
+  total_100     Decimal  @db.Decimal(12, 2)
+  advance_70    Decimal  @db.Decimal(12, 2)
+  holdback_30   Decimal  @db.Decimal(12, 2)
+
+  @@index([pay_run_id, sort_order])
+  @@map("payroll_report_lines")
 }
 
 model HoldbackConfig {
@@ -838,6 +941,8 @@ model Sale {
   sale_items             SaleItem[]
   clawbacks              Clawback[]
   client_statement_lines ClientStatementLine[]
+  // The REP-PAY line for this sale. A sibling of the client-billing line above, never joined to it (#3).
+  payroll_report_lines   PayrollReportLine[]
 
   @@index([rep_id, sale_date])
   @@index([client_id, mpu_id])
@@ -923,7 +1028,8 @@ model PayRun {
   executor      User         @relation("PayRunExecutedBy", fields: [executed_by], references: [id])
   created_at    DateTime     @default(now())
 
-  pay_run_lines     PayRunLine[]
+  pay_run_lines        PayRunLine[]
+  payroll_report_lines PayrollReportLine[]
   sales             Sale[]
   holdback_released HoldbackLedger[] @relation("HoldbackReleasedIn")
   clawbacks         Clawback[]
@@ -1050,7 +1156,10 @@ model ExpenseItem {
   rep               Rep?                @relation(fields: [rep_id], references: [id])
   submitted_by      String              @db.Uuid
   submitter         User                @relation("ExpenseItemSubmittedBy", fields: [submitted_by], references: [id])
-  category          ExpenseCategory
+  // FK → the SA-governed category catalogue, NOT an enum: adding "parking" is a config change, not a
+  // migration. Behaviour (km vs standard) travels with the catalogue row. — packet 10
+  category          String
+  category_ref      ExpenseFieldConfig  @relation(fields: [category], references: [category_key])
   client_id         String?             @db.Uuid
   client            Client?             @relation(fields: [client_id], references: [id])
   expense_date      DateTime            @db.Date
@@ -1119,6 +1228,11 @@ model ExpenseFieldConfig {
   id               String   @id @default(uuid()) @db.Uuid
   category_key     String   @unique
   label            String
+  // What this category DOES. The code branches on this, never on the key — see ExpenseCategoryBehaviour.
+  behaviour        ExpenseCategoryBehaviour @default(standard)
+  // The seven day-one categories: their key + behaviour are locked (the SA may still edit label/fields/
+  // caps/active). Mirrors product_type_catalogue.is_system. — packet 10
+  is_system        Boolean  @default(false)
   requires_receipt Boolean
   // Whether an item in this category must carry a description. Config, not code — a home-made meal has
   // nothing to add beyond its category, and a forced description there is noise. — EXP-002a
@@ -1132,6 +1246,8 @@ model ExpenseFieldConfig {
   amount_soft_cap  Decimal? @db.Decimal(12, 2)
   created_by       String   @db.Uuid
   creator          User     @relation("ExpenseFieldConfigCreatedBy", fields: [created_by], references: [id])
+
+  items            ExpenseItem[]
 
   @@map("expense_field_configs")
 }
@@ -1301,7 +1417,12 @@ model ClientStatementLine {
 
   // Who / where / what (frozen snapshots — the sale may change later; the issued document may not).
   sale_date           DateTime? @db.Date
-  rep_code            String? // Agent ID
+  // The client's own workbooks key agents by the PARTNER-FACING code (`Redwave20` = reps.external_code),
+  // not the internal rep_code (`RW-D-0001`) — a client cannot match RW-D-0001 against their roster. The
+  // renderer prints `rep_external_code ?? rep_code`, so statements issued before this column existed (and
+  // reps with no external_code) still render exactly as they were issued (#2). — docs/claude-code/system-audit.md §2.1
+  rep_external_code   String? // Agent ID (reps.external_code) — what the client sees
+  rep_code            String? // internal rep_code, retained for our own tie-out + the pre-existing fallback
   rep_name            String? // Agent Name
   customer_name       String // kept: UI, QuickBooks CSV, back-compat
   customer_first_name String?

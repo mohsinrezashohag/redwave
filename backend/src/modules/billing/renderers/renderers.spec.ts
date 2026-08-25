@@ -6,7 +6,8 @@ import { ExpenseDocForExport, ExpenseDocPdfRenderer } from './expense-doc-pdf.re
 
 const line = (over: Partial<StatementLineForExport> = {}): StatementLineForExport => ({
   sale_date: '2026-06-29',
-  rep_code: 'Redwave15',
+  rep_external_code: 'Redwave15', // what the CLIENT sees
+  rep_code: 'RW-D-0015', // our internal code
   rep_name: 'Atikur Rahman',
   customer_name: 'Jane Doe',
   customer_first_name: 'Jane',
@@ -154,6 +155,20 @@ describe('StatementExcelRenderer — the client workbook format', () => {
     expect(headers[16]).toContain('Other');
     expect(headers[17]).toContain('Total');
     expect(ws.getRow(3).getCell(17).value).toBe(50); // the Other amount
+  });
+
+  // The client's own workbooks key agents by `Redwave20` (reps.external_code). Printing our internal
+  // `RW-D-0015` here means a partner cannot match a single agent against their roster.
+  // — system-audit.md §2.1
+  it('prints the PARTNER agent code in the Agent ID column, not the internal rep_code', async () => {
+    const { ws } = await readBack(statement);
+    expect(ws.getRow(3).getCell(2).value).toBe('Redwave15');
+  });
+
+  it('falls back to the frozen rep_code when a line has no external code, so already-issued statements re-render unchanged', async () => {
+    const legacyLine = { ...statement, lines: [line({ rep_external_code: null })] };
+    const { ws } = await readBack(legacyLine);
+    expect(ws.getRow(3).getCell(2).value).toBe('RW-D-0015');
   });
 
   it('renders an empty week without formulas over an empty range', async () => {

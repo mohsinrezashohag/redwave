@@ -18,11 +18,13 @@ const user: AuthUser = {
 };
 const superAdmin: AuthUser = { ...user, id: 'sa', isSuperAdmin: true };
 
+// `behaviour` is what the km path keys off — the KEY is not special (packet 10). A category is a
+// catalogue row, so these fixtures are the catalogue as the service would load it.
 const CONFIGS = [
-  { category_key: 'km', requires_receipt: false, is_active: true },
-  { category_key: 'meals', requires_receipt: true, is_active: true },
-  { category_key: 'gas', requires_receipt: true, is_active: true },
-  { category_key: 'other', requires_receipt: false, is_active: false }, // disabled
+  { category_key: 'km', behaviour: 'km', requires_receipt: false, is_active: true },
+  { category_key: 'meals', behaviour: 'standard', requires_receipt: true, is_active: true },
+  { category_key: 'gas', behaviour: 'standard', requires_receipt: true, is_active: true },
+  { category_key: 'other', behaviour: 'standard', requires_receipt: false, is_active: false }, // disabled
 ];
 
 function make() {
@@ -499,5 +501,96 @@ describe('ExpensesService — per-type fields + Alert/Warning (EXP-013)', () => 
     ]);
     const summary = await service.validationSummary({}, superAdmin);
     expect(summary).toMatchObject({ total: 3, alert_items: 1, warning_items: 1, flagged: 2, alert_count: 1, warning_count: 1 });
+  });
+});
+
+// ── Categories are CONFIG, not code (packet 10) ───────────────────────────────────────────────────
+// `expense_items.category` is a FK to the catalogue, so an SA-added key is usable immediately — no enum
+// migration. And the km path keys off the catalogue BEHAVIOUR, never the category name, so a new category
+// cannot silently acquire mileage handling and a renamed one cannot lose it.
+describe('ExpensesService — catalogue-driven categories', () => {
+  /** A key that was never one of the seven enum values — the whole point of the packet. */
+  const PARKING = [
+    ...CONFIGS,
+    { category_key: 'parking', behaviour: 'standard', requires_receipt: true, is_active: true },
+  ];
+  const parkingItem = (): ExpenseItemInput => ({
+    category: 'parking',
+    expense_date: '2026-03-12',
+    amount: '18.00',
+    description: 'Downtown lot',
+    receipt_url: 'receipts/2026/03/p.jpg',
+  });
+
+  it('accepts an SA-ADDED category that was never an enum value, and stores its key verbatim', async () => {
+    const { service, prisma, tx } = make();
+    prisma.expenseFieldConfig.findMany.mockResolvedValue(PARKING);
+    await service.createItems(dto([parkingItem()]), user);
+    const item = createdItems(tx)[0] as { category: string; amount: string };
+    expect(item.category).toBe('parking');
+    expect(item.amount).toBe('18.00');
+  });
+
+  it('a new category is STANDARD: it gets no km handling and needs an amount', async () => {
+    const { service, prisma, tx } = make();
+    prisma.expenseFieldConfig.findMany.mockResolvedValue(PARKING);
+    await service.createItems(dto([parkingItem()]), user);
+    expect((createdItems(tx)[0] as { km_log?: unknown }).km_log).toBeUndefined();
+    // …and the standard rules apply to it, unchanged.
+    const bare = make();
+    bare.prisma.expenseFieldConfig.findMany.mockResolvedValue(PARKING);
+    await expect(
+      bare.service.createItems(dto([{ ...parkingItem(), amount: undefined }]), user),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('a key with no catalogue row is still refused (the FK is not the only gate)', async () => {
+    const { service } = make();
+    await expect(service.createItems(dto([parkingItem()]), user)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
+  });
+
+  // The behaviour discriminator earning its keep: mileage follows BEHAVIOUR, not the name 'km'.
+  it('km handling follows the catalogue BEHAVIOUR, not the category key', async () => {
+    const { service, prisma, tx } = make();
+    prisma.expenseFieldConfig.findMany.mockResolvedValue([
+      ...CONFIGS,
+      { category_key: 'mileage', behaviour: 'km', requires_receipt: false, is_active: true },
+    ]);
+    await service.createItems(dto([{ ...kmItem(), category: 'mileage' }]), user);
+    const item = createdItems(tx)[0] as {
+      category: string;
+      amount: string;
+      receipt_url: string | null;
+      km_log: { create: { billable_km: string } };
+    };
+    expect(item.category).toBe('mileage'); // its own key, not rewritten to 'km'
+    expect(item.amount).toBe('31.50'); // server-computed, −60 round-trip deduction applied
+    expect(item.receipt_url).toBeNull();
+    expect(item.km_log.create.billable_km).toBe('70');
+  });
+
+  it('a category NAMED km without km behaviour gets no mileage handling', async () => {
+    const { service, prisma } = make();
+    prisma.expenseFieldConfig.findMany.mockResolvedValue([
+      { category_key: 'km', behaviour: 'standard', requires_receipt: true, is_active: true },
+    ]);
+    // Treated as an ordinary item: the km log is now the thing that does not belong.
+    await expect(service.createItems(dto([kmItem()]), user)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
+  });
+
+  it('the one-per-day mileage rule spans every km-behaviour category, not just one key', async () => {
+    const { service, prisma } = make();
+    prisma.expenseFieldConfig.findMany.mockResolvedValue([
+      ...CONFIGS,
+      { category_key: 'mileage', behaviour: 'km', requires_receipt: false, is_active: true },
+    ]);
+    // Same day, two different km-behaviour categories → still one mileage claim per day.
+    await expect(
+      service.createItems(dto([kmItem('2026-03-10'), { ...kmItem('2026-03-10'), category: 'mileage' }]), user),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
 });

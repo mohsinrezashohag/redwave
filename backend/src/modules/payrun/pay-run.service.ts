@@ -9,7 +9,7 @@
  * and freeze/holdback are further guarded (sales become Paid; one ledger row per rep+origin).
  * Money math uses decimal.js; conversion to Prisma Decimal (`.toFixed(2)`) happens only on write.
  */
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { HoldbackReleaseStatus, Prisma } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -19,7 +19,27 @@ import { AuthUser } from '../../common/rbac/auth-user.type';
 import { CommissionConfigProvider } from '../commission/commission-config.provider';
 import { CommissionEngineService } from '../engine/commission-engine.service';
 import { ActivationInput } from '../engine/engine.types';
-import { toActivationInput } from './activation-mapping.logic';
+import { mapToEngineProductType, toActivationInput } from './activation-mapping.logic';
+import { buildPayrollReport, PayrollSaleInput } from './payroll-report.logic';
+
+/**
+ * Exactly what a payroll line needs off a sale — written out rather than derived, so the list is a
+ * readable statement of the report's inputs. Note what is ABSENT: nothing from the client-billing stream
+ * appears here, and nothing downstream can reach it (#3).
+ */
+type SalesForPayroll = {
+  id: string;
+  sale_date: Date;
+  customer_name: string;
+  street: string | null;
+  city: string | null;
+  province_state: string | null;
+  postal_code: string | null;
+  is_greenfield: boolean;
+  rep: { rep_code: string; external_code: string | null; full_name: string } | null;
+  client: { client_code: string } | null;
+  sale_items: { id: string; product_type: string; counts_toward_tally: boolean; product: { name: string } | null }[];
+}[];
 import { resolveScheduledReleasePeriod } from './holdback-release.logic';
 import { buildLineAmounts, computeNet } from './line-amounts.logic';
 import { EXPENSE_TOTAL_PROVIDER, ExpenseTotalProvider } from './seams/expense-total.provider';
@@ -203,6 +223,14 @@ export class PayRunService {
             });
           }
 
+          // (a2) Freeze the PAYROLL REPORT lines from the SAME engine result, so the report and the
+          // snapshots can never disagree. Re-finalize is guarded, but clear first so a re-run cannot
+          // double the rows.
+          await tx.payrollReportLine.deleteMany({
+            where: { pay_run_id: run.id, sale_id: { in: sales.map((s2) => s2.id) } },
+          });
+          await this.writePayrollLines(tx, run.id, sales, result, config.holdback.advancePct);
+
           // (b) Transition the rep's sales Validated → in_pay_run → paid (§16).
           const saleIds = sales.map((s) => s.id);
           if (saleIds.length > 0) {
@@ -324,6 +352,199 @@ export class PayRunService {
   }
 
   // ── Export (ADP; status + audit record — no dedicated table) ──────────────────────────────────
+
+  /**
+   * The PAYROLL REPORT for a run — Redwave's own workbook shape, read from the FROZEN lines.
+   *
+   * Read-only and never re-priced (#2): the lines were written at finalize from the same engine result
+   * that froze the snapshots. A run that has not finalized has no lines, and that is reported honestly as
+   * an empty report rather than by computing what is not yet owed.
+   *
+   * Rep-pay stream only — nothing here touches the client-billing rate tables (#3).
+   */
+  async payrollReport(runId: string, user: AuthUser) {
+    const run = await this.prisma.payRun.findUnique({
+      where: { id: runId },
+      include: { pay_period: true },
+    });
+    if (!run) {
+      throw new NotFoundException('Pay run not found');
+    }
+    await this.scopeRepIds(user); // permission-shaped read; the run itself is admin-scoped like the rest
+
+    const lines = await this.prisma.payrollReportLine.findMany({
+      where: { pay_run_id: runId },
+      orderBy: { sort_order: 'asc' },
+    });
+
+    const sum = (pick: (l: (typeof lines)[number]) => Prisma.Decimal) =>
+      lines.reduce((acc, l) => acc.plus(pick(l)), new Prisma.Decimal(0)).toFixed(2);
+
+    return {
+      pay_run_id: run.id,
+      period_number: run.pay_period.period_number,
+      period_start: iso(run.pay_period.start_date),
+      period_end: iso(run.pay_period.end_date),
+      run_status: run.status,
+      // Empty until finalize freezes the lines — the UI says so rather than showing zeros as if earned.
+      is_finalized: lines.length > 0,
+      lines: lines.map((l) => ({
+        sale_id: l.sale_id,
+        sale_date: l.sale_date ? iso(l.sale_date) : null,
+        rep_external_code: l.rep_external_code,
+        rep_code: l.rep_code,
+        rep_name: l.rep_name,
+        customer_name: l.customer_name,
+        address: l.address,
+        channel: l.channel,
+        product_name: l.product_name,
+        has_internet: l.has_internet,
+        has_tv: l.has_tv,
+        has_home_phone: l.has_home_phone,
+        is_greenfield: l.is_greenfield,
+        internet_rate: (l.internet_rate ?? new Prisma.Decimal(0)).toFixed(2),
+        tv_rate: (l.tv_rate ?? new Prisma.Decimal(0)).toFixed(2),
+        hp_rate: (l.hp_rate ?? new Prisma.Decimal(0)).toFixed(2),
+        greenfield: (l.greenfield ?? new Prisma.Decimal(0)).toFixed(2),
+        spiff: (l.spiff ?? new Prisma.Decimal(0)).toFixed(2),
+        other_total: (l.other_total ?? new Prisma.Decimal(0)).toFixed(2),
+        total_100: l.total_100.toFixed(2),
+        advance_70: l.advance_70.toFixed(2),
+        holdback_30: l.holdback_30.toFixed(2),
+      })),
+      total_100: sum((l) => l.total_100),
+      advance_70: sum((l) => l.advance_70),
+      holdback_30: sum((l) => l.holdback_30),
+    };
+  }
+
+  /**
+   * ONE REP's pay statement for a run — what was sold, what it paid, their 70%, and the 30% held.
+   *
+   * Built from the SAME frozen `payroll_report_lines` as the payroll report, filtered to one rep, so the
+   * two reconcile by construction rather than by agreement between two calculations (#2). Nothing is
+   * recomputed.
+   *
+   * SELF-SCOPING IS RESOLVED FROM THE TOKEN, never from a caller-supplied id — see `myPayStatement`, which
+   * takes no repId at all. This admin-facing method DOES take one, and is gated by `payrun:view`, which a
+   * rep does not have.
+   *
+   * #3 — the returned shape carries no client rate, no margin and no org-wide total. A rep-facing document
+   * is the rep stream only.
+   */
+  private async buildRepStatement(runId: string, repId: string) {
+    const run = await this.prisma.payRun.findUnique({
+      where: { id: runId },
+      include: { pay_period: true },
+    });
+    if (!run) {
+      throw new NotFoundException('Pay run not found');
+    }
+
+    const lines = await this.prisma.payrollReportLine.findMany({
+      where: { pay_run_id: runId, sale_id: { in: (await this.saleIdsForRep(runId, repId)) } },
+      orderBy: { sort_order: 'asc' },
+    });
+
+    const rep = await this.prisma.rep.findUnique({
+      where: { id: repId },
+      select: { rep_code: true, external_code: true, full_name: true },
+    });
+
+    const sum = (pick: (l: (typeof lines)[number]) => Prisma.Decimal) =>
+      lines.reduce((acc, l) => acc.plus(pick(l)), new Prisma.Decimal(0)).toFixed(2);
+
+    return {
+      pay_run_id: run.id,
+      period_number: run.pay_period.period_number,
+      period_start: iso(run.pay_period.start_date),
+      period_end: iso(run.pay_period.end_date),
+      rep_code: rep?.rep_code ?? null,
+      rep_name: rep?.full_name ?? null,
+      // Empty until the run finalizes — before that nothing is owed, and a zeroed statement would read as
+      // "you earned nothing" rather than "not yet calculated".
+      is_finalized: lines.length > 0,
+      lines: lines.map((l) => ({
+        sale_id: l.sale_id,
+        sale_date: l.sale_date ? iso(l.sale_date) : null,
+        customer_name: l.customer_name,
+        address: l.address,
+        channel: l.channel,
+        product_name: l.product_name,
+        has_internet: l.has_internet,
+        has_tv: l.has_tv,
+        has_home_phone: l.has_home_phone,
+        is_greenfield: l.is_greenfield,
+        // The REP amount for each component — never a client rate (#3).
+        internet_rate: (l.internet_rate ?? new Prisma.Decimal(0)).toFixed(2),
+        tv_rate: (l.tv_rate ?? new Prisma.Decimal(0)).toFixed(2),
+        hp_rate: (l.hp_rate ?? new Prisma.Decimal(0)).toFixed(2),
+        greenfield: (l.greenfield ?? new Prisma.Decimal(0)).toFixed(2),
+        spiff: (l.spiff ?? new Prisma.Decimal(0)).toFixed(2),
+        other_total: (l.other_total ?? new Prisma.Decimal(0)).toFixed(2),
+        total_100: l.total_100.toFixed(2),
+        advance_70: l.advance_70.toFixed(2),
+        holdback_30: l.holdback_30.toFixed(2),
+      })),
+      total_100: sum((l) => l.total_100),
+      advance_70: sum((l) => l.advance_70),
+      holdback_30: sum((l) => l.holdback_30),
+    };
+  }
+
+  /** The sales in this run that belong to ONE rep — the filter that scopes a statement. */
+  private async saleIdsForRep(runId: string, repId: string): Promise<string[]> {
+    const sales = await this.prisma.sale.findMany({
+      where: { pay_run_id: runId, rep_id: repId },
+      select: { id: true },
+    });
+    return sales.map((s) => s.id);
+  }
+
+  /** ADMIN: any rep's statement for a run. Gated by payrun:view at the controller. */
+  async repPayStatement(runId: string, repId: string) {
+    return this.buildRepStatement(runId, repId);
+  }
+
+  /**
+   * SELF-SERVICE: the caller's OWN statement. Takes NO repId — the rep is resolved from the authenticated
+   * user, so "someone else's statement" cannot be expressed by this endpoint at all. That is the whole
+   * protection, and it is stronger than validating an id would be.
+   *
+   * A user with no linked rep is 403, not an empty 200: an empty list would imply "you have no statements"
+   * when the truth is "you are not a rep".
+   */
+  async myPayStatement(runId: string, user: AuthUser) {
+    if (!user.repId) {
+      throw new ForbiddenException('Your account is not linked to a rep');
+    }
+    return this.buildRepStatement(runId, user.repId);
+  }
+
+  /** SELF-SERVICE: the finalized runs the caller has a statement for, newest first. */
+  async myPayStatements(user: AuthUser) {
+    if (!user.repId) {
+      throw new ForbiddenException('Your account is not linked to a rep');
+    }
+    const sales = await this.prisma.sale.findMany({
+      where: { rep_id: user.repId, pay_run_id: { not: null } },
+      select: { pay_run_id: true },
+      distinct: ['pay_run_id'],
+    });
+    const runIds = sales.map((s) => s.pay_run_id).filter((id): id is string => id !== null);
+    const runs = await this.prisma.payRun.findMany({
+      where: { id: { in: runIds } },
+      include: { pay_period: true },
+      orderBy: { run_date: 'desc' },
+    });
+    return runs.map((r) => ({
+      pay_run_id: r.id,
+      period_number: r.pay_period.period_number,
+      period_start: iso(r.pay_period.start_date),
+      period_end: iso(r.pay_period.end_date),
+      run_status: r.status,
+    }));
+  }
 
   async exportRun(runId: string, dto: ExportPayRunDto, user: AuthUser) {
     const run = await this.prisma.payRun.findUnique({ where: { id: runId } });
@@ -535,7 +756,14 @@ export class PayRunService {
         status: 'validated',
         sale_date: { gte: period.start_date, lte: period.end_date }, // sale_date governs (#7)
       },
-      include: { sale_items: true },
+      include: {
+        sale_items: { include: { product: { select: { name: true } } } },
+        // For the PAYROLL REPORT line frozen at finalize: the agent as the workbook keys them
+        // (external_code), the channel, and the product name. Rep-pay stream only — nothing here
+        // reaches the client-billing rate tables (#3).
+        rep: { select: { rep_code: true, external_code: true, full_name: true } },
+        client: { select: { client_code: true } },
+      },
     });
     const activations: ActivationInput[] = [];
     for (const sale of sales) {
@@ -547,11 +775,129 @@ export class PayRunService {
             counts_toward_tally: item.counts_toward_tally,
             client_id: sale.client_id,
             sale_date: iso(sale.sale_date),
+            // For the per-product RATE lookup only — the tally is untouched (#5).
+            product_id: item.product_id,
           }),
         );
       }
     }
     return { result: this.engine.computePeriod({ activations, config }), sales };
+  }
+
+  /**
+   * Freeze this rep's PAYROLL REPORT lines — Redwave's own workbook shape, one row per SALE.
+   *
+   * Written at finalize, in the same transaction, because that is the moment the snapshots freeze (#2/#8).
+   * Every amount comes from the engine result already computed above — the same values being written onto
+   * `sale_items` — so the report can never disagree with what was paid, and nothing is recomputed at
+   * render time.
+   *
+   * #3: rep-pay stream only. No client billing rate is read here or anywhere downstream of it.
+   * #9: greenfield gets its OWN column; it is flat-rated and out of the tally, so folding it into internet
+   *     would misreport both.
+   */
+  private async writePayrollLines(
+    tx: Prisma.TransactionClient,
+    runId: string,
+    sales: SalesForPayroll,
+    result: { items: { id: string; productType: string; rateApplied: Decimal; incentiveAmount: Decimal }[] },
+    advancePct: Decimal,
+  ): Promise<void> {
+    const byItemId = new Map(result.items.map((i) => [i.id, i]));
+
+    const inputs: PayrollSaleInput[] = sales.map((sale) => {
+      const components = {
+        internet: new Decimal(0),
+        tv: new Decimal(0),
+        home_phone: new Decimal(0),
+        greenfield: new Decimal(0),
+        spiff: new Decimal(0),
+        other: new Decimal(0),
+      };
+      let productName: string | null = null;
+      let hasInternet = false;
+      let hasTv = false;
+      let hasHomePhone = false;
+
+      for (const item of sale.sale_items) {
+        const computed = byItemId.get(item.id);
+        if (!computed) continue; // not part of this run's engine result
+        // Classify EXACTLY as the engine did (mapToEngineProductType), so the column a line lands in and
+        // the rate it was paid can never come from two different opinions of what the item is.
+        const kind = mapToEngineProductType(item.product_type, item.counts_toward_tally);
+        const amount = computed.rateApplied;
+        if (kind === 'internet') {
+          components.internet = components.internet.plus(amount);
+          hasInternet = true;
+          productName ??= item.product?.name ?? null;
+        } else if (kind === 'greenfield_internet') {
+          components.greenfield = components.greenfield.plus(amount);
+          productName ??= item.product?.name ?? null;
+        } else if (kind === 'tv') {
+          components.tv = components.tv.plus(amount);
+          hasTv = true;
+        } else if (kind === 'home_phone') {
+          components.home_phone = components.home_phone.plus(amount);
+          hasHomePhone = true;
+        } else {
+          components.other = components.other.plus(amount);
+        }
+        components.spiff = components.spiff.plus(computed.incentiveAmount);
+      }
+
+      const address = [sale.street, sale.city, sale.province_state, sale.postal_code]
+        .filter((part): part is string => !!part && part.trim().length > 0)
+        .join(', ');
+
+      return {
+        sale_id: sale.id,
+        sale_date: iso(sale.sale_date),
+        rep_external_code: sale.rep?.external_code ?? null,
+        rep_code: sale.rep?.rep_code ?? '',
+        rep_name: sale.rep?.full_name ?? '',
+        customer_name: sale.customer_name,
+        address: address.length > 0 ? address : null,
+        channel: sale.client?.client_code ?? '',
+        product_name: productName,
+        has_internet: hasInternet,
+        has_tv: hasTv,
+        has_home_phone: hasHomePhone,
+        is_greenfield: sale.is_greenfield,
+        components,
+      };
+    });
+
+    const report = buildPayrollReport(inputs, advancePct);
+    for (const line of report.lines) {
+      await tx.payrollReportLine.create({
+        data: {
+          pay_run_id: runId,
+          sale_id: line.sale_id,
+          sort_order: line.sort_order,
+          sale_date: new Date(`${line.sale_date}T00:00:00.000Z`),
+          rep_external_code: line.rep_external_code,
+          rep_code: line.rep_code,
+          rep_name: line.rep_name,
+          customer_name: line.customer_name,
+          address: line.address,
+          channel: line.channel,
+          product_name: line.product_name,
+          has_internet: line.has_internet,
+          has_tv: line.has_tv,
+          has_home_phone: line.has_home_phone,
+          is_greenfield: line.is_greenfield,
+          internet_rate: money(line.internet_rate),
+          tv_rate: money(line.tv_rate),
+          hp_rate: money(line.hp_rate),
+          greenfield: money(line.greenfield),
+          spiff: money(line.spiff),
+          other_total: money(line.other_total),
+          total_100: money(line.total_100),
+          advance_70: money(line.advance_70),
+          holdback_30: money(line.holdback_30),
+        },
+      });
+    }
   }
 
   private async previewReleased(

@@ -33,3 +33,12 @@ export type UpdateHoldbackConfigBody = components['schemas']['UpdateHoldbackConf
 export type SetHoldbackReleaseBody = components['schemas']['SetHoldbackReleaseSettingDto'];
 export type CreateIncentiveBody = components['schemas']['CreateIncentiveDto'];
 export type UpdateIncentiveBody = components['schemas']['UpdateIncentiveDto'];
+
+/**
+ * A PER-PRODUCT tier rate — what one bracket pays for one product. It resolves a RATE only: the internet
+ * tally stays one cross-client count and the bracket boundaries stay on the tier schedule (#5). A product
+ * with no row here is paid the schedule's own rate.
+ */
+export type TierRate = components['schemas']['TierRateResponse'];
+export type CreateTierRateBody = components['schemas']['CreateTierRateDto'];
+export type UpdateTierRateBody = components['schemas']['UpdateTierRateDto'];

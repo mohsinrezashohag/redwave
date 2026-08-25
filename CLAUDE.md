@@ -82,8 +82,9 @@ calling a piece of work done:
 
 ```sh
 npm -w backend run test              # jest
+npm -w backend run typecheck         # tsc --noEmit over src + prisma + scripts (see below)
 npm -w backend run lint
-npm -w backend run build             # nest build — this IS the backend typecheck
+npm -w backend run build             # nest build — compiles src/ only
 npm -w backend run contract:export   # only when an endpoint/DTO changed → contract/openapi.yaml
 npm -w frontend run gen:api          #   "  must follow contract:export (see below)
 npm -w frontend run build            # tsc --noEmit && vite build
@@ -133,10 +134,14 @@ Never run `prisma:migrate` against a deployed database — it can reset it. Oper
 - **`contract:export` → `gen:api` is one unit.** Running the first without the second leaves the
   frontend typed against a stale contract, and the drift surfaces as a confusing `tsc` error in
   an unrelated feature.
-- **`backend/tsconfig.json` `include` is `src/**/*` only**, and the seed entry runs with
-  `--transpile-only`. So `backend/prisma/` (seeds) and `backend/scripts/` are **never
-  typechecked** — this is exactly how the `demo.ts` argument drift recorded in §12 stayed hidden
-  until someone ran `SEED_DEMO=yes`.
+- **`backend/tsconfig.json` `include` is `src/**/*` only** and the seed entry runs with
+  `--transpile-only`, so `nest build` does NOT typecheck `backend/prisma/` or `backend/scripts/`.
+  **`npm -w backend run typecheck` (`tsconfig.typecheck.json`, `noEmit`) is what covers them** —
+  run it, not just `build`. **Do not "simplify" this by widening `tsconfig.json`'s `include`:**
+  with `src` alone TypeScript infers `rootDir: src` and emits `dist/main.js`, which is what
+  `start:prod` runs; adding `prisma/` moves the emit to `dist/src/main.js` and breaks production
+  start. This gap is how the demo seed's `documents.upload(dto, bytes, user)` call survived the
+  move to the claim-based upload pipeline and made `SEED_DEMO=yes` fail at the documents step.
 - **PowerShell is the primary shell here.** `&&` chaining is unavailable in Windows PowerShell 5.1
   — use `;` with an `if ($?)` guard, or the Bash tool.
 
@@ -404,8 +409,8 @@ This file is the project's **persistent memory**. Claude Code loads it at the st
 - **Rate-grid track — currency wiring + deferred currency FE (DONE — BE+FE; NO migration).** Brings the stored-FX model to life so a **USD client (CTI)** exercises the first real conversion. **Backend:** new tiny **`modules/currencies/`** — `GET /v1/currencies` (authenticated reference read, no permission, like `/v1/product-types`) + `CurrenciesService.assertSupported`. **`clients.currency` is now settable end-to-end** — `Create/UpdateClientDto` + service persist + `ClientResponse` carry it; a non-CAD code is validated (422 on unknown); **a currency CHANGE is BLOCKED once the client has an issued statement/invoice** (frozen billing history stays coherent, #12) — freely editable before. **Frontend** (`gen:api` regen first — the currency-track DTOs were stale in `schema.d.ts`): new shared **`features/currencies/useCurrencies`**; `ClientFormModal` billing-currency picker + `ClientDetailPage` display; **rate cards + `BillingRateFormModal` label the client's currency** (`money(amount, currency)` — a `USD 250.00` prefix for non-CAD, `$` default unchanged); **expense-form per-item currency picker** (`ExpenseItemRow` common-fields, **locked to CAD for km**); **approval FX-override** — `ReviewActions` opens an FX dialog for a FOREIGN item (`original_currency≠CAD` & `amount_cad==null`) collecting the rate + an approximate `amount_cad` preview, sent as `ReviewDto.fx_rate` (the server re-freezes authoritatively). **Bulk approve can't carry an override** → a foreign item relies on the FX source or is skipped (single-item path takes the manual rate). **Tests:** client-currency CRUD + the no-issued-statement guard; `GET /v1/currencies`; the first **source-driven** USD statement issue (`FxRateService→1.365` ⇒ `amount_cad 341.25`); business-dashboard CAD consolidation reads `amount_cad`. **632 backend tests** + FE build/lint/stylelint/tsc + contract regen green. **DATA-ENTRY is the operator's browser pass** (see `docs/rate-grid.md`): the 4 clients (CTI=USD) + products + billing rates + the new `standard_addon` types + the RF **$35 HP+TV `bundle_bonus`** row — all via existing admin UI, **no seed**. **Bundle APPLICATION to statement totals is now DONE** (see the "Billing `bundle_bonus` pricing" entry above — the RF $35 HP+TV row is priced into the line total once a sale has both). Get a client sign-off on the grid VALUES before entry.
 
 ### Open after the UAT batches (this session)
-- **`prisma/seed/demo.ts` calls `documents.upload(dto, stubPdf, sa)` against a TWO-argument method.** Pre-existing (unchanged at HEAD), hidden because the seed runs `--transpile-only`, so `SEED_DEMO=yes` throws at the documents step before finishing. The seed is NOT typechecked by `tsconfig.json` (`include: ["src/**/*"]`) — worth widening, or the next drift lands the same way.
-- **`mfa.service.spec.ts` is a flake.** Failed once in a full-suite run and passed alone + on re-run (817/817). TOTP window + bcrypt rounds under parallel load; it will bite CI eventually. Fix by freezing the clock / lowering the test bcrypt cost, not by retrying.
+- ~~`prisma/seed/demo.ts` calls `documents.upload(dto, stubPdf, sa)`~~ (**FIXED** — the seed now registers the stub PDF through the real file pipeline, or as a metadata-only `stored_files` row when storage is off; `npm -w backend run typecheck` now covers `prisma/` + `scripts/` so the class of drift cannot recur. See the "UAT-file audit fixes" entry in `docs/build-log.md`.)
+- ~~`mfa.service.spec.ts` is a flake~~ (**FIXED** — and the recorded cause was wrong: not a TOTP window, but Jest's **default 5 s** timeout [the jest config sets no `testTimeout`] against `enable()` bcrypt-hashing ten recovery codes at cost 10. Only the two tests that also verify against those hashes were slow enough to cross it, which is why it looked load-dependent. `jest.setTimeout(30_000)` in that spec; the real bcrypt cost stays under test. **If another spec starts failing only under a full parallel run, check its wall-clock against the 5 s default before assuming a race.**)
 - **The sales export carries no Rep column.** `SaleResponse` exposes only `rep_id` (no code/name) and the sales table has no rep column either, so the client-bill-shaped export omits the Agent ID / Agent Name pair the STATEMENT has. Add the rep to `SALE_INCLUDE` + the response DTO if the export needs to line up completely.
 - **The office origin (`expense_settings`) is typed, not geocoded.** The admin card takes a plain address, so the defaulted km stop carries no lat/lng and the server falls back to the rep's typed total (exactly like any manual stop). The `office_lat`/`office_lng` columns exist — wire the Places autocomplete into `OfficeOriginCard` to let the office contribute to route derivation.
 - **Expense CATEGORIES are still enum-bound.** `expense_items.category` remains the `ExpenseCategory` enum (km/meals/hotel/flight/rental/gas/other); the per-type FIELD schema is fully dynamic but a new category key (e.g. `parking`) needs an enum migration. The new category GROUPING dimension inherits that ceiling.

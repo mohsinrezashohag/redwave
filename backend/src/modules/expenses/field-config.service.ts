@@ -2,8 +2,10 @@
  * FieldConfigService — the configurable expense-category catalogue (expense_field_configs) + its per-type
  * FIELD SCHEMA (EXP-002a) and soft caps (EXP-013). Each row sets a category's label, receipt rule, active
  * flag, the captured `fields`, and an `amount_soft_cap`. Config-driven, SA-editable — NOT hardcoded.
- * Items remain bound to the ExpenseCategory enum, so a key beyond the 7 enum values is catalogue-only until
- * an enum migration adds it (CLAUDE §12). — SRS EXP-002a/EXP-009
+ * `expense_items.category` is a FK to `category_key` here, so a category added through this service is
+ * immediately USABLE — no enum migration (packet 10). Each row also carries a `behaviour` (km | standard):
+ * the code branches on behaviour, never on the key, so a new category cannot acquire km handling and the
+ * seven `is_system` built-ins cannot have theirs changed. — SRS EXP-002a/EXP-009
  */
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -41,6 +43,13 @@ export class FieldConfigService {
     return clean;
   }
 
+  /**
+   * BEHAVIOUR IS DELIBERATELY NOT SETTABLE — not here and not in `update`. An SA-created category is always
+   * `standard`, so the seeded `km` row stays the only km-behaviour category in the system. That is what
+   * lets the form layer (`expenseForm.schema.ts`) keep its zod shape rules keyed on the `km` key without
+   * drifting from the server. If you ever expose `behaviour` on these DTOs, thread the catalogue behaviour
+   * through that form schema in the same change — `field-config.service.spec.ts` locks this. — packet 10
+   */
   async create(dto: CreateFieldConfigDto, user: AuthUser) {
     const fields = this.validateDefs(dto.fields);
     try {

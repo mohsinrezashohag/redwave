@@ -3,6 +3,7 @@ import { validateExpenseItem, ValidatableItem } from './validation.logic';
 
 const mealsSchema = (over: Partial<CategorySchema> = {}): CategorySchema => ({
   category_key: 'meals',
+  behaviour: 'standard',
   requires_receipt: true,
   is_active: true,
   amount_soft_cap: '30.00',

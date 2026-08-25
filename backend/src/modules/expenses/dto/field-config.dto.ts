@@ -57,8 +57,9 @@ export class ExpenseFieldDefDto {
 /**
  * Create / configure an expense category in the catalogue. — SRS EXP-002a/EXP-009
  * `requires_receipt` drives the receipt Alert; `fields` is the per-type field schema; `amount_soft_cap`
- * is a category-level soft cap on the item amount (→ Warning). (Items are bound to the ExpenseCategory
- * enum, so a new key beyond the 7 enum values is catalogue-only until an enum migration — CLAUDE §12.)
+ * is a category-level soft cap on the item amount (→ Warning). A category created here is immediately
+ * usable on items — `expense_items.category` references this key (packet 10). `behaviour` defaults to
+ * `standard`; only the seeded `km` row carries km behaviour, and `is_system` rows cannot change it.
  */
 export class CreateFieldConfigDto {
   @ApiProperty({ example: 'parking', description: 'Snake_case category key (unique).' })

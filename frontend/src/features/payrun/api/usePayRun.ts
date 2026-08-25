@@ -7,14 +7,7 @@ import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
 import { unwrapList } from '../../../lib/query/unwrapList';
 import { payrunKeys } from './keys';
-import type {
-  HoldbackFilters,
-  HoldbackLedgerEntry,
-  PayPeriod,
-  PayRun,
-  PayRunHoldbackSummary,
-  PayRunSummary,
-} from '../payrun.types';
+import type { HoldbackFilters, HoldbackLedgerEntry, PayPeriod, PayRun, PayRunHoldbackSummary, PayRunSummary, RepPayStatement, RepPayStatementSummary } from '../payrun.types';
 
 /** The pre-loaded 2026 pay-period schedule (the period list + label lookups). */
 export function usePayPeriods(enabled = true) {
@@ -64,6 +57,39 @@ export function useHoldbackSummary(runId: string | undefined, enabled = true) {
       unwrap<PayRunHoldbackSummary>(
         api.GET('/v1/pay-runs/{id}/holdback', { params: { path: { id: runId as string } } }),
       ),
+    enabled: enabled && !!runId,
+  });
+}
+
+/**
+ * ONE rep's pay statement for a run — ADMIN path (payrun:view). A rep's own copy uses the self-scoped
+ * endpoint, which takes no repId at all.
+ */
+export function useRepStatement(runId: string, repId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['payrun', 'rep-statement', runId, repId ?? 'none'],
+    queryFn: () =>
+      unwrap<RepPayStatement>(
+        api.GET('/v1/pay-runs/{id}/reps/{repId}/statement', { params: { path: { id: runId, repId: repId! } } }),
+      ),
+    enabled: enabled && !!runId && !!repId,
+  });
+}
+
+/** MY statements — own only; the rep comes from the token. */
+export function useMyPayStatements(enabled = true) {
+  return useQuery({
+    queryKey: ['payrun', 'my-statements'],
+    queryFn: () => unwrapList<RepPayStatementSummary>(api.GET('/v1/pay-statements')),
+    enabled,
+  });
+}
+
+/** MY statement for one run. */
+export function useMyPayStatement(runId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['payrun', 'my-statement', runId ?? 'none'],
+    queryFn: () => unwrap<RepPayStatement>(api.GET('/v1/pay-statements/{runId}', { params: { path: { runId: runId! } } })),
     enabled: enabled && !!runId,
   });
 }

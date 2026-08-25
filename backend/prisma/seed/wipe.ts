@@ -16,6 +16,7 @@ export async function wipeTransactional(prisma: PrismaClient): Promise<void> {
     prisma.chatbotMessage.deleteMany(),
     prisma.chatbotConversation.deleteMany(),
     prisma.documentSignature.deleteMany(),
+    prisma.signatureField.deleteMany(), // refs signature_request — must go before it (no cascade)
     prisma.signatureRequest.deleteMany(),
     prisma.document.deleteMany(),
     prisma.expenseKmStop.deleteMany(),
@@ -37,6 +38,11 @@ export async function wipeTransactional(prisma: PrismaClient): Promise<void> {
     prisma.notification.deleteMany(),
     prisma.salesTarget.deleteMany(),
     prisma.profileChangeRequest.deleteMany(),
+    // Upload metadata for the documents/receipts just deleted. No FK points here (consumers store the
+    // path as a plain string), so this is last: once its consumers are gone the row is an orphan, and
+    // leaving it would make a re-run accumulate one per pass. The bucket objects are not touched — that
+    // is the orphan-cleanup job still deferred in CLAUDE §12.
+    prisma.storedFile.deleteMany(),
     prisma.auditLog.deleteMany(),
   ]);
 }

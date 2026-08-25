@@ -52,6 +52,9 @@ function seededPrisma() {
         },
       ]),
     },
+    // Per-product tier rate OVERRIDES. Empty by default: with none, every payout must be identical to
+    // what it was before per-product rates existed — which is exactly what the fixtures below assert.
+    commissionTierRate: { findMany: jest.fn().mockResolvedValue([]) },
     holdbackConfig: {
       findMany: jest.fn().mockResolvedValue([
         {

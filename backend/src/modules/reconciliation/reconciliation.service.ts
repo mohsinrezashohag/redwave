@@ -1,20 +1,25 @@
 /**
- * ReconciliationService — finance's integrity tie-out. Two INDEPENDENT read-only checks (never joining the
+ * ReconciliationService — finance's integrity tie-out. THREE INDEPENDENT read-only checks (never joining the
  * two rate streams, #3): (1) statement tie-out — frozen statement total = Σ its lines = Σ the live re-priced
  * confirmed sales (a drift means the statement is stale); (2) pay-run tie-out — each line's net = its
- * components, run total = Σ net. Flags any discrepancy. — SRS §12 (reconciliation)
+ * components, run total = Σ net; (3) client EXPENSE document tie-out — frozen CEXP total = Σ its frozen
+ * line detail = the live re-derive. Each stays a separate check over its own stream: an expense document
+ * bills reimbursable rep expenses on to the client and has its own selection and its own number sequence.
+ * Flags any discrepancy. — SRS §12 (reconciliation)
  */
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatMoney, sumMoney } from '../../common/money/money';
 import { StatementService } from '../billing/statement.service';
-import { tieOutPayRunLine, tieOutStatement } from './reconciliation.logic';
+import { ClientExpenseDocService } from '../billing/expense-doc.service';
+import { tieOutExpenseDoc, tieOutPayRunLine, tieOutStatement } from './reconciliation.logic';
 
 @Injectable()
 export class ReconciliationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly statements: StatementService,
+    private readonly expenseDocs: ClientExpenseDocService,
   ) {}
 
   /** Tie the CURRENT (issued) statement for a client + BILLING WEEK to its lines and to a live re-price. */
@@ -57,6 +62,64 @@ export class ReconciliationService {
       client_id: clientId,
       billing_period_id: billingPeriodId,
       statement: { id: statement.id, statement_number: statement.statement_number, status: statement.status },
+      ...tie,
+    };
+  }
+
+  /**
+   * Tie the CURRENT (issued) client EXPENSE document for a client + PAY PERIOD to its frozen line detail and
+   * to a live re-derive. Note the calendar: an expense document is keyed by the PAY period (an item's period
+   * comes from its own expense_date), NOT the Mon–Sun billing week a statement uses — the two calendars are
+   * never substituted for one another (§14 rule 1).
+   */
+  async expenseDocTieOut(clientId: string, payPeriodId: string) {
+    const doc = await this.prisma.clientExpenseDocument.findFirst({
+      where: { client_id: clientId, pay_period_id: payPeriodId, status: 'issued' },
+      select: { id: true, document_number: true, status: true, total_amount: true, line_detail: true },
+    });
+
+    // Live re-derive now. May 422 when a km item's client rate went missing since issue → null, which is
+    // reported rather than silently passed.
+    let liveTotal: string | null = null;
+    try {
+      const preview = await this.expenseDocs.preview(clientId, payPeriodId);
+      liveTotal = preview.total_amount;
+    } catch {
+      liveTotal = null;
+    }
+
+    if (!doc) {
+      return {
+        client_id: clientId,
+        pay_period_id: payPeriodId,
+        document: null,
+        document_number: null,
+        frozen_total: '0.00',
+        lines_sum: '0.00',
+        live_total: liveTotal,
+        total_equals_lines: true,
+        document_matches_live: false,
+        ok: false,
+        discrepancies: ['No issued expense document for this client and pay period — generate one.'],
+      };
+    }
+
+    // `line_detail` is a frozen jsonb snapshot; read its amounts defensively rather than trusting the shape.
+    const lines = Array.isArray(doc.line_detail) ? (doc.line_detail as { amount?: unknown }[]) : [];
+    const lineAmounts = lines
+      .map((l) => (typeof l?.amount === 'string' || typeof l?.amount === 'number' ? String(l.amount) : null))
+      .filter((a): a is string => a !== null);
+
+    const tie = tieOutExpenseDoc({
+      documentNumber: doc.document_number,
+      frozenTotal: doc.total_amount.toString(),
+      lineAmounts,
+      liveTotal,
+    });
+    return {
+      client_id: clientId,
+      pay_period_id: payPeriodId,
+      document: { id: doc.id, document_number: doc.document_number, status: doc.status },
       ...tie,
     };
   }

@@ -49,7 +49,9 @@ function capUnits(item: ValidatableFormItem, fields: FieldConfig['fields']): num
 export function validateFormItem(item: ValidatableFormItem, config: FieldConfig | undefined): { alerts: FeRule[]; warnings: FeRule[] } {
   const alerts: FeRule[] = [];
   const warnings: FeRule[] = [];
-  const isKm = item.category === 'km';
+  // Mirrors the server rule exactly (validation.logic.ts): mileage is the category's BEHAVIOUR, never its
+  // name. Falls back to the key only when no config resolved — the server rejects that case anyway.
+  const isKm = config ? config.behaviour === 'km' : item.category === 'km';
   const fields = config?.fields ?? [];
 
   if (!isKm) {

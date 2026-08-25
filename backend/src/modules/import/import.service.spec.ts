@@ -2,6 +2,10 @@ import { ConflictException, UnprocessableEntityException } from '@nestjs/common'
 import { ImportService } from './import.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { UploadedFile } from '../../common/storage/storage.service';
+// The REAL selectors the runtime uses, so the config-migration tests prove a round trip (write → read
+// back for a past date) rather than only that a row was written.
+import { selectKmRate } from '../expenses/km-rate.logic';
+import { selectEffectiveRate } from '../../common/effective-dating';
 
 const user: AuthUser = {
   id: 'admin-1',
@@ -21,6 +25,10 @@ function make(parseRows: Record<string, unknown>[] = [], headers: string[] = [])
     importRow: { update: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     importBatch: { update: jest.fn() },
     clientBillingRate: { create: jest.fn().mockResolvedValue({ id: 'rate-1' }) },
+    kmRateConfig: { create: jest.fn().mockResolvedValue({ id: 'km-1' }) },
+    commissionTierConfig: { create: jest.fn().mockResolvedValue({ id: 'tier-cfg-1' }) },
+    commissionFlatRate: { create: jest.fn().mockResolvedValue({ id: 'flat-1' }) },
+    productTypeCatalogue: { findUnique: jest.fn().mockResolvedValue({ key: 'tv' }) },
     holdbackLedger: { create: jest.fn().mockResolvedValue({ id: 'hl-1' }) },
     client: { findUnique: jest.fn().mockResolvedValue({ id: 'c1', client_code: 'VF' }), create: jest.fn().mockResolvedValue({ id: 'c1' }), update: jest.fn() },
     product: { findFirst: jest.fn().mockResolvedValue({ id: 'p1' }), create: jest.fn().mockResolvedValue({ id: 'p1' }) },
@@ -433,5 +441,121 @@ describe('ImportService.reconcile / remap', () => {
     expect(tx.importRow.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ match_status: 'matched', matched_entity_id: 'sale-A' }) }),
     );
+  });
+});
+
+// ── Back-dated REP-stream config migration (km rates · tier schedules · commission flat rates) ────────
+// The live services reject a past `effective_from` (422) to protect closed periods (#10). These targets
+// are the audited way to load history, mirroring the existing billing-rate handler. The guard itself is
+// asserted still-intact in km-rate.service.spec.ts and tier-schedule.service.spec.ts.
+// — docs/claude-code/04-backdate-import.md
+describe('ImportService — back-dated config migration (#10)', () => {
+  const PAST = '2020-03-15'; // comfortably before any "today" this suite could run at
+
+  const stagedConfig = (importType: string, mapped: Record<string, unknown>) =>
+    stagedBatch({
+      source_type: 'master_migration',
+      import_type: importType,
+      client_id: null,
+      matched_rows: 1,
+      import_rows: [{ id: 'r1', match_status: 'matched', matched_entity_id: null, mapped_data: mapped }],
+    });
+
+  it('writes a BACK-DATED km rate — the date the live service would have refused', async () => {
+    const { service, prisma, tx } = make();
+    prisma.importBatch.findUnique.mockResolvedValue(
+      stagedConfig('km_rates', { stream: 'rep', rate_per_km: '0.45', effective_from: PAST, client_code: null }),
+    );
+    await service.commit('b1', user);
+    const data = (tx.kmRateConfig.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect(data.stream).toBe('rep');
+    expect(data.rate_per_km).toBe('0.45'); // exact decimal STRING, never a float (#1)
+    expect((data.effective_from as Date).toISOString().slice(0, 10)).toBe(PAST);
+    expect(data.client_id).toBeNull(); // blank client_code = the global default scope
+
+    // ROUND TRIP — the packet's real requirement is not "a row was written" but "an expense that predates
+    // today can now be priced". Feed exactly what the handler wrote to the SAME pure selector the km
+    // submit path uses: a trip dated after the imported effective_from resolves to the imported rate.
+    const written = { id: 'km-1', client_id: data.client_id as string | null, rate_per_km: data.rate_per_km as string, effective_from: data.effective_from as Date, effective_to: null };
+    expect(selectKmRate([written], null, new Date('2020-06-01T00:00:00Z'))).toBe('0.45');
+    // …and a date BEFORE it still resolves to nothing, so an import can't retroactively price everything.
+    expect(selectKmRate([written], null, new Date('2019-12-31T00:00:00Z'))).toBeNull();
+  });
+
+  it('scopes a km rate to a client when the row names one, and keeps the two streams separate (#3)', async () => {
+    const { service, prisma, tx } = make();
+    prisma.importBatch.findUnique.mockResolvedValue(
+      stagedConfig('km_rates', { stream: 'client_bill', rate_per_km: '0.50', effective_from: PAST, client_code: 'VF' }),
+    );
+    await service.commit('b1', user);
+    const data = (tx.kmRateConfig.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect(data.client_id).toBe('c1');
+    expect(data.stream).toBe('client_bill');
+    // The REP stream is untouched by a client_bill row — they are separate rows on separate scopes.
+    expect(tx.kmRateConfig.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes a BACK-DATED tier schedule as ONE row = config + every bracket', async () => {
+    const { service, prisma, tx } = make();
+    prisma.importBatch.findUnique.mockResolvedValue(
+      stagedConfig('commission_tiers', { tiers: '0-6:110|7-16:125|17-35:145|36+:160', effective_from: PAST, client_code: null }),
+    );
+    await service.commit('b1', user);
+    const data = (tx.commissionTierConfig.create.mock.calls[0][0] as {
+      data: { client_id: string | null; effective_from: Date; tiers: { create: { tier_number: number; min_count: number; max_count: number | null; rate_per_activation: string }[] } };
+    }).data;
+    expect(data.client_id).toBeNull(); // the GLOBAL schedule
+    expect(data.effective_from.toISOString().slice(0, 10)).toBe(PAST);
+    // Created together, so a schedule is never half-written.
+    expect(data.tiers.create).toHaveLength(4);
+    expect(data.tiers.create.map((t) => t.rate_per_activation)).toEqual(['110', '125', '145', '160']);
+    // Tier 1 is the top earner (Schedule C v2), assigned by rate — the operator never supplies numbers.
+    expect(data.tiers.create.find((t) => t.rate_per_activation === '160')!.tier_number).toBe(1);
+    expect(data.tiers.create.find((t) => t.max_count === null)!.min_count).toBe(36);
+
+    // ROUND TRIP — the imported schedule must be the one IN FORCE for a historical sale_date, which is
+    // what makes it reach the engine. Same pure selector the commission config provider uses.
+    const written = { id: 'tier-cfg-1', client_id: data.client_id, effective_from: data.effective_from, effective_to: null };
+    expect(selectEffectiveRate([written], new Date('2021-01-01T00:00:00Z'))).toBe(written);
+    expect(selectEffectiveRate([written], new Date('2019-01-01T00:00:00Z'))).toBeNull();
+  });
+
+  it('writes a BACK-DATED commission flat rate against an existing catalogue type', async () => {
+    const { service, prisma, tx } = make();
+    prisma.importBatch.findUnique.mockResolvedValue(
+      stagedConfig('commission_flat_rates', { product_type: 'tv', amount: '30.00', effective_from: PAST, client_code: null }),
+    );
+    await service.commit('b1', user);
+    const data = (tx.commissionFlatRate.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect(data.product_type).toBe('tv');
+    expect(data.amount).toBe('30.00'); // exact decimal STRING (#1)
+    expect((data.effective_from as Date).toISOString().slice(0, 10)).toBe(PAST);
+  });
+
+  it('never invents a product type — an unknown key rolls the whole batch back (§14 rule 7)', async () => {
+    const { service, prisma, tx } = make();
+    tx.productTypeCatalogue.findUnique.mockResolvedValue(null);
+    prisma.importBatch.findUnique.mockResolvedValue(
+      stagedConfig('commission_flat_rates', { product_type: 'parking', amount: '30.00', effective_from: PAST, client_code: null }),
+    );
+    await expect(service.commit('b1', user)).rejects.toThrow(/not in the catalogue/i);
+    expect(tx.commissionFlatRate.create).not.toHaveBeenCalled();
+  });
+
+  it('classifies a malformed tier cell as an ERROR at stage, so the gate blocks it before any write', async () => {
+    const { service, prisma } = make([{ Tiers: '0-6:110|8+:125', 'Effective from': '2020-03-15' }], ['Tiers', 'Effective from']);
+    await service.stage(file, { source_type: 'master_migration', import_type: 'commission_tiers' } as never, user);
+    const data = (prisma.importBatch.create.mock.calls[0][0] as {
+      data: { import_rows: { create: { match_status: string; issue: string | null }[] } };
+    }).data;
+    expect(data.import_rows.create[0].match_status).toBe('error'); // a gap between 6 and 8
+    expect(data.import_rows.create[0].issue).toMatch(/contiguous|gap|bracket/i);
+  });
+
+  it('rejects create_missing on a config target — it is a historical-sales-only affordance', async () => {
+    const { service } = make([{}], []);
+    await expect(
+      service.stage(file, { source_type: 'master_migration', import_type: 'km_rates', create_missing: true } as never, user),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
 });

@@ -58,6 +58,7 @@ export const CRUMBS: Record<string, CrumbMeta> = {
 
   // ── Money ──────────────────────────────────────────────────────────────────────────
   '/pay-runs': { label: 'Pay runs' },
+  '/my-pay-statements': { label: 'My pay statements', permission: 'pay_statements:view' },
   '/pay-runs/:id': { dynamic: 'payrun', parent: '/pay-runs' },
   '/clawbacks': { label: 'Clawbacks' },
   '/clawbacks/new': { label: 'New clawback', parent: '/clawbacks' },

@@ -68,3 +68,62 @@ export function tieOutPayRunLine(line: {
   const recomputed_net = formatMoney(recomputed);
   return { rep_id: line.rep_id, rep_code: line.rep_code, stored_net, recomputed_net, ok: stored_net === recomputed_net };
 }
+
+export interface ExpenseDocTieOut {
+  document_number: number | null;
+  frozen_total: string;
+  lines_sum: string;
+  live_total: string | null;
+  total_equals_lines: boolean;
+  document_matches_live: boolean;
+  ok: boolean;
+  discrepancies: string[];
+}
+
+/**
+ * Tie a CLIENT EXPENSE document (CEXP-): frozen total == Σ its frozen line_detail, and frozen total == the
+ * live re-derive (else the document is stale and should be re-issued).
+ *
+ * Deliberately a SEPARATE function from `tieOutStatement` even though the shape rhymes: an expense document
+ * is a different stream of money (reimbursable rep expenses billed on to the client) with its own selection
+ * and its own document sequence, and folding them together would invite one to be re-priced with the
+ * other's rules. Same reason the two rate streams never share a code path (#3).
+ *
+ * `liveTotal` is null when the re-derive could not run — typically a km item whose client rate is now
+ * missing. That is reported as a discrepancy to investigate, never silently treated as a match.
+ */
+export function tieOutExpenseDoc(args: {
+  documentNumber: number | null;
+  frozenTotal: Decimal.Value;
+  lineAmounts: Decimal.Value[];
+  liveTotal: Decimal.Value | null;
+}): ExpenseDocTieOut {
+  const frozen = formatMoney(args.frozenTotal);
+  const lines_sum = formatMoney(sumMoney(args.lineAmounts));
+  const live = args.liveTotal === null ? null : formatMoney(args.liveTotal);
+  const total_equals_lines = frozen === lines_sum;
+  const document_matches_live = live !== null && frozen === live;
+  const discrepancies: string[] = [];
+  if (!total_equals_lines) {
+    discrepancies.push(`Expense document total ${frozen} does not equal the sum of its lines ${lines_sum}.`);
+  }
+  if (live === null) {
+    discrepancies.push(
+      'Could not re-derive the expenses now (a km item has no effective client rate) — review km rates.',
+    );
+  } else if (!document_matches_live) {
+    discrepancies.push(
+      `Expense document total ${frozen} does not equal the live re-derived expenses ${live} — the document is stale; re-issue it.`,
+    );
+  }
+  return {
+    document_number: args.documentNumber,
+    frozen_total: frozen,
+    lines_sum,
+    live_total: live,
+    total_equals_lines,
+    document_matches_live,
+    ok: discrepancies.length === 0,
+    discrepancies,
+  };
+}

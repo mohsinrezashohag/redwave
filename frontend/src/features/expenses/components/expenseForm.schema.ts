@@ -73,6 +73,11 @@ export function makeExpenseSchema(configs: FieldConfig[]) {
         .optional(),
     })
     .superRefine((val, ctx) => {
+      // These shape rules key on the `km` KEY rather than the catalogue behaviour, because zod has no
+      // config here. That is safe by construction, not by luck: `behaviour` is not settable through the
+      // field-config API (create/update never write it), so the seeded `km` row is the only km-behaviour
+      // category and a new one is always `standard`. The live validation layer (`validation.ts`) and the
+      // row component DO use behaviour, and the server is authoritative either way. — packet 10
       if (val.category === 'km') {
         if (!val.trip_type) ctx.addIssue({ code: 'custom', path: ['trip_type'], message: 'Pick a trip type' });
         if (!val.total_km || !KM.test(val.total_km)) ctx.addIssue({ code: 'custom', path: ['total_km'], message: 'Enter the total km' });

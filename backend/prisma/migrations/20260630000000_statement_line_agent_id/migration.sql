@@ -1,0 +1,20 @@
+-- Client statements: print the PARTNER-FACING agent id.
+-- — docs/claude-code/system-audit.md §2.1
+--
+-- Both of the client's own workbooks (`docs/uat/Client billing report.xlsx`, `Payroll report.xlsx`) key
+-- agents by `Redwave20` — that is `reps.external_code`. The statement froze and printed `reps.rep_code`
+-- (`RW-D-0001`) in the column headed "Agent ID", so a partner reconciling our statement against their
+-- own roster could not match a single agent.
+--
+-- ADDITIVE and NULLABLE, deliberately:
+--   * An issued statement is an immutable, gapless-numbered document (#2 / §14.2). Repointing the
+--     existing `rep_code` column at a different source would leave one column meaning two different
+--     things depending on issue date, and would silently change what an old statement re-renders as.
+--   * With a new column, lines issued before today keep NULL and the renderer falls back to their
+--     original frozen `rep_code` — so every historical statement re-renders byte-identically.
+--   * `reps.external_code` is itself nullable (reps are created by import), so the fallback is also the
+--     correct runtime behaviour for a rep who has no partner code yet.
+--
+-- No backfill: back-filling would rewrite what already-issued documents render as, which is exactly the
+-- mutation the append-only rule forbids. Re-issuing a corrected statement is the sanctioned path.
+ALTER TABLE "client_statement_lines" ADD COLUMN "rep_external_code" TEXT;

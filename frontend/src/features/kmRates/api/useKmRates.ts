@@ -62,8 +62,13 @@ export function useDeleteKmRate() {
 export function useSaveOfficeOrigin() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { office_address: string }) =>
-      unwrap<{ office_address: string | null }>(api.PATCH('/v1/expense-settings', { body })),
+    // Coordinates ride along when Places resolved them, so the office can contribute to server-side route
+    // derivation like any geocoded stop. Omitted when the address was typed manually — the server then
+    // falls back to the rep's typed total, exactly as before.
+    mutationFn: (body: { office_address: string; office_lat?: string; office_lng?: string }) =>
+      unwrap<{ office_address: string | null; office_lat: string | null; office_lng: string | null }>(
+        api.PATCH('/v1/expense-settings', { body }),
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['expense-settings'] }),
   });
 }

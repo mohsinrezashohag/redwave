@@ -162,6 +162,7 @@ export class BillingExportService {
       amount_cad: s.amount_cad?.toString() ?? null,
       lines: s.lines.map((l) => ({
         sale_date: l.sale_date ? dateOnly(l.sale_date) : null,
+        rep_external_code: l.rep_external_code,
         rep_code: l.rep_code,
         rep_name: l.rep_name,
         customer_name: l.customer_name,

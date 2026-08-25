@@ -7,10 +7,11 @@
  */
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileDown, Lock, RefreshCw } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, FileDown, Lock, RefreshCw } from 'lucide-react';
 import { Banner, Button, PageHeader, StatCard, TableError, TableSkeleton, useToast } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
 import { isForbidden, useApiErrorToast } from '../../../lib/api/apiError';
+import { downloadFile } from '../../../lib/api/downloadFile';
 import { money, sumMoney } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
@@ -19,6 +20,7 @@ import { useDraftRun } from '../api/usePayRunMutations';
 import { PayRunStatusBadge } from '../components/PayRunStatusBadge';
 import { PayRunLinesTable } from '../components/PayRunLinesTable';
 import { LineBreakdownDrawer } from '../components/LineBreakdownDrawer';
+import { RepStatementDrawer } from '../components/RepStatementDrawer';
 import { HoldbackPanel } from '../components/HoldbackPanel';
 import { HoldbackSummaryPanel } from '../components/HoldbackSummaryPanel';
 import { BonusModal } from '../components/BonusModal';
@@ -36,6 +38,25 @@ export default function PayRunDetailPage() {
   const canApprove = useCan('payrun:approve');
   const canExport = useCan('payrun:export');
   const canCreate = useCan('payrun:create');
+  const [payrollBusy, setPayrollBusy] = useState(false);
+  const [statementRepId, setStatementRepId] = useState<string | null>(null);
+
+  /**
+   * Redwave's own payroll workbook, streamed from the lines FROZEN at finalize. Offered only on a
+   * finalized run — before that there are no frozen lines and nothing is owed, so an empty sheet would
+   * misrepresent the state rather than reflect it.
+   */
+  const onPayrollReport = async () => {
+    setPayrollBusy(true);
+    try {
+      await downloadFile(`/v1/pay-runs/${id}/payroll-report/download`);
+      toast({ title: 'Payroll report downloaded', tone: 'success' });
+    } catch (e) {
+      onError(e);
+    } finally {
+      setPayrollBusy(false);
+    }
+  };
 
   const runQ = usePayRun(id, canView);
   const periodsQ = usePayPeriods(canView);
@@ -109,6 +130,16 @@ export default function PayRunDetailPage() {
               </Button>
             )}
             {!isDraft && canExport && (
+              <Button
+                variant="secondary"
+                leftIcon={<FileSpreadsheet size={16} />}
+                loading={payrollBusy}
+                onClick={onPayrollReport}
+              >
+                Payroll report
+              </Button>
+            )}
+            {!isDraft && canExport && (
               <Button variant="primary" leftIcon={<FileDown size={16} />} onClick={() => setExportOpen(true)}>
                 Export
               </Button>
@@ -148,12 +179,25 @@ export default function PayRunDetailPage() {
           No reps had validated sales in this period, so there&rsquo;s nothing to pay. Enter and validate sales for this period, then recompute.
         </Banner>
       ) : (
-        <PayRunLinesTable lines={lines} onSelect={(l) => setSelectedLineId(l.id)} onBonus={(l) => setBonusLineId(l.id)} canBonus={isDraft && canApprove} />
+        <PayRunLinesTable
+          lines={lines}
+          onSelect={(l) => setSelectedLineId(l.id)}
+          onBonus={(l) => setBonusLineId(l.id)}
+          // Only on a FINALIZED run: the statement reads lines frozen at finalize, so a draft has none.
+          onStatement={!isDraft && canExport ? (l) => setStatementRepId(l.rep.id) : undefined}
+          canBonus={isDraft && canApprove}
+        />
       )}
 
       <HoldbackSummaryPanel runId={run.id} />
 
       <HoldbackPanel lines={lines} periods={periods} />
+
+      <RepStatementDrawer
+        runId={id ?? ''}
+        repId={statementRepId}
+        onClose={() => setStatementRepId(null)}
+      />
 
       <LineBreakdownDrawer line={selectedLine} open={selectedLine !== null} onClose={() => setSelectedLineId(null)} isDraft={isDraft} periods={periods} />
       <BonusModal runId={run.id} line={bonusLine} onClose={() => setBonusLineId(null)} />

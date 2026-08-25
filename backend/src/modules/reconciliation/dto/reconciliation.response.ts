@@ -79,3 +79,57 @@ export class PayRunTieOutResponse {
   @ApiProperty({ type: () => [PayRunLineTieOutResponse], description: 'Lines whose stored net ≠ the recomputed net (empty when ok).' })
   discrepancies!: PayRunLineTieOutResponse[];
 }
+
+export class ExpenseDocTieOutRefResponse {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'The gapless CEXP- number, minted at issue.' })
+  document_number!: number | null;
+
+  @ApiProperty({ enum: ['issued', 'superseded'] })
+  status!: 'issued' | 'superseded';
+}
+
+/**
+ * The client EXPENSE document tie-out — reimbursable rep expenses billed on to the client. A separate check
+ * over its own stream, never folded into the statement tie-out.
+ */
+export class ExpenseDocTieOutResponse {
+  @ApiProperty()
+  client_id!: string;
+
+  @ApiProperty({ description: 'The PAY period the document covers — NOT the Mon–Sun billing week (§14 rule 1).' })
+  pay_period_id!: string;
+
+  @ApiProperty({ type: () => ExpenseDocTieOutRefResponse, nullable: true })
+  document!: ExpenseDocTieOutRefResponse | null;
+
+  @ApiProperty({ type: Number, nullable: true })
+  document_number!: number | null;
+
+  @ApiProperty({ type: String, description: "The frozen document total, in the document's currency." })
+  frozen_total!: string;
+
+  @ApiProperty({ type: String, description: 'Sum of the frozen line detail.' })
+  lines_sum!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The live re-derived expense total now (null if it could not be derived — e.g. a missing km rate).',
+  })
+  live_total!: string | null;
+
+  @ApiProperty()
+  total_equals_lines!: boolean;
+
+  @ApiProperty()
+  document_matches_live!: boolean;
+
+  @ApiProperty({ description: 'True only when every check passed.' })
+  ok!: boolean;
+
+  @ApiProperty({ type: [String], description: 'Human-readable description of each failed check.' })
+  discrepancies!: string[];
+}

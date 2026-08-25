@@ -138,12 +138,16 @@ export class CommissionEngineService {
       if (!bracketFor) {
         throw new Error('Internal: internet activation with no tier bracket');
       }
-      // This client's ladder (else the global one), against the ONE cross-client tally.
+      // This client's ladder (else the global one), against the ONE cross-client tally. The BRACKET —
+      // which tier, from the tally — is decided here and is the same for every product (#5).
       const bracket = bracketFor(activation.clientId);
-      rateApplied = bracket.ratePerActivation;
+      // Only the RATE varies by product: this client's rate for this product, else any client's rate for
+      // this product, else the ladder's own rate. A product with no override pays exactly what it always
+      // did, which is what keeps the mandatory fixtures unchanged.
+      rateApplied = this.tierRateFor(bracket, activation, config);
       tierAtPayment = bracket.tierNumber;
     } else {
-      rateApplied = this.flatRateFor(activation.productType, activation.clientId, config);
+      rateApplied = this.flatRateFor(activation.productType, activation.clientId, config, activation.productId);
       tierAtPayment = null;
     }
 
@@ -160,10 +164,35 @@ export class CommissionEngineService {
     };
   }
 
-  private flatRateFor(productType: string, clientId: string, config: EngineConfig): Decimal {
-    // internet is handled by the tier path; every other (flat) type is a map lookup by key — this client's
-    // own rate first, then the global one.
-    const rate = config.flatRatesByClient?.[clientId]?.[productType] ?? config.flatRates[productType];
+  /**
+   * The rate this bracket pays for THIS activation's product. Most specific wins:
+   *   (client + product) → (product) → the bracket's own ratePerActivation.
+   * The bracket itself — and therefore the tier — is already decided from the cross-client tally and is
+   * never revisited here. This resolves a RATE only (#5).
+   */
+  private tierRateFor(bracket: TierBracket, activation: ActivationInput, config: EngineConfig): Decimal {
+    const productId = activation.productId;
+    if (!productId) {
+      return bracket.ratePerActivation;
+    }
+    const tier = bracket.tierNumber;
+    return (
+      config.tierRatesByClientProduct?.[activation.clientId]?.[productId]?.[tier] ??
+      config.tierRatesByProduct?.[productId]?.[tier] ??
+      bracket.ratePerActivation
+    );
+  }
+
+  private flatRateFor(productType: string, clientId: string, config: EngineConfig, productId?: string | null): Decimal {
+    // internet is handled by the tier path; every other (flat) type resolves most-specific-first:
+    //   (client + product) → (product) → (client + type) → (type).
+    // The product steps are skipped entirely when the activation carries no product, so a config with no
+    // per-product rows behaves exactly as it did before they existed.
+    const rate =
+      (productId ? config.flatRatesByClientProduct?.[clientId]?.[productId] : undefined) ??
+      (productId ? config.flatRatesByProduct?.[productId] : undefined) ??
+      config.flatRatesByClient?.[clientId]?.[productType] ??
+      config.flatRates[productType];
     if (rate === undefined) {
       throw new Error(`No flat rate for product type ${productType} (client ${clientId})`);
     }

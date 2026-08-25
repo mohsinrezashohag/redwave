@@ -55,6 +55,35 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
     { field: 'effective_to', type: 'date', required: false, label: 'Effective to', aliases: ['effective to', 'end', 'to', 'until'], example: '2025-12-31', dict: 'Optional end date (open-ended if blank).' },
   ],
 
+  // ── Back-dated REP-stream config (#10). The live services 422 a past effective_from to protect closed
+  //    periods; these targets are the audited path that may load history. One pair per row SHAPE.
+  //    `client_code` is OPTIONAL throughout: blank = the GLOBAL row every client falls back to. ──
+  'master_migration:km_rates': [
+    { field: 'client_code', type: 'code', required: false, label: 'Client code', aliases: ['code', 'client code', 'client'], example: 'VF', dict: 'Client (by code). LEAVE BLANK for the global default rate.' },
+    { field: 'stream', type: 'text', required: true, label: 'Stream', aliases: ['stream', 'type', 'rate type', 'which'], example: 'rep', dict: "'rep' (reimbursed to the rep) or 'client_bill' (charged to the client). Separate streams — never combined (#3)." },
+    { field: 'rate_per_km', type: 'text', required: true, label: 'Rate per km', aliases: ['rate', 'rate per km', 'per km', 'km rate', '$/km'], example: '0.45', dict: 'Rate per kilometre, up to 3 decimals (e.g. 0.45).' },
+    { field: 'effective_from', type: 'date', required: true, label: 'Effective from', aliases: ['effective', 'effective from', 'start', 'from'], example: '2026-01-01', dict: 'Date the rate took effect. Back-dating is allowed HERE only — the admin screen rejects it (#10).' },
+    { field: 'effective_to', type: 'date', required: false, label: 'Effective to', aliases: ['effective to', 'end', 'to', 'until'], example: '2026-06-30', dict: 'Optional end date (open-ended if blank).' },
+  ],
+
+  // ── Back-dated tier schedules. ONE ROW = ONE WHOLE SCHEDULE (brackets in the `tiers` cell) so the
+  //    reconcile gate accepts or rejects a schedule as a unit and never leaves a partial one. ──
+  'master_migration:commission_tiers': [
+    { field: 'client_code', type: 'code', required: false, label: 'Client code', aliases: ['code', 'client code', 'client'], example: 'VF', dict: 'Client (by code). LEAVE BLANK for the global schedule every client falls back to.' },
+    { field: 'tiers', type: 'text', required: true, label: 'Tiers', aliases: ['tiers', 'tier', 'schedule', 'brackets', 'tier schedule'], example: '0-6:110|7-16:125|17-35:145|36+:160', dict: 'The whole schedule in one cell: min-max:rate separated by |, with min+:rate for the open top bracket. Must cover every tally with no gaps or overlaps. Tier numbers are assigned by rate (highest = Tier 1).' },
+    { field: 'effective_from', type: 'date', required: true, label: 'Effective from', aliases: ['effective', 'effective from', 'start', 'from'], example: '2026-01-01', dict: 'Date the schedule took effect. Back-dating is allowed HERE only (#10).' },
+    { field: 'effective_to', type: 'date', required: false, label: 'Effective to', aliases: ['effective to', 'end', 'to', 'until'], example: '2026-12-31', dict: 'Optional end date (open-ended if blank).' },
+  ],
+
+  // ── Back-dated commission flat rates (what the REP is paid per add-on / greenfield activation). ──
+  'master_migration:commission_flat_rates': [
+    { field: 'client_code', type: 'code', required: false, label: 'Client code', aliases: ['code', 'client code', 'client'], example: 'VF', dict: 'Client (by code). LEAVE BLANK for the global flat rate for this product type.' },
+    { field: 'product_type', type: 'code', required: true, label: 'Product type', aliases: ['product type', 'product_type', 'type', 'product'], example: 'tv', dict: 'Product-type catalogue key (tv, home_phone, greenfield_internet, …). Must already exist — an import never adds a type.' },
+    { field: 'amount', type: 'money', required: true, label: 'Amount', aliases: ['amount', 'rate', 'commission', 'flat rate'], example: '30.00', dict: 'Commission paid to the rep per activation (CAD, exact decimal). This is the REP stream — never a client billing rate (#3).' },
+    { field: 'effective_from', type: 'date', required: true, label: 'Effective from', aliases: ['effective', 'effective from', 'start', 'from'], example: '2026-01-01', dict: 'Date the rate took effect. Back-dating is allowed HERE only (#10).' },
+    { field: 'effective_to', type: 'date', required: false, label: 'Effective to', aliases: ['effective to', 'end', 'to', 'until'], example: '2026-12-31', dict: 'Optional end date (open-ended if blank).' },
+  ],
+
   // ── Go-live master data: reps ──
   'master_migration:reps': [
     { field: 'rep_code', type: 'code', required: true, label: 'Rep code', aliases: ['code', 'rep code', 'rep_code', 'distributor code', 'agent code'], example: 'RW-D-0001', dict: 'Unique rep code (never reused, #11).' },

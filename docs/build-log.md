@@ -1668,3 +1668,455 @@ different people, which is exactly when the list must say whose.
 stylelint + 89 vitest — all green. The regression is spec-locked: an admin creating on behalf of a rep who
 already has that week resolves to the existing folder and calls `create` zero times.
 **Operator: `migrate deploy`** — note it MERGES existing duplicate folders as described.
+
+### UAT-file audit fixes — the client-facing Agent ID, and the demo seed that could not run (built — migration `20260630000000`)
+
+**Where this came from.** The four `docs/uat/*.xlsx` workbooks had never been parsed — the packets in
+`docs/claude-code/` were written against their *descriptions*. Parsing them cell-by-cell (formulas included)
+produced `docs/claude-code/system-audit.md` and turned up two defects in shipped code, fixed here. The other
+findings are packet work and are sequenced in that document.
+
+**1. The client statement printed the wrong Agent ID.** `Client billing report.xlsx` cell `B3` is
+`Redwave20`, resolved to a name by an `XLOOKUP` over the client's own 43-agent roster — that is
+**`reps.external_code`**. We froze and printed `reps.rep_code` (`RW-D-0001`) in the column headed
+**Agent ID**, so a partner reconciling our statement against their roster could not match a single agent.
+`docs/uat/billing-target-format.md` documented it as `rep_code`, which is how it was built that way; that
+line is corrected. Notably the existing fixtures already used `rep_code: 'Redwave15'` — the intent was
+always the partner code, only the wiring disagreed.
+
+**Additive column, not a repointed one.** `client_statement_lines.rep_external_code` is **new and
+nullable**, and the renderer prints `rep_external_code ?? rep_code`. Repointing the existing column at a
+different source would have left one column meaning two different things depending on issue date, and would
+have changed what an already-issued statement re-renders as — the mutation the append-only rule forbids
+(#2 / §14.2). With a new column, every historical line keeps NULL and re-renders byte-identically, and the
+same fallback is the correct runtime answer for a rep with no partner code yet (`external_code` is nullable;
+reps are created by import). **No backfill, deliberately** — re-issuing a corrected statement is the
+sanctioned path, and that call is Redwave's, not ours. Spec-locked both ways: the partner code is printed,
+and a line without one still renders its frozen `rep_code`. Reconciliation and pay-run lines are
+**untouched** — those are the rep stream, where `rep_code` is the right identifier.
+
+**2. `SEED_DEMO=yes` could not complete.** `demo.ts` called `documents.upload(dto, stubPdf, sa)` against a
+**two**-argument `upload(dto, user)` whose first act is `files.claim(dto.file_path, …)`. It was not merely
+argument drift: the documents module had moved to the claim-based pipeline, where `upload` takes a
+*previously registered path*, never bytes — so no argument fix alone would work. The seed now registers the
+stub PDF first: through the **real `FilesService`** when storage is configured (bytes + row + audit), and as
+a metadata-only `stored_files` row when it is not — `claim` is a pure DB check, so the demo still gets a
+signable document and only the bytes are absent, which the `…/file-url` endpoint already degrades on.
+`FilesService` is a deliberate 503 without storage and must not be softened to accommodate a seed.
+
+**Why it stayed hidden, and the hole closed.** `tsconfig.json` includes `src/**/*` only and the seed runs
+`--transpile-only`, so `prisma/` and `scripts/` were never typechecked. **`tsconfig.json` could not simply
+be widened**: with `src` alone TypeScript infers `rootDir: src` and emits `dist/main.js`, which is what
+`start:prod` runs — adding `prisma/` moves the emit to `dist/src/main.js` and breaks production start. So
+the wider net is a separate **`tsconfig.typecheck.json`** (`noEmit`, includes `src` + `prisma` + `scripts`)
+behind **`npm -w backend run typecheck`**. It passed with zero errors once the seed was fixed, so nothing
+else had drifted.
+
+**Two latent wipe bugs found while making the seed re-runnable.** `wipe.ts` deleted `signature_requests`
+without first deleting `signature_fields`, which references them — no cascades and the DB RESTRICTs, so any
+placed field would have made `seed:reset` fail outright. And `stored_files` was not wiped at all, so each
+demo run would leave an orphan row. Both added.
+
+**Verified LOCAL:** **961 backend tests** (115 suites, +2 new) + typecheck + lint + build + contract regen;
+FE build + lint + stylelint + 89 vitest — all green.
+
+**The `mfa.service.spec` flake, diagnosed and fixed while it blocked this gate.** It fired on three separate
+full runs here, always the same two tests. The cause was **not** the TOTP window that §12 assumed: there is
+no `testTimeout` in the jest config, so Jest's **default 5 s** applied, while `enable()` bcrypt-hashes **ten
+recovery codes at cost 10** and those two tests then verify against the hashes — 4.5 s and 3.5 s on an idle
+machine, over 5 s under a parallel suite. They were the only two slow enough to cross it, which is exactly
+why the failure looked load-dependent and passed on a standalone re-run. Fixed with `jest.setTimeout(30_000)`
+in that spec, keeping the real bcrypt cost under test rather than weakening it to fit an arbitrary limit.
+**Operator: `migrate deploy`** (additive nullable column, no backfill, no downtime).
+
+### Import — back-dated REP-stream config: km rates, tier schedules, commission flat rates (built — packet 04; migration `20260701000000`)
+
+**The asymmetry this closes.** `effective-dates.util.ts` rejects a past `effective_from` with 422 across
+every effective-dated config, which is correct — it protects closed periods (#10). But
+`client_billing_rate` already had a sanctioned way in (`handlers/billing-rate.handler.ts`, described in its
+own header as the audited migration path) and the **REP stream had none**. That is what broke UAT: Siam set
+a km rate mid-week and every expense before that date became unpriceable. At go-live the same applies to
+every historical rate and tier schedule — which is why this was worth doing before the packets ahead of it
+in the original ordering.
+
+**The guard is untouched.** This adds a SECOND, audited path — every row lands as an `import_rows` record
+on a committed `import_batches` — it does not relax the first. Both live services still 422 a back-dated
+create, and their specs now carry a DO-NOT-RELAX note pointing here, because the likeliest future mistake
+is deleting those assertions as "obsolete" once the import can back-date.
+
+**Three targets, not one, and not four.** `TARGET_FIELDS` is keyed `${source}:${import_type}` and each key
+holds ONE flat field list that drives cleaning, mapping auto-suggestion and the template — so one pair per
+row SHAPE. A single `commission_config` pair covering tiers + flat rates would have made nearly every
+column optional and wrecked the header scoring that picks a mapping.
+
+**`product_types` was dropped from the packet, deliberately.** `product_type_catalogue` has no effective
+dating at all (`key`/`label`/`behaviour`/`is_system`/`is_active`) — the `parseEffectiveWindow` call in
+`product-type.service` is for the optional INLINE flat rate, not the type. So there was no back-date guard
+to bypass and nothing for this packet to fix. Bulk catalogue loading is a different feature, and the
+catalogue stays SA-governed (§14 rule 7). Its own packet if Redwave wants it.
+
+**One row = one whole tier schedule.** A schedule is a `commission_tier_configs` row owning N
+`commission_tiers`, but every import target here is "1 row = 1 entity = 1 gate unit" — the reconcile gate
+accepts or rejects a row on its own. Bracket-per-row would mean one bad row leaves a *partial* schedule and
+the gate can no longer judge a row by itself. So the whole schedule travels in one cell
+(`0-6:110|7-16:125|17-35:145|36+:160`), exactly as IMP-013 put a bundle's `product_types` in one cell for
+the same reason (§14 rule 9). **Tier numbers are derived from the rate order** (highest rate = Tier 1,
+Schedule C v2), so a file can never disagree with itself about which bracket is "tier 2", and the pure
+`parseTierSpec` hands off to the SAME `validateTierBrackets` the live API uses — an import can never store
+a schedule the UI would have refused. The classifier runs that parse at CLASSIFY time, so a bad cell is an
+`error` the gate blocks before any write, not a throw mid-commit.
+
+**Round-trip, not just a write.** The packet's requirement is not "a row was written" but "an expense that
+predates today can now be priced" and "the engine picks the schedule up for a historical `sale_date`". So
+the specs feed exactly what the handler wrote to the REAL selectors — `selectKmRate` and
+`selectEffectiveRate` — and assert both directions: a date after `effective_from` resolves to the imported
+row, and a date before it still resolves to nothing, so an import cannot retroactively price everything.
+
+**Two invariants held explicitly.** The km handler writes `rep` and `client_bill` as separate rows on
+separate scopes and nothing joins them (#3); the commission handler touches no `client_billing_rates` at
+all. A client-scoped tier schedule scopes only the RATE LOOKUP — the internet tally stays cross-client (#5),
+which is the engine's business and not the handler's. Rates are exact decimal STRINGS → Prisma `Decimal`,
+never `parseFloat` (#1). A blank `client_code` is the GLOBAL row throughout, so a missing code is legal and
+only a code resolving to nothing is an error. An unknown product type rolls the whole batch back rather
+than being created (§14 rule 7).
+
+**No new RBAC permission** — the three targets ride the existing `import:create` / `import:approve`, and
+the commit transaction, `evaluateGate` and re-commit idempotency are unchanged. FE gets three `KINDS`
+entries + three `TemplateDef`s, so the wizard, the downloadable template and the mapping editor field list
+all appear automatically.
+
+**Verified LOCAL:** 227 import tests (14 suites) incl. 13 new `tier-spec.logic` cases and 9 new
+config-migration cases; full backend suite + typecheck + lint + build + contract regen; FE build + lint +
+stylelint + vitest.
+**Operator: `migrate deploy`** — three additive enum values, `ADD VALUE IF NOT EXISTS`, not used in the
+same migration, so it is safe inside the migrate-deploy transaction (PostgreSQL 12+).
+
+### Expenses — categories become CONFIG, not code (built — packet 10; migration `20260702000000`)
+
+**Smaller than the packet assumed, because most of it already existed.** `expense_field_configs` was already
+the category catalogue — `category_key` unique, label, receipt/description rules, per-type `fields[]`, soft
+cap, `is_active`, with SA CRUD that could create a new key today. The only thing keeping the list closed was
+that **`expense_items.category` was the `ExpenseCategory` enum**, so a new key was catalogue-only until
+someone shipped a migration. `field-config.service.ts` said so in its own header. `category` is now a String
+FK to `category_key`, and adding "parking" is a config change.
+
+**Two of the packet's premises were wrong, both in our favour.** It said `meals` drives `multiplies_cap` —
+it does not; `multiplies_cap` has been a **field-level** flag since the per-type-fields batch, bound to no
+category name, so there was nothing to generalise. And its Postgres warning (`ALTER TYPE … ADD VALUE` cannot
+be USED in the transaction that adds it) applies to **option A**, which this is not. Option B was taken, as
+the packet recommended.
+
+**Behaviour, never the name.** A new column `expense_field_configs.behaviour` (`km` | `standard`) is what
+the code branches on — `expenses.service` (km log create/edit, the one-per-(rep,date) rule, the
+server-authoritative amount) and `validation.logic`. So an SA-added category cannot silently acquire mileage
+handling, and a renamed one cannot lose it. This mirrors `product_type_catalogue` (key + behaviour +
+is_system), which solved the same problem for products — deliberately not a second pattern. `is_system`
+locks the seven day-one categories. Spec-locked in both directions: a category **named** `km` with standard
+behaviour gets no mileage handling, and one named `mileage` with km behaviour gets all of it, keeps its own
+key on the item, and is covered by the same one-claim-per-day rule.
+
+**The real migration trap was the column, not the enum.** `expense_items.category` is an enum column holding
+live rows. `USING category::text` preserves every value verbatim — the seven enum labels are exactly the
+seven `category_key`s, so no backfill and no data change — but the FK is only safe if the two sets actually
+match. The migration therefore **verifies that before constraining**, raising a readable exception naming
+the offending value rather than letting the constraint abort with a generic error. `ON DELETE RESTRICT`
+matches the schema-wide no-cascades rule, so a category in use cannot be deleted out from under its items.
+
+**Why the form layer may still key on the `km` string.** `behaviour` is deliberately **not settable through
+the field-config API** — `create` and `update` build their `data` explicitly and never write it — so an
+SA-created category is always `standard` and the seeded `km` row is the only km-behaviour category that can
+exist. That is what lets `expenseForm.schema.ts` (zod, no config in scope) keep its shape rules keyed on the
+key. It is safe by construction, not by luck, and `field-config.service.spec.ts` now locks it: if someone
+exposes `behaviour` on those DTOs, those tests fail and force the form schema to be threaded in the same
+change. The live validation mirror (`validation.ts`) and `ExpenseItemRow` already use behaviour.
+
+**No pricing is touched.** Categories carry no rate; `amount_soft_cap` is an existing warning threshold,
+unchanged. The FE needed no enum edit because `ExpenseCategory` was already an alias of the generated
+schema type (§13.2) — it followed the contract automatically.
+
+**Verified LOCAL:** 142 expenses tests (13 suites) incl. 8 new; full backend suite + typecheck + lint +
+build + contract regen; FE build + lint + stylelint + vitest.
+**Operator: `migrate deploy`** — changes a live column's type and adds an FK. Re-run `prisma:seed`
+afterwards so the seven built-ins get `behaviour`/`is_system` (the migration sets them too, so this is
+belt-and-braces on an already-seeded database).
+
+### Billing — bulk statement generation (built — packet 06; NO migration)
+
+**The gap Siam hit in UAT.** `billing-generation.controller.ts` exposed only `POST /v1/clients/:id/statements`
+— one client at a time — so closing a billing week meant generating each statement by hand. New
+**`POST /v1/billing-periods/{id}/statements/generate-all`** issues every active client's statement for the
+week in one action, on the existing `billing:create` (Admin/Super Admin) — **no new permission**.
+
+**It COMPOSES `generate()` per client rather than reimplementing anything** — pricing, gapless numbering,
+FX freezing and supersession are all the existing code path. Three properties fall out of that, each
+spec-locked in the new `bulk-statements.spec.ts` (13 tests):
+
+1. **A failing client fails ALONE.** `generate()` owns its own `$transaction`, so a client with an unpriced
+   product aborts only itself. That is the point of the batch: a partial run is the NORMAL outcome, and an
+   operator fixes one rate instead of losing the week. The 422's structured `unpriced[]` is carried through
+   into the per-client failure entry, so the UI links each failure straight to the rate screen that fixes it
+   (§13.5) rather than reporting an opaque error.
+2. **FX freezes PER DOCUMENT (#12).** Each `generate()` resolves its own client's currency at its own issue
+   moment. The endpoint deliberately accepts **no batch-level fx override** — one rate spread across clients
+   billing in different currencies is precisely the mistake #12 exists to prevent, and CTI is USD. A client
+   needing a manual rate goes through the per-client endpoint. A spec asserts `generate` is never called
+   with a 4th argument.
+3. **Numbering stays gapless.** Clients are issued **sequentially**: `SequenceService.next` row-locks the
+   counter so concurrent callers are safe regardless, but serial issue means the batch never contends with
+   itself and the numbers within a run are deterministic. Specs assert 20 clients get 20 unique, strictly
+   consecutive numbers, and that a mid-batch failure burns none.
+
+**Bulk generation is NOT a bulk re-issue.** A client already holding an `issued` statement for the week is
+**skipped** — never renumbered, never duplicated — so re-running after fixing a rate is safe. Correcting an
+issued statement stays the deliberate per-client action, so a whole week can't be silently superseded by a
+mis-click.
+
+**One nullable that had to be handled honestly rather than cast away:** `client_statements.statement_number`
+is `Int?` — null *only* on legacy rows issued before gapless numbering, which are immutable and so were
+never back-filled. Such a client is still correctly skipped; the result reports `statement_number: null` and
+the UI renders "existing statement". The generated entries assert non-null, which is true by construction
+since `generate()` mints inside its own transaction.
+
+**FE:** a secondary "Generate all" action on `/billing` (the primary stays the single-client generate, which
+is also the only route to a re-issue) opening `BulkGenerateModal` — a week picker, then a result split into
+three explicit groups (issued / skipped / failed) with each failure's unpriced products listed and linked.
+The toast reports what actually happened; it never says "done" over a partial run.
+
+**Verified LOCAL:** 13 new specs; full backend suite + typecheck + lint + build + contract regen; FE build +
+lint + stylelint + vitest. **No migration** — this is an endpoint over existing tables.
+
+### Small items — sales-export agent columns · geocoded office origin · expense-doc tie-out (built; NO migration)
+
+Three long-standing gaps recorded as open after the UAT batch, cleared together. None needed a schema
+change — in two of the three the columns already existed and only the wiring was missing.
+
+**1. The sales export carries the agent.** `SaleResponse` exposed only `rep_id`, so the client-bill-shaped
+export omitted the Agent ID / Agent Name pair the STATEMENT freezes — the two could not be read side by
+side. `SALE_INCLUDE` now selects the rep and `attachPeriods` (the single shaper every sales read passes
+through) flattens `rep_external_code` / `rep_code` / `rep_name` onto the response. The export prints
+`rep_external_code ?? rep_code`, **the same fallback the statement uses**, so a sales export and a bill line
+up agent-for-agent. Still no billing rate anywhere near it (#3).
+
+**2. The office origin is geocoded.** `expense_settings.office_lat` / `office_lng` and the PATCH DTO already
+accepted coordinates; only `OfficeOriginCard` never captured them, so the defaulted first km stop was an
+address with no lat/lng and the server fell back to the rep's typed total. The card now uses Places
+autocomplete (same `MAPS_LOADER_ID` / libraries as `MapStops`) and sends the coordinates, so the office
+contributes to the server's authoritative route derivation like any geocoded stop. **Typing by hand clears
+any previously picked coordinates** — keeping a stale lat/lng would silently send route derivation to where
+the office is not. Without a browser Maps key it degrades to the plain text field and stores no
+coordinates, exactly as before.
+
+**3. The client expense document is inside the tie-out.** `/v1/reconciliation/*` covered statements and pay
+runs only, so a `CEXP-` document had no integrity check at all. New `GET /v1/reconciliation/expense-documents`
+(`billing:view`, no new permission) ties frozen total = Σ frozen `line_detail` = the live re-derive, reusing
+`ClientExpenseDocService.preview` (now exported from `BillingModule`) rather than reimplementing the
+derivation.
+
+Three deliberate choices there. It is a **separate** pure function `tieOutExpenseDoc`, not a generalised
+`tieOutStatement` — an expense document is a different stream with its own selection and its own sequence,
+and merging them would invite one to be re-priced with the other's rules (the same reasoning as #3). It is
+keyed by the **PAY period**, not the Mon–Sun billing week a statement uses — the two calendars are never
+substituted (§14 rule 1). And an un-derivable live total (a km item whose client rate went missing) is
+reported as a **discrepancy**, never silently passed as a match: "could not check" must not read as
+"checked and fine". `line_detail` is jsonb, so its amounts are read defensively rather than trusted.
+
+**Verified LOCAL:** 6 new tie-out specs; full backend suite + typecheck + lint + build + contract regen; FE
+build + lint + stylelint + vitest. **No migration.**
+
+### Commission — PER-PRODUCT rep rates (built; migration `20260703000000`)
+
+Redwave confirmed a rep can be paid differently for a 150mb than a 1gig activation, and that the two rate
+streams stay separate: what we bill the client and what we pay the rep are different numbers per product,
+and the margin is the difference. Client billing was already per product; the REP side was not — internet
+paid one volume-tiered rate for every speed, and add-ons paid one flat rate per product TYPE.
+
+**The rule, in Redwave's words: the TALLY decides which bracket, the PRODUCT decides the rate.** So the
+half that did NOT change is the important half. The internet tally is still ONE cross-client count over
+every internet activation (#5); the bracket boundaries still live on `commission_tiers` and still decide
+which tier that tally lands in for every product alike; greenfield is still excluded and flat-rated (#9);
+a cancellation still never re-tiers (#6). Only the rate lookup gained a dimension — exactly what the
+existing per-CLIENT scoping already does, which resolves a rate and never the tally.
+
+**Additive by construction, which is the safety story.** New `commission_tier_rates` rows are OVERRIDES:
+the ladder's own `rate_per_activation` remains the fallback, and `commission_flat_rates.product_id` is
+nullable with NULL keeping its existing meaning (the whole type). With no rows and no product_id, every
+payout is byte-for-byte what it was — and that is why **all four mandatory §6 fixtures, the engine purity
+guard, and the provider/pay-run end-to-end fixtures pass unchanged**. Resolution is most-specific-first:
+`(client+product) → (product) → ladder` for tiers, and `(client+product) → (product) → (client+type) →
+(type)` for add-ons.
+
+**Three guards, each turning a silent no-op into a 422.** A configured rate that can never resolve is worse
+than a missing one — it looks configured and pays nothing:
+- a tier rate must target a **TIERED** product (an add-on is flat-rated);
+- the **tier must exist** in the schedule (no tally could reach a bracket that was never defined);
+- **a product belongs to exactly one client**, so a rate scoped to a different client is rejected. That
+  last one also means the per-client dimension is largely implied by the product — it is kept because it
+  mirrors the existing pattern and costs nothing, but it can no longer be set to something unreachable.
+The same product/type consistency check was added to product-scoped flat rates.
+
+**A scope-key bug that would have cost money, caught while extending flat rates.** Supersession keys on the
+scope, so adding `product_id` to the table meant adding it to the scope in `create`, `update` AND `remove`.
+Without it a new premium-TV rate would have superseded the TYPE-wide TV rate and silently stopped every
+other TV product being paid — a failure that shows up as missing money, not as an error. Spec-locked in
+all three places.
+
+**Engine:** `ActivationInput` gains an optional `productId` (rate lookup only), `EngineConfig` gains four
+optional maps, and `computeItem`/`flatRateFor` resolve them. 10 new engine tests, including that the tally
+stays one cross-client cross-product count and that the same product pays differently in different
+brackets. **Provider:** partitions flat rows by `(product_id ?? null)` — treating a MISSING product_id like
+an explicit null, or a mock without the field would misfile every row as product-specific.
+
+**FE:** a "Per-product rates" card directly under the tier schedule it refines, with the modal picking
+client → product → tier. The empty state says every product is paid the schedule rate, because no rows is
+the correct default rather than a gap.
+
+**Verified LOCAL:** 24 new specs; full backend suite + typecheck + lint + build + contract regen; FE build +
+lint + stylelint + vitest. **Operator: `migrate deploy`.** No seed change — rates are entered through the
+admin UI.
+
+### Commission — the per-product tier guard now checks the ladder that ACTUALLY prices the product (fix)
+
+**The hole.** The per-product rep-rate batch shipped `assertTierExists`, which asked "does this tier number
+exist in ANY tier schedule". Rates do not resolve that way. The engine picks the ladder for the
+ACTIVATION's client (`tiersByClient[clientId] ?? tiers`), so the only tiers that can ever be reached for a
+product are the ones in ITS client's schedule — its own if it has one, else the global fallback.
+
+**Why it mattered in practice, not just in theory.** The live database has a client-scoped schedule for RF
+Now containing a single bracket (`0–∞`), so RF activations can only ever be stamped Tier 1. Under the old
+guard an admin could create a Tier 2 or Tier 3 per-product rate for an RF product: it would pass validation,
+be stored, appear configured in the UI — and never resolve, silently paying the schedule rate forever. That
+is precisely the "looks configured, pays nothing" failure the surrounding guards exist to prevent, which is
+what makes a too-loose check worse than none: it grants false confidence.
+
+(The RF schedule itself is bad data — Redwave confirmed every client is tiered alike, so RF should carry the
+full Schedule C v2 ladder. That is a data correction, made by superseding the current row (#10), not a code
+change, and it is tracked separately. VF also has a client-scoped config that merely duplicates the global
+one — harmless today, but a second place that must be kept in sync.)
+
+**The fix.** `assertTierExists(tierNumber, productClientId, on)` resolves the schedule exactly as the engine
+does — the product's client's own effective config, else the global one — and checks the bracket is in THAT
+ladder. Validated on the rate's **start date**, since that is when it begins to apply and the schedule in
+force then is the one that matters. The error names the tiers the ladder actually has, so the fix is obvious
+from the message. No effective schedule at all is its own 422 rather than a silent pass.
+
+**Spec-locked, including the case the first version missed:** a Tier 3 rate is REJECTED for a client whose
+own ladder has only Tier 1, even though Tier 3 exists globally; the same tier is accepted when the client's
+ladder defines it; the global ladder is used when the client has no schedule of its own.
+
+**Verified LOCAL:** 18 tier-rate specs (+4); full backend suite + typecheck + lint + build + contract regen;
+FE build + lint + vitest. No migration, no contract change.
+
+### DATA — RF Now's tier schedule corrected (no code change)
+
+RF Now's live client-scoped schedule held a SINGLE bracket (`0–∞ @ 145`), so RF activations were paid a
+flat rate with no volume tiering while every other client was graduated — a rep's 3rd and 40th RF
+activation both paid $145, where VF paid $110 and $160. Redwave confirmed every client is tiered alike, so
+this was bad data, not a negotiated deal.
+
+**Corrected by SUPERSESSION, never by editing or deleting** (#10). A one-off guarded script drove the real
+`TierScheduleService.create()` rather than writing Prisma directly, so bracket validation ran, the current
+row was BOUNDED rather than mutated, and the change landed in `audit_log` exactly as it would from the admin
+UI. That audit row — not the script, which was removed after running — is the durable record.
+
+Two judgement calls worth recording:
+- **Effective from the start of the next pay period (2026-08-30, period 18), not today.** A pay run resolves
+  ONE config for a whole period, so a mid-period change would re-price activations already made under the
+  old rate.
+- **The new ladder was COPIED from the live global config**, not hard-coded, so it cannot drift from
+  whatever Schedule C v2 actually says.
+
+Verified through the real resolution path, not the table: `CommissionConfigProvider.getEngineConfig`
+returns RF's flat bracket on 2026-08-25 and the full 110/125/145/160 ladder on 2026-09-01. Past pay is
+untouched regardless — paid `sale_items` carry frozen snapshots (#2).
+
+**Still open:** VF also carries a client-scoped config that merely duplicates the global ladder. Harmless
+today, but it is a second place to keep in sync, and the next edit to the global ladder will silently not
+reach VF. More broadly, there is **no way to RETIRE a client-scoped schedule** once it is current — only to
+supersede it with another one — so a client can never be returned to the global fallback. Worth an admin
+affordance if per-client ladders stay rare.
+
+### Pay Run — payroll report in Redwave's Excel format (built — packet 02; migration `20260704000000`)
+
+**The largest confirmed gap from Meeting 4** — nothing existed for it. Redwave keeps a payroll workbook by
+hand; this produces it. The prerequisite (Agent columns on `SaleResponse`) was already done in the
+small-items batch, so this packet did not rebuild that plumbing.
+
+**Mirrors the billing trio exactly, and shares nothing with it.** Pure logic (`payroll-report.logic.ts`) →
+frozen wide line (`payroll_report_lines`) → renderer (`renderers/payroll-excel.renderer.ts`) → endpoints →
+FE action, the same four-part shape as statements. But it is the REP-PAY stream throughout: every amount
+comes from `sale_items.rate_applied` / `incentive_amount`, and no code path reaches the client-billing
+tables (#3). **`payroll.no-billing.spec.ts` is the mirror of `billing.no-commission.spec.ts`** — a source
+scan for billing imports and Prisma delegates, a purity check on the logic module, and the packet's own DoD
+grep kept EXECUTABLE so it cannot quietly stop being true. (Comments were reworded to say "the
+client-billing rate tables" rather than naming the table, so the naive grep stays clean too.)
+
+**Written at FINALIZE, from the same engine result that freezes the snapshots** (#2/#8), inside the same
+transaction. That is what makes the report and the pay incapable of disagreeing — nothing is recomputed at
+render time. A draft run therefore has no lines: the read returns `is_finalized: false` and the FE does not
+offer the download, because an empty sheet would misrepresent the state rather than reflect it. Same
+principle as the sales export being blank on unpaid sales.
+
+**Two details taken from their actual file rather than assumed**, both places where copying the statement
+renderer would have been wrong: the row-1 strip is `SUBTOTAL` on the three MONEY columns with **no
+`COUNTIF`** on the flag columns (the billing sheet has them, the payroll sheet does not), and `Customer` /
+`Address` are **one column each** (the statement splits the customer name; this sheet holds a first name
+only).
+
+**The spec fixture asserts their strip — 375.00 / 262.50 / 112.50 — not their per-row rates.** Their
+`Internet Rate` is typed by hand and inconsistent: a literal `125` in one row, a hard-coded `=IF(...)` 145
+in another, which are Schedule C v2 Tier 3 and Tier 2 switched manually. **The system computes what they
+retype**, so per-row equality would assert their bookkeeping rather than our correctness — the packet says
+so explicitly and the spec header records why.
+
+**Greenfield and Spiff are the two ADDITIONS** (Meeting 4), inserted before `Total 100 %`. Greenfield gets
+its own column because it is flat-rated and tally-excluded (#9) — folding it into internet would misreport
+both. An `Other` column appears only when a priced item has no column of its own, so nothing is silently
+dropped while the common case stays the exact 18-column target.
+
+**The 70/30 split is derived, not computed twice:** the advance is rounded half-up and the holdback is the
+remainder, so the two always sum to the total exactly — the same derivation the engine uses, spec-locked
+across awkward amounts. The row-1 strip sums the printed LINES rather than re-summing components, so the
+sheet is internally consistent after per-line rounding.
+
+**No new permission** — preview rides `payrun:view`, the download `payrun:export`, alongside the ADP export.
+`docs/uat/payroll-target-format.md` written, mirroring the billing one.
+
+**Verified LOCAL:** 19 new specs; full backend suite + typecheck + lint + build + contract regen; FE build +
+lint + stylelint + vitest. **Operator: `migrate deploy`.**
+
+### Pay Run — per-rep pay statement, admin-issued and rep self-service (built — packet 03; NO migration)
+
+Answers what Siam asked for directly — *"70% for this sale, the price was $88, the other 30% held"* — **per
+sale, not a period summary**. Built entirely on packet 02's frozen `payroll_report_lines`, filtered to one
+rep, so a statement and the payroll report reconcile **by construction** rather than by two calculations
+agreeing (#2). Nothing is recomputed and no migration was needed.
+
+**The security shape is the packet, and two of its three guarantees are STRUCTURAL rather than checks that
+could be removed:**
+
+- **The self-service surface takes no `repId` at all.** `PayStatementsController` (`/v1/pay-statements`,
+  `/v1/pay-statements/{runId}`) names the RUN but never the rep — that comes from the token. "Rep A requests
+  rep B" is not a request this API can express, which is stronger than validating an id would be. A spec
+  asserts the controller source contains no `repId`, because a missing parameter cannot be quietly deleted
+  the way a guard clause can.
+- **The rep-facing DTO is its own type**, not a reuse of the admin payroll line — the packet says so
+  explicitly. A spec asserts the response's exact allowed key set, so a field added to the admin serializer
+  later cannot leak into a rep's document without someone also editing that list.
+- A user with **no linked rep is 403, not an empty 200**: "you have no statements" and "you are not a rep"
+  are different facts and should not look alike.
+
+**A deliberate deviation from the packet, recorded here because it changes the permission model.** Packet 03
+suggests a bespoke `pay_statements:read_self`. That would need a new `PermissionAction` enum value and its
+migration (as `broadcast` and `business` did). Instead this uses a new **module key `pay_statements` with
+the standard `view` action** on an endpoint that has no repId — functionally stronger (the parameter does
+not exist rather than being validated) and seed-data only. Its own module row matters: statement access is
+grantable **without** any pay-run access, so a rep never reaches the run, another rep's lines, or an
+org-wide total. Granted to Sales Rep by default.
+
+**FE:** a "Pay statement" row action on the pay-run detail page, offered only on a FINALIZED run (a draft
+has no frozen lines), plus `/my-pay-statements` for a logged-in rep. Row selection is a real `<button>`
+rather than a click handler on the row, so it is keyboard-reachable and announced (§7).
+
+**Verified LOCAL:** 9 new security specs; full backend suite + typecheck + lint + build + contract regen; FE
+build + lint + stylelint + vitest. **Operator: re-run `prisma:seed`** so the new `pay_statements` module and
+its Sales Rep grant exist (idempotent bootstrap; no migration).

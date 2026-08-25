@@ -9,7 +9,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
 import { billingKeys } from './keys';
-import type { ClientInvoice, ClientStatement, GenerateBillingBody, StatementPreview } from '../billing.types';
+import type { BulkStatementResult, ClientInvoice, ClientStatement, GenerateBillingBody, StatementPreview } from '../billing.types';
 
 export function usePreviewStatement() {
   return useMutation({
@@ -32,6 +32,23 @@ export function useGenerateInvoice() {
   return useMutation({
     mutationFn: ({ clientId, body }: { clientId: string; body: GenerateBillingBody }) =>
       unwrap<ClientInvoice>(api.POST('/v1/clients/{id}/invoices', { params: { path: { id: clientId } }, body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: billingKeys.all }),
+  });
+}
+
+/**
+ * Issue EVERY active client's statement for one billing week. Unlike the per-client generate, a partial
+ * result is SUCCESS (200) rather than an error: the response carries generated / skipped / failed, and each
+ * failure keeps its `unpriced[]` so the UI can link to the rate that fixes it. Already-issued clients are
+ * skipped server-side, so re-running never renumbers.
+ */
+export function useGenerateAllStatements() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ periodId }: { periodId: string }) =>
+      unwrap<BulkStatementResult>(
+        api.POST('/v1/billing-periods/{id}/statements/generate-all', { params: { path: { id: periodId } } }),
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: billingKeys.all }),
   });
 }

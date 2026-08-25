@@ -4,7 +4,7 @@
  * `amount` and (per the category config) a `receipt_url`. Reused by create + edit. — SRS §11
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ExpenseCategory, TripType } from '@prisma/client';
+import { TripType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -72,9 +72,12 @@ export class KmLogInput {
 
 /** One expense item. */
 export class ExpenseItemInput {
-  @ApiProperty({ enum: ExpenseCategory, example: 'meals' })
-  @IsEnum(ExpenseCategory)
-  category!: ExpenseCategory;
+  // A catalogue KEY, not an enum — the SA adds categories at runtime, so the valid set cannot live in the
+  // contract. The service 422s an unknown or inactive key against `expense_field_configs`. — packet 10
+  @ApiProperty({ example: 'meals', description: 'Expense category key from the catalogue (GET /v1/expense-field-configs).' })
+  @IsString()
+  @Matches(/^[a-z][a-z0-9_]*$/, { message: 'category must be a catalogue key (lowercase, digits, underscore)' })
+  category!: string;
 
   @ApiPropertyOptional({ description: 'Optional client this expense is attributed to.' })
   @IsOptional()

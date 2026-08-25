@@ -4,7 +4,7 @@
  * A row's "details" opens the per-rep breakdown drawer. The footer totals are a DISPLAY sum (sumMoney —
  * integer cents, no float #1), never a recomputation. The UI computes no money (#1/#5).
  */
-import { Gift, Search } from 'lucide-react';
+import { FileText, Gift, Search } from 'lucide-react';
 import { Table, TBody, TD, TH, THead, TR, type MenuEntry } from '../../../components/ui';
 import { RowActions } from '../../../components/data/RowActions';
 import { money, sumMoney } from '../../../lib/format/money';
@@ -16,13 +16,18 @@ interface Props {
   lines: PayRunLine[];
   onSelect: (line: PayRunLine) => void;
   onBonus: (line: PayRunLine) => void;
+  /** Issue this rep's own pay statement. Absent on a draft run — nothing is frozen yet. */
+  onStatement?: (line: PayRunLine) => void;
   canBonus: boolean;
 }
 
-export function PayRunLinesTable({ lines, onSelect, onBonus, canBonus }: Props) {
+export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBonus }: Props) {
   const total = (pick: (l: PayRunLine) => string) => sumMoney(lines.map(pick));
   const rowMenu = (l: PayRunLine): MenuEntry[] => {
     const items: MenuEntry[] = [{ label: 'View breakdown', icon: <Search size={15} />, onSelect: () => onSelect(l) }];
+    if (onStatement) {
+      items.push({ label: 'Pay statement', icon: <FileText size={15} />, onSelect: () => onStatement(l) });
+    }
     if (canBonus) items.push('separator', { label: 'Set bonus', icon: <Gift size={15} />, onSelect: () => onBonus(l) });
     return items;
   };

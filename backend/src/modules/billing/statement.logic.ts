@@ -37,6 +37,8 @@ export interface SaleComponents {
 export interface SaleInput {
   sale_id: string;
   sale_date: string; // 'YYYY-MM-DD'
+  /** The partner-facing agent id (`Redwave20`), null when the rep has no external code yet. */
+  rep_external_code: string | null;
   rep_code: string;
   rep_name: string;
   customer_name: string;
@@ -58,6 +60,7 @@ export interface StatementLineDraft {
   sale_id: string;
   sort_order: number;
   sale_date: string;
+  rep_external_code: string | null;
   rep_code: string;
   rep_name: string;
   customer_name: string;
@@ -130,6 +133,7 @@ export function buildStatement(sales: SaleInput[]): StatementDraft {
       sale_id: sale.sale_id,
       sort_order: index,
       sale_date: sale.sale_date,
+      rep_external_code: sale.rep_external_code,
       rep_code: sale.rep_code,
       rep_name: sale.rep_name,
       customer_name: sale.customer_name,
