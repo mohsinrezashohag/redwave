@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { NotificationsModule } from './notifications.module';
 import { DashboardsController, LeaderboardController } from './dashboards.controller';
 import { TargetsController } from './targets.controller';
+import { MarginController } from './margin.controller';
+import { MarginService } from './margin.service';
 import { ReportExportsController } from './report-exports.controller';
 import { ReportExportsService } from './report-exports.service';
 import { NotificationsController, NotificationSettingsController } from './notifications.controller';
@@ -25,6 +27,7 @@ import { ChatbotConfigCache } from './chatbot/chatbot-config.cache';
   imports: [NotificationsModule],
   controllers: [
     DashboardsController,
+    MarginController,
     LeaderboardController,
     TargetsController,
     ReportExportsController,
@@ -34,6 +37,7 @@ import { ChatbotConfigCache } from './chatbot/chatbot-config.cache';
   ],
   providers: [
     DashboardsService,
+    MarginService,
     TargetsService,
     ReportExportsService,
     LeaderboardService,

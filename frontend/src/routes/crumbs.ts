@@ -100,6 +100,7 @@ export const CRUMBS: Record<string, CrumbMeta> = {
   // ── Reports / misc ─────────────────────────────────────────────────────────────────
   '/reports': { label: 'Reports' },
   '/reports/trends': { label: 'Cross-period trends', parent: '/reports', permission: 'reports:business' },
+  '/reports/margin': { label: 'Margin', parent: '/reports', permission: 'reports:business' },
   '/reports/exports': { label: 'Report exports', parent: '/reports' },
   '/notifications': { label: 'Notifications' },
   '/account': { label: 'My Account' },

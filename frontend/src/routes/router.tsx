@@ -64,6 +64,7 @@ const BroadcastPage = lazy(() => import('../features/notifications/pages/Broadca
 const RepsListPage = lazy(() => import('../features/reps/pages/RepsListPage'));
 const ReportsLandingPage = lazy(() => import('../features/reports/pages/ReportsLandingPage'));
 const TrendsPage = lazy(() => import('../features/reports/pages/TrendsPage'));
+const MarginPage = lazy(() => import('../features/margin/pages/MarginPage'));
 const ReportExportsPage = lazy(() => import('../features/reports/pages/ReportExportsPage'));
 const ForgotPasswordPage = lazy(() => import('../features/auth/pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('../features/auth/pages/ResetPasswordPage'));
@@ -156,6 +157,7 @@ export const router = createBrowserRouter([
           { path: 'admin/reps', element: lazyEl(<RepsListPage />) },
           { path: 'reports', element: lazyEl(<ReportsLandingPage />) },
           { path: 'reports/trends', element: lazyEl(<TrendsPage />) },
+          { path: 'reports/margin', element: lazyEl(<MarginPage />) },
           { path: 'reports/exports', element: lazyEl(<ReportExportsPage />) },
           { path: 'admin/clients', element: lazyEl(<ClientsPage />) },
           { path: 'admin/clients/:id', element: lazyEl(<ClientDetailPage />) },

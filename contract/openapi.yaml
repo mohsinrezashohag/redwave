@@ -7602,6 +7602,177 @@ paths:
       security: *a305
       summary: Admin operational home (queues)
       tags: *a306
+  /v1/margin/per-sale:
+    get:
+      description: Super Admin only. Both sides are FROZEN (issued statement lines and
+        finalized payroll lines), joined in memory on sale_id — there is no
+        database relation between the two rate streams (#3). Rows carry their
+        document currency and are never converted (#12).
+      operationId: MarginController_perSale_v1
+      parameters:
+        - name: from
+          required: true
+          in: query
+          description: Inclusive start of the sale-date range.
+          schema:
+            example: 2026-03-01
+            type: string
+        - name: to
+          required: true
+          in: query
+          description: Inclusive end of the sale-date range.
+          schema:
+            example: 2026-03-31
+            type: string
+        - name: client_id
+          required: false
+          in: query
+          description: Narrow to one client.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MarginRowResponse"
+        "400": &a307
+          description: Bad Request — validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "401": &a308
+          description: Unauthorized — missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "403": &a309
+          description: Forbidden — RBAC denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "404": &a310
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "409": &a311
+          description: Conflict — invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "422": &a312
+          description: Unprocessable Entity — domain rule violated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+      security: &a313
+        - bearer: []
+      summary: Per-sale margin — client bill vs rep pay, and the spread
+      tags: &a314
+        - Reporting & Dashboards
+  /v1/margin/rollup:
+    get:
+      description: Super Admin only. Grouped by currency as well as the chosen
+        dimension, so two currencies are never summed together (#12).
+      operationId: MarginController_rollup_v1
+      parameters:
+        - name: from
+          required: true
+          in: query
+          description: Inclusive start of the sale-date range.
+          schema:
+            example: 2026-03-01
+            type: string
+        - name: to
+          required: true
+          in: query
+          description: Inclusive end of the sale-date range.
+          schema:
+            example: 2026-03-31
+            type: string
+        - name: client_id
+          required: false
+          in: query
+          description: Narrow to one client.
+          schema:
+            type: string
+        - name: by
+          required: true
+          in: query
+          description: The grouping dimension.
+          schema:
+            type: string
+            enum:
+              - product
+              - client
+              - rep
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MarginGroupResponse"
+        "400": *a307
+        "401": *a308
+        "403": *a309
+        "404": *a310
+        "409": *a311
+        "422": *a312
+      security: *a313
+      summary: Margin rolled up by product, client or rep
+      tags: *a314
+  /v1/margin/rates-in-force:
+    get:
+      description: Super Admin only. Answers what we charge and what we pay for a
+        product TODAY, which the per-sale view cannot for a product that has not
+        sold. A tiered product reports every bracket, because its rep rate
+        depends on the period volume — there is no single number.
+      operationId: MarginController_ratesInForce_v1
+      parameters:
+        - name: on
+          required: true
+          in: query
+          description: The date to resolve rates on.
+          schema:
+            example: 2026-09-07
+            type: string
+        - name: client_id
+          required: false
+          in: query
+          description: Narrow to one client.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RateInForceResponse"
+        "400": *a307
+        "401": *a308
+        "403": *a309
+        "404": *a310
+        "409": *a311
+        "422": *a312
+      security: *a313
+      summary: Client rate and rep rate side by side, with their effective dates
+      tags: *a314
   /v1/leaderboard:
     get:
       description: Requires reports:view. Ranked by internet activation count for the
@@ -7676,88 +7847,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/SalesTargetResponse"
-        "400": &a307
-          description: Bad Request — validation failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a308
-          description: Unauthorized — missing/invalid token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a309
-          description: Forbidden — RBAC denied
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a310
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a311
-          description: Conflict — invalid state transition
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a312
-          description: Unprocessable Entity — domain rule violated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a313
-        - bearer: []
-      summary: List sales targets (scoped)
-      tags: &a314
-        - Reporting & Dashboards
-    put:
-      description: Requires hrm:edit; a manager may only set targets for reps they manage.
-      operationId: TargetsController_set_v1
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SetSalesTargetDto"
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SalesTargetResponse"
-        "400": *a307
-        "401": *a308
-        "403": *a309
-        "404": *a310
-        "409": *a311
-        "422": *a312
-      security: *a313
-      summary: Set / replace a rep target for a period
-      tags: *a314
-  /v1/report-exports:
-    get:
-      description: Latest 50 recorded exports — own records for non-admin callers, all
-        for Admin/Super Admin.
-      operationId: ReportExportsController_list_v1
-      parameters: []
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ReportExportResponse"
         "400": &a315
           description: Bad Request — validation failed
           content:
@@ -7796,8 +7885,90 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
       security: &a321
         - bearer: []
-      summary: List recent report exports
+      summary: List sales targets (scoped)
       tags: &a322
+        - Reporting & Dashboards
+    put:
+      description: Requires hrm:edit; a manager may only set targets for reps they manage.
+      operationId: TargetsController_set_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetSalesTargetDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesTargetResponse"
+        "400": *a315
+        "401": *a316
+        "403": *a317
+        "404": *a318
+        "409": *a319
+        "422": *a320
+      security: *a321
+      summary: Set / replace a rep target for a period
+      tags: *a322
+  /v1/report-exports:
+    get:
+      description: Latest 50 recorded exports — own records for non-admin callers, all
+        for Admin/Super Admin.
+      operationId: ReportExportsController_list_v1
+      parameters: []
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReportExportResponse"
+        "400": &a323
+          description: Bad Request — validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "401": &a324
+          description: Unauthorized — missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "403": &a325
+          description: Forbidden — RBAC denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "404": &a326
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "409": &a327
+          description: Conflict — invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "422": &a328
+          description: Unprocessable Entity — domain rule violated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+      security: &a329
+        - bearer: []
+      summary: List recent report exports
+      tags: &a330
         - Reporting & Dashboards
     post:
       description: Authenticated; the permission is enforced PER report type in the
@@ -7819,15 +7990,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReportExportResponse"
-        "400": *a315
-        "401": *a316
-        "403": *a317
-        "404": *a318
-        "409": *a319
-        "422": *a320
-      security: *a321
+        "400": *a323
+        "401": *a324
+        "403": *a325
+        "404": *a326
+        "409": *a327
+        "422": *a328
+      security: *a329
       summary: Record an on-demand report export
-      tags: *a322
+      tags: *a330
   /v1/notifications:
     get:
       description: Authenticated; only the caller’s own. Paginated
@@ -7878,190 +8049,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NotificationPageResponse"
-        "400": &a323
-          description: Bad Request — validation failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a324
-          description: Unauthorized — missing/invalid token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a325
-          description: Forbidden — RBAC denied
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a326
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a327
-          description: Conflict — invalid state transition
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a328
-          description: Unprocessable Entity — domain rule violated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a329
-        - bearer: []
-      summary: My notifications
-      tags: &a330
-        - Reporting & Dashboards
-  /v1/notifications/unread-count:
-    get:
-      description: Authenticated; for the top-bar bell badge (polled).
-      operationId: NotificationsController_unreadCount_v1
-      parameters: []
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UnreadCountResponse"
-        "400": *a323
-        "401": *a324
-        "403": *a325
-        "404": *a326
-        "409": *a327
-        "422": *a328
-      security: *a329
-      summary: My unread count
-      tags: *a330
-  /v1/notifications/mark-all-read:
-    post:
-      description: Authenticated; marks all the caller’s unread notifications read.
-      operationId: NotificationsController_markAllRead_v1
-      parameters: []
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BulkMarkResultResponse"
-        "400": *a323
-        "401": *a324
-        "403": *a325
-        "404": *a326
-        "409": *a327
-        "422": *a328
-      security: *a329
-      summary: Mark all read
-      tags: *a330
-  /v1/notifications/mark-read:
-    post:
-      description: Authenticated; own-scoped bulk toggle.
-      operationId: NotificationsController_bulkMark_v1
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BulkMarkDto"
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BulkMarkResultResponse"
-        "400": *a323
-        "401": *a324
-        "403": *a325
-        "404": *a326
-        "409": *a327
-        "422": *a328
-      security: *a329
-      summary: Bulk mark read/unread
-      tags: *a330
-  /v1/notifications/broadcast:
-    post:
-      description: Requires notifications:broadcast (Super Admin). Fans out to a role
-        / specific users / everyone.
-      operationId: NotificationsController_broadcast_v1
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BroadcastDto"
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BroadcastResultResponse"
-        "400": *a323
-        "401": *a324
-        "403": *a325
-        "404": *a326
-        "409": *a327
-        "422": *a328
-      security: *a329
-      summary: Send a manual broadcast
-      tags: *a330
-  /v1/notifications/{id}:
-    patch:
-      description: Authenticated; only the caller’s own.
-      operationId: NotificationsController_setReadState_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MarkNotificationDto"
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AppNotificationResponse"
-        "400": *a323
-        "401": *a324
-        "403": *a325
-        "404": *a326
-        "409": *a327
-        "422": *a328
-      security: *a329
-      summary: Mark a notification read/unread
-      tags: *a330
-  /v1/notification-settings:
-    get:
-      description: Requires settings:view (Super Admin).
-      operationId: NotificationSettingsController_list_v1
-      parameters: []
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/NotificationSettingResponse"
         "400": &a331
           description: Bad Request — validation failed
           content:
@@ -8100,8 +8087,192 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
       security: &a337
         - bearer: []
-      summary: Notification event settings
+      summary: My notifications
       tags: &a338
+        - Reporting & Dashboards
+  /v1/notifications/unread-count:
+    get:
+      description: Authenticated; for the top-bar bell badge (polled).
+      operationId: NotificationsController_unreadCount_v1
+      parameters: []
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCountResponse"
+        "400": *a331
+        "401": *a332
+        "403": *a333
+        "404": *a334
+        "409": *a335
+        "422": *a336
+      security: *a337
+      summary: My unread count
+      tags: *a338
+  /v1/notifications/mark-all-read:
+    post:
+      description: Authenticated; marks all the caller’s unread notifications read.
+      operationId: NotificationsController_markAllRead_v1
+      parameters: []
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkMarkResultResponse"
+        "400": *a331
+        "401": *a332
+        "403": *a333
+        "404": *a334
+        "409": *a335
+        "422": *a336
+      security: *a337
+      summary: Mark all read
+      tags: *a338
+  /v1/notifications/mark-read:
+    post:
+      description: Authenticated; own-scoped bulk toggle.
+      operationId: NotificationsController_bulkMark_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkMarkDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkMarkResultResponse"
+        "400": *a331
+        "401": *a332
+        "403": *a333
+        "404": *a334
+        "409": *a335
+        "422": *a336
+      security: *a337
+      summary: Bulk mark read/unread
+      tags: *a338
+  /v1/notifications/broadcast:
+    post:
+      description: Requires notifications:broadcast (Super Admin). Fans out to a role
+        / specific users / everyone.
+      operationId: NotificationsController_broadcast_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BroadcastDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BroadcastResultResponse"
+        "400": *a331
+        "401": *a332
+        "403": *a333
+        "404": *a334
+        "409": *a335
+        "422": *a336
+      security: *a337
+      summary: Send a manual broadcast
+      tags: *a338
+  /v1/notifications/{id}:
+    patch:
+      description: Authenticated; only the caller’s own.
+      operationId: NotificationsController_setReadState_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkNotificationDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppNotificationResponse"
+        "400": *a331
+        "401": *a332
+        "403": *a333
+        "404": *a334
+        "409": *a335
+        "422": *a336
+      security: *a337
+      summary: Mark a notification read/unread
+      tags: *a338
+  /v1/notification-settings:
+    get:
+      description: Requires settings:view (Super Admin).
+      operationId: NotificationSettingsController_list_v1
+      parameters: []
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NotificationSettingResponse"
+        "400": &a339
+          description: Bad Request — validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "401": &a340
+          description: Unauthorized — missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "403": &a341
+          description: Forbidden — RBAC denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "404": &a342
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "409": &a343
+          description: Conflict — invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+        "422": &a344
+          description: Unprocessable Entity — domain rule violated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelopeDto"
+      security: &a345
+        - bearer: []
+      summary: Notification event settings
+      tags: &a346
         - Reporting & Dashboards
     patch:
       description: Requires settings:edit (Super Admin). Per-event in-app/email
@@ -8123,15 +8294,15 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/NotificationSettingResponse"
-        "400": *a331
-        "401": *a332
-        "403": *a333
-        "404": *a334
-        "409": *a335
-        "422": *a336
-      security: *a337
+        "400": *a339
+        "401": *a340
+        "403": *a341
+        "404": *a342
+        "409": *a343
+        "422": *a344
+      security: *a345
       summary: Configure event×channel settings
-      tags: *a338
+      tags: *a346
   /v1/chatbot/query:
     post:
       description: Authenticated. Answers from Redwave data within the caller’s scope
@@ -8398,46 +8569,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatementTieOutResponse"
-        "400": &a339
+        "400": &a347
           description: Bad Request — validation failed
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401": &a340
+        "401": &a348
           description: Unauthorized — missing/invalid token
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403": &a341
+        "403": &a349
           description: Forbidden — RBAC denied
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404": &a342
+        "404": &a350
           description: Not Found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409": &a343
+        "409": &a351
           description: Conflict — invalid state transition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422": &a344
+        "422": &a352
           description: Unprocessable Entity — domain rule violated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security: &a345
+      security: &a353
         - bearer: []
       summary: Tie a client statement to its lines and the live re-priced sales
-      tags: &a346
+      tags: &a354
         - Reconciliation
   /v1/reconciliation/expense-documents:
     get:
@@ -8464,16 +8635,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExpenseDocTieOutResponse"
-        "400": *a339
-        "401": *a340
-        "403": *a341
-        "404": *a342
-        "409": *a343
-        "422": *a344
-      security: *a345
+        "400": *a347
+        "401": *a348
+        "403": *a349
+        "404": *a350
+        "409": *a351
+        "422": *a352
+      security: *a353
       summary: Tie a client expense document to its frozen lines and the live
         re-derived expenses
-      tags: *a346
+      tags: *a354
   /v1/reconciliation/pay-runs/{id}:
     get:
       description: Requires payrun:view. Recomputes each line’s net from its
@@ -8492,15 +8663,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PayRunTieOutResponse"
-        "400": *a339
-        "401": *a340
-        "403": *a341
-        "404": *a342
-        "409": *a343
-        "422": *a344
-      security: *a345
+        "400": *a347
+        "401": *a348
+        "403": *a349
+        "404": *a350
+        "409": *a351
+        "422": *a352
+      security: *a353
       summary: Tie a pay run to its lines (net = components; run total = Σ net)
-      tags: *a346
+      tags: *a354
 info:
   title: Redwave ERP / HRM API
   description: Versioned REST contract for the Redwave platform. Each protected
@@ -10053,7 +10224,7 @@ components:
           type: string
         status:
           type: string
-          enum: &a347
+          enum: &a355
             - current
             - pending
             - past
@@ -10166,7 +10337,7 @@ components:
           type: string
         status:
           type: string
-          enum: *a347
+          enum: *a355
       required:
         - id
         - client_id
@@ -10271,7 +10442,7 @@ components:
           type: string
         status:
           type: string
-          enum: *a347
+          enum: *a355
       required:
         - id
         - client_id
@@ -10349,7 +10520,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: *a347
+          enum: *a355
       required:
         - id
         - advance_pct
@@ -11157,9 +11328,9 @@ components:
             empty string; the UI falls back to the category label.
         field_values:
           type: object
-          additionalProperties: &a348
+          additionalProperties: &a356
             type: string
-          example: &a349
+          example: &a357
             vendor: Tim Hortons
             city: Winnipeg
           description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
@@ -11576,8 +11747,8 @@ components:
             empty string; the UI falls back to the category label.
         field_values:
           type: object
-          additionalProperties: *a348
-          example: *a349
+          additionalProperties: *a356
+          example: *a357
           description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
             category schema (EXP-002a). METADATA ONLY — never summed into the
             amount (#1). Unknown keys are dropped server-side."
@@ -12213,7 +12384,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: &a350
+          enum: &a358
             - draft
             - finalized
             - exported
@@ -12356,7 +12527,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: *a350
+          enum: *a358
         executed_by:
           type: string
         created_at:
@@ -14269,14 +14440,14 @@ components:
           type: string
         source_type:
           type: string
-          enum: &a351
+          enum: &a359
             - client_report
             - master_migration
             - balance_migration
             - sales_entry
         import_type:
           type: string
-          enum: &a352
+          enum: &a360
             - reps
             - clients
             - products
@@ -14296,7 +14467,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: &a353
+          enum: &a361
             - staged
             - committed
             - failed
@@ -14317,13 +14488,13 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: &a354
+          additionalProperties: &a362
             type: number
           nullable: true
           description: Counts by classification (matched/unmatched/...).
         applied_mapping:
           type: object
-          additionalProperties: &a355
+          additionalProperties: &a363
             type: string
           nullable: true
           description: "The `{ systemField: sourceColumn }` mapping actually applied to
@@ -14542,10 +14713,10 @@ components:
           type: string
         source_type:
           type: string
-          enum: *a351
+          enum: *a359
         import_type:
           type: string
-          enum: *a352
+          enum: *a360
         client_id:
           type: string
           nullable: true
@@ -14554,7 +14725,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: *a353
+          enum: *a361
         total_rows:
           type: number
           example: 3
@@ -14571,12 +14742,12 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: *a354
+          additionalProperties: *a362
           nullable: true
           description: Counts by classification (matched/unmatched/...).
         applied_mapping:
           type: object
-          additionalProperties: *a355
+          additionalProperties: *a363
           nullable: true
           description: "The `{ systemField: sourceColumn }` mapping actually applied to
             this batch."
@@ -15390,6 +15561,164 @@ components:
         - pending_profile_changes
         - pending_signature_requests
         - draft_pay_runs
+    MarginRowResponse:
+      type: object
+      properties:
+        sale_id:
+          type: string
+        sale_date:
+          type: string
+          nullable: true
+          example: 2026-03-02
+        client_code:
+          type: string
+          nullable: true
+          example: VF
+        customer_name:
+          type: string
+        product_name:
+          type: string
+          nullable: true
+          example: Fibre 1gig/2.5gig
+        rep_code:
+          type: string
+          nullable: true
+        rep_name:
+          type: string
+          nullable: true
+        currency:
+          type: string
+          example: CAD
+          description: The document currency. Rows are never converted (#12).
+        client_billed:
+          type: string
+          example: "350.00"
+          description: The frozen statement line total.
+        rep_paid:
+          type: string
+          example: "145.00"
+          description: The frozen payroll line total at 100%. Zero when the sale is billed
+            but not yet paid.
+        margin:
+          type: string
+          example: "205.00"
+          description: client_billed − rep_paid. Negative is shown.
+        margin_pct:
+          type: string
+          nullable: true
+          example: "58.6"
+          description: Null when the bill is zero.
+      required:
+        - sale_id
+        - sale_date
+        - client_code
+        - customer_name
+        - product_name
+        - rep_code
+        - rep_name
+        - currency
+        - client_billed
+        - rep_paid
+        - margin
+        - margin_pct
+    MarginGroupResponse:
+      type: object
+      properties:
+        key:
+          type: string
+          description: Grouping key, suffixed with the currency so two are never merged.
+        label:
+          type: string
+          example: Fibre 1gig/2.5gig
+        currency:
+          type: string
+          example: CAD
+        client_billed:
+          type: string
+        rep_paid:
+          type: string
+        margin:
+          type: string
+        margin_pct:
+          type: string
+          nullable: true
+        sale_count:
+          type: number
+      required:
+        - key
+        - label
+        - currency
+        - client_billed
+        - rep_paid
+        - margin
+        - margin_pct
+        - sale_count
+    RepTierRateResponse:
+      type: object
+      properties:
+        tier_number:
+          type: number
+          example: 2
+        amount:
+          type: string
+          example: "145.00"
+      required:
+        - tier_number
+        - amount
+    RateInForceResponse:
+      type: object
+      properties:
+        product_id:
+          type: string
+          nullable: true
+        product_name:
+          type: string
+          example: Fibre 1gig/2.5gig
+        product_type:
+          type: string
+          nullable: true
+          example: internet
+        client_code:
+          type: string
+          nullable: true
+          example: VF
+        currency:
+          type: string
+          example: CAD
+        client_rate:
+          type: string
+          example: "350.00"
+          description: What the CLIENT is charged.
+        client_rate_from:
+          type: string
+          example: 2026-01-01
+        client_rate_to:
+          type: string
+          nullable: true
+        rep_tier_rates:
+          description: Per-product tier overrides. A tiered product's rep rate depends on
+            the period's volume, so every bracket is listed rather than one
+            number that would be right only sometimes.
+          type: array
+          items:
+            $ref: "#/components/schemas/RepTierRateResponse"
+        rep_flat_rate:
+          type: string
+          nullable: true
+          example: "30.00"
+          description: The flat rep rate for an add-on — its own product rate, else its
+            product TYPE's.
+      required:
+        - product_id
+        - product_name
+        - product_type
+        - client_code
+        - currency
+        - client_rate
+        - client_rate_from
+        - client_rate_to
+        - rep_tier_rates
+        - rep_flat_rate
     LeaderboardRowResponse:
       type: object
       properties:
@@ -15476,14 +15805,14 @@ components:
           type: string
         report_type:
           type: string
-          enum: &a356
+          enum: &a364
             - business_summary
             - leaderboard
             - payrun_summary
             - expense_summary
         format:
           type: string
-          enum: &a357
+          enum: &a365
             - csv
             - excel
             - pdf
@@ -15509,11 +15838,11 @@ components:
       properties:
         report_type:
           type: string
-          enum: *a356
+          enum: *a364
           description: Which report was generated.
         format:
           type: string
-          enum: *a357
+          enum: *a365
         filename:
           type: string
           maxLength: 200

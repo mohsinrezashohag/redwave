@@ -2166,3 +2166,54 @@ calendar logic, 18 service/guard).
 
 **Verified LOCAL:** full backend suite + typecheck + lint + build + contract regen; FE build + lint +
 stylelint + vitest. **Operator: `migrate deploy`** — one additive table, nothing rewritten.
+
+### Reporting — per-sale margin and rates in force (built — packet 07; NO migration)
+
+The spread between what a client is billed and what a rep is paid IS Redwave's earning, and it existed
+nowhere: not a column, not a screen. The business dashboard's `net_margin` is a CASH margin
+(revenue − net payout, after expenses, bonuses, released holdback and clawbacks) — with the 30% holdback,
+what is PAID in a period is not what was EARNED in it. This is per-sale product margin.
+
+**This module deliberately crosses invariant #3, and it is the only place that may.** Packet 07 sanctions
+it under conditions the code honours exactly and specs enforce:
+- **Read-only, `reporting/` only.** A spec walks `billing/`, `payrun/`, `engine/` and `commission/` and
+  fails if margin logic appears in any of them.
+- **No Prisma relation between the streams.** The two sides are queried SEPARATELY and joined in memory on
+  `sale_id`; a spec reads `schema.prisma` and asserts `PayrollReportLine` references no client-billing
+  model. Adding a relation "to make the query cleaner" would remove the guard the system rests on, and
+  nothing would fail loudly when it did.
+- **Never feeds pricing.** Nothing computed here reaches a rate, a commission or a document.
+
+**Packet 02 made this straightforward.** Both sides are already frozen wide lines keyed by `sale_id` —
+`client_statement_lines` from an issued statement, `payroll_report_lines` from a finalized run — so margin
+is a subtraction of two committed numbers, never a re-price (#2). Only ISSUED statements count; a
+superseded version is history, not what is owed.
+
+**#12 — currencies are never summed.** A statement line is in its document's currency and only the document
+TOTAL has a frozen `amount_cad`; per-line CAD is not stored. Rather than re-converting (which #12 forbids),
+every row carries its currency and roll-ups group BY currency, so a USD client appears as its own group
+instead of being folded into a CAD total at a rate nobody froze. Spec-locked.
+
+**Super Admin only** — `reports:business` on the controller AND an `isSuperAdmin` re-check in the service
+with an audited denial, because a decorator alone would let a future role grant leak it. A plain Admin is
+403, not just a rep.
+
+**Two honest limitations stated on screen** rather than left to be discovered: a sale billed but not yet
+paid shows zero rep cost (labelled "not yet paid" — its margin is not final), and the two calendars mean a
+period never ties out exactly, which is inherent, not a bug. A NEGATIVE margin is shown with its sign and
+danger colour, never hidden (§13.6).
+
+**Rates in force** answers what we charge and pay for a product TODAY, which the per-sale view cannot for a
+product that has not sold. A tiered product reports EVERY bracket rather than one number — a rep's internet
+rate depends on the period's volume, so a single figure would be right only sometimes.
+
+**A guard bug worth recording:** the first version of the "no margin code elsewhere" scan matched the WORD
+`margin`, which flagged two comments in `payrun/` that say *"no client rate, no margin"* — the very
+statements asserting the invariant holds. It now strips comments before scanning.
+
+**DEFERRED, and the packet's own definition of done says so:** *"per-sale margin is correct for a mixed
+VF + RF week, verified by hand against the two workbooks."* That needs the real client rates entered, which
+is an operator task at handover. The arithmetic is spec-locked; the hand-verification against Redwave's
+workbooks is outstanding.
+
+**No new permission, no migration.** 19 new specs.
