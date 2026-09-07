@@ -2120,3 +2120,176 @@ rather than a click handler on the row, so it is keyboard-reachable and announce
 **Verified LOCAL:** 9 new security specs; full backend suite + typecheck + lint + build + contract regen; FE
 build + lint + stylelint + vitest. **Operator: re-run `prisma:seed`** so the new `pay_statements` module and
 its Sales Rep grant exist (idempotent bootstrap; no migration).
+
+### Pay Run — admin-configurable billing and pay cycles (built — packet 08; migration `20260705000000`)
+
+Both calendars were constants in seed code: pay Sun–Sat/14d/payday+13 and billing Mon–Sun/7d. Redwave
+wanted control of both, **including the one-day boundary offset between them**, so they become config.
+
+**FORWARD-ONLY is the whole reason this is safe, and the guard is in the SERVICE, not the UI.** A finalized
+pay run and an issued statement or invoice are immutable and gapless-numbered (#2/#8). Moving a period
+boundary underneath one does not throw — the numbers simply stop reconciling, quietly, and are found weeks
+later by someone chasing a discrepancy. So regeneration refuses any period holding one and returns a 422
+carrying `blocked[]`, where each entry **names the blocking document**: "period 18 is blocked" sends an
+admin hunting, "period 18 has finalized pay run 3f2a…" does not.
+
+**It refuses ENTIRELY rather than skipping the frozen ones.** A partial application leaves the calendar
+half-moved, which is harder to reason about — and harder to undo — than a refusal.
+
+**Three separations that make the feature behave:**
+- **Recording a shape moves nothing.** `POST /v1/period-configs` is additive config; periods change only on
+  a separate, guarded regenerate. The destructive-looking action is the one carrying the guard.
+- **Preview and apply share one planner.** A preview computed by its own path is a preview that can lie.
+- **Periods are UPSERTED, never deleted and re-created** — existing rows are referenced by the very
+  documents that freeze them.
+
+**A billing calendar rejects a payday offset (422) rather than ignoring it.** A bill is what the client owes,
+not what a rep is paid (§14 rule 1); silently dropping a field an admin deliberately filled in is how config
+drifts from intent. A negative payday offset is refused too — a rep is never paid before the period closes.
+
+**The two-calendar overlap is surfaced**, as the packet asks: `GET /v1/period-configs/overlap/{n}` reports
+which billing weeks touch a pay period and which cross its boundary. A spec pins the concrete artifact —
+pay period 1 starts Sunday 4 Jan but the billing calendar starts Monday 5 Jan, so **the pay period's first
+day belongs to no billing week at all**. That is the offset Redwave wants to control, made visible instead
+of discovered mid-reconciliation.
+
+**Falls back to genesis.** With `period_configs` empty, `shapeFor` returns the seeded shapes — the system
+worked before this table existed and keeps working with it empty.
+
+**A spec bug worth recording:** the first guard fixtures hard-coded "period 1", which passes today and
+silently tests nothing once real time moves past it — regeneration starts from the period containing TODAY
+(period 18 as of writing). The mocks now answer from the range the service actually queries, so they stay
+true on any date.
+
+**No new permission:** reads ride `payrun:view`, writes `settings:edit`. **36 new specs** (18 pure
+calendar logic, 18 service/guard).
+
+**Verified LOCAL:** full backend suite + typecheck + lint + build + contract regen; FE build + lint +
+stylelint + vitest. **Operator: `migrate deploy`** — one additive table, nothing rewritten.
+
+### Reporting — per-sale margin and rates in force (built — packet 07; NO migration)
+
+The spread between what a client is billed and what a rep is paid IS Redwave's earning, and it existed
+nowhere: not a column, not a screen. The business dashboard's `net_margin` is a CASH margin
+(revenue − net payout, after expenses, bonuses, released holdback and clawbacks) — with the 30% holdback,
+what is PAID in a period is not what was EARNED in it. This is per-sale product margin.
+
+**This module deliberately crosses invariant #3, and it is the only place that may.** Packet 07 sanctions
+it under conditions the code honours exactly and specs enforce:
+- **Read-only, `reporting/` only.** A spec walks `billing/`, `payrun/`, `engine/` and `commission/` and
+  fails if margin logic appears in any of them.
+- **No Prisma relation between the streams.** The two sides are queried SEPARATELY and joined in memory on
+  `sale_id`; a spec reads `schema.prisma` and asserts `PayrollReportLine` references no client-billing
+  model. Adding a relation "to make the query cleaner" would remove the guard the system rests on, and
+  nothing would fail loudly when it did.
+- **Never feeds pricing.** Nothing computed here reaches a rate, a commission or a document.
+
+**Packet 02 made this straightforward.** Both sides are already frozen wide lines keyed by `sale_id` —
+`client_statement_lines` from an issued statement, `payroll_report_lines` from a finalized run — so margin
+is a subtraction of two committed numbers, never a re-price (#2). Only ISSUED statements count; a
+superseded version is history, not what is owed.
+
+**#12 — currencies are never summed.** A statement line is in its document's currency and only the document
+TOTAL has a frozen `amount_cad`; per-line CAD is not stored. Rather than re-converting (which #12 forbids),
+every row carries its currency and roll-ups group BY currency, so a USD client appears as its own group
+instead of being folded into a CAD total at a rate nobody froze. Spec-locked.
+
+**Super Admin only** — `reports:business` on the controller AND an `isSuperAdmin` re-check in the service
+with an audited denial, because a decorator alone would let a future role grant leak it. A plain Admin is
+403, not just a rep.
+
+**Two honest limitations stated on screen** rather than left to be discovered: a sale billed but not yet
+paid shows zero rep cost (labelled "not yet paid" — its margin is not final), and the two calendars mean a
+period never ties out exactly, which is inherent, not a bug. A NEGATIVE margin is shown with its sign and
+danger colour, never hidden (§13.6).
+
+**Rates in force** answers what we charge and pay for a product TODAY, which the per-sale view cannot for a
+product that has not sold. A tiered product reports EVERY bracket rather than one number — a rep's internet
+rate depends on the period's volume, so a single figure would be right only sometimes.
+
+**A guard bug worth recording:** the first version of the "no margin code elsewhere" scan matched the WORD
+`margin`, which flagged two comments in `payrun/` that say *"no client rate, no margin"* — the very
+statements asserting the invariant holds. It now strips comments before scanning.
+
+**DEFERRED, and the packet's own definition of done says so:** *"per-sale margin is correct for a mixed
+VF + RF week, verified by hand against the two workbooks."* That needs the real client rates entered, which
+is an operator task at handover. The arithmetic is spec-locked; the hand-verification against Redwave's
+workbooks is outstanding.
+
+**No new permission, no migration.** 19 new specs.
+
+### Reporting — admin-configurable export columns (built — packet 09; migration `20260706000000`)
+
+A Redwave format change becomes a settings change rather than a dev ticket — Mohsin raised this himself in
+the meeting. The export analogue of `ImportFieldMapping`: saved, named, optionally per-client layouts.
+
+**#3 IS ENFORCED IN THE REGISTRY, not the UI or the service, and that is the whole design.** A configurable
+layout is precisely the mechanism by which someone could quietly reunite the two rate streams — "just add
+the client rate to the payroll export, it's only a report". `export-fields.registry.ts` makes that
+**unexpressible**: the payroll report owns no client-rate field and the statement owns no rep-pay field, so
+a layout naming one is rejected at validation, before it is stored. The packet says it outright — "enforce
+the split in the registry itself, not in the UI" — and the DoD's own assertion ("the payroll field registry
+contains no client-rate field") is a spec, tested in BOTH directions.
+
+**Validation runs BEFORE the write.** A stored-but-unrenderable layout would fail at download time, in
+front of whoever needed the file. Four rules, each protecting something specific: unknown field (the #3
+boundary), no duplicates (a double-counting strip), required fields present, and — only where a formula
+strip exists — **money columns contiguous**. `SUBTOTAL` spans a RANGE, so a text column wedged into the
+money block makes the strip sum a column of words: a workbook that looks right and totals wrong, which is
+worse than one full of `#REF!`.
+
+**Selection, order and label are configurable; the layout ENGINE is not.** The payroll renderer is now
+layout-driven and resolves each cell by field key rather than position.
+
+**#2 — an issued document keeps the layout it was ISSUED with.** `client_statements.export_layout_id`
+freezes that choice; `resolveFrozen` reads it back so a re-render reproduces the original rather than
+today's configuration. Every existing row is NULL = the built-in default, which is how those documents were
+issued, so historical statements re-render byte-identically. Layouts are **deactivated, never deleted**, and
+the FK is `RESTRICT` — a layout an issued document references cannot be removed from under it.
+
+**Two deliberate fallbacks:** a stored layout that no longer validates (a retired field) falls back to the
+default rather than emitting a broken workbook, and a malformed jsonb column list is parsed defensively.
+Reporting a clean default beats failing a download nobody can fix in the moment.
+
+**DEFERRED, stated plainly: the STATEMENT renderer is not yet layout-driven.** Its columns are interleaved
+with FX, currency-label and spiff-window logic, and making it configurable safely is more than I would take
+on at the end of a long session on a live document path. `export_layout_id` is therefore always NULL today —
+the column exists now because adding it later would mean migrating a table of immutable documents. The
+registry, validation, admin screen and freeze mechanism are all in place for when that renderer is
+converted. Packet 09's DoD line "the statement workbook accepts a configured layout" is **outstanding**.
+
+**No new permission** (reads `reports:view`, writes `settings:edit`). **29 new specs.**
+
+**Verified LOCAL:** full backend suite + typecheck + lint + build + contract regen; FE build + lint +
+stylelint + vitest. **Operator: `migrate deploy`** — one additive table plus a nullable column.
+
+### Reporting — the STATEMENT renderer is now layout-driven too (packet 09 completed; no migration)
+
+Closes the one line of packet 09's definition of done left outstanding: *"the statement workbook accepts a
+configured layout."* The deferral is now resolved rather than carried.
+
+**An architecture fix first.** `ExportLayoutService` and the field registry moved from `modules/reporting/`
+to **`common/export/`**. Billing needs them to freeze a layout at issue, and a domain module must never
+depend on the reporting module to render its own documents — reporting depends on domains, not the reverse.
+Same cross-cutting seam as `common/sequence` and `common/fx`, provided directly by each module that needs
+it. `StatementService`'s arity tripwire moved 5 → 6, and its comment now names the new seam and says
+explicitly that raising the number requires stating what was added and why it is neutral, so the assertion
+stays a tripwire rather than becoming bookkeeping.
+
+**The registry gained a `flag` dimension, because the statement has a second positional constraint the
+payroll sheet does not.** Its row-1 strip carries `COUNTIF` over the Internet/TV/Home-Phone block as well as
+`SUBTOTAL` over the money block, and both formulas span a RANGE. So presence-flag columns must stay
+contiguous too — a column wedged into either block makes the formula cover the wrong cells. That is worse
+than `#REF!`, because the workbook looks right and totals wrong. Both blocks are now validated the same way.
+
+**Header text is reproduced, not just column order.** Money headings carry the document's currency and the
+spiff heading carries its own frozen window, so a re-render regenerates the exact header text the document
+was issued with — not today's currency or today's spiff dates.
+
+**#2 is now wired end to end.** `StatementService.generate` resolves the layout in force and freezes its id
+onto the document BEFORE the transaction (reading configuration is not part of the money write);
+`resolveFrozen` reads it back at render time. Every existing statement carries NULL = the built-in default,
+which is how it was issued — so all 8 live statements re-render byte-identically.
+
+**Verified LOCAL:** 1151 backend tests (126 suites) + typecheck + lint + build + contract regen; FE build +
+lint + stylelint + 92 vitest. No migration — `export_layout_id` already existed from the packet-09 batch.

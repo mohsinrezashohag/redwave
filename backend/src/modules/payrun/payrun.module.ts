@@ -11,6 +11,8 @@ import {
 } from './pay-run.controller';
 import { PayPeriodService } from './pay-period.service';
 import { PayRunService } from './pay-run.service';
+import { PeriodConfigService } from './period-config.service';
+import { PeriodConfigController } from './period-config.controller';
 import { PayrollExcelRenderer } from './renderers/payroll-excel.renderer';
 
 @Module({
@@ -18,8 +20,14 @@ import { PayrollExcelRenderer } from './renderers/payroll-excel.renderer';
   // ClawbackModule + ExpensesModule supply the real CLAWBACK_TOTAL_PROVIDER / EXPENSE_TOTAL_PROVIDER
   // (re-binding the seams Pay Run left open). Pay Run's own finalize logic is unchanged.
   imports: [EngineModule, CommissionModule, ClawbackModule, ExpensesModule],
-  controllers: [PayPeriodController, PayRunController, PayStatementsController, HoldbackLedgerController],
-  providers: [PayPeriodService, PayRunService, PayrollExcelRenderer],
+  controllers: [
+    PayPeriodController,
+    PayRunController,
+    PayStatementsController,
+    PeriodConfigController,
+    HoldbackLedgerController,
+  ],
+  providers: [PayPeriodService, PayRunService, PayrollExcelRenderer, PeriodConfigService],
   exports: [PayRunService],
 })
 export class PayRunModule {}
