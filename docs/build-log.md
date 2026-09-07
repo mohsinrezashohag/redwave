@@ -2120,3 +2120,49 @@ rather than a click handler on the row, so it is keyboard-reachable and announce
 **Verified LOCAL:** 9 new security specs; full backend suite + typecheck + lint + build + contract regen; FE
 build + lint + stylelint + vitest. **Operator: re-run `prisma:seed`** so the new `pay_statements` module and
 its Sales Rep grant exist (idempotent bootstrap; no migration).
+
+### Pay Run — admin-configurable billing and pay cycles (built — packet 08; migration `20260705000000`)
+
+Both calendars were constants in seed code: pay Sun–Sat/14d/payday+13 and billing Mon–Sun/7d. Redwave
+wanted control of both, **including the one-day boundary offset between them**, so they become config.
+
+**FORWARD-ONLY is the whole reason this is safe, and the guard is in the SERVICE, not the UI.** A finalized
+pay run and an issued statement or invoice are immutable and gapless-numbered (#2/#8). Moving a period
+boundary underneath one does not throw — the numbers simply stop reconciling, quietly, and are found weeks
+later by someone chasing a discrepancy. So regeneration refuses any period holding one and returns a 422
+carrying `blocked[]`, where each entry **names the blocking document**: "period 18 is blocked" sends an
+admin hunting, "period 18 has finalized pay run 3f2a…" does not.
+
+**It refuses ENTIRELY rather than skipping the frozen ones.** A partial application leaves the calendar
+half-moved, which is harder to reason about — and harder to undo — than a refusal.
+
+**Three separations that make the feature behave:**
+- **Recording a shape moves nothing.** `POST /v1/period-configs` is additive config; periods change only on
+  a separate, guarded regenerate. The destructive-looking action is the one carrying the guard.
+- **Preview and apply share one planner.** A preview computed by its own path is a preview that can lie.
+- **Periods are UPSERTED, never deleted and re-created** — existing rows are referenced by the very
+  documents that freeze them.
+
+**A billing calendar rejects a payday offset (422) rather than ignoring it.** A bill is what the client owes,
+not what a rep is paid (§14 rule 1); silently dropping a field an admin deliberately filled in is how config
+drifts from intent. A negative payday offset is refused too — a rep is never paid before the period closes.
+
+**The two-calendar overlap is surfaced**, as the packet asks: `GET /v1/period-configs/overlap/{n}` reports
+which billing weeks touch a pay period and which cross its boundary. A spec pins the concrete artifact —
+pay period 1 starts Sunday 4 Jan but the billing calendar starts Monday 5 Jan, so **the pay period's first
+day belongs to no billing week at all**. That is the offset Redwave wants to control, made visible instead
+of discovered mid-reconciliation.
+
+**Falls back to genesis.** With `period_configs` empty, `shapeFor` returns the seeded shapes — the system
+worked before this table existed and keeps working with it empty.
+
+**A spec bug worth recording:** the first guard fixtures hard-coded "period 1", which passes today and
+silently tests nothing once real time moves past it — regeneration starts from the period containing TODAY
+(period 18 as of writing). The mocks now answer from the range the service actually queries, so they stay
+true on any date.
+
+**No new permission:** reads ride `payrun:view`, writes `settings:edit`. **36 new specs** (18 pure
+calendar logic, 18 service/guard).
+
+**Verified LOCAL:** full backend suite + typecheck + lint + build + contract regen; FE build + lint +
+stylelint + vitest. **Operator: `migrate deploy`** — one additive table, nothing rewritten.

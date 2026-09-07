@@ -316,6 +316,7 @@ model User {
   tier_configs_created          CommissionTierConfig[]     @relation("TierConfigCreatedBy")
   flat_rates_created            CommissionFlatRate[]       @relation("FlatRateCreatedBy")
   tier_rates_created            CommissionTierRate[]       @relation("TierRateCreatedBy")
+  period_configs_created        PeriodConfig[]             @relation("PeriodConfigCreatedBy")
   holdback_release_set          HoldbackReleaseSetting[]   @relation("HoldbackReleaseSetBy")
   incentives_created            Incentive[]                @relation("IncentiveCreatedBy")
   sales_validated               Sale[]                     @relation("SaleValidatedBy")
@@ -862,6 +863,43 @@ model PayrollReportLine {
 
   @@index([pay_run_id, sort_order])
   @@map("payroll_report_lines")
+}
+
+// PERIOD CONFIG — the calendars themselves become admin config instead of constants in seed code.
+//
+// TWO CALENDARS, never substituted for one another (§14 rule 1): `pay` periods govern REP PAY and a sale's
+// period is derived from its sale_date (#7); `billing` periods govern CLIENT BILLING and are numbered
+// sequentially ("Bill 17"). A bill straddles two pay periods, and that one-day boundary offset is
+// deliberate — Redwave asked to control it, so it is configuration rather than a constant.
+//
+// FORWARD-ONLY is what makes this safe. Regeneration may only create or edit periods that carry no
+// finalized pay run and no issued statement or invoice. Moving a boundary under a frozen document does not
+// throw — the numbers simply stop reconciling — so the guard lives in the service and names the blocking
+// document (#2/#8).
+//
+// Effective-dated like every other config (#10): a change is a new row; it never rewrites a closed period.
+enum PeriodKind {
+  pay
+  billing
+}
+
+model PeriodConfig {
+  id         String     @id @default(uuid()) @db.Uuid
+  kind       PeriodKind
+  /// The first period's start date — 'YYYY-MM-DD' at UTC midnight, like every other date here.
+  anchor_date DateTime  @db.Date
+  /// Period length in days: 14 for the biweekly pay cycle, 7 for the weekly billing week.
+  length_days Int
+  /// Days after a period's END that reps are paid. Pay only — a bill has no payday, so this is null there.
+  payday_offset_days Int?
+  effective_from DateTime  @db.Date
+  effective_to   DateTime? @db.Date
+  created_by     String    @db.Uuid
+  creator        User      @relation("PeriodConfigCreatedBy", fields: [created_by], references: [id])
+  created_at     DateTime  @default(now())
+
+  @@index([kind, effective_from])
+  @@map("period_configs")
 }
 
 model HoldbackConfig {
