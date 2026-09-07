@@ -4,7 +4,7 @@ import { DashboardsController, LeaderboardController } from './dashboards.contro
 import { TargetsController } from './targets.controller';
 import { MarginController } from './margin.controller';
 import { ExportLayoutController } from './export-layout.controller';
-import { ExportLayoutService } from './export-layout.service';
+import { ExportLayoutService } from '../../common/export/export-layout.service';
 import { MarginService } from './margin.service';
 import { ReportExportsController } from './report-exports.controller';
 import { ReportExportsService } from './report-exports.service';

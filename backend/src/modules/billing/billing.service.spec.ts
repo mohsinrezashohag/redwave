@@ -110,7 +110,7 @@ function make(opts: {
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   // FX source OFF by default (CAD client → resolveIssueFx short-circuits to rate 1 without calling it).
   const fx = { getRateToCad: jest.fn().mockResolvedValue(null), isAutoEnabled: jest.fn().mockReturnValue(false) };
-  const service = new StatementService(prisma as never, audit as never, seqStub() as never, fx as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
+  const service = new StatementService(prisma as never, audit as never, seqStub() as never, fx as never, { resolve: jest.fn().mockResolvedValue({ id: null, columns: [] }) } as never, { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never);
   return { service, prisma, tx, audit, fx };
 }
 

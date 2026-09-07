@@ -17,6 +17,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
+import { EXPORT_REGISTRY, LayoutColumn, defaultLayout } from '../../../common/export/export-fields.registry';
 import { statementNo } from '../doc-number';
 
 export interface StatementLineForExport {
@@ -60,6 +61,12 @@ export interface StatementForExport {
   amount_cad: string | null; // frozen CAD equivalent (null on legacy rows)
   lines: StatementLineForExport[];
   total_amount: string;
+  /**
+   * The column layout this document was ISSUED with, or undefined for the built-in default. An issued
+   * document passes its FROZEN layout, so a re-render reproduces the original rather than today's
+   * configuration (#2) — which is what keeps a historical re-download byte-identical.
+   */
+  layout?: LayoutColumn[];
 }
 
 const HEADER_ROW = 2;
@@ -95,43 +102,42 @@ export class StatementExcelRenderer {
     const spiffRange =
       rangeLabel(s.spiff_from, s.spiff_to) ?? rangeLabel(s.period_start, s.period_end) ?? '';
 
-    const headers = [
-      'Sale Date',
-      'Agent ID',
-      'Agent Name',
-      "Customer's First Name",
-      "Customer's Last Name",
-      'Address',
-      'Channel',
-      'Product',
-      'Internet',
-      'TV',
-      'Home Phone',
-      `Internet Rate (${s.currency})`,
-      `TV Rate (${s.currency})`,
-      `HP Rate (${s.currency})`,
-      `Bundle Bonus (${s.currency})`,
-      `Spiff (${spiffRange})`,
-      ...(showOther ? [`Other (${s.currency})`] : []),
-      `Total (${s.currency})`,
-    ];
-    ws.columns = [
-      { width: 12 }, { width: 12 }, { width: 22 }, { width: 18 }, { width: 18 }, { width: 40 },
-      { width: 10 }, { width: 22 }, { width: 10 }, { width: 8 }, { width: 12 },
-      ...Array.from({ length: showOther ? 7 : 6 }, () => ({ width: 14 })),
-    ];
+    // The layout decides column SELECTION, ORDER and LABEL; the engine below stays fixed, because both
+    // strips reference columns POSITIONALLY. A layout that would break either block is rejected before it
+    // is ever stored (common/export/export-fields.registry#validateLayout), so by here it is safe.
+    const registry = new Map(EXPORT_REGISTRY.statement.fields.map((f) => [f.key, f]));
+    const columns = (s.layout ?? defaultLayout('statement')).filter(
+      // `other_total` is dropped when it carries no money, exactly as before — an empty column adds noise.
+      (c) => c.field !== 'other_total' || showOther,
+    );
 
-    // Column positions (1-based) — the flag columns are counted, the money columns are subtotalled.
-    const firstFlag = 9; // Internet
-    const firstMoney = 12; // Internet Rate
-    const lastMoney = headers.length; // Total
+    // Money headings carry the document currency and the spiff heading carries its own frozen window, so a
+    // re-render reproduces the same header text the document was issued with.
+    const headerFor = (c: LayoutColumn): string => {
+      const base = c.header ?? registry.get(c.field)?.label ?? c.field;
+      if (c.field === 'spiff') return `${base} (${spiffRange})`;
+      return registry.get(c.field)?.money ? `${base} (${s.currency})` : base;
+    };
+    const headers = columns.map(headerFor);
+    ws.columns = columns.map((c) => ({
+      width: registry.get(c.field)?.money ? 14 : c.field === 'address' ? 40 : 16,
+    }));
+
+    // Column positions (1-based). Both blocks are contiguous by construction (validated on save), so each
+    // one's bounds are simply its first and last index.
+    const flagIdx = columns.map((c, i) => (registry.get(c.field)?.flag ? i + 1 : -1)).filter((i) => i > 0);
+    const moneyIdx = columns.map((c, i) => (registry.get(c.field)?.money ? i + 1 : -1)).filter((i) => i > 0);
+    const firstFlag = flagIdx[0] ?? 0;
+    const lastFlag = flagIdx[flagIdx.length - 1] ?? -1;
+    const firstMoney = moneyIdx[0] ?? headers.length + 1;
+    const lastMoney = moneyIdx[moneyIdx.length - 1] ?? headers.length;
     const lastDataRow = Math.max(FIRST_DATA_ROW, FIRST_DATA_ROW + s.lines.length - 1);
 
     // ── Row 1 — the summary strip, ABOVE the header (the client's convention). Live formulas so the numbers
     //    follow the autofilter; SUBTOTAL(9,…) ignores rows the client has filtered out.
     const summary = ws.getRow(1);
     if (s.lines.length > 0) {
-      for (let c = firstFlag; c < firstMoney; c += 1) {
+      for (let c = firstFlag; c >= 1 && c <= lastFlag; c += 1) {
         summary.getCell(c).value = { formula: `COUNTIF(${col(c)}${FIRST_DATA_ROW}:${col(c)}${lastDataRow},TRUE)`, date1904: false };
       }
       for (let c = firstMoney; c <= lastMoney; c += 1) {
@@ -141,9 +147,12 @@ export class StatementExcelRenderer {
       }
     }
     summary.getCell(1).value = `${statementNo(s.statement_number)} · ${s.client_name} (${s.client_code})`;
-    summary.getCell(6).value = s.is_billing_week
-      ? `Bill ${s.period_number}: ${s.period_start} → ${s.period_end}`
-      : `Period ${s.period_number}: ${s.period_start} → ${s.period_end}`;
+    // Only where a free (non-formula) cell exists — a trimmed layout can push the flag block left.
+    if (firstFlag === 0 || firstFlag > 6) {
+      summary.getCell(6).value = s.is_billing_week
+        ? `Bill ${s.period_number}: ${s.period_start} → ${s.period_end}`
+        : `Period ${s.period_number}: ${s.period_start} → ${s.period_end}`;
+    }
     summary.font = { bold: true };
 
     // ── Row 2 — the header.
@@ -157,31 +166,44 @@ export class StatementExcelRenderer {
 
     // ── Row 3+ — one row per sale. Dates and booleans are written as REAL types so the client can filter and
     //    so COUNTIF(…,TRUE) matches; money is a number carrying the exact frozen 2-dp value (display only).
-    for (const l of s.lines) {
-      const row = ws.addRow([
-        asDate(l.sale_date),
+    const cellFor = (l: StatementLineForExport, field: string): ExcelJS.CellValue => {
+      switch (field) {
+        case 'sale_date':
+          return asDate(l.sale_date);
         // "Agent ID" is the PARTNER's code (`Redwave20`). Lines issued before that column existed hold
         // NULL, so they still render their original frozen rep_code — an issued document never changes
         // what it renders (#2). — system-audit.md §2.1
-        l.rep_external_code ?? l.rep_code ?? '',
-        l.rep_name ?? '',
-        l.customer_first_name ?? '',
-        l.customer_last_name ?? '',
-        l.address ?? '',
-        l.channel ?? '',
-        l.product_name ?? '',
-        l.has_internet,
-        l.has_tv,
-        l.has_home_phone,
-        Number(l.internet_rate),
-        Number(l.tv_rate),
-        Number(l.hp_rate),
-        Number(l.bundle_bonus),
-        Number(l.spiff),
-        ...(showOther ? [Number(l.other_total)] : []),
-        Number(l.line_total),
-      ]);
-      row.getCell(1).numFmt = 'yyyy-mm-dd';
+        case 'rep_external_code':
+          return l.rep_external_code ?? l.rep_code ?? '';
+        case 'rep_name':
+          return l.rep_name ?? '';
+        case 'customer_first_name':
+          return l.customer_first_name ?? '';
+        case 'customer_last_name':
+          return l.customer_last_name ?? '';
+        case 'address':
+          return l.address ?? '';
+        case 'channel':
+          return l.channel ?? '';
+        case 'product_name':
+          return l.product_name ?? '';
+        case 'has_internet':
+          return l.has_internet;
+        case 'has_tv':
+          return l.has_tv;
+        case 'has_home_phone':
+          return l.has_home_phone;
+        default: {
+          const value = (l as unknown as Record<string, string | undefined>)[field];
+          return registry.get(field)?.money ? Number(value ?? '0') : (value ?? '');
+        }
+      }
+    };
+
+    for (const l of s.lines) {
+      const row = ws.addRow(columns.map((c) => cellFor(l, c.field)));
+      const dateIdx = columns.findIndex((c) => c.field === 'sale_date');
+      if (dateIdx >= 0) row.getCell(dateIdx + 1).numFmt = 'yyyy-mm-dd';
       for (let c = firstMoney; c <= lastMoney; c += 1) row.getCell(c).numFmt = '#,##0.00';
     }
 

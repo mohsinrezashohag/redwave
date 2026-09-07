@@ -26,7 +26,7 @@ import {
   EXPORT_REGISTRY,
   LayoutColumn,
   defaultLayout,
-} from '../../reporting/export-fields.registry';
+} from '../../../common/export/export-fields.registry';
 
 export interface PayrollLineForExport {
   sale_date: string | null; // 'YYYY-MM-DD'

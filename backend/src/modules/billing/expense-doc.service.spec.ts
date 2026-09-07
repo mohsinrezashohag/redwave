@@ -85,7 +85,7 @@ function make(opts: {
   };
   const emitter = { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() };
   // Real StatementService — used ONLY for resolveIssueFx (shares the fx stub).
-  const statements = new StatementService(prisma as never, audit as never, seqStub() as never, fx as never, emitter as never);
+  const statements = new StatementService(prisma as never, audit as never, seqStub() as never, fx as never, { resolve: jest.fn().mockResolvedValue({ id: null, columns: [] }) } as never, emitter as never);
   const service = new ClientExpenseDocService(prisma as never, audit as never, seqStub() as never, statements);
   return { service, prisma, tx, audit };
 }

@@ -13,7 +13,7 @@ import { ApiErrorResponses } from '../../common/errors/api-error-responses.decor
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../../common/rbac/auth-user.type';
-import { ExportLayoutService } from './export-layout.service';
+import { ExportLayoutService } from '../../common/export/export-layout.service';
 import { SaveExportLayoutDto } from './dto/export-layout.dto';
 import { ExportLayoutResponse, ExportRegistryEntryResponse } from './dto/export-layout.response';
 

@@ -2262,3 +2262,34 @@ converted. Packet 09's DoD line "the statement workbook accepts a configured lay
 
 **Verified LOCAL:** full backend suite + typecheck + lint + build + contract regen; FE build + lint +
 stylelint + vitest. **Operator: `migrate deploy`** — one additive table plus a nullable column.
+
+### Reporting — the STATEMENT renderer is now layout-driven too (packet 09 completed; no migration)
+
+Closes the one line of packet 09's definition of done left outstanding: *"the statement workbook accepts a
+configured layout."* The deferral is now resolved rather than carried.
+
+**An architecture fix first.** `ExportLayoutService` and the field registry moved from `modules/reporting/`
+to **`common/export/`**. Billing needs them to freeze a layout at issue, and a domain module must never
+depend on the reporting module to render its own documents — reporting depends on domains, not the reverse.
+Same cross-cutting seam as `common/sequence` and `common/fx`, provided directly by each module that needs
+it. `StatementService`'s arity tripwire moved 5 → 6, and its comment now names the new seam and says
+explicitly that raising the number requires stating what was added and why it is neutral, so the assertion
+stays a tripwire rather than becoming bookkeeping.
+
+**The registry gained a `flag` dimension, because the statement has a second positional constraint the
+payroll sheet does not.** Its row-1 strip carries `COUNTIF` over the Internet/TV/Home-Phone block as well as
+`SUBTOTAL` over the money block, and both formulas span a RANGE. So presence-flag columns must stay
+contiguous too — a column wedged into either block makes the formula cover the wrong cells. That is worse
+than `#REF!`, because the workbook looks right and totals wrong. Both blocks are now validated the same way.
+
+**Header text is reproduced, not just column order.** Money headings carry the document's currency and the
+spiff heading carries its own frozen window, so a re-render regenerates the exact header text the document
+was issued with — not today's currency or today's spiff dates.
+
+**#2 is now wired end to end.** `StatementService.generate` resolves the layout in force and freezes its id
+onto the document BEFORE the transaction (reading configuration is not part of the money write);
+`resolveFrozen` reads it back at render time. Every existing statement carries NULL = the built-in default,
+which is how it was issued — so all 8 live statements re-render byte-identically.
+
+**Verified LOCAL:** 1151 backend tests (126 suites) + typecheck + lint + build + contract regen; FE build +
+lint + stylelint + 92 vitest. No migration — `export_layout_id` already existed from the packet-09 batch.

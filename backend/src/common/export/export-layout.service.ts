@@ -1,6 +1,10 @@
 /**
  * ExportLayoutService — saved, named column layouts for exported reports.
  *
+ * Lives in `common/` rather than `reporting/` because BOTH billing (issued statements) and payrun (the
+ * payroll workbook) need it, and a domain module must never depend on the reporting module to render its
+ * own documents. Same cross-cutting seam as `common/sequence` and `common/fx`.
+ *
  * The export analogue of `ImportFieldMapping`: a Redwave format change becomes a settings change rather
  * than a dev ticket. Mohsin raised this himself in the meeting.
  *
@@ -14,8 +18,8 @@
  */
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AuditService } from '../../common/audit/audit.service';
-import { AuthUser } from '../../common/rbac/auth-user.type';
+import { AuditService } from '../audit/audit.service';
+import { AuthUser } from '../rbac/auth-user.type';
 import {
   EXPORT_REGISTRY,
   LayoutColumn,
@@ -26,7 +30,7 @@ import {
   sampleRow,
   validateLayout,
 } from './export-fields.registry';
-import { SaveExportLayoutDto } from './dto/export-layout.dto';
+import { SaveExportLayoutDto } from '../../modules/reporting/dto/export-layout.dto';
 
 /** Read a stored jsonb column list defensively — a malformed row must not crash a render. */
 function parseColumns(raw: unknown): LayoutColumn[] {

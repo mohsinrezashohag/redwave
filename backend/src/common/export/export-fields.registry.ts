@@ -26,6 +26,11 @@ export interface ExportField {
   /** Money columns are the ones the SUBTOTAL strip sums — they must stay contiguous and present. */
   money?: boolean;
   /**
+   * Presence flags the statement's strip COUNTIFs. Same positional constraint as money: the formula spans
+   * a RANGE, so these must stay contiguous too. The payroll sheet has no COUNTIF, so its flags are free.
+   */
+  flag?: boolean;
+  /**
    * Cannot be removed from a layout. Either the workbook's formulas depend on it, or the row would be
    * unidentifiable without it.
    */
@@ -85,9 +90,9 @@ const STATEMENT: ReportDefinition = {
     { key: 'address', label: 'Address' },
     { key: 'channel', label: 'Channel' },
     { key: 'product_name', label: 'Product' },
-    { key: 'has_internet', label: 'Internet' },
-    { key: 'has_tv', label: 'TV' },
-    { key: 'has_home_phone', label: 'Home Phone' },
+    { key: 'has_internet', label: 'Internet', flag: true },
+    { key: 'has_tv', label: 'TV', flag: true },
+    { key: 'has_home_phone', label: 'Home Phone', flag: true },
     { key: 'internet_rate', label: 'Internet Rate', money: true },
     { key: 'tv_rate', label: 'TV Rate', money: true },
     { key: 'hp_rate', label: 'HP Rate', money: true },
@@ -204,20 +209,23 @@ export function validateLayout(reportType: ReportType, columns: LayoutColumn[]):
   }
 
   if (def.hasFormulaStrip) {
-    const positions = columns
-      .map((c, i) => ({ i, money: byKey.get(c.field)?.money === true }))
-      .filter((x) => x.money)
-      .map((x) => x.i);
-    if (positions.length > 0) {
-      const first = positions[0];
-      const last = positions[positions.length - 1];
-      if (last - first + 1 !== positions.length) {
+    // Both strips span a RANGE, so both blocks must stay unbroken. A column wedged into either one makes
+    // the formula cover the wrong cells — a workbook that looks right and totals wrong, which is worse
+    // than one full of #REF! because nobody notices.
+    const contiguous = (pick: (f: ExportField) => boolean, what: string, formula: string) => {
+      const at = columns
+        .map((c, i) => ({ i, hit: (() => { const f = byKey.get(c.field); return f ? pick(f) : false; })() }))
+        .filter((x) => x.hit)
+        .map((x) => x.i);
+      if (at.length > 0 && at[at.length - 1] - at[0] + 1 !== at.length) {
         errors.push(
-          'money columns must be contiguous — this workbook carries a live SUBTOTAL strip over a range, ' +
-            'so a text column placed between money columns would make the totals sum the wrong cells',
+          `${what} columns must be contiguous — this workbook carries a live ${formula} strip over a ` +
+            `range, so another column placed between them would make the totals cover the wrong cells`,
         );
       }
-    }
+    };
+    contiguous((f) => f.money === true, 'money', 'SUBTOTAL');
+    contiguous((f) => f.flag === true, 'presence-flag', 'COUNTIF');
   }
 
   return errors;

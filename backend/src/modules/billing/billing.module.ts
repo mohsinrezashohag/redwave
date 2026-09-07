@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../common/storage/storage.module';
 import { SequenceService } from '../../common/sequence/sequence.service';
+import { ExportLayoutService } from '../../common/export/export-layout.service';
 import { BillingGenerationController } from './billing-generation.controller';
 import { StatementsController, InvoicesController, BillingPeriodsController } from './billing.controller';
 import { ExpenseDocGenerationController, ExpenseDocumentsController } from './expense-doc.controller';
@@ -35,6 +36,7 @@ import { ExpenseDocPdfRenderer } from './renderers/expense-doc-pdf.renderer';
     ClientExpenseDocService,
     BillingExportService,
     SequenceService,
+    ExportLayoutService,
     StatementExcelRenderer,
     InvoicePdfRenderer,
     QuickbooksCsvRenderer,
