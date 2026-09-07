@@ -2217,3 +2217,48 @@ is an operator task at handover. The arithmetic is spec-locked; the hand-verific
 workbooks is outstanding.
 
 **No new permission, no migration.** 19 new specs.
+
+### Reporting — admin-configurable export columns (built — packet 09; migration `20260706000000`)
+
+A Redwave format change becomes a settings change rather than a dev ticket — Mohsin raised this himself in
+the meeting. The export analogue of `ImportFieldMapping`: saved, named, optionally per-client layouts.
+
+**#3 IS ENFORCED IN THE REGISTRY, not the UI or the service, and that is the whole design.** A configurable
+layout is precisely the mechanism by which someone could quietly reunite the two rate streams — "just add
+the client rate to the payroll export, it's only a report". `export-fields.registry.ts` makes that
+**unexpressible**: the payroll report owns no client-rate field and the statement owns no rep-pay field, so
+a layout naming one is rejected at validation, before it is stored. The packet says it outright — "enforce
+the split in the registry itself, not in the UI" — and the DoD's own assertion ("the payroll field registry
+contains no client-rate field") is a spec, tested in BOTH directions.
+
+**Validation runs BEFORE the write.** A stored-but-unrenderable layout would fail at download time, in
+front of whoever needed the file. Four rules, each protecting something specific: unknown field (the #3
+boundary), no duplicates (a double-counting strip), required fields present, and — only where a formula
+strip exists — **money columns contiguous**. `SUBTOTAL` spans a RANGE, so a text column wedged into the
+money block makes the strip sum a column of words: a workbook that looks right and totals wrong, which is
+worse than one full of `#REF!`.
+
+**Selection, order and label are configurable; the layout ENGINE is not.** The payroll renderer is now
+layout-driven and resolves each cell by field key rather than position.
+
+**#2 — an issued document keeps the layout it was ISSUED with.** `client_statements.export_layout_id`
+freezes that choice; `resolveFrozen` reads it back so a re-render reproduces the original rather than
+today's configuration. Every existing row is NULL = the built-in default, which is how those documents were
+issued, so historical statements re-render byte-identically. Layouts are **deactivated, never deleted**, and
+the FK is `RESTRICT` — a layout an issued document references cannot be removed from under it.
+
+**Two deliberate fallbacks:** a stored layout that no longer validates (a retired field) falls back to the
+default rather than emitting a broken workbook, and a malformed jsonb column list is parsed defensively.
+Reporting a clean default beats failing a download nobody can fix in the moment.
+
+**DEFERRED, stated plainly: the STATEMENT renderer is not yet layout-driven.** Its columns are interleaved
+with FX, currency-label and spiff-window logic, and making it configurable safely is more than I would take
+on at the end of a long session on a live document path. `export_layout_id` is therefore always NULL today —
+the column exists now because adding it later would mean migrating a table of immutable documents. The
+registry, validation, admin screen and freeze mechanism are all in place for when that renderer is
+converted. Packet 09's DoD line "the statement workbook accepts a configured layout" is **outstanding**.
+
+**No new permission** (reads `reports:view`, writes `settings:edit`). **29 new specs.**
+
+**Verified LOCAL:** full backend suite + typecheck + lint + build + contract regen; FE build + lint +
+stylelint + vitest. **Operator: `migrate deploy`** — one additive table plus a nullable column.

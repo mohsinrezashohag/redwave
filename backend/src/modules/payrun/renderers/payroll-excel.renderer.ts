@@ -22,6 +22,11 @@
  */
 import { Injectable } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
+import {
+  EXPORT_REGISTRY,
+  LayoutColumn,
+  defaultLayout,
+} from '../../reporting/export-fields.registry';
 
 export interface PayrollLineForExport {
   sale_date: string | null; // 'YYYY-MM-DD'
@@ -48,6 +53,11 @@ export interface PayrollLineForExport {
 }
 
 export interface PayrollReportForExport {
+  /**
+   * The configured column layout, or undefined for the built-in default. An ISSUED document passes the
+   * layout it was issued with, so a re-render reproduces the original rather than today's config (#2).
+   */
+  layout?: LayoutColumn[];
   pay_run_id: string;
   period_number: number;
   period_start: string; // 'YYYY-MM-DD'
@@ -79,35 +89,23 @@ export class PayrollExcelRenderer {
     // priced item must never be silently dropped, but the common case should match their file.
     const showOther = r.lines.some((l) => Number(l.other_total) !== 0);
 
-    const headers = [
-      'Sale Date',
-      'Agent ID',
-      'Agent (Normalized)',
-      'Customer',
-      'Address',
-      'Channel',
-      'Product',
-      'Internet',
-      'TV',
-      'Home Phone',
-      'Internet Rate',
-      'TV Rate',
-      'HP Rate',
-      'Greenfield',
-      'Spiff',
-      ...(showOther ? ['Other'] : []),
-      'Total 100 %',
-      '0.7',
-      '0.3',
-    ];
-    ws.columns = [
-      { width: 12 }, { width: 12 }, { width: 22 }, { width: 18 }, { width: 40 },
-      { width: 10 }, { width: 22 }, { width: 10 }, { width: 8 }, { width: 12 },
-      ...Array.from({ length: showOther ? 9 : 8 }, () => ({ width: 14 })),
-    ];
+    // The layout decides column SELECTION, ORDER and LABEL; the layout ENGINE below is fixed, because the
+    // SUBTOTAL strip references columns positionally. A layout that would break that is rejected before it
+    // is ever stored (export-fields.registry#validateLayout), so by here it is safe to render.
+    const registry = new Map(EXPORT_REGISTRY.payroll.fields.map((f) => [f.key, f]));
+    const columns = (r.layout ?? defaultLayout('payroll')).filter(
+      // `other_total` is dropped when it carries no money, exactly as before — an empty column adds noise.
+      (c) => c.field !== 'other_total' || showOther,
+    );
+    const headers = columns.map((c) => c.header ?? registry.get(c.field)?.label ?? c.field);
+    ws.columns = columns.map((c) => ({ width: registry.get(c.field)?.money ? 14 : c.field === 'address' ? 40 : 16 }));
 
-    const firstMoney = 11; // Internet Rate
-    const lastMoney = headers.length; // 0.3
+    // The money block is contiguous by construction (validated), so its bounds are its first and last index.
+    const moneyIdx = columns
+      .map((c, i) => (registry.get(c.field)?.money ? i + 1 : -1))
+      .filter((i) => i > 0);
+    const firstMoney = moneyIdx[0] ?? headers.length + 1;
+    const lastMoney = moneyIdx[moneyIdx.length - 1] ?? headers.length;
     const lastDataRow = Math.max(FIRST_DATA_ROW, FIRST_DATA_ROW + r.lines.length - 1);
 
     // ── Row 1 — the SUBTOTAL strip, ABOVE the header. Live formulas so the totals follow the autofilter,
@@ -121,7 +119,7 @@ export class PayrollExcelRenderer {
       }
     }
     summary.getCell(1).value = `Payroll · Period ${r.period_number}`;
-    summary.getCell(5).value = `${r.period_start} → ${r.period_end}`;
+    if (firstMoney > 5) summary.getCell(5).value = `${r.period_start} → ${r.period_end}`;
     summary.font = { bold: true };
 
     // ── Row 2 — the header.
@@ -135,31 +133,43 @@ export class PayrollExcelRenderer {
 
     // ── Row 3+ — one row per sale. Dates and booleans are REAL types so the sheet filters correctly;
     //    money is a number carrying the exact frozen 2-dp value (display only — nothing is recomputed).
-    for (const l of r.lines) {
-      const row = ws.addRow([
-        asDate(l.sale_date),
+    // One cell per configured column. Dates and booleans stay REAL types so the sheet filters correctly;
+    // money is a number carrying the exact frozen 2-dp value (display only — nothing is recomputed).
+    const cellFor = (l: PayrollLineForExport, field: string): ExcelJS.CellValue => {
+      switch (field) {
+        case 'sale_date':
+          return asDate(l.sale_date);
         // Agent ID is the PARTNER's code (`Redwave11`) — what both of Redwave's workbooks key agents by.
         // A rep without one falls back to the internal code so the column is never blank.
-        l.rep_external_code ?? l.rep_code ?? '',
-        l.rep_name ?? '',
-        l.customer_name,
-        l.address ?? '',
-        l.channel ?? '',
-        l.product_name ?? '',
-        l.has_internet,
-        l.has_tv,
-        l.has_home_phone,
-        Number(l.internet_rate),
-        Number(l.tv_rate),
-        Number(l.hp_rate),
-        Number(l.greenfield),
-        Number(l.spiff),
-        ...(showOther ? [Number(l.other_total)] : []),
-        Number(l.total_100),
-        Number(l.advance_70),
-        Number(l.holdback_30),
-      ]);
-      row.getCell(1).numFmt = 'yyyy-mm-dd';
+        case 'rep_external_code':
+          return l.rep_external_code ?? l.rep_code ?? '';
+        case 'rep_name':
+          return l.rep_name ?? '';
+        case 'customer_name':
+          return l.customer_name;
+        case 'address':
+          return l.address ?? '';
+        case 'channel':
+          return l.channel ?? '';
+        case 'product_name':
+          return l.product_name ?? '';
+        case 'has_internet':
+          return l.has_internet;
+        case 'has_tv':
+          return l.has_tv;
+        case 'has_home_phone':
+          return l.has_home_phone;
+        default: {
+          const value = (l as unknown as Record<string, string | undefined>)[field];
+          return registry.get(field)?.money ? Number(value ?? '0') : (value ?? '');
+        }
+      }
+    };
+
+    for (const l of r.lines) {
+      const row = ws.addRow(columns.map((c) => cellFor(l, c.field)));
+      const dateIdx = columns.findIndex((c) => c.field === 'sale_date');
+      if (dateIdx >= 0) row.getCell(dateIdx + 1).numFmt = 'yyyy-mm-dd';
       for (let c = firstMoney; c <= lastMoney; c += 1) row.getCell(c).numFmt = '#,##0.00';
     }
 

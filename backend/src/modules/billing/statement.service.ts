@@ -437,6 +437,10 @@ export class StatementService {
           fx_rate_date: fx.fx_rate_date,
           amount_cad: fx.amount_cad,
           generated_by: actorId,
+          // export_layout_id stays NULL for now: the statement RENDERER is not yet layout-driven, so every
+          // statement is issued under the built-in default and re-renders byte-identically. The column is
+          // the mechanism for freezing that choice when the renderer does become configurable (#2) —
+          // added now because a later migration would have to touch a table of immutable documents.
           lines: { create: lineData },
         },
         include: STATEMENT_INCLUDE,
