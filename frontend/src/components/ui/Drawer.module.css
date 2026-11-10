@@ -11,7 +11,7 @@
   top: 0;
   right: 0;
   bottom: 0;
-  width: 420px;
+  width: var(--drawer-width);
   max-width: calc(100vw - var(--space-6));
   display: flex;
   flex-direction: column;
@@ -20,6 +20,10 @@
   box-shadow: var(--shadow-3);
   z-index: var(--z-modal);
   animation: drawer-in var(--motion-panel) var(--ease-out);
+}
+
+.wide {
+  width: var(--drawer-width-wide);
 }
 
 .header {

@@ -191,3 +191,8 @@
   outline-offset: var(--space-1);
   border-radius: var(--radius-sm);
 }
+
+/* A cell that must stay on one line (dates, codes) — e.g. the pay statement's sale date. */
+.nowrap {
+  white-space: nowrap;
+}

@@ -6,6 +6,7 @@ import * as RDialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { IconButton } from './IconButton';
+import { cx } from './cx';
 import styles from './Drawer.module.css';
 
 export interface DrawerProps {
@@ -15,15 +16,17 @@ export interface DrawerProps {
   title: ReactNode;
   children?: ReactNode;
   footer?: ReactNode;
+  /** `wide` for a drawer whose body is a multi-column table (e.g. a pay statement). Default otherwise. */
+  size?: 'default' | 'wide';
 }
 
-export function Drawer({ open, onOpenChange, trigger, title, children, footer }: DrawerProps) {
+export function Drawer({ open, onOpenChange, trigger, title, children, footer, size = 'default' }: DrawerProps) {
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       {trigger && <RDialog.Trigger asChild>{trigger}</RDialog.Trigger>}
       <RDialog.Portal>
         <RDialog.Overlay className={styles.overlay} />
-        <RDialog.Content className={styles.content}>
+        <RDialog.Content className={cx(styles.content, size === 'wide' && styles.wide)}>
           <div className={styles.header}>
             <RDialog.Title className={styles.title}>{title}</RDialog.Title>
             <RDialog.Close asChild>

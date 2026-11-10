@@ -25,7 +25,7 @@ export function RepStatementDrawer({
   const s = q.data;
 
   return (
-    <Drawer open={!!repId} onOpenChange={(o) => !o && onClose()} title="Pay statement">
+    <Drawer open={!!repId} onOpenChange={(o) => !o && onClose()} title="Pay statement" size="wide">
       {q.isLoading && <TableSkeleton rows={4} />}
       {q.isError && <TableError message="Could not load this statement." onRetry={() => q.refetch()} />}
       {s && (
@@ -48,7 +48,7 @@ export function RepStatementDrawer({
             <TBody>
               {s.lines.map((l) => (
                 <TR key={l.sale_id}>
-                  <TD>{l.sale_date ? displayDate(l.sale_date) : '—'}</TD>
+                  <TD className={styles.nowrap}>{l.sale_date ? displayDate(l.sale_date) : '—'}</TD>
                   <TD>{l.customer_name}</TD>
                   <TD>{l.product_name ?? '—'}</TD>
                   <TD numeric>{money(l.total_100)}</TD>

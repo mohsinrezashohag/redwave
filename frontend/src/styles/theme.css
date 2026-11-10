@@ -104,6 +104,12 @@
   --z-popover: 1300;
   --z-toast: 1400;
   --z-tooltip: 1500;
+
+  /* Drawer widths (design-system §6.5). Default suits a detail/quick-edit form; WIDE is for a drawer whose
+   * body is a multi-column money table (e.g. the rep pay statement) — at 420px its columns wrapped and the
+   * 70% / 30% columns sat off-screen. Both are capped to the viewport by the Drawer itself. */
+  --drawer-width: 420px;
+  --drawer-width-wide: 760px;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
