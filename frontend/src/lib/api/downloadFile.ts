@@ -55,7 +55,8 @@ function filenameFromDisposition(header: string | null): string | null {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
-function triggerSave(blob: Blob, filename: string): void {
+/** Save a Blob the page already holds (e.g. file content returned in a JSON response) as a download. */
+export function triggerSave(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

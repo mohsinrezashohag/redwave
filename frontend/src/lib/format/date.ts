@@ -6,6 +6,20 @@ export function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/**
+ * Today as `YYYY-MM-DD` in America/Winnipeg — the canonical business timezone (CLAUDE §2). Use this, not
+ * `todayIso()`, wherever "today" decides WHICH PERIOD we are in, so a viewer in another timezone sees the
+ * same current period the backend computes. `now` is injectable for tests.
+ */
+export function todayInWinnipeg(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Winnipeg',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+}
+
 /** Display an API date/datetime string as `YYYY-MM-DD` (the API serializes @db.Date as an ISO string). */
 export function displayDate(value: string | null | undefined): string {
   return value ? value.slice(0, 10) : '—';

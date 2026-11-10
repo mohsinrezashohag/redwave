@@ -6,7 +6,7 @@
  * by an access predicate over the auth state (convenience; the server enforces each target — a forbidden
  * page renders its own AccessDenied). No dead nav tab for a permitted role.
  */
-import { BarChart3, LayoutDashboard, LineChart, Download, Trophy, UserCircle, Users2 } from 'lucide-react';
+import { BarChart3, LayoutDashboard, LineChart, Download, TrendingUp, Trophy, UserCircle, Users2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { PageHeader } from '../../../components/ui';
 import { useAuth } from '../../../auth/useAuth';
@@ -87,6 +87,14 @@ const CARDS: ReportCard[] = [
     icon: <LineChart size={20} />,
     to: '/reports/trends',
     // Same permission as the Business dashboard (the trends endpoint is reports:business).
+    show: (a) => a.permissions.has('reports:business'),
+  },
+  {
+    title: 'Margin',
+    description: 'Per-sale billed vs. paid, the spread, and the rates in force.',
+    icon: <TrendingUp size={20} />,
+    to: '/reports/margin',
+    // Partner financials — same gate as the margin endpoints (reports:business, Super Admin by default).
     show: (a) => a.permissions.has('reports:business'),
   },
 ];

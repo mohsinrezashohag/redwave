@@ -122,6 +122,7 @@ npm -w frontend exec -- vitest                                  # watch
 | `npm -w backend run prisma:seed` | bootstrap catalogue (idempotent); demo data **only** under `SEED_DEMO=yes` | both — prod deploys run this |
 | `npm -w backend run seed:reset` | handover clean-wipe of transactional data, keeps the master catalogue | operator; needs `RESET_CONFIRM=yes` |
 | `npm -w backend run sa:reset` | Super Admin password/lockout recovery | local only; needs `RESET_SA_CONFIRM=yes` |
+| `npm -w backend run payroll:backfill` | rebuild payroll lines for runs finalized before packet 02 (dry-run default) | operator; writes only with `BACKFILL_CONFIRM=yes` |
 | `npm -w backend run prisma:studio` | Prisma Studio | developer |
 
 Never run `prisma:migrate` against a deployed database — it can reset it. Operators run
@@ -771,3 +772,12 @@ surrounding code.
    throw-on-touch Prisma mock **plus** total equivalence). `folder-agnostic.spec.ts` holds the
    expense folder layer as pure grouping — no money read may reference `expense_report_id`. If one
    of these fails, an invariant broke: fix the code, not the spec.
+
+11. **A table derived at finalize/issue needs a backfill for records that already exist.** Anything
+   written only at a freeze event (e.g. `payroll_report_lines` at pay-run finalize) is empty for every
+   run frozen before the table existed, so a feature that reads it ships broken on production history.
+   Ship the backfill with the table, built **from the frozen snapshots only** (never a re-run of the
+   engine, #2/#5), reconciled to the frozen totals and idempotent — the pattern is
+   `PayRunService.backfillPayrollLines` + `npm -w backend run payroll:backfill` (dry-run default,
+   `BACKFILL_CONFIRM=yes` writes). And read "is this finalized?" from the record's **status**, never from
+   whether derived rows exist.

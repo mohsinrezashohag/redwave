@@ -104,10 +104,35 @@ describe('Rep pay statement — self-scoping comes from the TOKEN', () => {
     prisma.payrollReportLine.findMany.mockResolvedValue([]);
     const statement = await service.myPayStatement('run-1', user('rep-B'));
     expect(statement.lines).toEqual([]);
-    expect(statement.is_finalized).toBe(false);
+    // The run IS finalized — no lines for this rep is not the same as "not finalized".
+    expect(statement.is_finalized).toBe(true);
     expect(prisma.payrollReportLine.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { pay_run_id: 'run-1', sale_id: { in: [] } } }),
     );
+  });
+});
+
+describe('Rep pay statement — is_finalized comes from the run STATUS', () => {
+  // A run finalized before payroll lines existed (packet 02) has none until backfilled. It must not
+  // claim "not finalized" — that was the production report on run #10.
+  it('a finalized run with no recorded lines still reports is_finalized', async () => {
+    const { service, prisma } = make();
+    prisma.payrollReportLine.findMany.mockResolvedValue([]);
+    const statement = await service.repPayStatement('run-1', 'rep-A');
+    expect(statement.is_finalized).toBe(true);
+    expect(statement.lines).toEqual([]);
+  });
+
+  it('a draft run reports not finalized', async () => {
+    const { service, prisma } = make();
+    prisma.payRun.findUnique.mockResolvedValue({
+      id: 'run-1',
+      status: 'draft',
+      pay_period: { period_number: 6, start_date: d('2026-03-01'), end_date: d('2026-03-14') },
+    });
+    prisma.payrollReportLine.findMany.mockResolvedValue([]);
+    const statement = await service.repPayStatement('run-1', 'rep-A');
+    expect(statement.is_finalized).toBe(false);
   });
 });
 

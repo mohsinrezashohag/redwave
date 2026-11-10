@@ -77,6 +77,12 @@ export function RepStatementDrawer({
               This run has not been finalized, so no amounts are frozen yet — nothing is owed for it.
             </p>
           )}
+          {s.is_finalized && s.lines.length === 0 && (
+            <p className={styles.note}>
+              This run is finalized, but no statement lines are recorded for this rep. If the run was finalized
+              before pay statements existed, an administrator can rebuild them from the frozen amounts.
+            </p>
+          )}
         </div>
       )}
     </Drawer>

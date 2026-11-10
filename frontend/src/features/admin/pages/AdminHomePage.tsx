@@ -7,6 +7,8 @@
  */
 import {
   Bell,
+  CalendarRange,
+  Columns3,
   Megaphone,
   Receipt,
   Route,
@@ -57,6 +59,8 @@ const CARDS: HubCard[] = [
   { title: 'Clients', description: 'Partners, their products, and billing rates.', icon: <ShoppingBag size={20} />, permission: 'clients:create', to: '/admin/clients' },
   { title: 'Products', description: 'Every per-client product across all partners.', icon: <ShoppingCart size={20} />, permission: 'clients:create', to: '/admin/products' },
   { title: 'KM rates', description: 'Per-client, effective-dated kilometre rate (rep reimbursement + client bill).', icon: <Route size={20} />, permission: 'km_rates:view', to: '/admin/km-rates' },
+  { title: 'Period calendars', description: 'Pay and billing cycles — anchor, length, payday offset.', icon: <CalendarRange size={20} />, permission: 'payrun:view', to: '/admin/period-configs' },
+  { title: 'Export layouts', description: 'Which columns each exported report carries, and in what order.', icon: <Columns3 size={20} />, permission: 'reports:view', to: '/admin/export-layouts' },
   { title: 'Expense categories', description: 'Category catalogue and receipt requirements.', icon: <Receipt size={20} />, permission: 'expenses:edit' },
 ];
 
