@@ -2489,3 +2489,23 @@ or after that date):**
 **Verified LOCAL:** 1193 backend tests (131 suites; +`payroll-excel.renderer.spec`, +100/0 finalize case)
 + typecheck + lint + build + contract regen; FE build + lint + stylelint + 113 vitest (+`split.test`).
 Not yet seen in a browser.
+
+### UI — form accessibility warnings and round-trip map pins (no migration)
+
+Browser "Issues" seen on the KM expense form, fixed in the SHARED components so every form benefits:
+- **`Select` is always controlled.** Callers pass `value={x || undefined}` for "nothing picked", which
+  flipped it uncontrolled → controlled (React warning). Undefined now maps to `''`, Radix 2.2's "no
+  selection", which shows the placeholder.
+- **Hidden native inputs get a `name`.** Radix renders a hidden `<select>` / radio inputs inside a `<form>`.
+  `Select` now names it `name ?? id` and `RadioGroup` names it `name ?? useId()`. This clears "form field
+  should have an id or name".
+- **`FormField` labels GROUPS correctly.** A `<label for>` pointed at a `RadioGroup` or a `<div>` of inputs
+  is invalid and leaves the controls unlabelled. `FormField` now detects a group (a `RadioGroup`, or any host
+  element other than input/select/textarea/button/…, or the `group` prop) and names it with
+  `aria-labelledby` (plus `role="group"` for a plain container) instead.
+- **Map pins numbered 1, 2, 3, matching the stop list.** `DirectionsRenderer` now runs with
+  `suppressMarkers`; on a round trip Google's last letter ("C") sat on top of "A", so the start looked
+  missing.
+
+The CSP "eval" notice is deliberately left alone: nothing is broken by it, and allowing `unsafe-eval` would
+weaken XSS protection. Verified LOCAL: FE build + lint + stylelint + 118 vitest (+`FormField.test`).

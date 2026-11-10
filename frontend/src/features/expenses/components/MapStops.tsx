@@ -21,6 +21,8 @@ import styles from './expenses.module.css';
 const MAP_CONTAINER = { width: '100%', height: '260px' };
 const DEFAULT_CENTER = { lat: 49.8951, lng: -97.1384 }; // Winnipeg
 const SIX = 6;
+/** Draw the route line only — the numbered stop pins are rendered separately (see below). */
+const DIRECTIONS_OPTIONS = { suppressMarkers: true };
 
 declare global {
   interface Window {
@@ -216,12 +218,13 @@ export function MapStops({
           zoom={coords.length ? 11 : 10}
           onClick={onMapClick}
         >
-          {/* Once a route renders it draws its own ordered markers; before that, show a pin per dropped stop. */}
-          {directions ? (
-            <DirectionsRenderer directions={directions} />
-          ) : (
-            coords.map((c, i) => <Marker key={`${c.lat},${c.lng}`} position={c} label={String(i + 1)} />)
-          )}
+          {/* Pins are OUR numbers (1, 2, 3 — matching the stop list), never Google's A/B/C: on a round trip
+              the route returns to the first stop, so Google's last letter ("C") sat on top of "A" and the
+              start looked like it was missing. The route line is drawn without its own markers. */}
+          {directions && <DirectionsRenderer directions={directions} options={DIRECTIONS_OPTIONS} />}
+          {coords.map((c, i) => (
+            <Marker key={`${i}:${c.lat},${c.lng}`} position={c} label={String(i + 1)} />
+          ))}
         </GoogleMap>
       </div>
     </>

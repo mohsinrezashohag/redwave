@@ -22,12 +22,27 @@ export interface SelectProps {
   placeholder?: string;
   disabled?: boolean;
   id?: string;
+  /** Name for the hidden native <select> Radix renders inside a form (defaults to the id). */
+  name?: string;
   'aria-label'?: string;
 }
 
-export function Select({ options, value, defaultValue, onValueChange, placeholder = 'Select…', disabled, id, ...rest }: SelectProps) {
+export function Select({ options, value, defaultValue, onValueChange, placeholder = 'Select…', disabled, id, name, ...rest }: SelectProps) {
+  // Always CONTROLLED unless the caller explicitly opts into defaultValue. Callers commonly pass
+  // `value={x || undefined}` for "nothing picked yet"; letting that flip from undefined to a string made
+  // React warn "changing from uncontrolled to controlled". An empty string is Radix's "no selection" — it
+  // shows the placeholder exactly as undefined did.
+  const controlled = defaultValue === undefined ? (value ?? '') : value;
   return (
-    <RSelect.Root value={value} defaultValue={defaultValue} onValueChange={onValueChange} disabled={disabled}>
+    <RSelect.Root
+      value={controlled}
+      defaultValue={defaultValue}
+      onValueChange={onValueChange}
+      disabled={disabled}
+      // Radix adds a hidden native <select> inside a <form>; without a name the browser flags it
+      // ("form field should have an id or name") and autofill can't address it.
+      name={name ?? id}
+    >
       <RSelect.Trigger id={id} className={styles.trigger} {...rest}>
         <RSelect.Value placeholder={placeholder} />
         <RSelect.Icon className={styles.triggerIcon}>

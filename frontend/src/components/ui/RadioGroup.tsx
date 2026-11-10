@@ -19,9 +19,13 @@ export interface RadioGroupProps {
   onValueChange?: (value: string) => void;
   name?: string;
   ariaLabel?: string;
+  /** Set by FormField: the group is named by the field's visible label (not a <label for>). */
+  'aria-labelledby'?: string;
+  'aria-describedby'?: string;
+  'aria-invalid'?: boolean;
 }
 
-export function RadioGroup({ options, value, defaultValue, onValueChange, name, ariaLabel }: RadioGroupProps) {
+export function RadioGroup({ options, value, defaultValue, onValueChange, name, ariaLabel, ...aria }: RadioGroupProps) {
   const groupId = useId();
   return (
     <RRadio.Root
@@ -29,8 +33,11 @@ export function RadioGroup({ options, value, defaultValue, onValueChange, name, 
       value={value}
       defaultValue={defaultValue}
       onValueChange={onValueChange}
-      name={name}
-      aria-label={ariaLabel}
+      // Radix adds hidden native radio inputs inside a <form>; they need a name (browser issue otherwise).
+      name={name ?? groupId}
+      // A visible field label (aria-labelledby) wins over the fallback aria-label.
+      aria-label={aria['aria-labelledby'] ? undefined : ariaLabel}
+      {...aria}
     >
       {options.map((opt) => {
         const id = `${groupId}-${opt.value}`;
