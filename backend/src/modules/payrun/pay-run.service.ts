@@ -710,16 +710,19 @@ export class PayRunService {
       orderBy: { rep: { rep_code: 'asc' } },
     });
     const format = dto.format ?? 'csv';
+    // Always 2 dp ("2019.50", never "2019.5"): Decimal#toString drops trailing zeros, and a payroll import
+    // expects fixed cents. Values are stored at 2 dp, so toFixed(2) changes the TEXT only, never the amount.
+    const cents = (v: { toFixed(dp: number): string }) => v.toFixed(2);
     const rows = lines.map((l) => ({
       rep_code: l.rep.rep_code,
       rep_name: l.rep.full_name,
-      commission_70: l.commission_70.toString(),
-      holdback_release_30: l.holdback_release_30.toString(),
-      expense_total: l.expense_total.toString(),
-      incentive_total: l.incentive_total.toString(),
-      bonus_amount: l.bonus_amount.toString(),
-      clawback_total: l.clawback_total.toString(),
-      net_payout: l.net_payout.toString(),
+      commission_70: cents(l.commission_70),
+      holdback_release_30: cents(l.holdback_release_30),
+      expense_total: cents(l.expense_total),
+      incentive_total: cents(l.incentive_total),
+      bonus_amount: cents(l.bonus_amount),
+      clawback_total: cents(l.clawback_total),
+      net_payout: cents(l.net_payout),
     }));
     const content = format === 'csv' ? this.toCsv(rows) : JSON.stringify(rows);
 
@@ -1114,10 +1117,13 @@ export class PayRunService {
     if (rows.length === 0) {
       return '';
     }
+    // RFC 4180 quoting: a value with a comma, quote or newline (e.g. a rep named "Lee, Jordan") is wrapped
+    // in quotes with inner quotes doubled — otherwise it would shift every later column in the ADP file.
+    const field = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
     const headers = Object.keys(rows[0]);
-    const lines = [headers.join(',')];
+    const lines = [headers.map(field).join(',')];
     for (const row of rows) {
-      lines.push(headers.map((h) => row[h]).join(','));
+      lines.push(headers.map((h) => field(row[h])).join(','));
     }
     return lines.join('\n');
   }

@@ -1,4 +1,5 @@
 import { Decimal } from 'decimal.js';
+import { Prisma } from '@prisma/client';
 import { PayRunService } from './pay-run.service';
 import { ZeroExpenseTotalProvider } from './seams/expense-total.provider';
 import { ZeroClawbackTotalProvider } from './seams/clawback-total.provider';
@@ -275,6 +276,43 @@ describe('PayRunService.exportRun — RBAC scope (PII; a manager exports only th
     await service.exportRun('run-1', { format: 'csv' }, user);
     const where = (prisma.payRunLine.findMany.mock.calls[0][0] as { where: Record<string, unknown> }).where;
     expect(where).toEqual({ pay_run_id: 'run-1' });
+  });
+
+  // Production run #10 exported "2019.5" / "406" — Decimal#toString drops trailing zeros.
+  it('writes every amount with exactly 2 decimals', async () => {
+    const { service, prisma } = make({ runStatus: 'finalized' });
+    prisma.payRun.findUnique.mockResolvedValue(finalizedRun);
+    const P = (v: string) => new Prisma.Decimal(v);
+    prisma.payRunLine.findMany.mockResolvedValue([
+      {
+        rep: { rep_code: 'RW-D-0002', full_name: 'Sam Stone' },
+        commission_70: P('2019.50'),
+        holdback_release_30: P('0'),
+        expense_total: P('0.00'),
+        incentive_total: P('0'),
+        bonus_amount: P('0'),
+        clawback_total: P('0'),
+        net_payout: P('2019.50'),
+      },
+    ]);
+    const res = await service.exportRun('run-1', { format: 'csv' }, user);
+    expect(res.content.split('\n')[1]).toBe('RW-D-0002,Sam Stone,2019.50,0.00,0.00,0.00,0.00,0.00,2019.50');
+  });
+
+  it('quotes a value containing a comma so the columns cannot shift', async () => {
+    const { service, prisma } = make({ runStatus: 'finalized' });
+    prisma.payRun.findUnique.mockResolvedValue(finalizedRun);
+    const P = (v: string) => new Prisma.Decimal(v);
+    const z = P('0');
+    prisma.payRunLine.findMany.mockResolvedValue([
+      {
+        rep: { rep_code: 'RW-D-0004', full_name: 'Lee, "JJ" Jordan' },
+        commission_70: P('721'), holdback_release_30: z, expense_total: z, incentive_total: z,
+        bonus_amount: z, clawback_total: z, net_payout: P('721'),
+      },
+    ]);
+    const res = await service.exportRun('run-1', { format: 'csv' }, user);
+    expect(res.content.split('\n')[1]).toBe('RW-D-0004,"Lee, ""JJ"" Jordan",721.00,0.00,0.00,0.00,0.00,0.00,721.00');
   });
 });
 
