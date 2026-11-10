@@ -17,8 +17,14 @@ import styles from './reps.module.css';
 
 const REVEAL_MS = 30_000;
 
-export function RepProfileCard({ rep }: { rep: Rep }) {
-  const canSeePii = useCan('hrm:edit');
+/**
+ * `self` = the signed-in rep looking at their OWN profile (My Account): they see their own details (the
+ * server sent them unredacted, it is their data), the SIN stays MASKED with no Reveal, and the field
+ * manager is named (`managerName`) since a rep cannot list users.
+ */
+export function RepProfileCard({ rep, self = false, managerName }: { rep: Rep; self?: boolean; managerName?: string | null }) {
+  const isHr = useCan('hrm:edit');
+  const canSeePii = self || isHr;
   const restricted = <span className={styles.muted}>Restricted</span>;
   const val = (v: string | null | undefined) => (canSeePii ? v || '—' : restricted);
   const address = [rep.address_street, rep.address_city, rep.address_province, rep.address_postal].filter(Boolean).join(', ');
@@ -37,7 +43,7 @@ export function RepProfileCard({ rep }: { rep: Rep }) {
           <dd>{val(address)}</dd>
           <dt>SIN</dt>
           <dd>
-            <SinValue rep={rep} canReveal={canSeePii} />
+            <SinValue rep={rep} canReveal={isHr && !self} />
           </dd>
         </dl>
       </Card>
@@ -51,6 +57,14 @@ export function RepProfileCard({ rep }: { rep: Rep }) {
       </Card>
       <Card title="Employment">
         <dl className={styles.dl}>
+          {self && (
+            <>
+              <dt>Rep code</dt>
+              <dd className="mono">{rep.rep_code}</dd>
+              <dt>Field manager</dt>
+              <dd>{managerName ?? '—'}</dd>
+            </>
+          )}
           <dt>Hire date</dt>
           <dd className="mono">{displayDate(rep.hire_date)}</dd>
           {rep.termination_date && (
@@ -84,7 +98,10 @@ function SinValue({ rep, canReveal }: { rep: Rep; canReveal: boolean }) {
   useEffect(() => setShown(null), [rep.id]);
 
   if (!rep.sin_on_file) return <>—</>;
-  if (!canReveal) return <span className={styles.muted}>On file · restricted</span>;
+  // No reveal: show the masked form when we were given it (HR, or the rep's own view), else just "on file".
+  if (!canReveal) {
+    return rep.sin_masked ? <span className="mono">{rep.sin_masked}</span> : <span className={styles.muted}>On file · restricted</span>;
+  }
 
   return (
     <span className={styles.sinRow}>

@@ -11,14 +11,25 @@ import { DataState } from '../../../components/data/DataState';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useCan } from '../../../auth/useCan';
 import { displayDate } from '../../../lib/format/date';
-import { useRepDocumentUrl, useRepDocuments, useUploadRepDocument } from '../api/useRepProfile';
+import { useMyDocumentUrl, useMyDocuments, useRepDocumentUrl, useRepDocuments, useUploadRepDocument } from '../api/useRepProfile';
 import styles from './reps.module.css';
 
-export function RepDocumentsPanel({ repId }: { repId: string }) {
-  const canEdit = useCan('hrm:edit');
-  const list = useRepDocuments(repId);
+/**
+ * `self` = the signed-in rep's own documents (My Account): they may LIST and OPEN their own files (e.g. their
+ * contract) through the token-scoped endpoints, but not upload — documents are admin-managed.
+ */
+export function RepDocumentsPanel({ repId, self = false }: { repId: string; self?: boolean }) {
+  const isHr = useCan('hrm:edit');
+  const canEdit = isHr && !self;
+  const canOpen = isHr || self;
+  // Both sources are wired (rules of hooks); only the one for this view is enabled / used.
+  const adminList = useRepDocuments(repId, !self);
+  const ownList = useMyDocuments(self);
+  const list = self ? ownList : adminList;
   const upload = useUploadRepDocument(repId);
-  const open = useRepDocumentUrl(repId);
+  const adminOpen = useRepDocumentUrl(repId);
+  const ownOpen = useMyDocumentUrl();
+  const open = self ? ownOpen : adminOpen;
   const onError = useApiErrorToast();
   const { toast } = useToast();
   const [docType, setDocType] = useState('');
@@ -64,7 +75,7 @@ export function RepDocumentsPanel({ repId }: { repId: string }) {
         isError={list.isError}
         isEmpty={rows.length === 0}
         onRetry={() => list.refetch()}
-        emptyNode={<p className={styles.muted}>No documents on file for this rep.</p>}
+        emptyNode={<p className={styles.muted}>{self ? 'No documents on file for you yet.' : 'No documents on file for this rep.'}</p>}
       >
         <Table>
           <THead>
@@ -80,7 +91,7 @@ export function RepDocumentsPanel({ repId }: { repId: string }) {
                 <TD>{d.doc_type}</TD>
                 <TD className="mono">{displayDate(d.uploaded_at)}</TD>
                 <TD align="right">
-                  {canEdit ? (
+                  {canOpen ? (
                     <Button variant="tertiary" size="sm" leftIcon={<FileText size={14} />} onClick={() => onOpen(d.id)} loading={open.isPending && open.variables === d.id}>
                       Open
                     </Button>

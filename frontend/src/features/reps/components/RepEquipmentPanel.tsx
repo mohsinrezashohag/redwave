@@ -16,7 +16,7 @@ import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useCan } from '../../../auth/useCan';
 import { money } from '../../../lib/format/money';
 import { displayDate, todayIso } from '../../../lib/format/date';
-import { useAssignEquipment, useRepEquipment, useUpdateEquipment } from '../api/useRepProfile';
+import { useAssignEquipment, useMyEquipment, useRepEquipment, useUpdateEquipment } from '../api/useRepProfile';
 import type { EquipmentStatus, RepEquipment } from '../reps.types';
 import styles from './reps.module.css';
 
@@ -31,9 +31,14 @@ const STATUS_TONE: Record<EquipmentStatus, 'info' | 'success' | 'danger'> = {
 };
 const STATUS_LABEL: Record<EquipmentStatus, string> = { assigned: 'Assigned', returned: 'Returned', withheld: 'Deposit withheld' };
 
-export function RepEquipmentPanel({ repId }: { repId: string }) {
-  const canEdit = useCan('hrm:edit');
-  const list = useRepEquipment(repId);
+/** `self` = the signed-in rep's own equipment (My Account): read from the token-scoped endpoint, no actions. */
+export function RepEquipmentPanel({ repId, self = false }: { repId: string; self?: boolean }) {
+  const isHr = useCan('hrm:edit');
+  const canEdit = isHr && !self;
+  // Both hooks run (rules of hooks); only the one for this view is enabled.
+  const adminList = useRepEquipment(repId, !self);
+  const ownList = useMyEquipment(self);
+  const list = self ? ownList : adminList;
   const update = useUpdateEquipment(repId);
   const onError = useApiErrorToast();
   const { toast } = useToast();
@@ -67,7 +72,7 @@ export function RepEquipmentPanel({ repId }: { repId: string }) {
         isError={list.isError}
         isEmpty={rows.length === 0}
         onRetry={() => list.refetch()}
-        emptyNode={<p className={styles.muted}>No equipment issued to this rep.</p>}
+        emptyNode={<p className={styles.muted}>{self ? 'No equipment has been issued to you.' : 'No equipment issued to this rep.'}</p>}
       >
         <Table>
           <THead>

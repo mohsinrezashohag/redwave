@@ -158,6 +158,22 @@ export class RepsService {
   }
 
   /**
+   * A rep's OWN profile — the caller resolved the id from their token (MyRepProfileController), never from
+   * input. They see their own PII (it is theirs), but the SIN stays MASKED: there is no self-reveal.
+   */
+  async findOwn(repId: string) {
+    const rep = await this.prisma.rep.findUnique({
+      where: { id: repId },
+      include: { field_manager: { select: { full_name: true } } },
+    });
+    if (!rep) {
+      throw new NotFoundException('Rep not found');
+    }
+    const { field_manager, ...row } = rep;
+    return { ...toRepView(row, true), field_manager_name: field_manager?.full_name ?? null };
+  }
+
+  /**
    * Decrypt and return a rep's SIN. hrm:edit only (controller), and EVERY reveal is audited — who looked
    * at whose SIN and when — without the value itself ever entering the audit log.
    */

@@ -17,6 +17,28 @@ export class ProfileChangeFieldsResponse {
 
   @ApiPropertyOptional({ type: String })
   avatar_url?: string;
+
+  // Rep-only (applied to the rep record on approval).
+  @ApiPropertyOptional({ type: String })
+  email?: string;
+
+  @ApiPropertyOptional({ type: String })
+  address_street?: string;
+
+  @ApiPropertyOptional({ type: String })
+  address_city?: string;
+
+  @ApiPropertyOptional({ type: String })
+  address_province?: string;
+
+  @ApiPropertyOptional({ type: String })
+  address_postal?: string;
+
+  @ApiPropertyOptional({ type: String })
+  jacket_size?: string;
+
+  @ApiPropertyOptional({ type: String })
+  tshirt_size?: string;
 }
 
 /** The pending request summary embedded on the profile (proposed values, not yet applied). */
@@ -129,6 +151,37 @@ export class ReviewSubjectResponse {
 
   @ApiProperty({ type: String, nullable: true })
   avatar_url!: string | null;
+
+  @ApiProperty({
+    type: () => ReviewSubjectRepResponse,
+    nullable: true,
+    description: "The subject's CURRENT rep-profile values, so the reviewer sees current → proposed. null when not a rep.",
+  })
+  rep!: ReviewSubjectRepResponse | null;
+}
+
+/** The rep fields a rep may request a change to — their current values, for the reviewer. */
+export class ReviewSubjectRepResponse {
+  @ApiProperty({ type: String, nullable: true })
+  email!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  address_street!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  address_city!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  address_province!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  address_postal!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  jacket_size!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  tshirt_size!: string | null;
 }
 
 export class ReviewRequestResponse {

@@ -93,6 +93,12 @@ export class RepResponse {
   sin_masked!: string | null;
 }
 
+/** A rep's OWN profile (GET /v1/account/rep-profile) — the rep view plus their field manager's name. */
+export class MyRepProfileResponse extends RepResponse {
+  @ApiProperty({ type: String, nullable: true, description: 'Your field manager (a rep cannot list users).' })
+  field_manager_name!: string | null;
+}
+
 /** The decrypted SIN from POST /v1/reps/{id}/sin/reveal (hrm:edit; every call is audited). */
 export class RevealSinResponse {
   @ApiProperty({ type: String, nullable: true, example: '046 454 286', description: 'null when no SIN is on file.' })

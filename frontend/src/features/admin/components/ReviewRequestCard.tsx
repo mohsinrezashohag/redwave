@@ -22,8 +22,14 @@ export function ReviewRequestCard({ request }: { request: ReviewRequest }) {
   const [confirmReject, setConfirmReject] = useState(false);
 
   const changes = Object.entries(request.proposed_changes).filter(([, v]) => v !== undefined && v !== null);
+  // Rep-only fields (contact email / address / sizes) live on the rep record — read their current value from
+  // `subject.rep`, not the user, or the reviewer would see a misleading "—". The user's email is the LOGIN
+  // email, so a requested `email` is always compared against the rep's contact email.
+  const REP_KEYS = new Set(['email', 'address_street', 'address_city', 'address_province', 'address_postal', 'jacket_size', 'tshirt_size']);
   const currentValue = (key: string) => {
-    const v = request.subject[key as keyof ReviewSubject];
+    const v = REP_KEYS.has(key)
+      ? request.subject.rep?.[key as keyof NonNullable<ReviewSubject['rep']>]
+      : request.subject[key as keyof ReviewSubject];
     return v ? String(v) : '—';
   };
 

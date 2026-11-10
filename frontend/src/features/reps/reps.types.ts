@@ -15,6 +15,8 @@ export type RepPage = components['schemas']['RepPageResponse'];
 export type CreateRepBody = components['schemas']['CreateRepDto'];
 export type UpdateRepBody = components['schemas']['UpdateRepDto'];
 export type RevealSin = components['schemas']['RevealSinResponse'];
+/** The signed-in rep's own profile (GET /v1/account/rep-profile) — adds their field manager's name. */
+export type MyRepProfile = components['schemas']['MyRepProfileResponse'];
 
 export type RepEquipment = components['schemas']['RepEquipmentResponse'];
 export type EquipmentStatus = RepEquipment['status'];

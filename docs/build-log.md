@@ -2406,3 +2406,42 @@ was a read-only list, with no detail page and no create/edit form.
 +`reps.profile.spec`) + typecheck + lint + build + contract regen; FE build + lint + stylelint + 109 vitest
 (+`repForm.test`). **Not yet seen in a browser.** The local app points at production, so the screens get
 their first look after deploy.
+
+### HRM — who controls which rep-profile field; the rep's own profile on My Account (no migration)
+
+Follow-up to the rep profile. The client wanted a rep to see their profile when they sign in, with some
+fields theirs to change and the rest HR's. **Confirmed split:**
+
+| Rep can… | Fields |
+| --- | --- |
+| **request a change** (their reviewer approves, then it applies) | name · phone · contact email · address · jacket size · t-shirt size |
+| **only view** (HR edits on `/admin/reps/:id`) | rep code · partner code · status · hire/termination date · field manager · date of birth · SIN (masked, no reveal) · equipment + deposits · documents (can open their own, can't upload) |
+
+**Built on the existing review flow, not beside it:**
+- `ProfileChangeRequestDto` gained the rep fields. They are accepted only from a user with a linked rep
+  (422 otherwise), and the postal code is normalised.
+- On approval they go to the **rep** record, with name and phone mirrored onto it so the login and the
+  rep never disagree.
+- Rep contact/address values enter the audit log as presence only (`auditSafe`).
+- A spec asserts the request DTO **cannot carry** DOB / SIN / rep code / status / manager / hire date.
+- The reviewer card now shows the rep's **current** values (`subject.rep` on the review queue), not a
+  misleading "—".
+- The requested `email` is the rep's **contact** email; the login email never changes through this path.
+- Routing is unchanged: a rep's request goes to their field manager or an admin. The manager therefore
+  sees the proposed address, which they need in order to review it.
+
+**Read-only self view:** `MyRepProfileController` at `/v1/account/rep-profile`, `/equipment`,
+`/documents` and `/documents/:docId/file-url`.
+- **No route takes a rep id.** The rep comes from the token (403 when not linked), the same structural
+  guarantee as `/v1/pay-statements`.
+- `MyRepProfileResponse` adds `field_manager_name`, because a rep cannot list users.
+- Frontend: My Account → Profile shows the extended request form plus `MyRepProfileSection`. That section
+  reuses `RepProfileCard` / `RepEquipmentPanel` / `RepDocumentsPanel` with a `self` flag (token-scoped
+  hooks, no actions, masked SIN, documents openable).
+
+**Also fixed:** the Export Layouts sidebar entry and Admin tile were gated on `reports:view`, which every
+rep holds, so the link appeared in a rep's sidebar. The server only allowed reads (writes need
+`settings:edit`), so nothing could be changed. The nav and crumb now use `settings:edit`.
+
+**Verified LOCAL:** 1189 backend tests + typecheck + lint + build + contract regen; FE build + lint +
+stylelint + 109 vitest. Not yet seen in a browser.
