@@ -251,7 +251,9 @@ const NAV: NavGroup[] = [
         icon: Columns3,
         to: '/admin/export-layouts',
         match: (l) => l.pathname.startsWith('/admin/export-layouts'),
-        show: (a) => a.permissions.has('reports:view'),
+        // settings:edit — the permission that CHANGES a layout. Reading one is reports:view, which every rep
+        // holds; gating on that put an admin screen in a rep's sidebar.
+        show: (a) => a.permissions.has('settings:edit'),
       },
       {
         label: 'Import',

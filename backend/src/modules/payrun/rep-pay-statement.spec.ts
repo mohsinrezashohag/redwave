@@ -60,7 +60,8 @@ function make(opts: { lines?: unknown[]; saleIds?: string[] } = {}) {
   };
   const service = new PayRunService(
     prisma as never, { log: jest.fn() } as never, { getRepScope: jest.fn() } as never,
-    {} as never, {} as never, {} as never, {} as never, {} as never,
+    { getHoldbackSplit: jest.fn().mockResolvedValue({ advance_pct: '1.0000', holdback_pct: '0.0000' }) } as never,
+    {} as never, {} as never, {} as never, {} as never,
   );
   return { service, prisma };
 }

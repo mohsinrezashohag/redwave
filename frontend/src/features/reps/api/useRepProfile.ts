@@ -14,6 +14,7 @@ import type {
   Rep,
   RepDocument,
   RepEquipment,
+  MyRepProfile,
   RevealSin,
   UpdateEquipmentBody,
   UpdateRepBody,
@@ -112,5 +113,44 @@ export function useRepDocumentUrl(repId: string) {
       unwrap<{ url: string }>(
         api.GET('/v1/reps/{id}/documents/{docId}/file-url', { params: { path: { id: repId, docId } } }),
       ),
+  });
+}
+
+// ── The signed-in REP's own profile (read-only; the rep comes from the token — no id is sent) ─────────
+
+export const myRepKeys = {
+  profile: ['account', 'rep-profile'] as const,
+  equipment: ['account', 'rep-profile', 'equipment'] as const,
+  documents: ['account', 'rep-profile', 'documents'] as const,
+};
+
+export function useMyRepProfile(enabled = true) {
+  return useQuery({
+    queryKey: myRepKeys.profile,
+    queryFn: () => unwrap<MyRepProfile>(api.GET('/v1/account/rep-profile')),
+    enabled,
+  });
+}
+
+export function useMyEquipment(enabled = true) {
+  return useQuery({
+    queryKey: myRepKeys.equipment,
+    queryFn: () => unwrap<RepEquipment[]>(api.GET('/v1/account/rep-profile/equipment')),
+    enabled,
+  });
+}
+
+export function useMyDocuments(enabled = true) {
+  return useQuery({
+    queryKey: myRepKeys.documents,
+    queryFn: () => unwrap<RepDocument[]>(api.GET('/v1/account/rep-profile/documents')),
+    enabled,
+  });
+}
+
+export function useMyDocumentUrl() {
+  return useMutation({
+    mutationFn: (docId: string) =>
+      unwrap<{ url: string }>(api.GET('/v1/account/rep-profile/documents/{docId}/file-url', { params: { path: { docId } } })),
   });
 }

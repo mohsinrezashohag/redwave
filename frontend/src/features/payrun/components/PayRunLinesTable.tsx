@@ -11,6 +11,7 @@ import { money, sumMoney } from '../../../lib/format/money';
 import { NetPayoutCell } from './NetPayoutCell';
 import styles from './payrun.module.css';
 import type { PayRunLine } from '../payrun.types';
+import type { SplitLabels } from '../split';
 
 interface Props {
   lines: PayRunLine[];
@@ -19,9 +20,11 @@ interface Props {
   /** Issue this rep's own pay statement. Absent on a draft run — nothing is frozen yet. */
   onStatement?: (line: PayRunLine) => void;
   canBonus: boolean;
+  /** Labels for the split in force (e.g. "Paid now (100%)") — the column used to read "70% advance". */
+  labels: SplitLabels;
 }
 
-export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBonus }: Props) {
+export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBonus, labels }: Props) {
   const total = (pick: (l: PayRunLine) => string) => sumMoney(lines.map(pick));
   const rowMenu = (l: PayRunLine): MenuEntry[] => {
     const items: MenuEntry[] = [{ label: 'View breakdown', icon: <Search size={15} />, onSelect: () => onSelect(l) }];
@@ -36,7 +39,7 @@ export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBon
       <THead>
         <TR>
           <TH>Rep</TH>
-          <TH align="right">70% advance</TH>
+          <TH align="right">{labels.paid}</TH>
           <TH align="right">Released</TH>
           <TH align="right">Incentives</TH>
           <TH align="right">Expenses</TH>

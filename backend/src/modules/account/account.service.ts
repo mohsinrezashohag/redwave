@@ -16,7 +16,9 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
+import { normalizePostal } from '../hrm/rep-profile.logic';
 import * as bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -28,18 +30,51 @@ import { ChangePasswordDto, ProfileChangeRequestDto, SetThemeDto } from './dto/a
 import { assertPasswordPolicy } from '../auth/password-policy';
 import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 
-/** The only HR fields a profile-change request may touch. */
+/** The HR fields a profile-change request may touch on the USER record. */
 const PROFILE_FIELDS = ['full_name', 'phone', 'avatar_url'] as const;
-type ProposedChanges = Partial<Record<(typeof PROFILE_FIELDS)[number], string>>;
+
+/**
+ * Rep-only fields a REP may request (client request 2026-11-11), applied to the REP record on approval.
+ * Everything else on a rep — code, status, dates, manager, DOB, SIN, equipment, documents — is admin-only and
+ * cannot even be requested. full_name + phone also live on the rep and are kept in sync on approval.
+ */
+const REP_FIELDS = [
+  'email',
+  'address_street',
+  'address_city',
+  'address_province',
+  'address_postal',
+  'jacket_size',
+  'tshirt_size',
+] as const;
+
+/** Rep PII — written to the audit log as presence only, never the value (docs/security.md §8). */
+const REP_PII = new Set<string>(['email', 'address_street', 'address_city', 'address_province', 'address_postal']);
+
+type ProposedChanges = Partial<Record<(typeof PROFILE_FIELDS)[number] | (typeof REP_FIELDS)[number], string>>;
 
 const BCRYPT_ROUNDS = 12;
 
+/** The proposal with rep PII values replaced by `true` — what goes into the audit log. */
+function auditSafe(proposed: ProposedChanges): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(proposed).map(([k, v]) => [k, REP_PII.has(k) ? true : v]));
+}
+
 function pickProposed(input: ProfileChangeRequestDto): ProposedChanges {
   const out: ProposedChanges = {};
-  for (const field of PROFILE_FIELDS) {
-    if (input[field] !== undefined) {
-      out[field] = input[field];
+  for (const field of [...PROFILE_FIELDS, ...REP_FIELDS]) {
+    const value = input[field];
+    if (value !== undefined) {
+      out[field] = value.trim();
     }
+  }
+  if (out.email) out.email = out.email.toLowerCase();
+  if (out.address_postal) {
+    const postal = normalizePostal(out.address_postal);
+    if (!postal) {
+      throw new UnprocessableEntityException('address_postal must be a Canadian postal code (e.g. R3G 0T7)');
+    }
+    out.address_postal = postal;
   }
   return out;
 }
@@ -109,7 +144,12 @@ export class AccountService {
   async requestProfileChange(user: AuthUser, dto: ProfileChangeRequestDto) {
     const proposed = pickProposed(dto);
     if (Object.keys(proposed).length === 0) {
-      throw new BadRequestException('Provide at least one of: full_name, phone, avatar_url');
+      throw new BadRequestException('Provide at least one field to change');
+    }
+    if (!user.repId && REP_FIELDS.some((f) => proposed[f] !== undefined)) {
+      throw new UnprocessableEntityException(
+        'Contact email, address and uniform sizes belong to a rep profile — your account is not linked to a rep',
+      );
     }
     const request = await this.prisma.profileChangeRequest.create({
       data: {
@@ -125,7 +165,7 @@ export class AccountService {
       entityType: 'profile_change_requests',
       entityId: request.id,
       action: 'create',
-      after: proposed,
+      after: auditSafe(proposed),
     });
     // Best-effort: notify the reviewer(s) there's a request to review. — profile_change_requested
     const reviewers = await this.scope.reviewerUserIds(user.id);
@@ -154,9 +194,13 @@ export class AccountService {
     });
   }
 
-  /** Reviewer queue — scoped by routing (Field Manager / Admin / Super Admin). — AUTH-012 */
-  listReviewQueue(reviewer: AuthUser) {
-    return this.prisma.profileChangeRequest.findMany({
+  /**
+   * Reviewer queue — scoped by routing (Field Manager / Admin / Super Admin). — AUTH-012
+   * Each subject carries their CURRENT rep-profile values (`subject.rep`, null for a non-rep) so the reviewer
+   * sees current → proposed for address / sizes / contact email, not a misleading "—".
+   */
+  async listReviewQueue(reviewer: AuthUser) {
+    const rows = await this.prisma.profileChangeRequest.findMany({
       where: { status: 'pending', ...this.scope.profileReviewWhere(reviewer) },
       orderBy: { created_at: 'asc' },
       select: {
@@ -165,10 +209,31 @@ export class AccountService {
         created_at: true,
         requested_by: true,
         subject: {
-          select: { id: true, email: true, full_name: true, phone: true, avatar_url: true },
+          select: {
+            id: true,
+            email: true,
+            full_name: true,
+            phone: true,
+            avatar_url: true,
+            rep_login: {
+              select: {
+                email: true,
+                address_street: true,
+                address_city: true,
+                address_province: true,
+                address_postal: true,
+                jacket_size: true,
+                tshirt_size: true,
+              },
+            },
+          },
         },
       },
     });
+    return rows.map(({ subject: { rep_login, ...subject }, ...row }) => ({
+      ...row,
+      subject: { ...subject, rep: rep_login ?? null },
+    }));
   }
 
   async approve(reviewer: AuthUser, requestId: string) {
@@ -185,8 +250,23 @@ export class AccountService {
       select: { full_name: true, phone: true, avatar_url: true },
     });
 
+    // Rep fields go to the subject's rep (if any); name + phone are mirrored so the rep record and the login
+    // never disagree about who this is or how to reach them.
+    const repData: Prisma.RepUpdateInput = {};
+    for (const field of REP_FIELDS) {
+      if (proposed[field] !== undefined) repData[field] = proposed[field] || null;
+    }
+    if (proposed.full_name !== undefined) repData.full_name = proposed.full_name;
+    if (proposed.phone !== undefined) repData.phone = proposed.phone || null;
+    const rep = await this.prisma.rep.findUnique({ where: { user_id: request.user_id }, select: { id: true } });
+
     await this.prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: request.user_id }, data });
+      if (Object.keys(data).length > 0) {
+        await tx.user.update({ where: { id: request.user_id }, data });
+      }
+      if (rep && Object.keys(repData).length > 0) {
+        await tx.rep.update({ where: { id: rep.id }, data: repData });
+      }
       await tx.profileChangeRequest.update({
         where: { id: requestId },
         data: { status: 'approved', reviewed_by: reviewer.id, reviewed_at: new Date() },
@@ -199,7 +279,7 @@ export class AccountService {
       entityId: requestId,
       action: 'approve',
       before,
-      after: proposed,
+      after: auditSafe(proposed),
     });
     await this.notifyDecided(request.user_id, requestId, 'approved');
     return this.findRequest(requestId);

@@ -194,7 +194,22 @@ export class PayRunSummaryResponse {
 }
 
 /** A pay-run header + its scoped per-rep lines — the get/draft/finalize shape. */
+/**
+ * The advance / holdback split in force for a run's period (exact decimal strings, #1). For LABELS only —
+ * every amount is already computed. Since 2026-11-11 Redwave runs at 1.0000 / 0.0000.
+ */
+export class PayRunSplitResponse {
+  @ApiProperty({ type: String, example: '1.0000' })
+  advance_pct!: string;
+
+  @ApiProperty({ type: String, example: '0.0000' })
+  holdback_pct!: string;
+}
+
 export class PayRunResponse extends PayRunSummaryResponse {
+  @ApiProperty({ type: () => PayRunSplitResponse, nullable: true, description: 'Split in force for this period.' })
+  split!: PayRunSplitResponse | null;
+
   @ApiProperty({ type: () => [PayRunLineResponse] })
   lines!: PayRunLineResponse[];
 }
@@ -325,6 +340,9 @@ export class PayrollReportResponse {
   @ApiProperty()
   pay_run_id!: string;
 
+  @ApiProperty({ type: () => PayRunSplitResponse, nullable: true, description: 'Split in force for this period.' })
+  split!: PayRunSplitResponse | null;
+
   @ApiProperty({ type: Number, example: 6 })
   period_number!: number;
 
@@ -426,6 +444,9 @@ export class RepPayStatementLineResponse {
 export class RepPayStatementResponse {
   @ApiProperty()
   pay_run_id!: string;
+
+  @ApiProperty({ type: () => PayRunSplitResponse, nullable: true, description: 'Split in force for this period.' })
+  split!: PayRunSplitResponse | null;
 
   @ApiProperty({ type: Number, example: 6 })
   period_number!: number;

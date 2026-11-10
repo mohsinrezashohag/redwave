@@ -16,6 +16,7 @@ import { money } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useMyPayStatement, useMyPayStatements } from '../api/usePayRun';
+import { splitLabels } from '../split';
 import styles from '../components/payrun.module.css';
 
 export default function MyPayStatementsPage() {
@@ -29,13 +30,12 @@ export default function MyPayStatementsPage() {
   const runs = list.data ?? [];
   const selected = runId ?? runs[0]?.pay_run_id;
   const s = statement.data;
+  // Each period is labelled with the split it was paid at (100% since 2026-11-11; 70/30 before).
+  const labels = splitLabels(s?.split);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-      <PageHeader
-        title="My pay statements"
-        subtitle="What each sale paid, your 70% advance, and the 30% held back for release."
-      />
+      <PageHeader title="My pay statements" subtitle="What each sale paid you, period by period." />
 
       <Card title="Pay periods">
         {list.isLoading && <TableSkeleton rows={3} />}
@@ -97,8 +97,8 @@ export default function MyPayStatementsPage() {
                   <TH>Customer</TH>
                   <TH>Product</TH>
                   <TH align="right">Price</TH>
-                  <TH align="right">Your 70%</TH>
-                  <TH align="right">Held 30%</TH>
+                  <TH align="right">Your {labels.paidPct}%</TH>
+                  {!labels.holdsNothing && <TH align="right">{labels.held}</TH>}
                 </TR>
               </THead>
               <TBody>
@@ -109,7 +109,7 @@ export default function MyPayStatementsPage() {
                     <TD>{l.product_name ?? '—'}</TD>
                     <TD numeric>{money(l.total_100)}</TD>
                     <TD numeric>{money(l.advance_70)}</TD>
-                    <TD numeric>{money(l.holdback_30)}</TD>
+                    {!labels.holdsNothing && <TD numeric>{money(l.holdback_30)}</TD>}
                   </TR>
                 ))}
                 <TR>
@@ -122,9 +122,11 @@ export default function MyPayStatementsPage() {
                   <TD numeric>
                     <strong>{money(s.advance_70)}</strong>
                   </TD>
-                  <TD numeric>
-                    <strong>{money(s.holdback_30)}</strong>
-                  </TD>
+                  {!labels.holdsNothing && (
+                    <TD numeric>
+                      <strong>{money(s.holdback_30)}</strong>
+                    </TD>
+                  )}
                 </TR>
               </TBody>
             </Table>

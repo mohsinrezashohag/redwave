@@ -10,6 +10,7 @@ import { Drawer, TableError, TableSkeleton, Table, TBody, TD, TH, THead, TR } fr
 import { money } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
 import { useRepStatement } from '../api/usePayRun';
+import { splitLabels } from '../split';
 import styles from './payrun.module.css';
 
 export function RepStatementDrawer({
@@ -23,6 +24,7 @@ export function RepStatementDrawer({
 }) {
   const q = useRepStatement(runId, repId ?? undefined, !!repId);
   const s = q.data;
+  const labels = splitLabels(s?.split);
 
   return (
     <Drawer open={!!repId} onOpenChange={(o) => !o && onClose()} title="Pay statement" size="wide">
@@ -41,8 +43,8 @@ export function RepStatementDrawer({
                 <TH>Customer</TH>
                 <TH>Product</TH>
                 <TH align="right">Price</TH>
-                <TH align="right">Your 70%</TH>
-                <TH align="right">Held 30%</TH>
+                <TH align="right">Your {labels.paidPct}%</TH>
+                {!labels.holdsNothing && <TH align="right">{labels.held}</TH>}
               </TR>
             </THead>
             <TBody>
@@ -53,7 +55,7 @@ export function RepStatementDrawer({
                   <TD>{l.product_name ?? '—'}</TD>
                   <TD numeric>{money(l.total_100)}</TD>
                   <TD numeric>{money(l.advance_70)}</TD>
-                  <TD numeric>{money(l.holdback_30)}</TD>
+                  {!labels.holdsNothing && <TD numeric>{money(l.holdback_30)}</TD>}
                 </TR>
               ))}
               <TR>
@@ -66,9 +68,11 @@ export function RepStatementDrawer({
                 <TD numeric>
                   <strong>{money(s.advance_70)}</strong>
                 </TD>
-                <TD numeric>
-                  <strong>{money(s.holdback_30)}</strong>
-                </TD>
+                {!labels.holdsNothing && (
+                  <TD numeric>
+                    <strong>{money(s.holdback_30)}</strong>
+                  </TD>
+                )}
               </TR>
             </TBody>
           </Table>

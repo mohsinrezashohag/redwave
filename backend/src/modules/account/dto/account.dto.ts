@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ThemePreference } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { CLOTHING_SIZES, PROVINCES } from '../../hrm/rep-profile.logic';
 
 export class ChangePasswordDto {
   @ApiProperty({ writeOnly: true })
@@ -44,4 +45,47 @@ export class ProfileChangeRequestDto {
   @IsString()
   @MaxLength(1024)
   avatar_url?: string;
+
+  // ── Rep-only fields (client request 2026-11-11). Accepted only from a user linked to a rep; applied to
+  // the REP record on approval. Rep code, status, dates, manager, DOB, SIN, equipment and documents are
+  // ADMIN-ONLY and deliberately absent here — a rep cannot even request them. ──
+
+  @ApiPropertyOptional({ description: 'Rep contact email (not the login email).' })
+  @IsOptional()
+  @IsEmail({}, { message: 'email must be an email address' })
+  @MaxLength(200)
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  address_street?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  address_city?: string;
+
+  @ApiPropertyOptional({ enum: PROVINCES })
+  @IsOptional()
+  @IsIn([...PROVINCES])
+  address_province?: string;
+
+  @ApiPropertyOptional({ example: 'R3G 0T7' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  address_postal?: string;
+
+  @ApiPropertyOptional({ enum: CLOTHING_SIZES })
+  @IsOptional()
+  @IsIn([...CLOTHING_SIZES])
+  jacket_size?: string;
+
+  @ApiPropertyOptional({ enum: CLOTHING_SIZES })
+  @IsOptional()
+  @IsIn([...CLOTHING_SIZES])
+  tshirt_size?: string;
 }

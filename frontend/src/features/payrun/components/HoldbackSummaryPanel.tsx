@@ -13,6 +13,7 @@ import { money } from '../../../lib/format/money';
 import { useHoldbackSummary } from '../api/usePayRun';
 import styles from './payrun.module.css';
 import type { HoldbackPeriodRef, HoldbackReleaseStatus } from '../payrun.types';
+import type { SplitLabels } from '../split';
 
 const RELEASE_TONE: Record<HoldbackReleaseStatus, BadgeTone> = {
   held: 'neutral',
@@ -22,12 +23,26 @@ const RELEASE_TONE: Record<HoldbackReleaseStatus, BadgeTone> = {
 
 const periodLabel = (p: HoldbackPeriodRef | null) => (p ? `#${p.period_number}` : '—');
 
-export function HoldbackSummaryPanel({ runId }: { runId: string }) {
+/**
+ * At a 100/0 split (Redwave since 2026-11-11) nothing new is held, but holds from the 70/30 era still release
+ * on schedule — so the panel stays while any hold is releasing or outstanding, drops the "held this period"
+ * card, and disappears only when there is genuinely nothing deferred left to show.
+ */
+export function HoldbackSummaryPanel({ runId, labels }: { runId: string; labels: SplitLabels }) {
   const q = useHoldbackSummary(runId);
   const s = q.data;
 
+  const nothingDeferred =
+    !!s &&
+    labels.holdsNothing &&
+    Number(s.held_this_period) === 0 &&
+    Number(s.releasing_this_period) === 0 &&
+    Number(s.outstanding_total) === 0 &&
+    s.by_origin.length === 0;
+  if (nothingDeferred) return null;
+
   return (
-    <Card title="30% holdback (deferred pay)">
+    <Card title="Holdback (deferred pay)">
       <DataState
         isLoading={q.isLoading}
         isError={q.isError}
@@ -37,23 +52,31 @@ export function HoldbackSummaryPanel({ runId }: { runId: string }) {
       >
         {s && (
           <>
-            {s.is_projection && (
+            {s.is_projection && !labels.holdsNothing && (
               <Banner tone="info">
-                Draft — the 30% held below is a projection. It is written to the holdback ledger when the run
-                is finalized.
+                Draft — the {labels.heldPct}% held below is a projection. It is written to the holdback ledger when
+                the run is finalized.
+              </Banner>
+            )}
+            {labels.holdsNothing && (
+              <Banner tone="info">
+                Nothing is held back this period — reps are paid 100%. Holds taken under the earlier split still
+                release as scheduled below.
               </Banner>
             )}
 
             <div className={styles.summary}>
-              <StatCard
-                label="Held this period (30%)"
-                value={money(s.held_this_period)}
-                footnote={
-                  s.held_release_period
-                    ? `Releases into period ${periodLabel(s.held_release_period)}`
-                    : 'No release period scheduled'
-                }
-              />
+              {!labels.holdsNothing && (
+                <StatCard
+                  label={`Held this period (${labels.heldPct}%)`}
+                  value={money(s.held_this_period)}
+                  footnote={
+                    s.held_release_period
+                      ? `Releases into period ${periodLabel(s.held_release_period)}`
+                      : 'No release period scheduled'
+                  }
+                />
+              )}
               <StatCard label="Releasing this period" value={money(s.releasing_this_period)} />
               <StatCard label="Clawback set-off" value={money(s.clawback_setoff_this_period)} />
               <StatCard
