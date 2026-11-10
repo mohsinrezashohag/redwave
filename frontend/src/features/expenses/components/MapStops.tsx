@@ -22,7 +22,26 @@ const MAP_CONTAINER = { width: '100%', height: '260px' };
 const DEFAULT_CENTER = { lat: 49.8951, lng: -97.1384 }; // Winnipeg
 const SIX = 6;
 
-export function MapStops({ index, stopsError }: { index: number; stopsError?: string }) {
+declare global {
+  interface Window {
+    /** Google calls this when it REJECTS the key (referrer not allowed, API not enabled, billing). */
+    gm_authFailure?: () => void;
+  }
+}
+
+export function MapStops({
+  index,
+  stopsError,
+  onMapsUnavailable,
+  onRouteResult,
+}: {
+  index: number;
+  stopsError?: string;
+  /** The map can't be used at all (script failed, or Google rejected the key) → parent goes manual. */
+  onMapsUnavailable: () => void;
+  /** Whether the Directions lookup produced a distance for the current stops. */
+  onRouteResult: (ok: boolean) => void;
+}) {
   const { control, register, setValue } = useFormContext<ExpenseFormValues>();
   const { fields, append, remove } = useFieldArray({ control, name: `items.${index}.stops` as const });
   const { isLoaded, loadError } = useJsApiLoader({
@@ -30,6 +49,23 @@ export function MapStops({ index, stopsError }: { index: number; stopsError?: st
     googleMapsApiKey: MAPS_BROWSER_KEY,
     libraries: MAPS_LIBRARIES,
   });
+
+  // A key Google rejects does NOT surface as loadError: the script loads, then Google calls the global
+  // gm_authFailure and paints a grey "can't load Google Maps correctly" box. Both cases hand the rep back
+  // the manual form instead of a dead map.
+  useEffect(() => {
+    if (loadError) onMapsUnavailable();
+  }, [loadError, onMapsUnavailable]);
+  useEffect(() => {
+    const previous = window.gm_authFailure;
+    window.gm_authFailure = () => {
+      onMapsUnavailable();
+      previous?.();
+    };
+    return () => {
+      window.gm_authFailure = previous;
+    };
+  }, [onMapsUnavailable]);
 
   const stops = useWatch({ control, name: `items.${index}.stops` }) ?? [];
   const trip = (useWatch({ control, name: `items.${index}.trip_type` }) ?? 'round') as TripType;
@@ -100,6 +136,11 @@ export function MapStops({ index, stopsError }: { index: number; stopsError?: st
           setDirections(result);
           const meters = (result.routes[0]?.legs ?? []).reduce((sum, leg) => sum + (leg.distance?.value ?? 0), 0);
           setValue(`items.${index}.total_km`, (meters / 1000).toFixed(2), { shouldValidate: true });
+          onRouteResult(true);
+        } else {
+          // No route (Directions API not enabled, quota, unroutable stops): the rep types the distance.
+          setDirections(null);
+          onRouteResult(false);
         }
       },
     );
@@ -110,8 +151,8 @@ export function MapStops({ index, stopsError }: { index: number; stopsError?: st
   }, [isLoaded, coordsKey]);
 
   if (loadError) {
-    // Maps failed to load — let the parent fall back to manual entry.
-    return <p className={styles.itemsError}>Couldn’t load Google Maps. Refresh, or enter the distance manually.</p>;
+    // The effect above has already told the parent, which swaps in the manual form.
+    return null;
   }
   if (!isLoaded) {
     return (

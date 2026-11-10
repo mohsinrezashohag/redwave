@@ -6,7 +6,7 @@
  * manual address + total-km entry (the server still computes the amount). The FIRST stop defaults to the
  * configured office — policy is that trips run from it. Tokens only.
  */
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Controller, useFieldArray, useFormContext, useWatch } from 'react-hook-form';
 import { Banner, Button, DatePicker, FormField, IconButton, Input, RadioGroup } from '../../../components/ui';
@@ -15,6 +15,7 @@ import { kmPreview, TRIP_OPTIONS } from '../km';
 import { officeStop, useExpenseSettings } from '../api/useLookups';
 import { mapsEnabled } from '../maps.config';
 import { MapStops } from './MapStops';
+import { kmEntryMode } from '../kmEntryMode';
 import type { TripType } from '../expenses.types';
 import type { ExpenseFormValues } from './expenseForm.schema';
 import styles from './expenses.module.css';
@@ -52,6 +53,13 @@ export function KmItemFields({ index }: { index: number }) {
   const preview = kmPreview(totalKm, trip);
   const stopsError = (itemErrors?.stops as { message?: string } | undefined)?.message;
 
+  // A Maps failure must never stop a rep logging a trip — see kmEntryMode.
+  const [mapsFailed, setMapsFailed] = useState(false);
+  const [routeFailed, setRouteFailed] = useState(false);
+  const onMapsUnavailable = useCallback(() => setMapsFailed(true), []);
+  const onRouteResult = useCallback((ok: boolean) => setRouteFailed(!ok), []);
+  const mode = kmEntryMode({ mapsEnabled, mapsFailed, routeFailed });
+
   return (
     <>
       <Controller
@@ -74,14 +82,28 @@ export function KmItemFields({ index }: { index: number }) {
         )}
       />
 
-      {mapsEnabled ? (
+      {mode.warning && <Banner tone="warning">{mode.warning}</Banner>}
+
+      {mode.showMap ? (
         <>
-          <MapStops index={index} stopsError={stopsError} />
+          <MapStops index={index} stopsError={stopsError} onMapsUnavailable={onMapsUnavailable} onRouteResult={onRouteResult} />
           <FormField
             label="Total distance (km)"
-            help="Auto-derived from the route (round trips include the return to the first stop) — the server re-computes it."
+            required={mode.distanceEditable}
+            error={mode.distanceEditable ? itemErrors?.total_km?.message : undefined}
+            help={
+              mode.distanceEditable
+                ? 'Total driven distance for the day (round trips include the return).'
+                : 'Auto-derived from the route (round trips include the return to the first stop) — the server re-computes it.'
+            }
           >
-            <Input inputMode="decimal" readOnly value={totalKm ?? ''} placeholder="—" aria-label="Total distance" />
+            <Input
+              inputMode="decimal"
+              readOnly={!mode.distanceEditable}
+              placeholder={mode.distanceEditable ? '130' : '—'}
+              aria-label="Total distance"
+              {...register(`items.${index}.total_km`)}
+            />
           </FormField>
         </>
       ) : (
@@ -119,6 +141,7 @@ export function KmItemFields({ index }: { index: number }) {
       </FormField>
 
       {!mapsEnabled && (
+        // No key configured at all — informational; a FAILED key gets the warning banner above instead.
         <Banner tone="info">
           Address coordinates aren’t captured without a map key — enter the total distance manually. The server computes the final amount.
         </Banner>

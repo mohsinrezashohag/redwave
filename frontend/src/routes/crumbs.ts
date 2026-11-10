@@ -19,7 +19,8 @@ export type DynamicKind =
   | 'statement'
   | 'expenseDoc'
   | 'role'
-  | 'importBatch';
+  | 'importBatch'
+  | 'rep';
 
 export interface CrumbMeta {
   /** Static label (omit when `dynamic` is set). */
@@ -81,6 +82,7 @@ export const CRUMBS: Record<string, CrumbMeta> = {
   '/admin/notifications': { label: 'Notification settings', parent: '/admin', permission: 'settings:view' },
   '/admin/broadcast': { label: 'Broadcast', parent: '/admin', permission: 'notifications:broadcast' },
   '/admin/reps': { label: 'Reps', parent: '/admin', permission: 'hrm:view' },
+  '/admin/reps/:id': { dynamic: 'rep', parent: '/admin/reps', permission: 'hrm:view' },
   '/admin/clients': { label: 'Clients & Products', parent: '/admin', permission: 'clients:view' },
   '/admin/clients/:id': { dynamic: 'client', parent: '/admin/clients' },
   '/admin/products': { label: 'Products', parent: '/admin', permission: 'clients:view' },

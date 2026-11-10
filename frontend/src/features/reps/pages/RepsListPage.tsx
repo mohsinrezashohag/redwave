@@ -1,10 +1,14 @@
 /**
  * RepsListPage — the HRM rep roster screen (unblocks the previously dead "Reps" nav tab). Server-paginated
  * via <DataTable> with a status filter + free-text search (code/name) + export. `hrm:view` to see
- * (server-enforced; 403 → the DataTable's forbidden panel). Read-only roster; rep CRUD is a future screen.
+ * (server-enforced; 403 → the DataTable's forbidden panel). A rep's name opens their profile
+ * (/admin/reps/:id); "Add rep" (hrm:create) opens the rep form and lands on the new profile.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Input, PageHeader, Select } from '../../../components/ui';
+import { useNavigate } from 'react-router-dom';
+import { Plus } from 'lucide-react';
+import { Button, Input, PageHeader, Select } from '../../../components/ui';
+import { RepFormModal, type RepFormState } from '../components/RepFormModal';
 import { useCan } from '../../../auth/useCan';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { ExportMenu } from '../../../components/data/ExportMenu';
@@ -39,7 +43,10 @@ function SearchBox({ value, onChange }: { value: string; onChange: (v: string) =
 
 export default function RepsListPage() {
   const canView = useCan('hrm:view');
+  const canCreate = useCan('hrm:create');
   const canViewUsers = useCan('users:view');
+  const navigate = useNavigate();
+  const [form, setForm] = useState<RepFormState>(null);
   const [status, setStatus] = useState<RepStatusFilter>('active');
   const [search, setSearch] = useState('');
   const [managerId, setManagerId] = useState<string>(ALL_MANAGERS);
@@ -84,10 +91,16 @@ export default function RepsListPage() {
               <Select options={managerOptions} value={managerId} onValueChange={setManagerId} aria-label="Manager filter" />
             )}
             <ExportMenu filename={exportFilename({ source: 'reps', generatedOn: todayIso() })} title="Reps" columns={exportColumns} getRows={() => fetchAllReps(filters)} />
+            {canCreate && (
+              <Button variant="primary" leftIcon={<Plus size={16} />} onClick={() => setForm({ mode: 'create' })}>
+                Add rep
+              </Button>
+            )}
           </div>
         }
       />
       <RepsTable filters={filters} />
+      <RepFormModal state={form} onClose={() => setForm(null)} onSaved={(rep) => navigate(`/admin/reps/${rep.id}`)} />
     </div>
   );
 }

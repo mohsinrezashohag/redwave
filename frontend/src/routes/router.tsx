@@ -63,6 +63,7 @@ const ChatbotPage = lazy(() => import('../features/chatbot/pages/ChatbotPage'));
 const NotificationCenterPage = lazy(() => import('../features/notifications/pages/NotificationCenterPage'));
 const BroadcastPage = lazy(() => import('../features/notifications/pages/BroadcastPage'));
 const RepsListPage = lazy(() => import('../features/reps/pages/RepsListPage'));
+const RepDetailPage = lazy(() => import('../features/reps/pages/RepDetailPage'));
 const ReportsLandingPage = lazy(() => import('../features/reports/pages/ReportsLandingPage'));
 const TrendsPage = lazy(() => import('../features/reports/pages/TrendsPage'));
 const MarginPage = lazy(() => import('../features/margin/pages/MarginPage'));
@@ -156,6 +157,7 @@ export const router = createBrowserRouter([
           { path: 'admin/notifications', element: lazyEl(<NotificationSettingsPage />) },
           { path: 'admin/broadcast', element: lazyEl(<BroadcastPage />) },
           { path: 'admin/reps', element: lazyEl(<RepsListPage />) },
+          { path: 'admin/reps/:id', element: lazyEl(<RepDetailPage />) },
           { path: 'reports', element: lazyEl(<ReportsLandingPage />) },
           { path: 'reports/trends', element: lazyEl(<TrendsPage />) },
           { path: 'reports/margin', element: lazyEl(<MarginPage />) },

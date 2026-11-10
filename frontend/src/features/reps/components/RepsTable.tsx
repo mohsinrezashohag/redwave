@@ -5,6 +5,8 @@
  * Convenience gating only — the server is the real gate (§5).
  */
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import styles from './reps.module.css';
 import { Badge, Button } from '../../../components/ui';
 import { DataTable, type DataColumn } from '../../../components/data/DataTable';
 import { useCan } from '../../../auth/useCan';
@@ -43,7 +45,16 @@ export function RepsTable({ filters }: { filters: RepsFilters }) {
 
   const columns: DataColumn<Rep, RepSortKey>[] = [
     { id: 'rep_code', header: 'Code', sortKey: 'rep_code', render: (r) => <span className="mono">{r.rep_code}</span> },
-    { id: 'full_name', header: 'Name', sortKey: 'full_name', render: (r) => r.full_name },
+    {
+      id: 'full_name',
+      header: 'Name',
+      sortKey: 'full_name',
+      render: (r) => (
+        <Link to={`/admin/reps/${r.id}`} className={styles.nameLink}>
+          {r.full_name}
+        </Link>
+      ),
+    },
     {
       id: 'status',
       header: 'Status',

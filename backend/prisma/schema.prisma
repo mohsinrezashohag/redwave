@@ -551,6 +551,21 @@ model Rep {
   payment_details  Json?
   created_at       DateTime  @default(now())
 
+  // Profile (client request 2026-11-11). All optional. DOB / contact / address are PII — redacted unless the
+  // caller holds hrm:edit (HRM-008). The SIN is NEVER stored in clear: `sin_ciphertext` is AES-256-GCM
+  // (common/crypto/field-cipher, key in env PII_ENCRYPTION_KEY) and only `sin_last3` is kept for masking.
+  date_of_birth    DateTime? @db.Date
+  phone            String?
+  email            String?
+  address_street   String?
+  address_city     String?
+  address_province String?   @db.Char(2)
+  address_postal   String?
+  sin_ciphertext   String?
+  sin_last3        String?   @db.Char(3)
+  jacket_size      String?
+  tshirt_size      String?
+
   rep_documents   RepDocument[]
   rep_equipment   RepEquipment[]
   sales           Sale[]

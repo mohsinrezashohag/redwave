@@ -83,8 +83,17 @@
 ## 4b. Google Maps (expense KM distance) — OPTIONAL, recommended
 - **For:** the expense kilometre log. **WIRED + env-gated, graceful.** Two keys:
   - **Browser (frontend):** `VITE_GOOGLE_MAPS_API_KEY` enables Places **address autocomplete** + the
-    route **map** on the KM entry form (captures real lat/lng). Restrict to your domains + the Maps
-    JavaScript / Places APIs. Unset → manual address + total-km entry (the server still computes the amount).
+    route **map** on the KM entry form (captures real lat/lng). In Google Cloud, this key needs **four
+    APIs enabled — Maps JavaScript, Places, Directions** (fills the total km) **and Geocoding** (a stop
+    dropped by clicking the map) — **billing on**, and an **HTTP-referrer restriction that includes
+    `https://app.redwavemarketing.ca/*`** (plus `http://localhost:5173/*` for dev). It is baked in at
+    BUILD time: setting it in Vercel does nothing until the frontend is redeployed. Unset → manual address
+    + total-km entry (the server still computes the amount).
+  - **If the map is broken in production, open the km form with DevTools → Console.** Google names the
+    problem: `RefererNotAllowedMapError` (add the domain to the key's referrers), `ApiNotActivatedMapError`
+    (enable the API named), `BillingNotEnabledMapError`, or a CSP violation (widen `frontend/vercel.json`).
+    Since 2026-11 the form **falls back to manual stops + distance** on any of these, so a rep can always
+    log the trip — but the map is only back once the cause is fixed.
   - **Server (backend):** `GOOGLE_MAPS_API_KEY` lets the backend **re-derive the authoritative route
     distance** from the stops via the **Directions API** (the client value is ignored). Enable the
     Directions API on this key. Unset → the server falls back to the client-supplied `total_km`.

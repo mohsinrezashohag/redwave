@@ -52,6 +52,10 @@
 - **SPA (`frontend/vercel.json`)** — CSP (`default-src 'self'`; `script-src 'self'` — the theme boot is
   externalised to `/theme-boot.js` so no `unsafe-inline` is needed; `worker-src blob:` for pdf.js;
   `connect-src` includes the API origin + Maps + Supabase; `img-src data: blob:` for QR/avatars/tiles), HSTS,
+  **Google Maps needs Google's documented allowlist, not just `maps.googleapis.com`** — `*.googleapis.com`
+  / `*.gstatic.com` / `*.google.com` (+ `*.ggpht.com`, `*.googleusercontent.com`) across `script-src`,
+  `img-src` and `connect-src`, `blob:`/`data:` on script/connect, and `frame-src https://*.google.com`. The
+  narrower policy was the leading suspect when the KM map went missing in production (2026-11).
   `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, and a restrictive `Permissions-Policy`.
   - **Operator note:** `connect-src` lists `https://api.redwavemarketing.ca` — **change it to your real API
     origin** if different. If a screen fails to load, deploy the CSP as `Content-Security-Policy-Report-Only`
@@ -130,6 +134,14 @@ Redwave handles rep and customer personal information; we follow Canadian **PIPE
 - **Field redaction** — sensitive fields are nulled in the query unless the caller is entitled: rep
   `payment_details` and document `file_url`s require `hrm:edit`; the Business/Executive dashboard
   (partner financials) is Super Admin only. Extend this discipline to any new sensitive field.
+- **Rep profile PII (2026-11).** Date of birth, phone, email and address are nulled in every rep response
+  unless the caller holds `hrm:edit` (`toRepView` in `hrm/reps.service.ts` is the ONE serializer for list,
+  get, create and update), and the audit log records only their presence. **The SIN is encrypted at rest**
+  (AES-256-GCM, `common/crypto/field-cipher.ts`, key `PII_ENCRYPTION_KEY` in the Render env, never in the
+  DB): responses carry only `sin_on_file` + `sin_masked` (`••• ••• 286`, hrm:edit only); the full value
+  comes from `POST /v1/reps/:id/sin/reveal` (hrm:edit), which writes a `reveal_sin` audit row every time
+  and never logs the value. No key → a SIN is refused (503), never stored in clear. **Back up the key:**
+  losing it makes every stored SIN unreadable.
 - **Retention** — this is a financial ledger: sale, pay-run, holdback, clawback, and audit records are
   retained for the legally required period and are **never hard-deleted** (terminations/deactivations are
   soft status changes; rep codes are never reused). Document storage holds signed documents + identity files

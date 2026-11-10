@@ -18,6 +18,7 @@ import { useExpenseDoc } from '../features/expenseDocs/api/useExpenseDocs';
 import { expenseDocNo } from '../features/expenseDocs/expenseDocs.download';
 import { useRole } from '../features/admin/api/useRoles';
 import { useImportBatch } from '../features/import/api/useImports';
+import { useRep } from '../features/reps/api/useRepProfile';
 import { categoryLabel } from '../features/expenses/format';
 import { statementNo } from '../features/billing/billing.logic';
 import type { DynamicKind } from './crumbs';
@@ -80,6 +81,11 @@ function ImportBatchCrumb({ id }: { id: string }) {
   return <Resolved label={b ? `${b.source_type} · ${b.import_type}` : undefined} isLoading={q.isLoading} id={id} />;
 }
 
+function RepCrumb({ id }: { id: string }) {
+  const q = useRep(id);
+  return <Resolved label={q.data?.full_name} isLoading={q.isLoading} id={id} />;
+}
+
 export const DYNAMIC_CRUMBS: Record<DynamicKind, ComponentType<{ id: string }>> = {
   sale: SaleCrumb,
   client: ClientCrumb,
@@ -91,4 +97,5 @@ export const DYNAMIC_CRUMBS: Record<DynamicKind, ComponentType<{ id: string }>> 
   expenseDoc: ExpenseDocCrumb,
   role: RoleCrumb,
   importBatch: ImportBatchCrumb,
+  rep: RepCrumb,
 };

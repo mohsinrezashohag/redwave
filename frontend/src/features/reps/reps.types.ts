@@ -1,7 +1,8 @@
 /**
- * Rep types — RESPONSE shapes ALIASED to the generated OpenAPI schema (the backend ships `@ApiResponse`
- * DTOs + the paginated /v1/reps envelope as of this batch). `payment_details` is NULLED unless the caller
- * has hrm:edit (server-side redaction). The list is server-paginated ({ data, meta }).
+ * Rep types — RESPONSE shapes ALIASED to the generated OpenAPI schema. PII (payment_details, DOB, contact,
+ * address, the masked SIN) is NULLED server-side unless the caller has hrm:edit. The SIN itself is never in
+ * a rep response — only `sin_on_file` + `sin_masked`; the full value comes from the audited reveal endpoint.
+ * The list is server-paginated ({ data, meta }).
  */
 import type { components } from '../../api/generated/schema';
 
@@ -10,6 +11,17 @@ export type RepStatus = Rep['status'];
 
 /** The paginated /v1/reps envelope ({ data, meta }). */
 export type RepPage = components['schemas']['RepPageResponse'];
+
+export type CreateRepBody = components['schemas']['CreateRepDto'];
+export type UpdateRepBody = components['schemas']['UpdateRepDto'];
+export type RevealSin = components['schemas']['RevealSinResponse'];
+
+export type RepEquipment = components['schemas']['RepEquipmentResponse'];
+export type EquipmentStatus = RepEquipment['status'];
+export type CreateEquipmentBody = components['schemas']['CreateRepEquipmentDto'];
+export type UpdateEquipmentBody = components['schemas']['UpdateRepEquipmentDto'];
+
+export type RepDocument = components['schemas']['RepDocumentResponse'];
 
 /** Server sort allowlist (mirrors reps.service findAll): rep_code/full_name/status/hire_date/created_at. */
 export type RepSortKey = 'rep_code' | 'full_name' | 'status' | 'hire_date' | 'created_at';

@@ -3,6 +3,7 @@ import { RepStatus } from '@prisma/client';
 import {
   ArrayMinSize,
   IsArray,
+  IsEmail,
   IsEnum,
   IsIn,
   IsObject,
@@ -14,10 +15,80 @@ import {
   MinLength,
 } from 'class-validator';
 import { PaginationQuery } from '../../../common/pagination/pagination.query';
+import { CLOTHING_SIZES, PROVINCES } from '../rep-profile.logic';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/; // 'YYYY-MM-DD' date-only
 
-export class CreateRepDto {
+/**
+ * The rep PROFILE fields (client request 2026-11-11), shared by create and update. All optional; on update,
+ * `null` clears a field. Formats are checked here; the SIN's Luhn checksum, the postal code's shape and
+ * "DOB not in the future" are checked in the service, so one rule set serves both DTOs.
+ * DOB / contact / address / SIN are PII — redacted unless hrm:edit (HRM-008).
+ */
+export class RepProfileFieldsDto {
+  @ApiPropertyOptional({ example: '1994-03-21', nullable: true, description: 'YYYY-MM-DD. PII (hrm:edit).' })
+  @IsOptional()
+  @Matches(DATE, { message: 'date_of_birth must be a YYYY-MM-DD date' })
+  date_of_birth?: string | null;
+
+  @ApiPropertyOptional({ example: '+1 204 555 0142', nullable: true, description: 'PII (hrm:edit).' })
+  @IsOptional()
+  @Matches(/^[+\d\s().-]{7,30}$/, { message: 'phone must be a phone number' })
+  phone?: string | null;
+
+  @ApiPropertyOptional({ example: 'jordan@example.com', nullable: true, description: 'PII (hrm:edit).' })
+  @IsOptional()
+  @IsEmail({}, { message: 'email must be an email address' })
+  @MaxLength(200)
+  email?: string | null;
+
+  @ApiPropertyOptional({ example: '1250 Portage Ave', nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  address_street?: string | null;
+
+  @ApiPropertyOptional({ example: 'Winnipeg', nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  address_city?: string | null;
+
+  @ApiPropertyOptional({ enum: PROVINCES, nullable: true })
+  @IsOptional()
+  @IsIn([...PROVINCES])
+  address_province?: string | null;
+
+  @ApiPropertyOptional({ example: 'R3G 0T7', nullable: true, description: 'Canadian postal code.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  address_postal?: string | null;
+
+  @ApiPropertyOptional({
+    example: '046 454 286',
+    nullable: true,
+    description:
+      'Social Insurance Number — WRITE-ONLY. Stored encrypted; responses carry only `sin_masked`. ' +
+      'Spaces/dashes allowed; must pass the Luhn check. Empty string or null clears it.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(15)
+  sin?: string | null;
+
+  @ApiPropertyOptional({ enum: CLOTHING_SIZES, nullable: true })
+  @IsOptional()
+  @IsIn([...CLOTHING_SIZES])
+  jacket_size?: string | null;
+
+  @ApiPropertyOptional({ enum: CLOTHING_SIZES, nullable: true })
+  @IsOptional()
+  @IsIn([...CLOTHING_SIZES])
+  tshirt_size?: string | null;
+}
+
+export class CreateRepDto extends RepProfileFieldsDto {
   @ApiProperty({
     example: 'Redwave07',
     description: 'Unique rep code. Never reused — even after termination.',
@@ -64,7 +135,7 @@ export class CreateRepDto {
   payment_details?: Record<string, unknown>;
 }
 
-export class UpdateRepDto {
+export class UpdateRepDto extends RepProfileFieldsDto {
   // rep_code is intentionally NOT editable — it is the never-reused business key (#11).
   // external_code IS editable: it is only an alias used to resolve imports.
 

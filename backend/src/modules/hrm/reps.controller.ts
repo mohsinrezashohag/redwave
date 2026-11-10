@@ -41,7 +41,13 @@ import { BulkAssignManagerDto, CreateRepDto, ListRepsQuery, UpdateRepDto } from 
 import { SuccessResponse } from '../../common/dto/success.response';
 import { CreateRepDocumentDto } from './dto/rep-document.dto';
 import { CreateRepEquipmentDto } from './dto/rep-equipment.dto';
-import { RepDocumentResponse, RepEquipmentResponse, RepPageResponse, RepResponse } from './dto/hrm.response';
+import {
+  RepDocumentResponse,
+  RepEquipmentResponse,
+  RepPageResponse,
+  RepResponse,
+  RevealSinResponse,
+} from './dto/hrm.response';
 
 const MAX_REP_DOC_BYTES = 25 * 1024 * 1024; // 25 MB
 
@@ -75,8 +81,8 @@ export class RepsController {
     description: 'Requires hrm:create. rep_code never reused → 409.',
   })
   @ApiCreatedResponse({ type: RepResponse })
-  create(@Body() dto: CreateRepDto, @CurrentUser('id') actorId: string) {
-    return this.reps.create(dto, actorId);
+  create(@Body() dto: CreateRepDto, @CurrentUser() user: AuthUser) {
+    return this.reps.create(dto, user);
   }
 
   @Post('bulk-assign-manager')
@@ -112,9 +118,22 @@ export class RepsController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRepDto,
-    @CurrentUser('id') actorId: string,
+    @CurrentUser() user: AuthUser,
   ) {
-    return this.reps.update(id, dto, actorId);
+    return this.reps.update(id, dto, user);
+  }
+
+  @Post(':id/sin/reveal')
+  @RequirePermission('hrm', 'edit')
+  @ApiOperation({
+    summary: "Reveal a rep's SIN",
+    description:
+      'Requires hrm:edit. Decrypts and returns the SIN; EVERY call writes a reveal_sin audit row (the value ' +
+      'itself is never logged). 503 when the server has no PII_ENCRYPTION_KEY. sin is null when none is on file.',
+  })
+  @ApiOkResponse({ type: RevealSinResponse })
+  revealSin(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') actorId: string) {
+    return this.reps.revealSin(id, actorId);
   }
 
   // ── Nested: documents ───────────────────────────────────────────────────────────────────────

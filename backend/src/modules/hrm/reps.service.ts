@@ -11,8 +11,12 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { decryptField, encryptField, loadFieldKey } from '../../common/crypto/field-cipher';
+import { todayInWinnipeg } from '../../common/timezone';
+import { formatSin, maskSin, normalizePostal, normalizeSin } from './rep-profile.logic';
 import { Prisma, Rep, RepStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
@@ -20,7 +24,13 @@ import { AuthUser } from '../../common/rbac/auth-user.type';
 import { permissionKey } from '../../common/rbac/permissions.util';
 import { BUILTIN_ROLES } from '../../common/rbac/rbac.constants';
 import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
-import { BulkAssignManagerDto, CreateRepDto, ListRepsQuery, UpdateRepDto } from './dto/rep.dto';
+import {
+  BulkAssignManagerDto,
+  CreateRepDto,
+  ListRepsQuery,
+  RepProfileFieldsDto,
+  UpdateRepDto,
+} from './dto/rep.dto';
 
 const dateOnly = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
 
@@ -44,6 +54,56 @@ export function redactRep<T extends { payment_details: unknown }>(rep: T, canSee
   return canSee ? rep : { ...rep, payment_details: null };
 }
 
+/** The profile columns, as plain values (valid in both a Prisma create and update input). */
+type ProfileColumns = Partial<
+  Pick<
+    Rep,
+    | 'date_of_birth'
+    | 'phone'
+    | 'email'
+    | 'address_street'
+    | 'address_city'
+    | 'address_province'
+    | 'address_postal'
+    | 'sin_ciphertext'
+    | 'sin_last3'
+    | 'jacket_size'
+    | 'tshirt_size'
+  >
+>;
+
+/** PII on the rep row that only an hrm:edit caller may read. — HRM-008 */
+const PII_FIELDS = [
+  'payment_details',
+  'date_of_birth',
+  'phone',
+  'email',
+  'address_street',
+  'address_city',
+  'address_province',
+  'address_postal',
+] as const;
+
+/**
+ * THE rep serializer — every response goes through it (list, get, create, update). Pure.
+ *   - The SIN ciphertext and its last-3 never leave the server; the caller gets `sin_masked` (hrm:edit
+ *     only) and `sin_on_file` (a boolean, safe for anyone who can see the rep).
+ *   - Without hrm:edit, every PII field is null.
+ * Returning raw rows (as create/update used to) would have shipped the ciphertext to the browser.
+ */
+export function toRepView(rep: Rep, canSee: boolean) {
+  const { sin_ciphertext, sin_last3, ...rest } = rep;
+  const view = {
+    ...rest,
+    sin_on_file: sin_ciphertext !== null,
+    sin_masked: canSee ? maskSin(sin_last3) : null,
+  };
+  if (canSee) return view;
+  const redacted: Record<string, unknown> = { ...view };
+  for (const field of PII_FIELDS) redacted[field] = null;
+  return redacted as typeof view;
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
@@ -52,6 +112,9 @@ function isUniqueViolation(error: unknown): boolean {
 export class RepsService {
   /** Columns a client may sort the list on (allowlist — the orderBy-injection guard). */
   private static readonly SORTABLE = ['rep_code', 'full_name', 'status', 'hire_date', 'created_at'] as const;
+
+  /** AES key for the SIN; null when the server has none configured (→ SIN writes/reveals are 503). */
+  private readonly piiKey = loadFieldKey();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -79,7 +142,7 @@ export class RepsService {
     ]);
     const canSee = canSeeSensitive(user);
     return buildPage(
-      reps.map((rep) => redactRep(rep, canSee)),
+      reps.map((rep) => toRepView(rep, canSee)),
       total,
       page,
       limit,
@@ -91,10 +154,28 @@ export class RepsService {
     if (!rep) {
       throw new NotFoundException('Rep not found');
     }
-    return redactRep(rep, canSeeSensitive(user));
+    return toRepView(rep, canSeeSensitive(user));
   }
 
-  async create(dto: CreateRepDto, actorId: string) {
+  /**
+   * Decrypt and return a rep's SIN. hrm:edit only (controller), and EVERY reveal is audited — who looked
+   * at whose SIN and when — without the value itself ever entering the audit log.
+   */
+  async revealSin(id: string, actorId: string): Promise<{ sin: string | null }> {
+    const rep = await this.prisma.rep.findUnique({ where: { id }, select: { id: true, sin_ciphertext: true } });
+    if (!rep) {
+      throw new NotFoundException('Rep not found');
+    }
+    if (rep.sin_ciphertext === null) {
+      return { sin: null };
+    }
+    const sin = formatSin(decryptField(rep.sin_ciphertext, this.requirePiiKey()));
+    await this.audit.log({ actorId, entityType: 'reps', entityId: id, action: 'reveal_sin' });
+    return { sin };
+  }
+
+  async create(dto: CreateRepDto, user: AuthUser) {
+    const actorId = user.id;
     // #11 — reject reuse of ANY existing code (active or terminated), case-insensitively.
     const existing = await this.prisma.rep.findFirst({
       where: { rep_code: { equals: dto.rep_code, mode: 'insensitive' } },
@@ -123,6 +204,7 @@ export class RepsService {
             dto.payment_details === undefined
               ? undefined
               : (dto.payment_details as Prisma.InputJsonValue),
+          ...this.profileData(dto),
         },
       });
       await this.audit.log({
@@ -132,7 +214,7 @@ export class RepsService {
         action: 'create',
         after: this.auditView(rep),
       });
-      return rep;
+      return toRepView(rep, canSeeSensitive(user));
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException('rep_code already used'); // DB backstop for #11
@@ -141,7 +223,8 @@ export class RepsService {
     }
   }
 
-  async update(id: string, dto: UpdateRepDto, actorId: string) {
+  async update(id: string, dto: UpdateRepDto, user: AuthUser) {
+    const actorId = user.id;
     const before = await this.prisma.rep.findUnique({ where: { id } });
     if (!before) {
       throw new NotFoundException('Rep not found');
@@ -162,6 +245,7 @@ export class RepsService {
     if (dto.user_id !== undefined) data.user_id = dto.user_id ?? null;
     if (dto.payment_details !== undefined)
       data.payment_details = dto.payment_details as Prisma.InputJsonValue;
+    Object.assign(data, this.profileData(dto));
 
     // Termination / reactivation (HRM-004): never delete — soft status change preserves history.
     let action = 'update';
@@ -190,7 +274,66 @@ export class RepsService {
       before: this.auditView(before),
       after: this.auditView(updated),
     });
-    return updated;
+    return toRepView(updated, canSeeSensitive(user));
+  }
+
+  /**
+   * The profile columns to write, from whichever profile fields the DTO carries. `undefined` = leave alone,
+   * `null` (or '' for the SIN) = clear. Validates what the DTO decorators cannot: DOB not in the future
+   * (Winnipeg "today", CLAUDE §2), the postal code's shape, and the SIN's Luhn checksum — then ENCRYPTS
+   * the SIN. Anything invalid is a 422 naming the field.
+   */
+  private profileData(dto: RepProfileFieldsDto): ProfileColumns {
+    const data: ProfileColumns = {};
+    const text = (v: string | null | undefined) => (v === undefined ? undefined : v?.trim() ? v.trim() : null);
+
+    if (dto.date_of_birth !== undefined) {
+      if (dto.date_of_birth !== null && dto.date_of_birth > todayInWinnipeg()) {
+        throw new UnprocessableEntityException('date_of_birth cannot be in the future');
+      }
+      data.date_of_birth = dto.date_of_birth === null ? null : dateOnly(dto.date_of_birth);
+    }
+    if (dto.phone !== undefined) data.phone = text(dto.phone);
+    if (dto.email !== undefined) data.email = text(dto.email)?.toLowerCase() ?? null;
+    if (dto.address_street !== undefined) data.address_street = text(dto.address_street);
+    if (dto.address_city !== undefined) data.address_city = text(dto.address_city);
+    if (dto.address_province !== undefined) data.address_province = dto.address_province;
+    if (dto.address_postal !== undefined) {
+      const raw = text(dto.address_postal);
+      const postal = raw === null || raw === undefined ? null : normalizePostal(raw);
+      if (raw && !postal) {
+        throw new UnprocessableEntityException('address_postal must be a Canadian postal code (e.g. R3G 0T7)');
+      }
+      data.address_postal = postal;
+    }
+    if (dto.jacket_size !== undefined) data.jacket_size = dto.jacket_size;
+    if (dto.tshirt_size !== undefined) data.tshirt_size = dto.tshirt_size;
+
+    if (dto.sin !== undefined) {
+      const raw = text(dto.sin);
+      if (!raw) {
+        data.sin_ciphertext = null;
+        data.sin_last3 = null;
+      } else {
+        const digits = normalizeSin(raw);
+        if (!digits) {
+          throw new UnprocessableEntityException('sin must be a valid 9-digit Social Insurance Number');
+        }
+        data.sin_ciphertext = encryptField(digits, this.requirePiiKey());
+        data.sin_last3 = digits.slice(-3);
+      }
+    }
+    return data;
+  }
+
+  /** The PII key, or 503 — a SIN is never stored or revealed without it (never a plain-text fallback). */
+  private requirePiiKey(): Buffer {
+    if (!this.piiKey) {
+      throw new ServiceUnavailableException(
+        'SIN storage is not configured on this server (PII_ENCRYPTION_KEY is missing or invalid)',
+      );
+    }
+    return this.piiKey;
   }
 
   /**
@@ -250,6 +393,13 @@ export class RepsService {
         ? rep.termination_date.toISOString().slice(0, 10)
         : null,
       payment_details_present: rep.payment_details !== null,
+      // Profile: sizes are not PII; everything else is logged as PRESENCE only, never the value.
+      jacket_size: rep.jacket_size,
+      tshirt_size: rep.tshirt_size,
+      date_of_birth_present: rep.date_of_birth !== null,
+      contact_present: rep.phone !== null || rep.email !== null,
+      address_present: rep.address_street !== null || rep.address_postal !== null,
+      sin_present: rep.sin_ciphertext !== null,
     };
   }
 }
