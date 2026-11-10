@@ -2372,6 +2372,34 @@ paths:
       security: *a105
       summary: Edit / set field manager / terminate a rep
       tags: *a106
+  /v1/reps/{id}/sin/reveal:
+    post:
+      description: Requires hrm:edit. Decrypts and returns the SIN; EVERY call writes
+        a reveal_sin audit row (the value itself is never logged). 503 when the
+        server has no PII_ENCRYPTION_KEY. sin is null when none is on file.
+      operationId: RepsController_revealSin_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevealSinResponse"
+        "400": *a99
+        "401": *a100
+        "403": *a101
+        "404": *a102
+        "409": *a103
+        "422": *a104
+      security: *a105
+      summary: Reveal a rep's SIN
+      tags: *a106
   /v1/reps/{id}/documents:
     get:
       description: Requires hrm:view. file_url shown only with hrm:edit.
@@ -10120,6 +10148,52 @@ components:
         created_at:
           type: string
           format: date-time
+        date_of_birth:
+          type: string
+          format: date-time
+          nullable: true
+          description: PII — null unless hrm:edit.
+        phone:
+          type: string
+          nullable: true
+          description: PII — null unless hrm:edit.
+        email:
+          type: string
+          nullable: true
+          description: PII — null unless hrm:edit.
+        address_street:
+          type: string
+          nullable: true
+          description: PII — null unless hrm:edit.
+        address_city:
+          type: string
+          nullable: true
+          description: PII — null unless hrm:edit.
+        address_province:
+          type: string
+          nullable: true
+          description: PII — null unless hrm:edit.
+        address_postal:
+          type: string
+          nullable: true
+          description: PII — null unless hrm:edit.
+        jacket_size:
+          type: string
+          nullable: true
+          example: L
+        tshirt_size:
+          type: string
+          nullable: true
+          example: M
+        sin_on_file:
+          type: boolean
+          description: Whether a SIN is on file. The SIN itself is never in this response.
+        sin_masked:
+          type: string
+          nullable: true
+          example: ••• ••• 286
+          description: Masked SIN (last 3 digits) — null unless hrm:edit. Use POST
+            …/sin/reveal for the full value.
       required:
         - id
         - rep_code
@@ -10132,6 +10206,17 @@ components:
         - termination_date
         - payment_details
         - created_at
+        - date_of_birth
+        - phone
+        - email
+        - address_street
+        - address_city
+        - address_province
+        - address_postal
+        - jacket_size
+        - tshirt_size
+        - sin_on_file
+        - sin_masked
     RepPageResponse:
       type: object
       properties:
@@ -10147,6 +10232,73 @@ components:
     CreateRepDto:
       type: object
       properties:
+        date_of_birth:
+          type: object
+          example: 1994-03-21
+          nullable: true
+          description: YYYY-MM-DD. PII (hrm:edit).
+        phone:
+          type: object
+          example: +1 204 555 0142
+          nullable: true
+          description: PII (hrm:edit).
+        email:
+          type: object
+          example: jordan@example.com
+          nullable: true
+          description: PII (hrm:edit).
+        address_street:
+          type: object
+          example: 1250 Portage Ave
+          nullable: true
+        address_city:
+          type: object
+          example: Winnipeg
+          nullable: true
+        address_province:
+          type: string
+          enum: &a364
+            - AB
+            - BC
+            - MB
+            - NB
+            - NL
+            - NS
+            - NT
+            - NU
+            - ON
+            - PE
+            - QC
+            - SK
+            - YT
+          nullable: true
+        address_postal:
+          type: object
+          example: R3G 0T7
+          nullable: true
+          description: Canadian postal code.
+        sin:
+          type: object
+          example: 046 454 286
+          nullable: true
+          description: Social Insurance Number — WRITE-ONLY. Stored encrypted; responses
+            carry only `sin_masked`. Spaces/dashes allowed; must pass the Luhn
+            check. Empty string or null clears it.
+        jacket_size:
+          type: string
+          enum: &a363
+            - XS
+            - S
+            - M
+            - L
+            - XL
+            - 2XL
+            - 3XL
+          nullable: true
+        tshirt_size:
+          type: string
+          enum: *a363
+          nullable: true
         rep_code:
           type: string
           example: Redwave07
@@ -10197,6 +10349,53 @@ components:
     UpdateRepDto:
       type: object
       properties:
+        date_of_birth:
+          type: object
+          example: 1994-03-21
+          nullable: true
+          description: YYYY-MM-DD. PII (hrm:edit).
+        phone:
+          type: object
+          example: +1 204 555 0142
+          nullable: true
+          description: PII (hrm:edit).
+        email:
+          type: object
+          example: jordan@example.com
+          nullable: true
+          description: PII (hrm:edit).
+        address_street:
+          type: object
+          example: 1250 Portage Ave
+          nullable: true
+        address_city:
+          type: object
+          example: Winnipeg
+          nullable: true
+        address_province:
+          type: string
+          enum: *a364
+          nullable: true
+        address_postal:
+          type: object
+          example: R3G 0T7
+          nullable: true
+          description: Canadian postal code.
+        sin:
+          type: object
+          example: 046 454 286
+          nullable: true
+          description: Social Insurance Number — WRITE-ONLY. Stored encrypted; responses
+            carry only `sin_masked`. Spaces/dashes allowed; must pass the Luhn
+            check. Empty string or null clears it.
+        jacket_size:
+          type: string
+          enum: *a363
+          nullable: true
+        tshirt_size:
+          type: string
+          enum: *a363
+          nullable: true
         external_code:
           type: string
           example: Redwave20
@@ -10223,6 +10422,16 @@ components:
           type: string
           example: 2026-06-30
           description: Required when status=terminated.
+    RevealSinResponse:
+      type: object
+      properties:
+        sin:
+          type: string
+          nullable: true
+          example: 046 454 286
+          description: null when no SIN is on file.
+      required:
+        - sin
     RepDocumentResponse:
       type: object
       properties:
@@ -10370,7 +10579,7 @@ components:
           type: string
         status:
           type: string
-          enum: &a363
+          enum: &a365
             - current
             - pending
             - past
@@ -10483,7 +10692,7 @@ components:
           type: string
         status:
           type: string
-          enum: *a363
+          enum: *a365
       required:
         - id
         - client_id
@@ -10588,7 +10797,7 @@ components:
           type: string
         status:
           type: string
-          enum: *a363
+          enum: *a365
       required:
         - id
         - client_id
@@ -10666,7 +10875,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: *a363
+          enum: *a365
       required:
         - id
         - advance_pct
@@ -11474,9 +11683,9 @@ components:
             empty string; the UI falls back to the category label.
         field_values:
           type: object
-          additionalProperties: &a364
+          additionalProperties: &a366
             type: string
-          example: &a365
+          example: &a367
             vendor: Tim Hortons
             city: Winnipeg
           description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
@@ -11893,8 +12102,8 @@ components:
             empty string; the UI falls back to the category label.
         field_values:
           type: object
-          additionalProperties: *a364
-          example: *a365
+          additionalProperties: *a366
+          example: *a367
           description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
             category schema (EXP-002a). METADATA ONLY — never summed into the
             amount (#1). Unknown keys are dropped server-side."
@@ -12530,7 +12739,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: &a366
+          enum: &a368
             - draft
             - finalized
             - exported
@@ -12673,7 +12882,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: *a366
+          enum: *a368
         executed_by:
           type: string
         created_at:
@@ -14586,14 +14795,14 @@ components:
           type: string
         source_type:
           type: string
-          enum: &a367
+          enum: &a369
             - client_report
             - master_migration
             - balance_migration
             - sales_entry
         import_type:
           type: string
-          enum: &a368
+          enum: &a370
             - reps
             - clients
             - products
@@ -14613,7 +14822,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: &a369
+          enum: &a371
             - staged
             - committed
             - failed
@@ -14634,13 +14843,13 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: &a370
+          additionalProperties: &a372
             type: number
           nullable: true
           description: Counts by classification (matched/unmatched/...).
         applied_mapping:
           type: object
-          additionalProperties: &a371
+          additionalProperties: &a373
             type: string
           nullable: true
           description: "The `{ systemField: sourceColumn }` mapping actually applied to
@@ -14859,10 +15068,10 @@ components:
           type: string
         source_type:
           type: string
-          enum: *a367
+          enum: *a369
         import_type:
           type: string
-          enum: *a368
+          enum: *a370
         client_id:
           type: string
           nullable: true
@@ -14871,7 +15080,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: *a369
+          enum: *a371
         total_rows:
           type: number
           example: 3
@@ -14888,12 +15097,12 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: *a370
+          additionalProperties: *a372
           nullable: true
           description: Counts by classification (matched/unmatched/...).
         applied_mapping:
           type: object
-          additionalProperties: *a371
+          additionalProperties: *a373
           nullable: true
           description: "The `{ systemField: sourceColumn }` mapping actually applied to
             this batch."
@@ -16079,14 +16288,14 @@ components:
           type: string
         report_type:
           type: string
-          enum: &a372
+          enum: &a374
             - business_summary
             - leaderboard
             - payrun_summary
             - expense_summary
         format:
           type: string
-          enum: &a373
+          enum: &a375
             - csv
             - excel
             - pdf
@@ -16112,11 +16321,11 @@ components:
       properties:
         report_type:
           type: string
-          enum: *a372
+          enum: *a374
           description: Which report was generated.
         format:
           type: string
-          enum: *a373
+          enum: *a375
         filename:
           type: string
           maxLength: 200

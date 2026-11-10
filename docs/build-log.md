@@ -2353,3 +2353,56 @@ build; FE build + lint + stylelint + 96 vitest. No contract change, no migration
   `.statement` layout. This shipped because the change was verified by build/lint/test only. Layout
   needs a browser look, and that is the step that was skipped (the local app points at production, so it
   was not run).
+
+### HRM — rep profile, equipment + documents screens, encrypted SIN (client request 2026-11-11; migration `20261111000000`)
+
+Naimur asked for "the whole profile of each rep, including name, DOB, address, SIN number, jacket/t-shirt
+size and iPad tracking". There was no phase-one reference, so the fields are exactly the ones listed (plus
+phone/email, which a login-less rep had nowhere to keep).
+
+**What existed:** `reps` held only name, codes, manager, status, dates and `payment_details`. The
+equipment (HRM-006) and documents (HRM-005) APIs were complete, but **no screen used them**. The reps page
+was a read-only list, with no detail page and no create/edit form.
+
+**Built:**
+- **Migration (additive, nullable):** `date_of_birth`, `phone`, `email`, `address_street/city/province/postal`,
+  `sin_ciphertext`, `sin_last3`, `jacket_size`, `tshirt_size`. Closes the §12 "dedicated `reps.contact`"
+  deferral.
+- **`common/crypto/field-cipher.ts`:** AES-256-GCM with a random IV and an auth tag, so a tampered value
+  fails instead of decrypting to garbage. Token format is `v1.iv.tag.ct`; the key is `PII_ENCRYPTION_KEY`
+  (env only). There was no encryption helper before; bcrypt is one-way and cannot serve a SIN that must be
+  read back.
+- **`toRepView`, the single rep serializer.** It strips the ciphertext and last-3, adds `sin_on_file` and
+  `sin_masked`, and nulls DOB/contact/address/payment details without `hrm:edit`.
+  - **Pre-existing leak shape fixed:** `create`/`update` returned the RAW row. That was harmless until the
+    table held a ciphertext, and would have shipped it to the browser.
+  - Every other module already loads reps with a narrow `select` (checked), so nothing else can pick up
+    the new columns.
+- **Validation:**
+  - SIN: 9 digits plus Luhn, checked server-side and mirrored client-side; blank on edit keeps it, `''`
+    clears it.
+  - Postal code: normalised to `A1A 1A1`.
+  - DOB: not in the future (Winnipeg today).
+  - Sizes and province: allowlists.
+- **`POST /v1/reps/:id/sin/reveal`** (`hrm:edit`): writes a `reveal_sin` audit row on every call, without
+  the value. No key → 503, never a plain-text fallback. A rep without a SIN still saves when the key is
+  missing.
+- **Audit:** profile values are logged as presence flags only. A spec greps the audit payload for every PII
+  value.
+- **Frontend (`features/reps/`):**
+  - `/admin/reps/:id` with the tabs **Profile** (Personal · Uniform · Employment), **Equipment** (assign with
+    deposit `MoneyInput`, mark returned, withhold the deposit behind a `ConfirmDialog`) and **Documents**
+    (upload; open via signed URL, `hrm:edit` only).
+  - **Add rep / Edit profile** form (`RepFormModal`, RHF+zod, pure `repForm.ts`).
+  - Reveal shows the SIN for 30 s and toasts that the view was audited.
+  - The list's names link to the profile, and an **Add rep** button opens the form.
+  - New crumb `rep`.
+
+**Operator:** set `PII_ENCRYPTION_KEY` on Render (32 random bytes, base64; the command is in
+`backend/.env.example`) and **back it up**, because losing it makes every stored SIN unreadable. Then run
+`prisma:deploy`.
+
+**Verified LOCAL:** 1183 backend tests (130 suites: +`field-cipher.spec`, +`rep-profile.logic.spec`,
++`reps.profile.spec`) + typecheck + lint + build + contract regen; FE build + lint + stylelint + 109 vitest
+(+`repForm.test`). **Not yet seen in a browser.** The local app points at production, so the screens get
+their first look after deploy.

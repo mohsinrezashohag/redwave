@@ -67,7 +67,7 @@ describe('RepsService.create — rep_code no-reuse (#11, HRM-003)', () => {
     prisma.user.findUnique.mockResolvedValue(managerUser);
     prisma.rep.create.mockResolvedValue({ id: 'r1', rep_code: 'Redwave07', payment_details: null });
 
-    await service.create(newRepDto, 'actor-1');
+    await service.create(newRepDto, EDITOR);
 
     expect(prisma.rep.create).toHaveBeenCalled();
   });
@@ -75,7 +75,7 @@ describe('RepsService.create — rep_code no-reuse (#11, HRM-003)', () => {
   it('rejects reuse of an ACTIVE code with 409', async () => {
     const { service, prisma } = make();
     prisma.rep.findFirst.mockResolvedValue({ id: 'existing-active' });
-    await expect(service.create(newRepDto, 'actor-1')).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.create(newRepDto, EDITOR)).rejects.toBeInstanceOf(ConflictException);
     expect(prisma.rep.create).not.toHaveBeenCalled();
   });
 
@@ -84,7 +84,7 @@ describe('RepsService.create — rep_code no-reuse (#11, HRM-003)', () => {
     // A terminated rep still holds its code; the no-reuse check spans ALL statuses.
     prisma.rep.findFirst.mockResolvedValue({ id: 'terminated-rep' });
 
-    await expect(service.create(newRepDto, 'actor-1')).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.create(newRepDto, EDITOR)).rejects.toBeInstanceOf(ConflictException);
     // The lookup must NOT filter by status (so terminated reps are included) and is case-insensitive.
     expect(prisma.rep.findFirst).toHaveBeenCalledWith({
       where: { rep_code: { equals: 'Redwave07', mode: 'insensitive' } },
@@ -99,7 +99,7 @@ describe('RepsService.create — field-manager validation (HRM-002)', () => {
     const { service, prisma } = make();
     prisma.rep.findFirst.mockResolvedValue(null);
     prisma.user.findUnique.mockResolvedValue(null);
-    await expect(service.create(newRepDto, 'actor-1')).rejects.toBeInstanceOf(
+    await expect(service.create(newRepDto, EDITOR)).rejects.toBeInstanceOf(
       UnprocessableEntityException,
     );
   });
@@ -112,7 +112,7 @@ describe('RepsService.create — field-manager validation (HRM-002)', () => {
       status: 'active',
       user_roles: [{ role: { name: 'Sales Rep' } }],
     });
-    await expect(service.create(newRepDto, 'actor-1')).rejects.toBeInstanceOf(
+    await expect(service.create(newRepDto, EDITOR)).rejects.toBeInstanceOf(
       UnprocessableEntityException,
     );
   });
@@ -150,7 +150,7 @@ describe('RepsService.update — termination (HRM-004)', () => {
     });
     prisma.rep.update.mockResolvedValue({ id: 'r1', status: 'terminated', payment_details: null });
 
-    await service.update('r1', { status: 'terminated', termination_date: '2026-06-30' }, 'actor-1');
+    await service.update('r1', { status: 'terminated', termination_date: '2026-06-30' }, EDITOR);
 
     const arg = prisma.rep.update.mock.calls[0][0] as { data: Record<string, unknown> };
     expect(arg.data.status).toBe('terminated');
@@ -165,7 +165,7 @@ describe('RepsService.update — termination (HRM-004)', () => {
       status: 'active',
       field_manager_id: 'mgr-1',
     });
-    await expect(service.update('r1', { status: 'terminated' }, 'actor-1')).rejects.toBeInstanceOf(
+    await expect(service.update('r1', { status: 'terminated' }, EDITOR)).rejects.toBeInstanceOf(
       UnprocessableEntityException,
     );
   });

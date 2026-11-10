@@ -51,6 +51,52 @@ export class RepResponse {
 
   @ApiProperty({ type: String, format: 'date-time' })
   created_at!: string;
+
+  // ── Profile (client request 2026-11-11). DOB / contact / address are NULLED unless hrm:edit. ──
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'PII — null unless hrm:edit.' })
+  date_of_birth!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'PII — null unless hrm:edit.' })
+  phone!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'PII — null unless hrm:edit.' })
+  email!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'PII — null unless hrm:edit.' })
+  address_street!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'PII — null unless hrm:edit.' })
+  address_city!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'PII — null unless hrm:edit.' })
+  address_province!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'PII — null unless hrm:edit.' })
+  address_postal!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'L' })
+  jacket_size!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'M' })
+  tshirt_size!: string | null;
+
+  @ApiProperty({ description: 'Whether a SIN is on file. The SIN itself is never in this response.' })
+  sin_on_file!: boolean;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: '••• ••• 286',
+    description: 'Masked SIN (last 3 digits) — null unless hrm:edit. Use POST …/sin/reveal for the full value.',
+  })
+  sin_masked!: string | null;
+}
+
+/** The decrypted SIN from POST /v1/reps/{id}/sin/reveal (hrm:edit; every call is audited). */
+export class RevealSinResponse {
+  @ApiProperty({ type: String, nullable: true, example: '046 454 286', description: 'null when no SIN is on file.' })
+  sin!: string | null;
 }
 
 /** Paginated list envelope (arch §5.1) — one page of reps + the meta. */
