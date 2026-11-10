@@ -42,6 +42,8 @@ const ProductsListPage = lazy(() => import('../features/products/pages/ProductsL
 const CommissionConfigPage = lazy(() => import('../features/commission/pages/CommissionConfigPage'));
 const ProductTypesPage = lazy(() => import('../features/productTypes/pages/ProductTypesPage'));
 const KmRatesPage = lazy(() => import('../features/kmRates/pages/KmRatesPage'));
+const PeriodConfigPage = lazy(() => import('../features/periodConfig/pages/PeriodConfigPage'));
+const ExportLayoutsPage = lazy(() => import('../features/exportLayouts/pages/ExportLayoutsPage'));
 const PayRunListPage = lazy(() => import('../features/payrun/pages/PayRunListPage'));
 const MyPayStatementsPage = lazy(() => import('../features/payrun/pages/MyPayStatementsPage'));
 const PayRunDetailPage = lazy(() => import('../features/payrun/pages/PayRunDetailPage'));
@@ -63,6 +65,7 @@ const BroadcastPage = lazy(() => import('../features/notifications/pages/Broadca
 const RepsListPage = lazy(() => import('../features/reps/pages/RepsListPage'));
 const ReportsLandingPage = lazy(() => import('../features/reports/pages/ReportsLandingPage'));
 const TrendsPage = lazy(() => import('../features/reports/pages/TrendsPage'));
+const MarginPage = lazy(() => import('../features/margin/pages/MarginPage'));
 const ReportExportsPage = lazy(() => import('../features/reports/pages/ReportExportsPage'));
 const ForgotPasswordPage = lazy(() => import('../features/auth/pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('../features/auth/pages/ResetPasswordPage'));
@@ -155,6 +158,7 @@ export const router = createBrowserRouter([
           { path: 'admin/reps', element: lazyEl(<RepsListPage />) },
           { path: 'reports', element: lazyEl(<ReportsLandingPage />) },
           { path: 'reports/trends', element: lazyEl(<TrendsPage />) },
+          { path: 'reports/margin', element: lazyEl(<MarginPage />) },
           { path: 'reports/exports', element: lazyEl(<ReportExportsPage />) },
           { path: 'admin/clients', element: lazyEl(<ClientsPage />) },
           { path: 'admin/clients/:id', element: lazyEl(<ClientDetailPage />) },
@@ -162,6 +166,8 @@ export const router = createBrowserRouter([
           { path: 'admin/commission', element: lazyEl(<CommissionConfigPage />) },
           { path: 'admin/product-types', element: lazyEl(<ProductTypesPage />) },
           { path: 'admin/km-rates', element: lazyEl(<KmRatesPage />) },
+          { path: 'admin/period-configs', element: lazyEl(<PeriodConfigPage />) },
+          { path: 'admin/export-layouts', element: lazyEl(<ExportLayoutsPage />) },
           { path: 'admin/security', element: lazyEl(<SecuritySettingsPage />) },
           { path: 'admin/audit', element: lazyEl(<AuditLogPage />) },
           { path: 'admin/reconciliation', element: lazyEl(<ReconciliationPage />) },

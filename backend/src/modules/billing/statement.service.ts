@@ -26,6 +26,7 @@ import { winnipegDateOnly } from '../../common/timezone';
 import { FxRateService } from '../../common/fx/fx-rate.service';
 import { convertToCad } from '../../common/fx/fx.logic';
 import { SequenceService } from '../../common/sequence/sequence.service';
+import { ExportLayoutService } from '../../common/export/export-layout.service';
 import { statementNo } from './doc-number';
 import {
   buildStatement,
@@ -147,6 +148,9 @@ export class StatementService {
     private readonly audit: AuditService,
     private readonly sequence: SequenceService,
     private readonly fx: FxRateService,
+    // A cross-cutting seam like sequence and fx — NOT a dependency on the reporting module. It only reads
+    // export_layouts; nothing about it touches the commission stream (#3).
+    private readonly layouts: ExportLayoutService,
     @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
   ) {}
 
@@ -421,6 +425,9 @@ export class StatementService {
     // Freeze the FX snapshot AT ISSUE (#12) — CAD → rate 1; the total_amount is in the client's currency.
     const fx = await this.resolveIssueFx(client.currency, draft.total_amount, fxOverride);
 
+    // Resolved BEFORE the transaction: reading configuration is not part of the money write.
+    const { id: layoutId } = await this.layouts.resolve('statement', clientId);
+
     const statement = await this.prisma.$transaction(async (tx) => {
       const statement_number = await this.sequence.next(tx, 'statement'); // gapless, row-locked
       const created = await tx.clientStatement.create({
@@ -437,6 +444,10 @@ export class StatementService {
           fx_rate_date: fx.fx_rate_date,
           amount_cad: fx.amount_cad,
           generated_by: actorId,
+          // FREEZE the layout in force at issue. A later configuration change can then never alter how
+          // THIS document re-renders (#2) — null means the built-in default, which is what every statement
+          // issued before layouts existed carries, so those re-render byte-identically.
+          export_layout_id: layoutId,
           lines: { create: lineData },
         },
         include: STATEMENT_INCLUDE,

@@ -87,6 +87,8 @@ export const CRUMBS: Record<string, CrumbMeta> = {
   '/admin/commission': { label: 'Commission Config', parent: '/admin', permission: 'commission:view' },
   '/admin/product-types': { label: 'Product types', parent: '/admin', permission: 'commission:view' },
   '/admin/km-rates': { label: 'KM rates', parent: '/admin', permission: 'expenses:view' },
+  '/admin/period-configs': { label: 'Period calendars', parent: '/admin', permission: 'payrun:view' },
+  '/admin/export-layouts': { label: 'Export layouts', parent: '/admin', permission: 'reports:view' },
   '/admin/security': { label: 'Security', parent: '/admin', permission: 'settings:view' },
   '/admin/audit': { label: 'Audit log', parent: '/admin', permission: 'audit:view' },
   '/admin/reconciliation': { label: 'Reconciliation', parent: '/admin', permission: 'billing:view' },
@@ -99,6 +101,7 @@ export const CRUMBS: Record<string, CrumbMeta> = {
   // ── Reports / misc ─────────────────────────────────────────────────────────────────
   '/reports': { label: 'Reports' },
   '/reports/trends': { label: 'Cross-period trends', parent: '/reports', permission: 'reports:business' },
+  '/reports/margin': { label: 'Margin', parent: '/reports', permission: 'reports:business' },
   '/reports/exports': { label: 'Report exports', parent: '/reports' },
   '/notifications': { label: 'Notifications' },
   '/account': { label: 'My Account' },

@@ -316,6 +316,8 @@ model User {
   tier_configs_created          CommissionTierConfig[]     @relation("TierConfigCreatedBy")
   flat_rates_created            CommissionFlatRate[]       @relation("FlatRateCreatedBy")
   tier_rates_created            CommissionTierRate[]       @relation("TierRateCreatedBy")
+  period_configs_created        PeriodConfig[]             @relation("PeriodConfigCreatedBy")
+  export_layouts_created        ExportLayout[]             @relation("ExportLayoutCreatedBy")
   holdback_release_set          HoldbackReleaseSetting[]   @relation("HoldbackReleaseSetBy")
   incentives_created            Incentive[]                @relation("IncentiveCreatedBy")
   sales_validated               Sale[]                     @relation("SaleValidatedBy")
@@ -634,6 +636,7 @@ model Client {
   commission_tier_configs CommissionTierConfig[]
   commission_flat_rates   CommissionFlatRate[]
   commission_tier_rates   CommissionTierRate[]
+  export_layouts          ExportLayout[]
   client_statements       ClientStatement[]
   client_invoices         ClientInvoice[]
   client_expense_docs     ClientExpenseDocument[]
@@ -862,6 +865,77 @@ model PayrollReportLine {
 
   @@index([pay_run_id, sort_order])
   @@map("payroll_report_lines")
+}
+
+// PERIOD CONFIG — the calendars themselves become admin config instead of constants in seed code.
+//
+// TWO CALENDARS, never substituted for one another (§14 rule 1): `pay` periods govern REP PAY and a sale's
+// period is derived from its sale_date (#7); `billing` periods govern CLIENT BILLING and are numbered
+// sequentially ("Bill 17"). A bill straddles two pay periods, and that one-day boundary offset is
+// deliberate — Redwave asked to control it, so it is configuration rather than a constant.
+//
+// FORWARD-ONLY is what makes this safe. Regeneration may only create or edit periods that carry no
+// finalized pay run and no issued statement or invoice. Moving a boundary under a frozen document does not
+// throw — the numbers simply stop reconciling — so the guard lives in the service and names the blocking
+// document (#2/#8).
+//
+// Effective-dated like every other config (#10): a change is a new row; it never rewrites a closed period.
+enum PeriodKind {
+  pay
+  billing
+}
+
+model PeriodConfig {
+  id         String     @id @default(uuid()) @db.Uuid
+  kind       PeriodKind
+  /// The first period's start date — 'YYYY-MM-DD' at UTC midnight, like every other date here.
+  anchor_date DateTime  @db.Date
+  /// Period length in days: 14 for the biweekly pay cycle, 7 for the weekly billing week.
+  length_days Int
+  /// Days after a period's END that reps are paid. Pay only — a bill has no payday, so this is null there.
+  payday_offset_days Int?
+  effective_from DateTime  @db.Date
+  effective_to   DateTime? @db.Date
+  created_by     String    @db.Uuid
+  creator        User      @relation("PeriodConfigCreatedBy", fields: [created_by], references: [id])
+  created_at     DateTime  @default(now())
+
+  @@index([kind, effective_from])
+  @@map("period_configs")
+}
+
+// EXPORT LAYOUT — which columns an exported report carries, in what order, under what headings.
+//
+// Mirrors ImportFieldMapping: a saved, named, optionally per-client configuration, so a Redwave format
+// change is a settings change rather than a dev ticket.
+//
+// #3 IS ENFORCED IN THE FIELD REGISTRY, NOT HERE. A layout only names field keys; the registry decides
+// which keys a report type may offer, and the payroll registry contains no client-rate field while the
+// statement registry contains no rep-pay field. A configurable layout is precisely where someone could
+// quietly reunite the two streams, so the split lives one level below the config.
+//
+// #2 — an issued document keeps the layout it was ISSUED with. client_statements.export_layout_id freezes
+// that choice, so re-downloading a historical statement reproduces the original, not today's config.
+model ExportLayout {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  /// Which report this lays out: 'payroll' | 'statement' | 'sales' | 'expenses'. A plain String rather
+  /// than an enum so a new report type needs no migration — the registry is the source of truth.
+  report_type String
+  /// Optional per-client override; null = the default layout for this report type.
+  client_id   String?  @db.Uuid
+  client      Client?  @relation(fields: [client_id], references: [id])
+  /// Ordered column list: [{ field, header }]. Validated against the registry on write.
+  columns     Json
+  is_active   Boolean  @default(true)
+  created_by  String   @db.Uuid
+  creator     User     @relation("ExportLayoutCreatedBy", fields: [created_by], references: [id])
+  created_at  DateTime @default(now())
+
+  issued_statements ClientStatement[]
+
+  @@index([report_type, client_id])
+  @@map("export_layouts")
 }
 
 model HoldbackConfig {
@@ -1386,6 +1460,11 @@ model ClientStatement {
   fx_rate_date      DateTime?        @db.Date
   amount_cad        Decimal?         @db.Decimal(12, 2) // = roundHalfUp(total_amount × fx_rate)
   file_url          String? // optional — the Excel artifact is rendered on demand (download) / recorded in billing_exports
+  // The column layout this document was ISSUED with, frozen so a re-download reproduces the original and
+  // not today's configuration (#2). Null = the built-in default, which is what every existing row uses —
+  // so historical statements re-render byte-identically to how they were issued.
+  export_layout_id  String?          @db.Uuid
+  export_layout     ExportLayout?    @relation(fields: [export_layout_id], references: [id])
   generated_by      String           @db.Uuid
   generator         User             @relation("StatementGeneratedBy", fields: [generated_by], references: [id])
   generated_at      DateTime         @default(now())

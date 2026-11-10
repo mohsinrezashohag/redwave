@@ -1,0 +1,69 @@
+/* Export layouts admin screen. Tokens only — no raw hex, px or colour. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-5);
+}
+
+@media (max-width: 1024px) {
+  .split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rowActions {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.available {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.addButton {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--text-link);
+  cursor: pointer;
+}
+
+.addButton:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.addButton:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.addButton:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.note {
+  margin: var(--space-3) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}

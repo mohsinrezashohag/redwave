@@ -48,6 +48,7 @@ function make(opts: {
     audit as never,
     sequence as never,
     fx as never,
+    { resolve: jest.fn().mockResolvedValue({ id: null, columns: [] }) } as never,
     { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() } as never,
   );
 
