@@ -29,7 +29,7 @@ export function RepStatementDrawer({
       {q.isLoading && <TableSkeleton rows={4} />}
       {q.isError && <TableError message="Could not load this statement." onRetry={() => q.refetch()} />}
       {s && (
-        <div className={styles.summary}>
+        <div className={styles.statement}>
           <p className={styles.note}>
             <strong>{s.rep_name ?? s.rep_code}</strong> · Period {s.period_number} ·{' '}
             {displayDate(s.period_start)} – {displayDate(s.period_end)}
