@@ -2330,3 +2330,26 @@ Stone 70% $2,019.50 / 30% $865.50, matching the Pay Run screen). Then re-run wit
 
 **Verified LOCAL:** 1160 backend tests (127 suites, +1 suite `payroll-backfill.spec`) + typecheck + lint +
 build; FE build + lint + stylelint + 96 vitest. No contract change, no migration.
+
+**Follow-ups found during the same production UAT (PRs #21–#23):**
+- **ADP export amounts were `2019.5` / `406`.** `Decimal#toString` drops trailing zeros. Each amount is
+  now written with `toFixed(2)`. Values are stored at 2 dp, so only the text changes. `toCsv` also never
+  quoted, so a rep name containing a comma would have shifted every later column. Fields are now
+  RFC 4180 quoted. Both are spec-locked in `pay-run.service.spec`.
+- **The first real backfill run was REFUSED: "Transaction not found".** It inserts 38 rows one by one over
+  the Supabase pooler, from an operator PC, and outlived Prisma's 5 s interactive-transaction default.
+  The transaction rolled back cleanly and wrote nothing. It now uses finalize's `{ timeout: 120_000 }`
+  (spec-locked). **Any `$transaction` that loops per row needs an explicit timeout.**
+- **Outcome on production:** the dry run listed run #10 with 4 reps and 38 sales, and every rep's 70% / 30%
+  matched the Pay Run screen and holdback ledger (Sam $2,019.50 / $865.50 … total $3,377.50 /
+  $1,447.50). The write run then reported `written`. Statements and the payroll workbook for #10 are now
+  populated.
+- **Pay statement didn't fit its drawer.** At the fixed 420 px, its six columns wrapped and Your 70% /
+  Held 30% sat off-screen. `Drawer` gained `size="wide"`. Both widths are now tokens: `--drawer-width`
+  420 px (default) and `--drawer-width-wide` 760 px, recorded in design-system §6.5.
+- **…and widening it made it WORSE.** The drawer body reused `.summary`, the pay-run page's KPI-card
+  auto-fit grid. At 420 px that grid fit one column, so the content stacked by accident. At 760 px it put
+  the heading and the table side by side and crushed the table. The statement now has its own stacked
+  `.statement` layout. This shipped because the change was verified by build/lint/test only. Layout
+  needs a browser look, and that is the step that was skipped (the local app points at production, so it
+  was not run).

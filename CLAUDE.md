@@ -531,6 +531,11 @@ audit trail) · `SegmentedControl` · `MultiSelect` · `MoneyInput` · `Signatur
   `DataTable`, default `72vh`) so the page keeps a single scroller and the footer is never
   overlapped. Short lists stay under the cap and are unaffected; modal/embedded tables pass no
   `maxHeight`.
+- **A drawer whose body is a multi-column money table uses `<Drawer size="wide">`** (760px token;
+  default 420px). **Never borrow a page's layout class as a wrapper** — `payrun`'s `.summary` is an
+  auto-fit KPI grid, and reusing it put the statement's heading and table side by side once the drawer
+  widened. Give a stacked body its own flex-column class. **Layout changes need a browser look**, not
+  just build/lint/test; the local app points at production, so say plainly when it wasn't seen.
 
 ### 13.4 The server-side list contract (arch §5.1)
 
@@ -780,4 +785,6 @@ surrounding code.
    engine, #2/#5), reconciled to the frozen totals and idempotent — the pattern is
    `PayRunService.backfillPayrollLines` + `npm -w backend run payroll:backfill` (dry-run default,
    `BACKFILL_CONFIRM=yes` writes). And read "is this finalized?" from the record's **status**, never from
-   whether derived rows exist.
+   whether derived rows exist. **Any `$transaction` that loops per row needs an explicit `timeout`**
+   (finalize and the backfill use `120_000`) — Prisma's 5 s default rolled back the first production
+   backfill run.
