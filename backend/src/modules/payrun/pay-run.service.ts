@@ -614,11 +614,16 @@ export class PayRunService {
       return { ...base, outcome: 'would_write', reps };
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      for (const plan of plans) {
-        await this.writePayrollLines(tx, run.id, plan.repSales, { items: plan.items }, dec(advancePct));
-      }
-    });
+    // Same 120 s budget as finalize: one INSERT per sale, and Prisma's 5 s default expired mid-run on
+    // production (38 sales over the pooler) — the tx rolled back cleanly, but wrote nothing.
+    await this.prisma.$transaction(
+      async (tx) => {
+        for (const plan of plans) {
+          await this.writePayrollLines(tx, run.id, plan.repSales, { items: plan.items }, dec(advancePct));
+        }
+      },
+      { timeout: 120_000 },
+    );
     await this.audit.log({
       actorId: opts.actorId,
       entityType: 'pay_runs',

@@ -261,7 +261,7 @@ Tables are the most-used surface (sales, expenses, clawbacks, ledger, imports). 
 | Card / panel          | Groups related content; subtle border + --shadow-1. KPI tiles are cards.                                                                                     |
 | Tabs                  | Within a detail view (e.g. Rep: Profile / Documents / Equipment).                                                                                            |
 | Modal / dialog        | Focused tasks and all confirmations (delete, clawback, finalize pay run). Traps focus; Esc + explicit buttons; destructive confirms restate the consequence. |
-| Drawer / side panel   | Detail or quick-edit without leaving the list (e.g. sale detail, expense item).                                                                              |
+| Drawer / side panel   | Detail or quick-edit without leaving the list (e.g. sale detail, expense item). Two widths: `--drawer-width` 420px (default) and `size="wide"` → `--drawer-width-wide` 760px for a drawer whose body is a multi-column money table (e.g. the rep pay statement). Both are capped to the viewport. |
 | Popover / menu        | Row overflow actions, column settings, quick filters.                                                                                                        |
 | Toast / snackbar      | Transient success/error feedback (‘Expense approved’, ‘Pay run finalized’). Never for critical errors that need a decision — use a dialog.                   |
 | Banner / inline alert | Persistent context (e.g. ‘This sale is paid — snapshots are locked’, ‘Proposed rule — confirm with Redwave’).                                                |

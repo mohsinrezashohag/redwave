@@ -118,6 +118,13 @@ describe('backfillPayrollLines', () => {
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'backfill_payroll_lines', actorId: 'sa' }));
   });
 
+  // Production: 38 sequential INSERTs outlived Prisma's 5 s default and the run was rolled back.
+  it('gives the write transaction the same 120 s budget as finalize', async () => {
+    const { service, prisma } = make();
+    await service.backfillPayrollLines('run-10', { dryRun: false, actorId: 'sa' });
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { timeout: 120_000 });
+  });
+
   it('a dry run checks everything and writes nothing', async () => {
     const { service, prisma, audit } = make();
     const r = await service.backfillPayrollLines('run-10', { dryRun: true, actorId: 'sa' });
