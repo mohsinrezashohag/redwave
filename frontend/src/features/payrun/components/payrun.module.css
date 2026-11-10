@@ -20,6 +20,16 @@
   gap: var(--space-4);
 }
 
+/* The rep pay statement drawer: heading, table, note — STACKED. It must not reuse `.summary` (the KPI-card
+ * auto-fit grid): in a wide drawer that grid puts the heading and the table side by side and crushes the
+ * table into one narrow column. */
+.statement {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
 .meta {
   display: grid;
   grid-template-columns: max-content 1fr;
