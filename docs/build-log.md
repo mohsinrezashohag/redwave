@@ -2293,3 +2293,40 @@ which is how it was issued — so all 8 live statements re-render byte-identical
 
 **Verified LOCAL:** 1151 backend tests (126 suites) + typecheck + lint + build + contract regen; FE build +
 lint + stylelint + 92 vitest. No migration — `export_layout_id` already existed from the packet-09 batch.
+
+### Production UAT fixes — pre-packet-02 runs had empty pay statements; ADP export saved nothing; dead nav to PR #19 screens (no migration)
+
+Found while testing packets 02/03 on production against run **#10**, the one finalized-and-exported run.
+
+**Empty pay statement + payroll workbook on run #10 ("not finalized", $0.00).** Both readers build only
+from `payroll_report_lines`, which finalize writes. The table arrived with packet 02 (migration
+`20260704000000`) **after** run #10 was finalized, and no backfill was written. The money was always
+correct (`pay_run_lines`, the holdback ledger and the `sale_items` snapshots were intact). Only the
+derived document rows were missing. Two fixes:
+- `is_finalized` now comes from the run's **status**, not `lines.length > 0`, which had turned "no lines
+  recorded" into a false "not finalized". The admin drawer and the rep's own page now say so honestly when
+  a finalized run has no lines.
+- **`PayRunService.backfillPayrollLines`** + operator script **`npm -w backend run payroll:backfill`**
+  (dry-run by default; `BACKFILL_CONFIRM=yes` writes). It rebuilds lines from the frozen `rate_applied` /
+  `incentive_amount` through the SAME `writePayrollLines` finalize uses (the sales `include` is now one
+  shared `PAYROLL_SALE_INCLUDE`). The engine is not re-run (#5), no snapshot is written (#2), and no client
+  rate is read (#3). It reconciles per rep (Σ rate_applied = frozen `gross_commission`, and its half-up 70%
+  = `commission_70`) and refuses the run on any mismatch or on a paid sale with no pay-run line. It is
+  idempotent (skips a run with any line), uses one transaction per run, and writes one audit row
+  attributed to `SEED_SUPERADMIN_EMAIL`.
+
+**ADP Export toasted success but saved no file.** `POST /v1/pay-runs/:id/export` returns the file text in
+`content`, and `ExportModal` never wrote it to disk. It now saves via `triggerSave` (exported from
+`lib/api/downloadFile`) under `exportFilename` (`redwave-payrun-adp-period-N-…`). No backend change.
+
+**PR #19's screens were unreachable.** `/reports/margin`, `/admin/period-configs` and
+`/admin/export-layouts` were routed but nothing linked to them. They now have a Reports card plus Admin
+tiles and sidebar entries, each on its page's own permission. The top-bar cycle chip was a hard-coded
+"Cycle 11 · Jun 2026" placeholder. It now shows the period containing today in Winnipeg, and is hidden
+without `payrun:view`.
+
+**Operator, after deploy:** run `npm -w backend run payroll:backfill` and check run #10 lists 4 reps (Sam
+Stone 70% $2,019.50 / 30% $865.50, matching the Pay Run screen). Then re-run with `BACKFILL_CONFIRM=yes`.
+
+**Verified LOCAL:** 1160 backend tests (127 suites, +1 suite `payroll-backfill.spec`) + typecheck + lint +
+build; FE build + lint + stylelint + 96 vitest. No contract change, no migration.

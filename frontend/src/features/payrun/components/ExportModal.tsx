@@ -8,10 +8,23 @@ import { useState } from 'react';
 import { Button, Modal, Select, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useExportRun } from '../api/usePayRunMutations';
+import { triggerSave } from '../../../lib/api/downloadFile';
+import { exportFilename } from '../../../lib/export/exportFilename';
+import { todayIso } from '../../../lib/format/date';
 import styles from './payrun.module.css';
 import type { ExportFormat } from '../payrun.types';
 
-export function ExportModal({ runId, open, onClose }: { runId: string; open: boolean; onClose: () => void }) {
+export function ExportModal({
+  runId,
+  periodNumber,
+  open,
+  onClose,
+}: {
+  runId: string;
+  periodNumber: number;
+  open: boolean;
+  onClose: () => void;
+}) {
   const { toast } = useToast();
   const onError = useApiErrorToast();
   const exportRun = useExportRun();
@@ -21,7 +34,22 @@ export function ExportModal({ runId, open, onClose }: { runId: string; open: boo
     exportRun.mutate(
       { runId, body: { format } },
       {
-        onSuccess: (res) => { toast({ title: 'Export generated', description: `${res.line_count} lines (${res.format.toUpperCase()})`, tone: 'success' }); onClose(); },
+        // The server returns the file's TEXT in `content`; saving it is the browser's job. (Before this, the
+        // run was marked exported and toasted, but no file was ever written to disk.)
+        onSuccess: (res) => {
+          const isCsv = res.format === 'csv';
+          const name = exportFilename({ source: `payrun-adp-period-${periodNumber}`, generatedOn: todayIso() });
+          triggerSave(
+            new Blob([res.content], { type: isCsv ? 'text/csv;charset=utf-8' : 'application/json' }),
+            `${name}.${isCsv ? 'csv' : 'json'}`,
+          );
+          toast({
+            title: 'Export downloaded',
+            description: `${res.line_count} lines (${res.format.toUpperCase()}) — saved to your Downloads folder`,
+            tone: 'success',
+          });
+          onClose();
+        },
         onError,
       },
     );

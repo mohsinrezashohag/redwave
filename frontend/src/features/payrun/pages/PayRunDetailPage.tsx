@@ -202,7 +202,12 @@ export default function PayRunDetailPage() {
       <LineBreakdownDrawer line={selectedLine} open={selectedLine !== null} onClose={() => setSelectedLineId(null)} isDraft={isDraft} periods={periods} />
       <BonusModal runId={run.id} line={bonusLine} onClose={() => setBonusLineId(null)} />
       <FinalizeConfirmModal runId={run.id} open={finalizeOpen} onClose={() => setFinalizeOpen(false)} />
-      <ExportModal runId={run.id} open={exportOpen} onClose={() => setExportOpen(false)} />
+      <ExportModal
+        runId={run.id}
+        periodNumber={run.pay_period.period_number}
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+      />
     </div>
   );
 }

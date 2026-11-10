@@ -50,11 +50,32 @@ import { SetBonusDto } from './dto/bonus.dto';
 import { ExportPayRunDto } from './dto/export.dto';
 import { ListHoldbackQuery } from './dto/list-holdback.query';
 
+/**
+ * The sale shape behind a PAYROLL REPORT line: the agent as the workbook keys them (external_code), the
+ * channel, and the product name. Shared by finalize and `backfillPayrollLines` so both build the line from
+ * the same data. Rep-pay stream only — nothing here reaches the client-billing rate tables (#3).
+ */
+const PAYROLL_SALE_INCLUDE = {
+  sale_items: { include: { product: { select: { name: true } } } },
+  rep: { select: { rep_code: true, external_code: true, full_name: true } },
+  client: { select: { client_code: true } },
+} satisfies Prisma.SaleInclude;
+
 const iso = (date: Date): string => date.toISOString().slice(0, 10);
+/** A run whose snapshots are frozen — the only runs that have (or should have) payroll lines. */
+const isFinalizedStatus = (status: string): boolean => status === 'finalized' || status === 'exported';
 const dec = (value: { toString(): string }): Decimal => new Decimal(value.toString());
 const money = (value: Decimal): string => value.toFixed(2);
 
-type PayPeriodRow = { id: string; start_date: Date; end_date: Date; payday: Date };
+/** What `backfillPayrollLines` did (or would do, in a dry run) for one run. */
+export interface PayrollBackfillResult {
+  pay_run_id: string;
+  period_number: number;
+  outcome: 'written' | 'would_write' | 'skipped_has_lines';
+  reps: { rep_code: string; sales: number; gross: string; advance_70: string; held_30: string }[];
+}
+
+type PayPeriodRow ={ id: string; start_date: Date; end_date: Date; payday: Date };
 type RepBonus = { amount: Decimal; note: string | null };
 
 @Injectable()
@@ -386,8 +407,9 @@ export class PayRunService {
       period_start: iso(run.pay_period.start_date),
       period_end: iso(run.pay_period.end_date),
       run_status: run.status,
-      // Empty until finalize freezes the lines — the UI says so rather than showing zeros as if earned.
-      is_finalized: lines.length > 0,
+      // From the run's STATUS, not from whether lines exist: a run finalized before payroll lines existed
+      // (packet 02) has none until `backfillPayrollLines` runs, and must not claim "not finalized".
+      is_finalized: isFinalizedStatus(run.status),
       lines: lines.map((l) => ({
         sale_id: l.sale_id,
         sale_date: l.sale_date ? iso(l.sale_date) : null,
@@ -461,9 +483,10 @@ export class PayRunService {
       period_end: iso(run.pay_period.end_date),
       rep_code: rep?.rep_code ?? null,
       rep_name: rep?.full_name ?? null,
-      // Empty until the run finalizes — before that nothing is owed, and a zeroed statement would read as
-      // "you earned nothing" rather than "not yet calculated".
-      is_finalized: lines.length > 0,
+      // Lines are empty until the run finalizes — before that nothing is owed, and a zeroed statement would
+      // read as "you earned nothing" rather than "not yet calculated". The flag itself comes from the run's
+      // STATUS, so a finalized run with no recorded lines says so honestly instead of "not finalized".
+      is_finalized: isFinalizedStatus(run.status),
       lines: lines.map((l) => ({
         sale_id: l.sale_id,
         sale_date: l.sale_date ? iso(l.sale_date) : null,
@@ -490,6 +513,130 @@ export class PayRunService {
       advance_70: sum((l) => l.advance_70),
       holdback_30: sum((l) => l.holdback_30),
     };
+  }
+
+  /**
+   * OPERATOR BACKFILL — rebuild `payroll_report_lines` for a run that was finalized BEFORE that table
+   * existed (packet 02, migration 20260704000000). Without it, such a run's pay statements and payroll
+   * workbook are empty although the run was paid.
+   *
+   * Built ONLY from the frozen snapshots — `sale_items.rate_applied` + `incentive_amount`, the exact two
+   * values finalize hands `writePayrollLines` from the engine result. The engine is NOT re-run, so the
+   * period is never re-tiered (#5); no snapshot is written (#2); no client rate is read (#3).
+   *
+   * Safe by construction:
+   *   - only `finalized`/`exported` runs; a run that already has ANY line is skipped (idempotent, and a
+   *     finalize-written run is never touched);
+   *   - RECONCILED before writing: per rep, Σ rate_applied must equal the frozen `pay_run_lines`
+   *     gross_commission, and its 70% (half-up, the engine's split rule) must equal commission_70. Any
+   *     mismatch throws and the run's transaction writes nothing;
+   *   - one `$transaction` per run (#8), one audit row per run.
+   *
+   * `dryRun` performs every read and every check, and writes nothing.
+   */
+  async backfillPayrollLines(
+    runId: string,
+    opts: { dryRun: boolean; actorId: string },
+  ): Promise<PayrollBackfillResult> {
+    const run = await this.prisma.payRun.findUnique({ where: { id: runId }, include: { pay_period: true } });
+    if (!run) {
+      throw new NotFoundException('Pay run not found');
+    }
+    if (!isFinalizedStatus(run.status)) {
+      throw new ConflictException('only a finalized pay run has payroll lines to backfill');
+    }
+    const base = { pay_run_id: run.id, period_number: run.pay_period.period_number };
+
+    const existing = await this.prisma.payrollReportLine.count({ where: { pay_run_id: run.id } });
+    if (existing > 0) {
+      return { ...base, outcome: 'skipped_has_lines', reps: [] };
+    }
+
+    const config = await this.config.getEngineConfig(iso(run.pay_period.end_date)); // as-of close, like finalize
+    const advancePct = config.holdback.advancePct;
+
+    const [runLines, sales] = await Promise.all([
+      this.prisma.payRunLine.findMany({
+        where: { pay_run_id: run.id },
+        include: { rep: { select: { rep_code: true } } },
+      }),
+      this.prisma.sale.findMany({ where: { pay_run_id: run.id }, include: PAYROLL_SALE_INCLUDE }),
+    ]);
+
+    // Per rep: the snapshot items in the shape `writePayrollLines` takes from the engine result.
+    const plans = runLines.map((line) => {
+      const repSales = sales.filter((s) => s.rep_id === line.rep_id);
+      const items = repSales.flatMap((s) =>
+        s.sale_items
+          .filter((i) => i.commission_paid !== null) // not frozen ⇒ was not paid in this run
+          .map((i) => ({
+            id: i.id,
+            productType: i.product_type,
+            rateApplied: dec(i.rate_applied ?? 0),
+            incentiveAmount: dec(i.incentive_amount ?? 0),
+          })),
+      );
+      const gross = items.reduce((acc, i) => acc.plus(i.rateApplied), new Decimal(0));
+      const advance = gross.times(dec(advancePct)).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+
+      const frozenGross = line.gross_commission === null ? null : dec(line.gross_commission);
+      if ((frozenGross && !gross.equals(frozenGross)) || !advance.equals(dec(line.commission_70))) {
+        throw new ConflictException(
+          `payroll backfill refused for run #${run.pay_period.period_number}, rep ${line.rep.rep_code}: ` +
+            `snapshots give gross ${money(gross)} / 70% ${money(advance)}, but the frozen pay-run line has ` +
+            `gross ${frozenGross ? money(frozenGross) : '—'} / 70% ${money(dec(line.commission_70))}`,
+        );
+      }
+      return {
+        repSales,
+        items,
+        summary: {
+          rep_code: line.rep.rep_code,
+          sales: repSales.length,
+          gross: money(gross),
+          advance_70: money(dec(line.commission_70)),
+          held_30: money(gross.minus(dec(line.commission_70))),
+        },
+      };
+    });
+
+    // A paid sale whose rep has no pay-run line would be silently dropped — refuse instead.
+    const covered = new Set(runLines.map((l) => l.rep_id));
+    const orphan = sales.find((s) => !covered.has(s.rep_id));
+    if (orphan) {
+      throw new ConflictException(
+        `payroll backfill refused for run #${run.pay_period.period_number}: sale ${orphan.id} has no pay-run line for its rep`,
+      );
+    }
+
+    const reps = plans.map((p) => p.summary);
+    if (opts.dryRun) {
+      return { ...base, outcome: 'would_write', reps };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const plan of plans) {
+        await this.writePayrollLines(tx, run.id, plan.repSales, { items: plan.items }, dec(advancePct));
+      }
+    });
+    await this.audit.log({
+      actorId: opts.actorId,
+      entityType: 'pay_runs',
+      entityId: run.id,
+      action: 'backfill_payroll_lines',
+      after: { period_number: run.pay_period.period_number, reps },
+    });
+    return { ...base, outcome: 'written', reps };
+  }
+
+  /** Every finalized/exported run, oldest first — the operator script's work list. */
+  async finalizedRunIds(): Promise<string[]> {
+    const runs = await this.prisma.payRun.findMany({
+      where: { status: { in: ['finalized', 'exported'] } },
+      select: { id: true },
+      orderBy: { pay_period: { start_date: 'asc' } },
+    });
+    return runs.map((r) => r.id);
   }
 
   /** The sales in this run that belong to ONE rep — the filter that scopes a statement. */
@@ -756,14 +903,7 @@ export class PayRunService {
         status: 'validated',
         sale_date: { gte: period.start_date, lte: period.end_date }, // sale_date governs (#7)
       },
-      include: {
-        sale_items: { include: { product: { select: { name: true } } } },
-        // For the PAYROLL REPORT line frozen at finalize: the agent as the workbook keys them
-        // (external_code), the channel, and the product name. Rep-pay stream only — nothing here
-        // reaches the client-billing rate tables (#3).
-        rep: { select: { rep_code: true, external_code: true, full_name: true } },
-        client: { select: { client_code: true } },
-      },
+      include: PAYROLL_SALE_INCLUDE,
     });
     const activations: ActivationInput[] = [];
     for (const sale of sales) {

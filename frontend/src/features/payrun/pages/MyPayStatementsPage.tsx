@@ -83,6 +83,12 @@ export default function MyPayStatementsPage() {
               This period has not been finalized, so no amounts are frozen — nothing is owed for it yet.
             </Banner>
           )}
+          {s && s.is_finalized && s.lines.length === 0 && (
+            <Banner tone="info" title="Statement not available yet">
+              This period was paid, but its statement lines have not been recorded. Your administrator can
+              rebuild them from the frozen amounts — please check back later.
+            </Banner>
+          )}
           {s && s.lines.length > 0 && (
             <Table>
               <THead>
