@@ -1,7 +1,7 @@
 /**
  * TopBar — design-system §6.6. Collapse toggle, global search, current pay-cycle indicator,
  * notifications bell, environment badge, and the user menu (real signed-in user + the Light/Dark/System
- * theme toggle + Sign out). Search / pay-cycle / notifications are PLACEHOLDERS this session. Tokens only.
+ * theme toggle + Sign out). The pay-cycle chip is the REAL period containing today (Winnipeg), shown only to payrun:view holders. Tokens only.
  */
 import { Menu, PanelLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -11,6 +11,9 @@ import { ThemeToggle } from '../../theme/ThemeToggle';
 import { useAuth } from '../../auth/useAuth';
 import { NotificationsBell } from '../../features/notifications/NotificationsBell';
 import { GlobalSearch } from '../../features/search/components/GlobalSearch';
+import { usePayPeriods } from '../../features/payrun/api/usePayRun';
+import { cycleLabel, findCurrentPeriod } from '../../features/payrun/currentPeriod';
+import { displayDate, todayInWinnipeg } from '../../lib/format/date';
 import { EnvironmentBadge } from './EnvironmentBadge';
 import styles from './TopBar.module.css';
 
@@ -23,8 +26,12 @@ const initials = (name: string): string =>
     .join('') || '?';
 
 export function TopBar({ onToggleSidebar, isMobile = false }: { onToggleSidebar: () => void; isMobile?: boolean }) {
-  const { user, logout } = useAuth();
+  const { user, logout, permissions } = useAuth();
   const navigate = useNavigate();
+  // The real current pay period. /v1/pay-periods is payrun:view-gated, so without it the chip is hidden
+  // rather than showing a stale or invented cycle.
+  const { data: periods } = usePayPeriods(permissions.has('payrun:view'));
+  const current = periods ? findCurrentPeriod(periods, todayInWinnipeg()) : null;
 
   return (
     <header className={styles.topbar}>
@@ -38,10 +45,12 @@ export function TopBar({ onToggleSidebar, isMobile = false }: { onToggleSidebar:
       </div>
 
       <div className={styles.right}>
-        <span className={styles.cycle} title="Current pay cycle">
-          <span className={styles.cycleDot} aria-hidden />
-          Cycle 11 · Jun 2026
-        </span>
+        {current && (
+          <span className={styles.cycle} title={`Current pay cycle · payday ${displayDate(current.payday)}`}>
+            <span className={styles.cycleDot} aria-hidden />
+            {cycleLabel(current)}
+          </span>
+        )}
         <EnvironmentBadge />
         <NotificationsBell />
         <Popover

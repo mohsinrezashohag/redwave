@@ -6,7 +6,9 @@
 import {
   BarChart3,
   Bell,
+  CalendarRange,
   CheckSquare,
+  Columns3,
   FileSignature,
   FileText,
   LayoutDashboard,
@@ -236,6 +238,20 @@ const NAV: NavGroup[] = [
         to: '/admin/km-rates',
         match: (l) => l.pathname.startsWith('/admin/km-rates'),
         show: (a) => a.permissions.has('km_rates:view'),
+      },
+      {
+        label: 'Period Calendars',
+        icon: CalendarRange,
+        to: '/admin/period-configs',
+        match: (l) => l.pathname.startsWith('/admin/period-configs'),
+        show: (a) => a.permissions.has('payrun:view'),
+      },
+      {
+        label: 'Export Layouts',
+        icon: Columns3,
+        to: '/admin/export-layouts',
+        match: (l) => l.pathname.startsWith('/admin/export-layouts'),
+        show: (a) => a.permissions.has('reports:view'),
       },
       {
         label: 'Import',
