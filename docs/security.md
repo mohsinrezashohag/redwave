@@ -52,6 +52,10 @@
 - **SPA (`frontend/vercel.json`)** — CSP (`default-src 'self'`; `script-src 'self'` — the theme boot is
   externalised to `/theme-boot.js` so no `unsafe-inline` is needed; `worker-src blob:` for pdf.js;
   `connect-src` includes the API origin + Maps + Supabase; `img-src data: blob:` for QR/avatars/tiles), HSTS,
+  **Google Maps needs Google's documented allowlist, not just `maps.googleapis.com`** — `*.googleapis.com`
+  / `*.gstatic.com` / `*.google.com` (+ `*.ggpht.com`, `*.googleusercontent.com`) across `script-src`,
+  `img-src` and `connect-src`, `blob:`/`data:` on script/connect, and `frame-src https://*.google.com`. The
+  narrower policy was the leading suspect when the KM map went missing in production (2026-11).
   `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, and a restrictive `Permissions-Policy`.
   - **Operator note:** `connect-src` lists `https://api.redwavemarketing.ca` — **change it to your real API
     origin** if different. If a screen fails to load, deploy the CSP as `Content-Security-Policy-Report-Only`
