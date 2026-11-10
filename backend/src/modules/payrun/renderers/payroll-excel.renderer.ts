@@ -22,6 +22,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
+import { Decimal } from 'decimal.js';
 import {
   EXPORT_REGISTRY,
   LayoutColumn,
@@ -64,6 +65,8 @@ export interface PayrollReportForExport {
   period_end: string; // 'YYYY-MM-DD'
   run_status: string;
   generated_at: string;
+  /** The advance / holdback split in force for the run's period — heads the two split columns. */
+  split?: { advance_pct: string; holdback_pct: string } | null;
   lines: PayrollLineForExport[];
   total_100: string;
   advance_70: string;
@@ -97,7 +100,18 @@ export class PayrollExcelRenderer {
       // `other_total` is dropped when it carries no money, exactly as before — an empty column adds noise.
       (c) => c.field !== 'other_total' || showOther,
     );
-    const headers = columns.map((c) => c.header ?? registry.get(c.field)?.label ?? c.field);
+    // The split columns are headed by the split itself ("0.7" / "0.3", as in Redwave's file). Print the
+    // run's REAL split instead of the default label — at 100/0 (Redwave, 2026-11-11) a "0.7" header over a
+    // column that is 100% of the line would be wrong. A header an admin renamed is left exactly as they set it.
+    const splitHeader: Record<string, string | undefined> = {
+      advance_70: r.split ? new Decimal(r.split.advance_pct).toString() : undefined,
+      holdback_30: r.split ? new Decimal(r.split.holdback_pct).toString() : undefined,
+    };
+    const headers = columns.map((c) => {
+      const label = c.header ?? registry.get(c.field)?.label ?? c.field;
+      const isDefault = label === registry.get(c.field)?.label;
+      return isDefault && splitHeader[c.field] ? (splitHeader[c.field] as string) : label;
+    });
     ws.columns = columns.map((c) => ({ width: registry.get(c.field)?.money ? 14 : c.field === 'address' ? 40 : 16 }));
 
     // The money block is contiguous by construction (validated), so its bounds are its first and last index.

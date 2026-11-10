@@ -13074,6 +13074,18 @@ components:
           description: The pay period to run (must be pre-loaded).
       required:
         - pay_period_id
+    PayRunSplitResponse:
+      type: object
+      properties:
+        advance_pct:
+          type: string
+          example: "1.0000"
+        holdback_pct:
+          type: string
+          example: "0.0000"
+      required:
+        - advance_pct
+        - holdback_pct
     RepLiteResponse:
       type: object
       properties:
@@ -13198,6 +13210,12 @@ components:
         created_at:
           type: string
           format: date-time
+        split:
+          nullable: true
+          description: Split in force for this period.
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/PayRunSplitResponse"
         lines:
           type: array
           items:
@@ -13210,6 +13228,7 @@ components:
         - status
         - executed_by
         - created_at
+        - split
         - lines
     HoldbackPeriodRefResponse:
       type: object
@@ -13424,6 +13443,12 @@ components:
       properties:
         pay_run_id:
           type: string
+        split:
+          nullable: true
+          description: Split in force for this period.
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/PayRunSplitResponse"
         period_number:
           type: number
           example: 6
@@ -13456,6 +13481,7 @@ components:
           description: "Row-1 strip: Σ 0.3."
       required:
         - pay_run_id
+        - split
         - period_number
         - period_start
         - period_end
@@ -13552,6 +13578,12 @@ components:
       properties:
         pay_run_id:
           type: string
+        split:
+          nullable: true
+          description: Split in force for this period.
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/PayRunSplitResponse"
         period_number:
           type: number
           example: 6
@@ -13583,6 +13615,7 @@ components:
           type: string
       required:
         - pay_run_id
+        - split
         - period_number
         - period_start
         - period_end

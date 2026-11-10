@@ -33,6 +33,17 @@ export class CommissionConfigProvider {
    * Build the engine config in force on `date` ('YYYY-MM-DD'). Throws 422 if a required piece of
    * config (tier schedule, any flat rate, holdback split) is missing for the date.
    */
+  /**
+   * Just the advance / holdback split in force on `date` ('YYYY-MM-DD') — for LABELLING a run ("Paid now
+   * 100%" vs "Your 70%"), not for computing anything. Exact decimal strings (#1); null when none is set.
+   * Since 2026-11-11 Redwave runs at 1.0000 / 0.0000 (100% paid, tier + holdback applied manually outside
+   * the system), so the screens must stop hard-coding 70/30.
+   */
+  async getHoldbackSplit(date: string): Promise<{ advance_pct: string; holdback_pct: string } | null> {
+    const row = selectEffectiveRate(await this.prisma.holdbackConfig.findMany(), dateOnly(date));
+    return row ? { advance_pct: row.advance_pct.toFixed(4), holdback_pct: row.holdback_pct.toFixed(4) } : null;
+  }
+
   async getEngineConfig(date: string): Promise<EngineConfig> {
     const on = dateOnly(date);
 

@@ -260,6 +260,17 @@ The most important piece. Build it **first, in isolation, against tests, before 
 - **Tier boundary:** 16 internet → Tier 3 ($125); 17 internet → Tier 2 ($145).
 - **Per-product clawback:** a household's TV cancels → **−$30 flat**; the internet activation is untouched; the period is **not** re-tiered. (If a $20 incentive was on the TV, clawback = $50.)
 
+### Client directive 2026-11-11 — 100% pay, no tiers (CONFIGURED, not coded)
+Redwave: *"No more 70-30, calculate 100%. No tier system"* — every client pays out differently, so tier and
+holdback adjustments are now done **manually, outside the system**, from its reports. This is achieved by
+**configuration only**: holdback split **1.0000 / 0.0000** + a **single-bracket** tier schedule
+(`[0, ∞)`, tier 1) per scope, with each product's flat rep rate entered as a **tier-1** per-product rate —
+the operator enters these in Commission Config. **The engine is unchanged** and still supports tiers and
+70/30 (the §6 fixtures stay green), so reverting is configuration too. Code consequences: finalize writes
+**no** `holdback_ledger` row when nothing is held (older holds still release on schedule); every pay screen
+and the payroll workbook label the split from the run's period config (`getHoldbackSplit`,
+`features/payrun/split.ts`) — **never hard-code "70%/30%"** again.
+
 ### Tier schedule (Schedule C v2)
 | Tier | Gross internet tally | Rate/activation |
 |---|---|---|

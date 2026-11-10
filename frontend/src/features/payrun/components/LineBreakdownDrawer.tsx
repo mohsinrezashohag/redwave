@@ -14,6 +14,7 @@ import { useHoldbackLedger } from '../api/usePayRun';
 import { NetPayoutCell } from './NetPayoutCell';
 import styles from './payrun.module.css';
 import type { HoldbackReleaseStatus, PayPeriod, PayRunLine } from '../payrun.types';
+import type { SplitLabels } from '../split';
 
 const RELEASE_TONE: Record<HoldbackReleaseStatus, BadgeTone> = {
   held: 'neutral',
@@ -83,9 +84,11 @@ interface Props {
   onClose: () => void;
   isDraft: boolean;
   periods: PayPeriod[];
+  /** The split in force for this run — the arithmetic below is labelled with it, not a fixed 70/30. */
+  labels: SplitLabels;
 }
 
-export function LineBreakdownDrawer({ line, open, onClose, isDraft, periods }: Props) {
+export function LineBreakdownDrawer({ line, open, onClose, isDraft, periods, labels }: Props) {
   const ledger = useHoldbackLedger({ rep_id: line?.rep_id }, open && !!line);
   const periodLabel = (id: string | null) => {
     if (!id) return '—';
@@ -101,12 +104,14 @@ export function LineBreakdownDrawer({ line, open, onClose, isDraft, periods }: P
           <CommissionBasis line={line} />
 
           <div className={styles.breakdown}>
-            {/* The 70/30 split — gross is the base, the 30% is withheld, the 70% is advanced now. */}
+            {/* The split — gross is the base, the held share is withheld, the rest is paid now. */}
             <Row op="" label="Gross commission" value={line.gross_commission} />
-            <Row op="−" label="Held back (30%, this period)" value={line.amount_held} />
+            {!labels.holdsNothing && (
+              <Row op="−" label={`Held back (${labels.heldPct}%, this period)`} value={line.amount_held} />
+            )}
             <div className={`${styles.bdRow} ${styles.bdSubtotal}`}>
               <span className={styles.bdOp}>=</span>
-              <span className={styles.bdLabel}>70% advance</span>
+              <span className={styles.bdLabel}>{labels.paid}</span>
               <span className={styles.bdValue}>{money(line.commission_70)}</span>
             </div>
 
@@ -130,9 +135,11 @@ export function LineBreakdownDrawer({ line, open, onClose, isDraft, periods }: P
               Bonus note: <em>{line.bonus_note}</em>
             </p>
           )}
-          {isDraft && <p className={styles.note}>The 30% held above is recorded on the holdback ledger when the run is finalized.</p>}
+          {isDraft && !labels.holdsNothing && (
+            <p className={styles.note}>The {labels.heldPct}% held above is recorded on the holdback ledger when the run is finalized.</p>
+          )}
           <p className={styles.footnote}>
-            Incentives are paid in full and are <strong>not</strong> part of the 70/30 base. Every amount
+            Incentives are paid in full and are <strong>not</strong> part of the {labels.paidPct}/{labels.heldPct} base. Every amount
             here is the server&rsquo;s — nothing is calculated in this screen.
           </p>
 

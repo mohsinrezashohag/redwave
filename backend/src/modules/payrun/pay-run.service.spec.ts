@@ -110,7 +110,10 @@ function make(opts: { runStatus?: string; dueHolds?: unknown[]; bonuses?: unknow
   };
   // The engine is mocked, so only the holdback split is read from the config here — it is what the
   // payroll line's 70/30 columns are derived from.
-  const config = { getEngineConfig: jest.fn().mockResolvedValue({ holdback: { advancePct: new Decimal('0.70') } }) };
+  const config = {
+    getEngineConfig: jest.fn().mockResolvedValue({ holdback: { advancePct: new Decimal('0.70') } }),
+    getHoldbackSplit: jest.fn().mockResolvedValue({ advance_pct: '0.7000', holdback_pct: '0.3000' }),
+  };
   const engine = { computePeriod: jest.fn().mockReturnValue(ENGINE_RESULT) };
   const emitter = { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() };
   const clawbackSeam = opts.clawbackTotal
@@ -126,7 +129,7 @@ function make(opts: { runStatus?: string; dueHolds?: unknown[]; bonuses?: unknow
     clawbackSeam as never,
     emitter as never,
   );
-  return { service, prisma, tx };
+  return { service, prisma, tx, engine };
 }
 
 const lineArg = (tx: ReturnType<typeof make>['tx']) =>
@@ -196,6 +199,21 @@ describe('PayRunService.finalize', () => {
     );
     expect(lineArg(tx).holdback_release_30).toBe('33.00');
     expect(lineArg(tx).net_payout).toBe('110.00'); // 77 advance + 33 released
+  });
+
+  // Redwave 2026-11-11: 100% paid, nothing held. No zero ledger row — but an OLD 30% hold still releases.
+  it('at a 100/0 split writes NO holdback row, pays 100%, and still releases a prior scheduled hold', async () => {
+    const { service, tx, engine } = make({ dueHolds: [{ id: 'h0', amount_held: decLike('33.00') }] });
+    engine.computePeriod.mockReturnValue({ ...ENGINE_RESULT, advanceAmount: new Decimal('110'), holdbackAmount: new Decimal('0') });
+
+    await service.finalize('run-1', user);
+
+    expect(tx.holdbackLedger.create).not.toHaveBeenCalled();
+    expect(tx.holdbackLedger.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'h0' }, data: expect.objectContaining({ release_status: 'released' }) }),
+    );
+    expect(lineArg(tx).commission_70).toBe('110.00');
+    expect(lineArg(tx).net_payout).toBe('143.00'); // 110 (100%) + 33 released from the old 70/30 era
   });
 
   it('applies a bonus; expense/clawback seams resolve to 0', async () => {

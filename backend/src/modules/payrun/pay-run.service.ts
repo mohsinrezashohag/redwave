@@ -262,11 +262,13 @@ export class PayRunService {
             await tx.sale.updateMany({ where: { id: { in: saleIds } }, data: { status: 'paid' } });
           }
 
-          // (c) Record this period's 30% holdback (freeze-once: one row per rep+origin).
+          // (c) Record this period's holdback (freeze-once: one row per rep+origin). NOTHING is written when
+          // nothing was held: at a 100/0 split (Redwave, 2026-11-11) a zero row per rep per period would only
+          // clutter the ledger and later "release" $0. Prior holds still release in step (d) as scheduled.
           const existingHold = await tx.holdbackLedger.findFirst({
             where: { rep_id: repId, origin_pay_period_id: period.id },
           });
-          if (!existingHold) {
+          if (!existingHold && !result.holdbackAmount.isZero()) {
             const scheduled = resolveScheduledReleasePeriod(period, allPeriods, releaseRule);
             await tx.holdbackLedger.create({
               data: {
@@ -407,6 +409,7 @@ export class PayRunService {
       period_start: iso(run.pay_period.start_date),
       period_end: iso(run.pay_period.end_date),
       run_status: run.status,
+      split: await this.config.getHoldbackSplit(iso(run.pay_period.end_date)),
       // From the run's STATUS, not from whether lines exist: a run finalized before payroll lines existed
       // (packet 02) has none until `backfillPayrollLines` runs, and must not claim "not finalized".
       is_finalized: isFinalizedStatus(run.status),
@@ -483,6 +486,8 @@ export class PayRunService {
       period_end: iso(run.pay_period.end_date),
       rep_code: rep?.rep_code ?? null,
       rep_name: rep?.full_name ?? null,
+      // Labels the statement's "Your x%" / "Held y%" columns with the split actually in force.
+      split: await this.config.getHoldbackSplit(iso(run.pay_period.end_date)),
       // Lines are empty until the run finalizes — before that nothing is owed, and a zeroed statement would
       // read as "you earned nothing" rather than "not yet calculated". The flag itself comes from the run's
       // STATUS, so a finalized run with no recorded lines says so honestly instead of "not finalized".
@@ -762,7 +767,12 @@ export class PayRunService {
     if (!run) {
       throw new NotFoundException('Pay run not found');
     }
-    return { ...run, lines: await this.getLines(runId, user) };
+    return {
+      ...run,
+      // The split this run was (or will be) computed at — what the screens label "Paid now" / "Held".
+      split: await this.config.getHoldbackSplit(iso(run.pay_period.end_date)),
+      lines: await this.getLines(runId, user),
+    };
   }
 
   async getLines(runId: string, user: AuthUser) {

@@ -2445,3 +2445,47 @@ rep holds, so the link appeared in a rep's sidebar. The server only allowed read
 
 **Verified LOCAL:** 1189 backend tests + typecheck + lint + build + contract regen; FE build + lint +
 stylelint + 109 vitest. Not yet seen in a browser.
+
+### Commission — 100% pay, no tiers: configured, not coded; the screens stop saying "70/30" (no migration)
+
+**Directive (Naimur / John, 2026-11-11):** *"No more 70-30, calculate 100%. No tier system"*. Every client
+pays out differently, so tier and holdback adjustments happen **manually outside the system**, from its
+reports. Confirmed with the user: one flat rep rate per product per client, 100% paid, old holds release as
+scheduled, rule effective from today (production data is demo), no in-system adjustment feature. Redwave
+enters the rates themselves.
+
+**Why no engine change:** the existing config already expresses it.
+- A **single `[0, ∞)` bracket** is valid (`validateTierBrackets`).
+- A **1.0000 / 0.0000** split passes `holdback.dto` (sum = 1).
+- With those, the engine pays exactly the per-product rate × 100%.
+- Keeping the engine intact keeps the §6 fixtures and the purity spec meaningful, and keeps the change
+  reversible by configuration.
+- Bootstrap only creates config when it is *missing*, so a deploy will not revert it.
+
+**What the code had to change:**
+- **No zero holdback rows.** Finalize wrote a `holdback_ledger` row per rep per period even when
+  `holdbackAmount` was 0, which would later "release" $0. It now skips the row. Prior 70/30 holds still
+  release in step (d) (spec: a 100/0 finalize writes no row, pays 110 + releases 33 = 143).
+- **Labels follow the real split.** `CommissionConfigProvider.getHoldbackSplit(date)` (label-only, exact
+  strings) is exposed as `split` on the run, the payroll report and the rep statement.
+  - The frontend uses the pure `features/payrun/split.ts`. The labels read "Paid now (100%)" / "Your 100%",
+    and the held column, card and breakdown row are **hidden** at 100/0 instead of showing zeros.
+  - The holdback panel stays while any old hold is releasing or outstanding (it now says so) and hides when
+    there is nothing deferred.
+  - Affected: lines table, stat cards, breakdown drawer, finalize modal, statement drawer, My pay
+    statements.
+- **Payroll workbook headers** `0.7` / `0.3` (Redwave's own style) now print the run's real split (`1` / `0`).
+  A header an admin renamed in Export Layouts is left alone (spec).
+
+**Operator — set it in Commission Config (effective today or later; it applies to every period ending on
+or after that date):**
+1. **Holdback split:** add `advance 1.0000 / holdback 0.0000`.
+2. **Tier schedule:** replace the global schedule, **and each client-scoped one**, with one bracket:
+   tier 1, min 0, no max.
+3. **Per-product rep rates:** re-enter each product's flat rate as a **tier-1** row. Rows keyed to tiers
+   2–4 stop matching once the ladder is a single bracket.
+4. Add-ons (TV / HP / …) are already flat. Greenfield stays $100 and out of the tally (#9).
+
+**Verified LOCAL:** 1193 backend tests (131 suites; +`payroll-excel.renderer.spec`, +100/0 finalize case)
++ typecheck + lint + build + contract regen; FE build + lint + stylelint + 113 vitest (+`split.test`).
+Not yet seen in a browser.

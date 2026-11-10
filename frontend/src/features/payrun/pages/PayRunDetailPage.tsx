@@ -28,6 +28,7 @@ import { FinalizeConfirmModal } from '../components/FinalizeConfirmModal';
 import { ExportModal } from '../components/ExportModal';
 import { NetPayoutCell } from '../components/NetPayoutCell';
 import styles from '../components/payrun.module.css';
+import { splitLabels } from '../split';
 
 export default function PayRunDetailPage() {
   const { id } = useParams();
@@ -90,6 +91,8 @@ export default function PayRunDetailPage() {
   }
 
   const isDraft = run.status === 'draft';
+  // The split in force for this period (server-read) — every "70%/30%" label follows it.
+  const labels = splitLabels(run.split);
   const isExported = run.status === 'exported';
   const lines = run.lines;
   const periods = periodsQ.data ?? [];
@@ -160,17 +163,19 @@ export default function PayRunDetailPage() {
 
       <div className={styles.summary}>
         <StatCard label="Reps" value={String(lines.length)} />
-        <StatCard label="Total 70% advance" value={money(totalAdvance)} />
-        {/* The deferred 30% — the SERVER's figure, never a client sum. */}
-        <StatCard
-          label="Held this period (30%)"
-          value={money(holdbackQ.data?.held_this_period)}
-          footnote={
-            holdbackQ.data?.held_release_period
-              ? `Releases into period #${holdbackQ.data.held_release_period.period_number}`
-              : undefined
-          }
-        />
+        <StatCard label={`Total ${labels.paid.toLowerCase().startsWith('paid') ? 'paid now' : labels.paid}`} value={money(totalAdvance)} />
+        {/* The deferred share — the SERVER's figure, never a client sum. Omitted when the split holds nothing. */}
+        {!labels.holdsNothing && (
+          <StatCard
+            label={`Held this period (${labels.heldPct}%)`}
+            value={money(holdbackQ.data?.held_this_period)}
+            footnote={
+              holdbackQ.data?.held_release_period
+                ? `Releases into period #${holdbackQ.data.held_release_period.period_number}`
+                : undefined
+            }
+          />
+        )}
         <StatCard label="Total net payout" value={<NetPayoutCell value={totalNet} />} />
       </div>
 
@@ -186,10 +191,11 @@ export default function PayRunDetailPage() {
           // Only on a FINALIZED run: the statement reads lines frozen at finalize, so a draft has none.
           onStatement={!isDraft && canExport ? (l) => setStatementRepId(l.rep.id) : undefined}
           canBonus={isDraft && canApprove}
+          labels={labels}
         />
       )}
 
-      <HoldbackSummaryPanel runId={run.id} />
+      <HoldbackSummaryPanel runId={run.id} labels={labels} />
 
       <HoldbackPanel lines={lines} periods={periods} />
 
@@ -199,9 +205,9 @@ export default function PayRunDetailPage() {
         onClose={() => setStatementRepId(null)}
       />
 
-      <LineBreakdownDrawer line={selectedLine} open={selectedLine !== null} onClose={() => setSelectedLineId(null)} isDraft={isDraft} periods={periods} />
+      <LineBreakdownDrawer line={selectedLine} open={selectedLine !== null} onClose={() => setSelectedLineId(null)} isDraft={isDraft} periods={periods} labels={labels} />
       <BonusModal runId={run.id} line={bonusLine} onClose={() => setBonusLineId(null)} />
-      <FinalizeConfirmModal runId={run.id} open={finalizeOpen} onClose={() => setFinalizeOpen(false)} />
+      <FinalizeConfirmModal runId={run.id} open={finalizeOpen} onClose={() => setFinalizeOpen(false)} labels={labels} />
       <ExportModal
         runId={run.id}
         periodNumber={run.pay_period.period_number}
