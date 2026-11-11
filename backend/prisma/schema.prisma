@@ -1032,6 +1032,8 @@ model Sale {
   client_statement_lines ClientStatementLine[]
   // The REP-PAY line for this sale. A sibling of the client-billing line above, never joined to it (#3).
   payroll_report_lines   PayrollReportLine[]
+  // Every sales export this sale was included in (the "only sales not exported before" filter). — 2026-11-11
+  export_links           ReportExportSale[]
 
   @@index([rep_id, sale_date])
   @@index([client_id, mpu_id])
@@ -1412,9 +1414,30 @@ model ReportExport {
   scope_filters Json
   filename      String
   generated_at  DateTime @default(now())
+  /// How many rows the file held (sales exports; null for the older report types). — 2026-11-11
+  row_count     Int?
+  /// Sales export only: true when the user asked for "only sales not exported before".
+  only_new      Boolean  @default(false)
+
+  /// Sales export only: EXACTLY which sales the file contained.
+  sales ReportExportSale[]
 
   @@index([generated_by])
+  @@index([report_type, generated_at])
   @@map("report_exports")
+}
+
+/// Which sales each SALES export contained — so "only sales not exported before" is exact, and an export can
+/// be traced back to the rows it held. Append-only, like the export log itself. — client request 2026-11-11
+model ReportExportSale {
+  report_export_id String       @db.Uuid
+  report_export    ReportExport @relation(fields: [report_export_id], references: [id])
+  sale_id          String       @db.Uuid
+  sale             Sale         @relation(fields: [sale_id], references: [id])
+
+  @@id([report_export_id, sale_id])
+  @@index([sale_id])
+  @@map("report_export_sales")
 }
 
 // Uploaded-file metadata — one row per user upload through the unified `POST /v1/files` pipeline

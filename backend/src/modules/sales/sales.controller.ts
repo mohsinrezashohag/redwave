@@ -34,6 +34,14 @@ import { SetGreenfieldDto } from './dto/greenfield.dto';
 import { BulkValidateDto } from './dto/bulk-validate.dto';
 import { ListSalesQuery } from './dto/list-sales.query';
 import {
+  ExportSalesDto,
+  SaleExportFilters,
+  SaleExportPageResponse,
+  SaleExportResultResponse,
+  SaleExportSummaryResponse,
+} from './dto/sale-export.dto';
+import { PaginationQuery } from '../../common/pagination/pagination.query';
+import {
   BulkValidateResultResponse,
   DeletedSaleResponse,
   SalePageResponse,
@@ -81,6 +89,45 @@ export class SalesController {
   @ApiOkResponse({ type: BulkValidateResultResponse })
   bulkValidate(@Body() dto: BulkValidateDto, @CurrentUser() user: AuthUser) {
     return this.sales.bulkValidate(dto, user);
+  }
+
+  // ── Sales export log (client request 2026-11-11). Declared BEFORE `:id`, which would otherwise capture
+  // `/sales/exports`. ─────────────────────────────────────────────────────────────────────────────
+
+  @Post('exports')
+  @RequirePermission('sales', 'export')
+  @ApiOperation({
+    summary: 'Record a sales export and return its rows',
+    description:
+      'Requires sales:export. RECORDS the export first (who/when/format/filters/row count + exactly which sales), ' +
+      'then returns the rows for the browser to build the file. only_new = sales never exported before ' +
+      '(company-wide). Scoped like the list. More than 5000 matching sales → 422 (narrow the filters).',
+  })
+  @ApiCreatedResponse({ type: SaleExportResultResponse })
+  exportSales(@Body() dto: ExportSalesDto, @CurrentUser() user: AuthUser) {
+    return this.sales.exportSales(dto, user);
+  }
+
+  @Get('exports/summary')
+  @RequirePermission('sales', 'export')
+  @ApiOperation({
+    summary: '"Last exported" + how many matching sales were never exported',
+    description: 'Requires sales:export. Takes the sales list filters.',
+  })
+  @ApiOkResponse({ type: SaleExportSummaryResponse })
+  exportSummary(@Query() filters: SaleExportFilters, @CurrentUser() user: AuthUser) {
+    return this.sales.exportSummary(filters, user);
+  }
+
+  @Get('exports')
+  @RequirePermission('sales', 'export')
+  @ApiOperation({
+    summary: 'Sales export history (newest first)',
+    description: 'Requires sales:export. Paginated. Callers who see all sales see every export; others see their own.',
+  })
+  @ApiOkResponse({ type: SaleExportPageResponse })
+  listExports(@Query() query: PaginationQuery, @CurrentUser() user: AuthUser) {
+    return this.sales.listExports(query, user);
   }
 
   @Get(':id')

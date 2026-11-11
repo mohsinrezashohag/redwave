@@ -2837,6 +2837,37 @@ paths:
       security: *a121
       summary: Create a new effective-dated tier schedule
       tags: *a122
+  /v1/commission/base-prices:
+    post:
+      description: "Requires commission:edit. In ONE transaction: the scope’s schedule
+        becomes a single [0,∞) tier-1 bracket at default_rate, and each listed
+        internet product gets its own tier-1 price; products left out use the
+        default. Global takes a default only. Effective-dated like every rate
+        (#10): back-dating → 422."
+      operationId: CommissionController_setBasePrices_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetBasePricesDto"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasePricesResponse"
+        "400": *a115
+        "401": *a116
+        "403": *a117
+        "404": *a118
+        "409": *a119
+        "422": *a120
+      security: *a121
+      summary: Switch a scope to base prices (tiers off)
+      tags: *a122
   /v1/commission/tiers/{id}:
     patch:
       description: Requires commission:edit. Only a pending schedule can be edited;
@@ -3752,6 +3783,151 @@ paths:
         "422": *a144
       security: *a145
       summary: Batch-validate selected sales (queue bulk-select)
+      tags: *a146
+  /v1/sales/exports:
+    post:
+      description: Requires sales:export. RECORDS the export first
+        (who/when/format/filters/row count + exactly which sales), then returns
+        the rows for the browser to build the file. only_new = sales never
+        exported before (company-wide). Scoped like the list. More than 5000
+        matching sales → 422 (narrow the filters).
+      operationId: SalesController_exportSales_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExportSalesDto"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaleExportResultResponse"
+        "400": *a139
+        "401": *a140
+        "403": *a141
+        "404": *a142
+        "409": *a143
+        "422": *a144
+      security: *a145
+      summary: Record a sales export and return its rows
+      tags: *a146
+    get:
+      description: Requires sales:export. Paginated. Callers who see all sales see
+        every export; others see their own.
+      operationId: SalesController_listExports_v1
+      parameters:
+        - name: page
+          required: false
+          in: query
+          description: 1-based page number.
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: limit
+          required: false
+          in: query
+          description: Rows per page (max 100).
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 20
+            type: number
+        - name: sort
+          required: false
+          in: query
+          description: Sort as `field:dir` (e.g. `sale_date:desc`). Unknown fields fall
+            back to the default sort.
+          schema:
+            example: sale_date:desc
+            type: string
+        - name: search
+          required: false
+          in: query
+          description: Case-insensitive free-text search across the entity’s key columns.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaleExportPageResponse"
+        "400": *a139
+        "401": *a140
+        "403": *a141
+        "404": *a142
+        "409": *a143
+        "422": *a144
+      security: *a145
+      summary: Sales export history (newest first)
+      tags: *a146
+  /v1/sales/exports/summary:
+    get:
+      description: Requires sales:export. Takes the sales list filters.
+      operationId: SalesController_exportSummary_v1
+      parameters:
+        - name: status
+          required: false
+          in: query
+          schema:
+            type: string
+            enum:
+              - entered
+              - validated
+              - in_pay_run
+              - paid
+              - clawed_back
+              - deleted
+              - historical
+        - name: rep_id
+          required: false
+          in: query
+          schema:
+            type: string
+        - name: client_id
+          required: false
+          in: query
+          schema:
+            type: string
+        - name: date_from
+          required: false
+          in: query
+          schema:
+            example: 2026-11-01
+            type: string
+        - name: date_to
+          required: false
+          in: query
+          schema:
+            example: 2026-11-30
+            type: string
+        - name: search
+          required: false
+          in: query
+          description: Sale ID or customer name contains.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaleExportSummaryResponse"
+        "400": *a139
+        "401": *a140
+        "403": *a141
+        "404": *a142
+        "409": *a143
+        "422": *a144
+      security: *a145
+      summary: '"Last exported" + how many matching sales were never exported'
       tags: *a146
   /v1/sales/{id}:
     get:
@@ -10950,9 +11126,125 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TierBracketDto"
+        end_product_base_prices:
+          type: boolean
+          description: "Switching BACK to tiers from base prices: also end this scope's
+            tier-1 per-product base prices from effective_from, so a product
+            base price cannot keep overriding the new ladder’s tier 1."
       required:
         - effective_from
         - tiers
+    BasePriceDto:
+      type: object
+      properties:
+        product_id:
+          type: string
+          description: A TIERED (internet) product of the scope's client.
+        amount:
+          type: string
+          example: "160.00"
+          description: Base price per activation — decimal string (#1).
+      required:
+        - product_id
+        - amount
+    SetBasePricesDto:
+      type: object
+      properties:
+        client_id:
+          type: string
+          description: The client whose prices these are. OMIT for the GLOBAL default
+            (followed by every client without its own setting). Global accepts a
+            default price only — per-product prices are set per client.
+        effective_from:
+          type: string
+          example: 2026-11-22
+          description: YYYY-MM-DD; today or later (#10).
+        effective_to:
+          type: string
+          example: 2027-03-31
+        default_rate:
+          type: string
+          example: "145.00"
+          description: The price for any internet product in this scope WITHOUT its own
+            price below.
+        prices:
+          description: Per-product prices (client scope only). Omitted products use the
+            default.
+          type: array
+          items:
+            $ref: "#/components/schemas/BasePriceDto"
+      required:
+        - effective_from
+        - default_rate
+        - prices
+    TierRateProductResponse:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Fibre 1gig
+        product_type:
+          type: string
+          example: internet
+      required:
+        - name
+        - product_type
+    TierRateResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        client_id:
+          type: string
+          nullable: true
+          description: Client this rate applies to; null = the rate for every client for
+            this product.
+        product_id:
+          type: string
+        product:
+          $ref: "#/components/schemas/TierRateProductResponse"
+        tier_number:
+          type: number
+          example: 2
+          description: Which bracket this rate is for (1 = highest).
+        amount:
+          type: string
+          example: "145.00"
+          description: Decimal string — never a float (#1).
+        effective_from:
+          type: string
+          format: date-time
+        effective_to:
+          type: string
+          format: date-time
+          nullable: true
+        created_by:
+          type: string
+        status:
+          type: string
+          enum: *a374
+      required:
+        - id
+        - client_id
+        - product_id
+        - tier_number
+        - amount
+        - effective_from
+        - effective_to
+        - created_by
+        - status
+    BasePricesResponse:
+      type: object
+      properties:
+        schedule:
+          $ref: "#/components/schemas/TierConfigResponse"
+        rates:
+          type: array
+          items:
+            $ref: "#/components/schemas/TierRateResponse"
+      required:
+        - schedule
+        - rates
     UpdateTierScheduleDto:
       type: object
       properties:
@@ -11062,62 +11354,6 @@ components:
           type: string
           example: 2026-12-31
           description: YYYY-MM-DD; null/omit = open-ended.
-    TierRateProductResponse:
-      type: object
-      properties:
-        name:
-          type: string
-          example: Fibre 1gig
-        product_type:
-          type: string
-          example: internet
-      required:
-        - name
-        - product_type
-    TierRateResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        client_id:
-          type: string
-          nullable: true
-          description: Client this rate applies to; null = the rate for every client for
-            this product.
-        product_id:
-          type: string
-        product:
-          $ref: "#/components/schemas/TierRateProductResponse"
-        tier_number:
-          type: number
-          example: 2
-          description: Which bracket this rate is for (1 = highest).
-        amount:
-          type: string
-          example: "145.00"
-          description: Decimal string — never a float (#1).
-        effective_from:
-          type: string
-          format: date-time
-        effective_to:
-          type: string
-          format: date-time
-          nullable: true
-        created_by:
-          type: string
-        status:
-          type: string
-          enum: *a374
-      required:
-        - id
-        - client_id
-        - product_id
-        - tier_number
-        - amount
-        - effective_from
-        - effective_to
-        - created_by
-        - status
     CreateTierRateDto:
       type: object
       properties:
@@ -11774,6 +12010,152 @@ components:
         - validated
         - failed
         - results
+    SaleExportFilters:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - entered
+            - validated
+            - in_pay_run
+            - paid
+            - clawed_back
+            - deleted
+            - historical
+        rep_id:
+          type: string
+        client_id:
+          type: string
+        date_from:
+          type: string
+          example: 2026-11-01
+        date_to:
+          type: string
+          example: 2026-11-30
+        search:
+          type: string
+          description: Sale ID or customer name contains.
+    ExportSalesDto:
+      type: object
+      properties:
+        format:
+          type: string
+          enum: &a375
+            - csv
+            - excel
+            - pdf
+        filename:
+          type: string
+          example: redwave-sales-20261111
+        filters:
+          $ref: "#/components/schemas/SaleExportFilters"
+        only_new:
+          type: boolean
+          description: Only sales never included in an earlier sales export (company-wide).
+      required:
+        - format
+        - filename
+    SaleExportRecordResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        row_count:
+          type: number
+        only_new:
+          type: boolean
+        format:
+          type: string
+          enum: *a375
+      required:
+        - id
+        - generated_at
+        - row_count
+        - only_new
+        - format
+    SaleExportResultResponse:
+      type: object
+      properties:
+        export:
+          nullable: true
+          description: null when nothing matched (nothing is logged).
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/SaleExportRecordResponse"
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/SaleResponse"
+      required:
+        - export
+        - rows
+    SaleExportLogResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        generated_by_name:
+          type: string
+          nullable: true
+          example: Super Admin
+        format:
+          type: string
+          enum: *a375
+        filename:
+          type: string
+        row_count:
+          type: number
+          nullable: true
+        only_new:
+          type: boolean
+        filters:
+          $ref: "#/components/schemas/SaleExportFilters"
+      required:
+        - id
+        - generated_at
+        - generated_by_name
+        - format
+        - filename
+        - row_count
+        - only_new
+        - filters
+    SaleExportSummaryResponse:
+      type: object
+      properties:
+        matching:
+          type: number
+          description: Sales matching the filters (within the caller’s scope).
+        not_yet_exported:
+          type: number
+          description: Of those, how many were never included in a sales export.
+        last_export:
+          nullable: true
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/SaleExportLogResponse"
+      required:
+        - matching
+        - not_yet_exported
+        - last_export
+    SaleExportPageResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SaleExportLogResponse"
+        meta:
+          $ref: "#/components/schemas/PageMetaResponse"
+      required:
+        - data
+        - meta
     UpdateSaleDto:
       type: object
       properties:
@@ -11993,9 +12375,9 @@ components:
             empty string; the UI falls back to the category label.
         field_values:
           type: object
-          additionalProperties: &a375
+          additionalProperties: &a376
             type: string
-          example: &a376
+          example: &a377
             vendor: Tim Hortons
             city: Winnipeg
           description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
@@ -12412,8 +12794,8 @@ components:
             empty string; the UI falls back to the category label.
         field_values:
           type: object
-          additionalProperties: *a375
-          example: *a376
+          additionalProperties: *a376
+          example: *a377
           description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
             category schema (EXP-002a). METADATA ONLY — never summed into the
             amount (#1). Unknown keys are dropped server-side."
@@ -13049,7 +13431,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: &a377
+          enum: &a378
             - draft
             - finalized
             - exported
@@ -13204,7 +13586,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: *a377
+          enum: *a378
         executed_by:
           type: string
         created_at:
@@ -15138,14 +15520,14 @@ components:
           type: string
         source_type:
           type: string
-          enum: &a378
+          enum: &a379
             - client_report
             - master_migration
             - balance_migration
             - sales_entry
         import_type:
           type: string
-          enum: &a379
+          enum: &a380
             - reps
             - clients
             - products
@@ -15165,7 +15547,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: &a380
+          enum: &a381
             - staged
             - committed
             - failed
@@ -15186,13 +15568,13 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: &a381
+          additionalProperties: &a382
             type: number
           nullable: true
           description: Counts by classification (matched/unmatched/...).
         applied_mapping:
           type: object
-          additionalProperties: &a382
+          additionalProperties: &a383
             type: string
           nullable: true
           description: "The `{ systemField: sourceColumn }` mapping actually applied to
@@ -15411,10 +15793,10 @@ components:
           type: string
         source_type:
           type: string
-          enum: *a378
+          enum: *a379
         import_type:
           type: string
-          enum: *a379
+          enum: *a380
         client_id:
           type: string
           nullable: true
@@ -15423,7 +15805,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: *a380
+          enum: *a381
         total_rows:
           type: number
           example: 3
@@ -15440,12 +15822,12 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: *a381
+          additionalProperties: *a382
           nullable: true
           description: Counts by classification (matched/unmatched/...).
         applied_mapping:
           type: object
-          additionalProperties: *a382
+          additionalProperties: *a383
           nullable: true
           description: "The `{ systemField: sourceColumn }` mapping actually applied to
             this batch."
@@ -16631,14 +17013,14 @@ components:
           type: string
         report_type:
           type: string
-          enum: &a383
+          enum: &a384
             - business_summary
             - leaderboard
             - payrun_summary
             - expense_summary
         format:
           type: string
-          enum: &a384
+          enum: &a385
             - csv
             - excel
             - pdf
@@ -16664,11 +17046,11 @@ components:
       properties:
         report_type:
           type: string
-          enum: *a383
+          enum: *a384
           description: Which report was generated.
         format:
           type: string
-          enum: *a384
+          enum: *a385
         filename:
           type: string
           maxLength: 200

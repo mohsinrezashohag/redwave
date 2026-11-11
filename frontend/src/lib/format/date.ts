@@ -20,6 +20,23 @@ export function todayInWinnipeg(now: Date = new Date()): string {
   }).format(now);
 }
 
+/**
+ * An API timestamp as "11 Nov 2026, 10:35", in America/Winnipeg (the business timezone, CLAUDE §2) — for
+ * "when did this happen" lines such as the last sales export. '' for a missing value.
+ */
+export function displayDateTime(value: string | null | undefined): string {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Winnipeg',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(value));
+}
+
 /** Display an API date/datetime string as `YYYY-MM-DD` (the API serializes @db.Date as an ISO string). */
 export function displayDate(value: string | null | undefined): string {
   return value ? value.slice(0, 10) : '—';

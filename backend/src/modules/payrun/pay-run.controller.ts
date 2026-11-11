@@ -21,6 +21,7 @@ import { AuthUser } from '../../common/rbac/auth-user.type';
 import { PayPeriodService } from './pay-period.service';
 import { PayRunService } from './pay-run.service';
 import { PayrollExcelRenderer } from './renderers/payroll-excel.renderer';
+import { ExportLayoutService } from '../../common/export/export-layout.service';
 import { CreatePayRunDto } from './dto/create-pay-run.dto';
 import { SetBonusDto } from './dto/bonus.dto';
 import { ExportPayRunDto } from './dto/export.dto';
@@ -67,6 +68,7 @@ export class PayRunController {
   constructor(
     private readonly payRuns: PayRunService,
     private readonly payrollExcel: PayrollExcelRenderer,
+    private readonly layouts: ExportLayoutService,
   ) {}
 
   @Get()
@@ -194,7 +196,10 @@ export class PayRunController {
     @Res() res: Response,
   ): Promise<void> {
     const report = await this.payRuns.payrollReport(id, user);
-    const bytes = await this.payrollExcel.render({ ...report, generated_at: new Date().toISOString() });
+    // The admin's saved payroll Export Layout (columns, order, labels). The workbook is rendered fresh from the
+    // lines frozen at finalize each time, so the layout in force NOW is the right one (no frozen-layout id).
+    const { columns: layout } = await this.layouts.resolve('payroll');
+    const bytes = await this.payrollExcel.render({ ...report, layout, generated_at: new Date().toISOString() });
     const filename = `redwave-payroll-period-${report.period_number}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

@@ -423,7 +423,7 @@ This file is the project's **persistent memory**. Claude Code loads it at the st
 ### Open after the UAT batches (this session)
 - ~~`prisma/seed/demo.ts` calls `documents.upload(dto, stubPdf, sa)`~~ (**FIXED** — the seed now registers the stub PDF through the real file pipeline, or as a metadata-only `stored_files` row when storage is off; `npm -w backend run typecheck` now covers `prisma/` + `scripts/` so the class of drift cannot recur. See the "UAT-file audit fixes" entry in `docs/build-log.md`.)
 - ~~`mfa.service.spec.ts` is a flake~~ (**FIXED** — and the recorded cause was wrong: not a TOTP window, but Jest's **default 5 s** timeout [the jest config sets no `testTimeout`] against `enable()` bcrypt-hashing ten recovery codes at cost 10. Only the two tests that also verify against those hashes were slow enough to cross it, which is why it looked load-dependent. `jest.setTimeout(30_000)` in that spec; the real bcrypt cost stays under test. **If another spec starts failing only under a full parallel run, check its wall-clock against the 5 s default before assuming a race.**)
-- **The sales export carries no Rep column.** `SaleResponse` exposes only `rep_id` (no code/name) and the sales table has no rep column either, so the client-bill-shaped export omits the Agent ID / Agent Name pair the STATEMENT has. Add the rep to `SALE_INCLUDE` + the response DTO if the export needs to line up completely.
+- ~~The sales export carries no Rep column~~ (**FIXED** — `SALE_INCLUDE` carries the rep and the list flattens `rep_external_code` / `rep_code` / `rep_name`, so the export has Agent ID + Agent Name.)
 - **The office origin (`expense_settings`) is typed, not geocoded.** The admin card takes a plain address, so the defaulted km stop carries no lat/lng and the server falls back to the rep's typed total (exactly like any manual stop). The `office_lat`/`office_lng` columns exist — wire the Places autocomplete into `OfficeOriginCard` to let the office contribute to route derivation.
 - **Expense CATEGORIES are still enum-bound.** `expense_items.category` remains the `ExpenseCategory` enum (km/meals/hotel/flight/rental/gas/other); the per-type FIELD schema is fully dynamic but a new category key (e.g. `parking`) needs an enum migration. The new category GROUPING dimension inherits that ceiling.
 - **The client expense document is outside the reconciliation tie-out.** `/v1/reconciliation/*` covers statements + pay runs only; a `CEXP-` document has no tie-out check.
@@ -684,6 +684,11 @@ forbids.
   and a back-date guard the server re-enforces with 422.
 - **The sales export shows the frozen commission snapshot and reads no billing rate** (#3) — it is
   deliberately **blank on an unpaid sale**, because a zero would read as "earned nothing".
+- **Every sales export is LOGGED before the file is built** (2026-11-11). The browser calls
+  `POST /v1/sales/exports` (`sales:export`), which records who/when/format/filters/row count + EXACTLY which
+  sales (`report_export_sales`) and returns the rows; the file is then built from those rows. Never export
+  sales from `GET /v1/sales` directly — an unrecorded export breaks "only sales not exported before", which is
+  **company-wide** (once anyone exported a sale it is no longer new). An export matching nothing logs nothing.
 
 ### 13.11 Where to read the history
 
@@ -804,3 +809,12 @@ surrounding code.
    whether derived rows exist. **Any `$transaction` that loops per row needs an explicit `timeout`**
    (finalize and the backfill use `120_000`) — Prisma's 5 s default rolled back the first production
    backfill run.
+
+12. **"Tiers off" is BASE PRICES, stored on the existing model** (client request 2026-11-11). A scope (Global or one
+   client) is in base-price mode when its current schedule is ONE bracket `[0, ∞)` (tier 1); each internet
+   product's own price is a tier-1 `commission_tier_rates` row, else the bracket rate is the default. There is no
+   flag column — the mode is derived (`features/commission/tierMode.ts`), and a client without its own schedule
+   follows Global. Write it only through `POST /v1/commission/base-prices` (one transaction: schedule + prices,
+   ending old tier-1 prices of products left on the default). **Global takes a default price only** — a global
+   per-product price would override every client's ladder. Switching tiers back ON sends
+   `end_product_base_prices: true` so a tier-1 product price can't keep overriding the new ladder's tier 1.
