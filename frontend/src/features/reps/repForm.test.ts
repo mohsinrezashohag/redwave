@@ -34,6 +34,13 @@ describe('repFormSchema', () => {
     const e = errorsOf('create', base({ sin: '123', address_postal: '12345', date_of_birth: '2999-01-01', email: 'nope' }));
     expect(Object.keys(e).sort()).toEqual(['address_postal', 'date_of_birth', 'email', 'sin']);
   });
+  // A real user typed 786543219 (9 digits, fails the check digit). The message must say how to fix it.
+  it('explains WHICH SIN problem it is: wrong length vs. a failed check digit', () => {
+    expect(errorsOf('create', base({ sin: '12345' })).sin).toMatch(/exactly 9 digits/);
+    expect(errorsOf('create', base({ sin: '786543219' })).sin).toMatch(/check digit/);
+    expect(errorsOf('create', base({ sin: '046 454 286' }))).not.toHaveProperty('sin');
+  });
+
   it('rep code is required on create only (immutable after)', () => {
     expect(errorsOf('create', base({ rep_code: '' }))).toHaveProperty('rep_code');
     expect(errorsOf('edit', base({ rep_code: '' }))).toEqual({});

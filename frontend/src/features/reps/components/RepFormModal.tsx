@@ -139,8 +139,8 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
               error={errors.sin?.message}
               help={
                 editing?.sin_on_file
-                  ? `On file (${editing.sin_masked ?? 'hidden'}). Leave blank to keep it; type a new one to replace it.`
-                  : 'Stored encrypted. Only HR can reveal it, and every reveal is logged.'
+                  ? `On file (${editing.sin_masked ?? 'hidden'}). Leave blank to keep it, or type a new one to replace it.`
+                  : '9 digits, as printed on the rep’s SIN card (spaces or dashes are fine). It’s checked for typos, saved encrypted, and only HR can reveal it.'
               }
             >
               <Input {...register('sin')} inputMode="numeric" placeholder="123 456 789" autoComplete="off" className="mono" />
