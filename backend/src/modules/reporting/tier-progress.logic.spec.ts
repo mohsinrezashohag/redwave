@@ -41,3 +41,21 @@ describe('countToTier (pure tier-progress, no money) — RPT-001', () => {
     expect(countToTier([], 5)).toBeNull();
   });
 });
+
+// Client directive 2026-11-11 — "tiers off": one bracket covering every count. There is no ladder to climb,
+// so no tier progress is reported (the rep dashboard hides the card).
+describe('countToTier — tiers off', () => {
+  it('a single [0, ∞) bracket reports NO tier, whatever the count', () => {
+    const single = [{ tier_number: 1, min_count: 0, max_count: null }];
+    expect(countToTier(single, 0)).toBeNull();
+    expect(countToTier(single, 40)).toBeNull();
+  });
+
+  it('a real ladder still reports progress', () => {
+    const ladder = [
+      { tier_number: 4, min_count: 0, max_count: 6 },
+      { tier_number: 3, min_count: 7, max_count: null },
+    ];
+    expect(countToTier(ladder, 5)).toMatchObject({ tier_number: 4, to_next: 2 });
+  });
+});

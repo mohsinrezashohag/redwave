@@ -65,9 +65,12 @@ export default function RepDashboardPage() {
                   <p className="mono">No activations yet this period.</p>
                 )}
               </Card>
-              <Card title="Tier progress">
-                <TierProgressBar tier={d.tier} />
-              </Card>
+              {/* Hidden when there is no tier ladder ("tiers off", 2026-11-11): every product pays its own base price. */}
+              {d.tier && (
+                <Card title="Tier progress">
+                  <TierProgressBar tier={d.tier} />
+                </Card>
+              )}
             </div>
 
             <Card title="Recent sales">

@@ -818,3 +818,6 @@ surrounding code.
    ending old tier-1 prices of products left on the default). **Global takes a default price only** — a global
    per-product price would override every client's ladder. Switching tiers back ON sends
    `end_product_base_prices: true` so a tier-1 product price can't keep overriding the new ladder's tier 1.
+   **While a scope's tiers are off, its tier settings are LOCKED in the UI** (`useScopeTierMode`): Per-product rates is
+   read-only for it and the Add rate form refuses that client — prices have ONE editor (Tier schedule → Edit prices).
+   "All scopes" shows no switch (scopes can differ).

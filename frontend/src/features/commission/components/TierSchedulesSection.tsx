@@ -25,7 +25,8 @@ import { TierScheduleModal } from './TierScheduleModal';
 import { BasePricesModal } from './BasePricesModal';
 import { PendingRowActions } from './PendingRowActions';
 import { SCOPE_ALL, SCOPE_GLOBAL, scopeDefaultClientId, scopeLabel, scopeParam, type ScopeValue } from '../clientScope';
-import { deriveTierMode, isBasePriceSchedule } from '../tierMode';
+import { isBasePriceSchedule } from '../tierMode';
+import { useScopeTierMode } from '../api/useScopeTierMode';
 import type { TierConfig, TierBracket } from '../commission.types';
 
 function rateRange(tiers: TierBracket[]): string {
@@ -58,9 +59,8 @@ export function TierSchedulesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue
 
   const clientId = scopeDefaultClientId(scope);
   const isAll = scope === SCOPE_ALL;
-  // A client follows Global when it has no schedule of its own — read Global too so the mode is right.
-  const globalQ = useTierSchedules(SCOPE_GLOBAL, !!clientId);
-  const tierMode = deriveTierMode(!!clientId, q.data, scope === SCOPE_GLOBAL ? q.data : globalQ.data);
+  // The scope's mode (a client with no schedule of its own follows Global). Null on "All scopes".
+  const tierMode = useScopeTierMode(scope);
   const basePrices = tierMode.mode === 'base_prices';
   const productPrices = useTierRates('current', clientId, undefined, basePrices && !!clientId && !tierMode.inherited);
   const scopeName = scope === SCOPE_GLOBAL ? 'Global' : scopeLabel(clientId, clients.data);
@@ -80,11 +80,12 @@ export function TierSchedulesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue
     });
   };
 
-  const toggle = canEdit ? (
+  // No switch on "All scopes": scopes can differ, so an on/off state there would be meaningless.
+  const toggle = canEdit && !isAll ? (
     <Switch
       label="Use tier schedule"
       checked={tierMode.mode !== 'base_prices'}
-      disabled={isAll || tierMode.mode === null}
+      disabled={tierMode.mode === null}
       onCheckedChange={(on) => setDialog(on ? 'tiers_on' : 'tiers_off')}
     />
   ) : undefined;
@@ -102,7 +103,9 @@ export function TierSchedulesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue
       }
     >
       {isAll && canEdit && (
-        <p className={styles.note}>Pick Global or a client under Rate scope to switch tiers on or off for it.</p>
+        <p className={styles.note}>
+          Showing every scope. To turn tiers on or off, pick <strong>Global</strong> or a client under Rate scope.
+        </p>
       )}
 
       {!isAll && basePrices && tierMode.current && (

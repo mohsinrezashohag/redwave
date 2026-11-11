@@ -18,10 +18,19 @@ export interface TierProgress {
   to_next: number | null; // activations remaining to reach it (null if already top)
 }
 
-/** Classify `count` into its bracket and compute the distance to the next-higher count bracket. */
+/**
+ * Classify `count` into its bracket and compute the distance to the next-higher count bracket.
+ *
+ * null when there is NO LADDER to progress on: no brackets, or "tiers off" (2026-11-11) — a single bracket
+ * covering every count, where each product pays its own base price whatever the volume. Showing a rep "Tier 1,
+ * top reached" there would describe a ladder that does not exist, so the dashboards hide tier progress instead.
+ */
 export function countToTier(brackets: TierBracket[], count: number): TierProgress | null {
   if (brackets.length === 0) {
     return null;
+  }
+  if (brackets.length === 1 && brackets[0].min_count === 0 && brackets[0].max_count === null) {
+    return null; // tiers off
   }
   const sorted = [...brackets].sort((a, b) => a.min_count - b.min_count);
   const current =
