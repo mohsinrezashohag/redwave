@@ -21,6 +21,8 @@ import { useClientProducts } from '../../clients/api/useClients';
 import { useCreateTierRate, useUpdateTierRate } from '../api/useCommissionMutations';
 import { useClients, useTierSchedules } from '../api/useCommission';
 import type { TierBracket, TierRate } from '../commission.types';
+import { deriveTierMode } from '../tierMode';
+import { SCOPE_GLOBAL } from '../clientScope';
 import styles from './commission.module.css';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -85,8 +87,13 @@ export function TierRateModal({
 
   // The brackets that actually exist, so a rate can never be written for a tier no tally could reach.
   // Shows the count range beside each tier, because "Tier 2" alone does not say what earns it.
-  const schedules = useTierSchedules(clientId || undefined);
-  const tierOptions = (schedules.data?.[0]?.tiers ?? []).map((t: TierBracket) => ({
+  // The ladder IN FORCE for this client: its own current schedule, else Global's — exactly what the server's
+  // tier-exists guard checks. (Reading `schedules.data[0]` picked the OLDEST row, often a past one, and a
+  // client without its own ladder got no tiers at all.)
+  const schedules = useTierSchedules(clientId || undefined, !!clientId);
+  const globalSchedules = useTierSchedules(SCOPE_GLOBAL);
+  const inForce = deriveTierMode(true, schedules.data, globalSchedules.data).current;
+  const tierOptions = (inForce?.tiers ?? []).map((t: TierBracket) => ({
     value: String(t.tier_number),
     label: `Tier ${t.tier_number} — ${t.min_count}${t.max_count === null ? '+' : `–${t.max_count}`} activations`,
   }));

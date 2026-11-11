@@ -5,6 +5,7 @@ export type { ButtonProps, ButtonVariant, ButtonSize } from './Button';
 export { IconButton } from './IconButton';
 export { SplitButton } from './SplitButton';
 export { Input } from './Input';
+export { PrivateInput } from './PrivateInput';
 export { Textarea } from './Textarea';
 export { MoneyInput } from './MoneyInput';
 export { FormField } from './FormField';

@@ -13,6 +13,7 @@ import { parseEffectiveWindow } from './effective-dates.util';
 import { assertPending, resolveEditWindow } from './effective-edit.util';
 import { scopeWhere } from './client-scope.logic';
 import { resolveClientScope } from './client-scope.util';
+import { endTierRatesWithinTx } from './base-prices.service';
 import {
   CreateTierScheduleDto,
   ListTierSchedulesQuery,
@@ -82,6 +83,11 @@ export class TierScheduleService {
           data: { effective_to: plan.boundCurrent.effectiveTo },
         });
       }
+      // Tiers switched back ON from base prices: end the scope's tier-1 product prices from the same date,
+      // in the same transaction, so none keeps overriding the new ladder's tier 1.
+      if (dto.end_product_base_prices) {
+        await endTierRatesWithinTx(tx, clientId, from);
+      }
       return tx.commissionTierConfig.create({
         data: {
           client_id: clientId,
@@ -117,6 +123,7 @@ export class TierScheduleService {
         })),
         superseded_pending_ids: plan.deletePendingIds,
         bounded_current_id: plan.boundCurrent?.id ?? null,
+        ended_product_base_prices: dto.end_product_base_prices ?? false,
       },
     });
     return { ...created, status: deriveStatus(created, today) };

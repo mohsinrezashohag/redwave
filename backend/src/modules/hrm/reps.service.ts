@@ -333,7 +333,9 @@ export class RepsService {
       } else {
         const digits = normalizeSin(raw);
         if (!digits) {
-          throw new UnprocessableEntityException('sin must be a valid 9-digit Social Insurance Number');
+          throw new UnprocessableEntityException(
+            'This isn’t a valid SIN. It must be 9 digits and pass the SIN check digit; check the card for a typo.',
+          );
         }
         data.sin_ciphertext = encryptField(digits, this.requirePiiKey());
         data.sin_last3 = digits.slice(-3);

@@ -42,3 +42,7 @@ export type UpdateIncentiveBody = components['schemas']['UpdateIncentiveDto'];
 export type TierRate = components['schemas']['TierRateResponse'];
 export type CreateTierRateBody = components['schemas']['CreateTierRateDto'];
 export type UpdateTierRateBody = components['schemas']['UpdateTierRateDto'];
+
+/** "Tiers off" for a scope: one [0,∞) bracket at the default + each product's own price (2026-11-11). */
+export type SetBasePricesBody = components['schemas']['SetBasePricesDto'];
+export type BasePricesResult = components['schemas']['BasePricesResponse'];

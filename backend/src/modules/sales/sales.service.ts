@@ -30,6 +30,34 @@ import { ValidateSaleDto } from './dto/validate-sale.dto';
 import { SetGreenfieldDto } from './dto/greenfield.dto';
 import { BulkValidateDto } from './dto/bulk-validate.dto';
 import { ListSalesQuery } from './dto/list-sales.query';
+import { ExportSalesDto, SaleExportFilters } from './dto/sale-export.dto';
+import { PaginationQuery } from '../../common/pagination/pagination.query';
+
+/** One export's row cap — the browser builds the file, so keep it to what a spreadsheet handles well. */
+export const MAX_EXPORT_ROWS = 5000;
+
+/** A logged export, as the history and the "last exported" line show it. */
+export function toExportLogRow(r: {
+  id: string;
+  generated_at: Date;
+  format: string;
+  filename: string;
+  row_count: number | null;
+  only_new: boolean;
+  scope_filters: Prisma.JsonValue;
+  generator: { full_name: string } | null;
+}) {
+  return {
+    id: r.id,
+    generated_at: r.generated_at,
+    generated_by_name: r.generator?.full_name ?? null,
+    format: r.format,
+    filename: r.filename,
+    row_count: r.row_count,
+    only_new: r.only_new,
+    filters: (r.scope_filters ?? {}) as SaleExportFilters,
+  };
+}
 import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
 
 const dateOnly = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
@@ -381,6 +409,119 @@ export class SalesService {
   }
 
   async list(query: ListSalesQuery, user: AuthUser) {
+    const where = await this.listWhere(query, user);
+    const { skip, take, page, limit } = toSkipTake(query);
+    const orderBy = resolveOrderBy(query.sort, SalesService.SORTABLE, { sale_date: 'desc' });
+
+    const [rows, total] = await Promise.all([
+      this.prisma.sale.findMany({ where, include: SALE_INCLUDE, orderBy, skip, take }),
+      this.prisma.sale.count({ where }), // same `where` → an accurate total for the meta
+    ]);
+    return buildPage(await this.attachPeriods(rows), total, page, limit);
+  }
+
+  // ── Sales export log (client request 2026-11-11) ──────────────────────────────────────────────
+  // Redwave exports sales whenever they like and does the pay maths in Excel. Every export is RECORDED
+  // FIRST (who / when / format / filters / row count + exactly which sales), then the rows are returned for
+  // the browser to build the file — "no record, no file", as for report exports (RPT-015). An export uses
+  // the SAME scoped where as the list (§5), so a rep can only ever export their own sales.
+
+  /** Record an export and return its rows. `only_new` = sales never included in an earlier sales export. */
+  async exportSales(dto: ExportSalesDto, user: AuthUser) {
+    const where = await this.exportWhere(dto.filters ?? {}, dto.only_new ?? false, user);
+    const count = await this.prisma.sale.count({ where });
+    if (count > MAX_EXPORT_ROWS) {
+      throw new UnprocessableEntityException(
+        `${count} sales match — narrow the filters (date range, client, status) to ${MAX_EXPORT_ROWS} or fewer per export`,
+      );
+    }
+    const rows = await this.prisma.sale.findMany({ where, include: SALE_INCLUDE, orderBy: { sale_date: 'desc' } });
+    // Nothing matched (e.g. "only new" right after an export): no file is produced, so nothing is logged —
+    // an empty entry would only clutter the history.
+    if (rows.length === 0) {
+      return { export: null, rows: [] };
+    }
+
+    const log = await this.prisma.$transaction(
+      async (tx) => {
+        const created = await tx.reportExport.create({
+          data: {
+            generated_by: user.id,
+            report_type: 'sales',
+            format: dto.format,
+            scope_filters: (dto.filters ?? {}) as Prisma.InputJsonValue,
+            filename: dto.filename,
+            row_count: rows.length,
+            only_new: dto.only_new ?? false,
+          },
+        });
+        await tx.reportExportSale.createMany({
+          data: rows.map((r) => ({ report_export_id: created.id, sale_id: r.id })),
+        });
+        return created;
+      },
+      { timeout: 60_000 },
+    );
+    await this.audit.log({
+      actorId: user.id,
+      entityType: 'report_exports',
+      entityId: log.id,
+      action: 'export',
+      after: { report_type: 'sales', format: dto.format, row_count: rows.length, only_new: dto.only_new ?? false },
+    });
+    return {
+      export: { id: log.id, generated_at: log.generated_at, row_count: rows.length, only_new: log.only_new, format: log.format },
+      rows: await this.attachPeriods(rows),
+    };
+  }
+
+  /** "Last exported …" + how many sales match the filters, and how many of those were never exported. */
+  async exportSummary(filters: SaleExportFilters, user: AuthUser) {
+    const [matching, notYet, last] = await Promise.all([
+      this.prisma.sale.count({ where: await this.exportWhere(filters, false, user) }),
+      this.prisma.sale.count({ where: await this.exportWhere(filters, true, user) }),
+      this.prisma.reportExport.findFirst({
+        where: { report_type: 'sales', ...(await this.exportLogScope(user)) },
+        orderBy: { generated_at: 'desc' },
+        include: { generator: { select: { full_name: true } } },
+      }),
+    ]);
+    return {
+      matching,
+      not_yet_exported: notYet,
+      last_export: last ? toExportLogRow(last) : null,
+    };
+  }
+
+  /** The export history, newest first. Users who see all sales see every export; others see their own. */
+  async listExports(query: PaginationQuery, user: AuthUser) {
+    const where: Prisma.ReportExportWhereInput = { report_type: 'sales', ...(await this.exportLogScope(user)) };
+    const { skip, take, page, limit } = toSkipTake(query);
+    const [rows, total] = await Promise.all([
+      this.prisma.reportExport.findMany({
+        where,
+        orderBy: { generated_at: 'desc' },
+        include: { generator: { select: { full_name: true } } },
+        skip,
+        take,
+      }),
+      this.prisma.reportExport.count({ where }),
+    ]);
+    return buildPage(rows.map(toExportLogRow), total, page, limit);
+  }
+
+  private async exportWhere(filters: SaleExportFilters, onlyNew: boolean, user: AuthUser): Promise<Prisma.SaleWhereInput> {
+    const base = await this.listWhere(filters, user);
+    // "Not exported before" is company-wide: once anyone has exported a sale, it is no longer new.
+    return onlyNew ? { AND: [base, { export_links: { none: {} } }] } : base;
+  }
+
+  private async exportLogScope(user: AuthUser): Promise<Prisma.ReportExportWhereInput> {
+    return (await this.scopeRepIds(user)) === null ? {} : { generated_by: user.id };
+  }
+
+  /** The list's filters, SCOPED IN THE QUERY (§5). Shared by the list and every export read. */
+  private async listWhere(query: SaleExportFilters, user: AuthUser): Promise<Prisma.SaleWhereInput> {
     const repIds = await this.scopeRepIds(user);
     const and: Prisma.SaleWhereInput[] = [];
     if (repIds !== null) and.push({ rep_id: { in: repIds } }); // scope in the query (#5/§5)
@@ -398,15 +539,7 @@ export class SalesService {
       });
     }
 
-    const where: Prisma.SaleWhereInput = and.length ? { AND: and } : {};
-    const { skip, take, page, limit } = toSkipTake(query);
-    const orderBy = resolveOrderBy(query.sort, SalesService.SORTABLE, { sale_date: 'desc' });
-
-    const [rows, total] = await Promise.all([
-      this.prisma.sale.findMany({ where, include: SALE_INCLUDE, orderBy, skip, take }),
-      this.prisma.sale.count({ where }), // same `where` → an accurate total for the meta
-    ]);
-    return buildPage(await this.attachPeriods(rows), total, page, limit);
+    return and.length ? { AND: and } : {};
   }
 
   async findOne(id: string, user: AuthUser) {

@@ -1,10 +1,11 @@
 /**
  * SalesListPage — the sales list + validation queue. Filter state (incl. free-text search) lives in the
  * URL search params (so a preset like `/sales?status=entered` is a shareable "Validation" link). Export
- * (CSV/Excel/PDF/Print) respects the active filters via a paged fetch-all. The "Enter sale" action is
+ * (CSV/Excel/PDF/Print) respects the active filters and is RECORDED server-side first (sales export log,
+ * 2026-11-11: who/when/which sales; "only sales not exported before"); it needs sales:export. The "Enter sale" action is
  * gated by `sales:create` for convenience — the server still authorizes (CLAUDE §5). — SALE-001/007
  */
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, PageHeader } from '../../../components/ui';
 import { Can } from '../../../auth/Can';
@@ -18,7 +19,10 @@ import { useProductTypes } from '../../productTypes/api/useProductTypes';
 import { saleExportRowAccessor } from '../saleExport';
 import { SalesFilterBar } from '../components/SalesFilterBar';
 import { SalesTable } from '../components/SalesTable';
-import { fetchAllSales, useClients } from '../api/useSales';
+import { useClients } from '../api/useSales';
+import { useRecordSaleExport } from '../api/useSaleExports';
+import { ExportHistory, ExportStatusLine } from '../components/SalesExportPanel';
+import type { ExportFormat } from '../../../lib/export/exportRows';
 import type { Sale, SaleStatus, SalesFilters } from '../sales.types';
 
 const FILTER_KEYS = ['status', 'rep_id', 'client_id', 'date_from', 'date_to', 'search'] as const;
@@ -29,6 +33,12 @@ export default function SalesListPage() {
   const canViewClients = useCan('clients:view');
   const clients = useClients(canViewClients);
   const productTypes = useProductTypes('all');
+
+  // Sales export log (2026-11-11): every export is recorded server-side BEFORE the file is built.
+  const canExport = useCan('sales:export');
+  const [onlyNew, setOnlyNew] = useState(false);
+  const recordExport = useRecordSaleExport();
+  // Gated on sales:export, the permission the log endpoint checks — every export is now recorded.
 
   const filters = useMemo<SalesFilters>(() => {
     const status = searchParams.get('status') ?? undefined;
@@ -95,6 +105,12 @@ export default function SalesListPage() {
     { header: 'Status', value: (s) => s.status },
   ];
 
+  const exportFile = exportFilename({
+    source: 'sales',
+    period: { from: filters.date_from, to: filters.date_to },
+    generatedOn: todayIso(),
+  });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
       <PageHeader
@@ -102,16 +118,23 @@ export default function SalesListPage() {
         subtitle="Enter activations, then validate them into the pay run."
         actions={
           <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+            {canExport && (
             <ExportMenu
-              filename={exportFilename({
-                source: 'sales',
-                period: { from: filters.date_from, to: filters.date_to },
-                generatedOn: todayIso(),
-              })}
+              filename={exportFile}
               title="Sales"
               columns={exportColumns}
-              getRows={() => fetchAllSales(filters)}
+              getRows={async (format: ExportFormat) =>
+                (
+                  await recordExport.mutateAsync({
+                    format,
+                    filters,
+                    onlyNew,
+                    filename: exportFile,
+                  })
+                ).rows
+              }
             />
+            )}
             <Can permission="sales:create">
               <Button variant="primary" onClick={() => navigate('/sales/new')}>
                 Enter sale
@@ -120,8 +143,10 @@ export default function SalesListPage() {
           </div>
         }
       />
+      {canExport && <ExportStatusLine filters={filters} onlyNew={onlyNew} onOnlyNewChange={setOnlyNew} />}
       <SalesFilterBar filters={filters} onChange={onChange} />
       <SalesTable filters={filters} />
+      {canExport && <ExportHistory />}
     </div>
   );
 }

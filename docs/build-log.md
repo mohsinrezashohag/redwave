@@ -2509,3 +2509,73 @@ Browser "Issues" seen on the KM expense form, fixed in the SHARED components so 
 
 The CSP "eval" notice is deliberately left alone: nothing is broken by it, and allowing `unsafe-eval` would
 weaken XSS protection. Verified LOCAL: FE build + lint + stylelint + 118 vitest (+`FormField.test`).
+
+### Commission "Use tier schedule" toggle (base prices) · Sales export log · payroll layout applied (migration `20261112000000`)
+
+**What Redwave asked (2026-11-11):** the system records sales; Redwave does the pay maths in Excel and
+exports whenever it likes. Tiers will be kept **off**, with a toggle "just in case". With tiers off, **each
+product has its own base price**. The Excel outputs are the **Payroll report** and the **Sales export**
+(columns as they are). The system must **record every export** and offer "only sales not exported before".
+
+**Part 1: the toggle. No migration and no engine change.**
+- **The model.** "Tiers off" for a scope (Global or a client) is a single `[0, ∞)` tier-1 bracket (the
+  default price) plus tier-1 per-product rates. The engine's existing lookup (client+product → product →
+  bracket) pays each product its own price at any volume. A new engine spec proves it: 2×160 + 3×145 +
+  1×140 = 895, and 40 activations pay 40× the unit price.
+- **Writing it.** `POST /v1/commission/base-prices` (`BasePricesService`) does everything in **one
+  transaction**:
+  - supersedes the scope's schedule;
+  - writes each product price;
+  - ends the old tier-1 price of any product left on the default.
+  It validates first: every product must be an internet product of that client, no duplicates, no
+  back-dating.
+  - **Global takes a default only.** A global product price would override every client's ladder,
+    including one that keeps tiers.
+- **Switching back ON.** `CreateTierScheduleDto.end_product_base_prices` ends the scope's tier-1 prices in
+  the same transaction (`endTierRatesWithinTx`, pure `planEndRows`: pending → deleted, current → bounded,
+  past untouched, #10).
+- **Frontend.**
+  - A `Switch` on the Tier schedule card, disabled on "All scopes". Off opens `BasePricesModal` (dated,
+    default plus per-product prices, blank = default); on opens `TierScheduleModal` in "turn tiers on" mode.
+  - The card shows the default and each product's price; a client following Global says so and offers
+    **Set own prices**.
+  - Mode is derived, not stored (`tierMode.ts`).
+  - **Bug fixed:** the per-product rate form's tier picker read `schedules.data[0]`, which is the OLDEST
+    schedule (often past), and a client without its own ladder got no tiers. It now uses the schedule
+    *in force* with the Global fallback.
+
+**Part 2: sales export log.**
+- **Migration `20261112000000`** (additive): `report_exports.row_count` and `only_new`, plus the
+  append-only join table `report_export_sales` holding exactly which sales each export contained.
+- **`POST /v1/sales/exports`** (`sales:export`) records first (RPT-015's "no record, no file"), then
+  returns the rows; the browser builds the file from those rows with the **unchanged** columns.
+  - It uses the **same scoped where as the list** (`listWhere`, extracted), so a rep only ever exports
+    their own sales.
+  - `only_new` adds `export_links: { none: {} }`, company-wide.
+  - Over 5,000 rows → 422. Nothing matching → no log entry.
+- **`GET /v1/sales/exports/summary`** (last export, matching, never-exported) and **`GET /v1/sales/exports`**
+  (history; everyone-sees-all only for all-scope callers). The routes are declared **before** `:id`, and
+  the RBAC spec asserts that order.
+- **Frontend.**
+  - A line under the Sales header: "Last exported … by … · N sales · Excel".
+  - An "Only sales not exported before (N of M)" checkbox the Export button honours.
+  - A collapsible **Export history**.
+  - `ExportMenu.getRows` now receives the chosen format (backward-compatible).
+  - New `displayDateTime` (Winnipeg).
+- **Behaviour change:** the Sales Export button now needs **`sales:export`** (Admin + Super Admin by
+  default). It used to show for anyone who could see sales, unrecorded. Grant it to Manager in Roles if
+  managers should export.
+
+**Part 3.** The payroll workbook download now applies the admin's saved **payroll Export Layout**
+(`ExportLayoutService.resolve('payroll')`). Before, it always used the default. The workbook is re-rendered
+from frozen lines each time, so the layout in force *now* is correct. CLAUDE §12's stale "no Rep column"
+item is struck: the sales export has had Agent ID / Agent Name since `7373b95`.
+
+**Paid vs unpaid (decided):** the sales export is unchanged. Status says entered / validated / paid, and the
+amounts are the frozen snapshot, blank until paid (§13.10). Redwave uses the base prices as its reference.
+
+**Operator:** `prisma:deploy` (adds `20261112000000`) before the backend deploy.
+
+**Verified LOCAL:** 1212+ backend tests (+`base-prices.spec`, +engine base-price cases, +`sales-export.spec`,
+RBAC specs) + typecheck + lint + build + contract regen; FE build + lint + stylelint + vitest (+`tierMode`,
++`basePricesForm`, +`saleExportLog`). Not yet seen in a browser.

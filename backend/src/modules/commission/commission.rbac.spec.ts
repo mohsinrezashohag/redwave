@@ -14,6 +14,10 @@ describe('Commission Config RBAC metadata', () => {
       moduleKey: 'commission',
       action: 'edit',
     });
+    expect(meta(CommissionController, 'setBasePrices')).toEqual({
+      moduleKey: 'commission',
+      action: 'edit',
+    });
     expect(meta(CommissionController, 'listFlatRates')).toEqual({
       moduleKey: 'commission',
       action: 'view',

@@ -15,8 +15,11 @@ import { exportRows, type ExportColumn, type ExportFormat } from '../../lib/expo
 export interface ExportMenuProps<Row> {
   filename: string;
   columns: ExportColumn<Row>[];
-  /** Resolve the rows to export — the full filtered set or the current selection. */
-  getRows: () => Promise<Row[]> | Row[];
+  /**
+   * Resolve the rows to export — the full filtered set or the current selection. Receives the chosen format,
+   * for callers that RECORD the export server-side before the file is built (the sales export log).
+   */
+  getRows: (format: ExportFormat) => Promise<Row[]> | Row[];
   title?: string;
   label?: string;
 }
@@ -30,7 +33,7 @@ export function ExportMenu<Row>({ filename, columns, getRows, title, label = 'Ex
     if (busy) return;
     setBusy(true);
     try {
-      const rows = await getRows();
+      const rows = await getRows(format);
       if (!rows.length) {
         toast({ title: 'Nothing to export', description: 'No rows match the current filters.', tone: 'info' });
         return;

@@ -14,6 +14,7 @@ import { PayRunService } from './pay-run.service';
 import { PeriodConfigService } from './period-config.service';
 import { PeriodConfigController } from './period-config.controller';
 import { PayrollExcelRenderer } from './renderers/payroll-excel.renderer';
+import { ExportLayoutService } from '../../common/export/export-layout.service';
 
 @Module({
   // Composes the pure engine + the config provider (does not reimplement their logic).
@@ -27,7 +28,7 @@ import { PayrollExcelRenderer } from './renderers/payroll-excel.renderer';
     PeriodConfigController,
     HoldbackLedgerController,
   ],
-  providers: [PayPeriodService, PayRunService, PayrollExcelRenderer, PeriodConfigService],
+  providers: [PayPeriodService, PayRunService, PayrollExcelRenderer, PeriodConfigService, ExportLayoutService],
   exports: [PayRunService],
 })
 export class PayRunModule {}

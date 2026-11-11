@@ -10,7 +10,7 @@
 import { useMemo } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { Button, DatePicker, FormField, Input, Modal, Select, useToast } from '../../../components/ui';
+import { Button, DatePicker, FormField, Input, Modal, PrivateInput, Select, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
 import { useCan } from '../../../auth/useCan';
@@ -90,7 +90,7 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
       name={name}
       render={({ field }) => (
         <FormField label={label} required={required} error={errors[name]?.message}>
-          <Select options={options} value={field.value || undefined} onValueChange={field.onChange} placeholder="Select…" aria-label={label} />
+          <Select options={options} value={field.value || undefined} onValueChange={field.onChange} placeholder="Select…" autoComplete="off" aria-label={label} />
         </FormField>
       )}
     />
@@ -115,7 +115,7 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
               <Input {...register('external_code')} placeholder="Redwave20" />
             </FormField>
             <FormField label="Full name" required error={errors.full_name?.message}>
-              <Input {...register('full_name')} placeholder="Jordan Field" autoComplete="off" />
+              <PrivateInput {...register('full_name')} placeholder="Jordan Field" />
             </FormField>
             {select('field_manager_id', 'Field manager', managerOptions, true)}
             {date('hire_date', 'Hire date', true)}
@@ -129,21 +129,21 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
           <div className={styles.grid2}>
             {date('date_of_birth', 'Date of birth', false, today)}
             <FormField label="Phone" error={errors.phone?.message}>
-              <Input {...register('phone')} inputMode="tel" placeholder="204 555 0142" autoComplete="off" />
+              <PrivateInput {...register('phone')} inputMode="tel" placeholder="204 555 0142" />
             </FormField>
             <FormField label="Email" error={errors.email?.message}>
-              <Input {...register('email')} type="email" placeholder="jordan@example.com" autoComplete="off" />
+              <PrivateInput {...register('email')} type="email" placeholder="jordan@example.com" />
             </FormField>
             <FormField
               label="SIN"
               error={errors.sin?.message}
               help={
                 editing?.sin_on_file
-                  ? `On file (${editing.sin_masked ?? 'hidden'}). Leave blank to keep it; type a new one to replace it.`
-                  : 'Stored encrypted. Only HR can reveal it, and every reveal is logged.'
+                  ? `On file (${editing.sin_masked ?? 'hidden'}). Leave blank to keep it, or type a new one to replace it.`
+                  : '9 digits, as printed on the rep’s SIN card (spaces or dashes are fine). It’s checked for typos, saved encrypted, and only HR can reveal it.'
               }
             >
-              <Input {...register('sin')} inputMode="numeric" placeholder="123 456 789" autoComplete="off" className="mono" />
+              <PrivateInput {...register('sin')} inputMode="numeric" placeholder="123 456 789" className="mono" />
             </FormField>
           </div>
         </section>
@@ -152,14 +152,14 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
           <h3 className={styles.sectionTitle}>Address</h3>
           <div className={styles.grid2}>
             <FormField label="Street" error={errors.address_street?.message}>
-              <Input {...register('address_street')} placeholder="1250 Portage Ave" autoComplete="off" />
+              <PrivateInput {...register('address_street')} placeholder="1250 Portage Ave" />
             </FormField>
             <FormField label="City" error={errors.address_city?.message}>
-              <Input {...register('address_city')} placeholder="Winnipeg" autoComplete="off" />
+              <PrivateInput {...register('address_city')} placeholder="Winnipeg" />
             </FormField>
             {select('address_province', 'Province', PROVINCE_OPTIONS)}
             <FormField label="Postal code" error={errors.address_postal?.message}>
-              <Input {...register('address_postal')} placeholder="R3G 0T7" autoComplete="off" className="mono" />
+              <PrivateInput {...register('address_postal')} placeholder="R3G 0T7" className="mono" />
             </FormField>
           </div>
         </section>

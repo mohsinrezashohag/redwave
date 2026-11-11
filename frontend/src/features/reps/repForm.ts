@@ -51,7 +51,13 @@ export function repFormSchema(mode: 'create' | 'edit', today: string) {
       address_city: z.string().max(100),
       address_province: z.string(),
       address_postal: z.string().refine((v) => !v || POSTAL.test(v.trim()), 'Use a Canadian postal code, e.g. R3G 0T7'),
-      sin: z.string().refine((v) => !v.trim() || isValidSin(v), 'Not a valid SIN (9 digits, checksum)'),
+      sin: z
+        .string()
+        .refine((v) => !v.trim() || /^\d{9}$/.test(v.replace(/[\s-]/g, '')), 'A SIN has exactly 9 digits. Spaces or dashes are fine.')
+        .refine(
+          (v) => !v.trim() || !/^\d{9}$/.test(v.replace(/[\s-]/g, '')) || isValidSin(v),
+          'This isn’t a real SIN. Every SIN has a built-in check digit, and this one doesn’t match. Check the card for a typo.',
+        ),
       jacket_size: z.string(),
       tshirt_size: z.string(),
     })
