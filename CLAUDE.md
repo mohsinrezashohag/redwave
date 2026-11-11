@@ -523,7 +523,12 @@ pattern.
 · `ExportMenu` + `exportRows` · `DatePicker` (value is always `'YYYY-MM-DD'`; **never** a native
 `<input type=date>` — OS-locale bug) · `PayPeriodSelect` · `SelectWithOther` · `EffectiveDatedTable`
 + `RateStatusBadge` · `StatCard` (the KPI tile) · `Avatar` · `FileUpload` · `HistoryTab` (per-record
-audit trail) · `SegmentedControl` · `MultiSelect` · `MoneyInput` · `SignaturePad`.
+audit trail) · `SegmentedControl` · `MultiSelect` · `MoneyInput` · `SignaturePad` · `PrivateInput`.
+
+- **A form holding SOMEONE ELSE's details (an admin entering a rep's phone, email, address or SIN) uses
+  `PrivateInput`, not `Input`.** Chrome ignores `autocomplete="off"` on address-like fields and filled the
+  admin's OWN saved contact details into a rep's profile; `PrivateInput` stays read-only until focused, so
+  autofill skips it. Pass `autoComplete="off"` to that form's `Select`s too (best effort).
 
 - **Row actions go through `RowActions`, never a hand-rolled kebab.** It takes the same `MenuEntry[]` as
   `DropdownMenu` and decides at RUNTIME: **≤2 actions on a desktop-width viewport render as real buttons**;
