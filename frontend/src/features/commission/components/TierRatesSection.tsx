@@ -6,6 +6,10 @@
  * The empty state matters here more than usual: no rows is the CORRECT default, not a gap. Every product
  * is paid the tier schedule's own rate until an override exists, so the copy says that rather than
  * implying something is missing. — #10, per-product rep rates
+ *
+ * TIERS OFF (2026-11-11): when the selected scope is on base prices, this card is READ-ONLY for it — no Add,
+ * no Edit/Delete, no Tier column — because those prices are owned by Tier schedule → Edit prices, which
+ * writes them in one dated transaction. Two places editing the same prices would let them drift apart.
  */
 import { useState } from 'react';
 import { Button, Card, ConfirmDialog, EffectiveDatedTable, useToast, type EffectiveColumn } from '../../../components/ui';
@@ -18,6 +22,7 @@ import { useDeleteTierRate } from '../api/useCommissionMutations';
 import { TierRateModal } from './TierRateModal';
 import { PendingRowActions } from './PendingRowActions';
 import { SCOPE_ALL, scopeDefaultClientId, scopeLabel, scopeParam, type ScopeValue } from '../clientScope';
+import { useScopeTierMode } from '../api/useScopeTierMode';
 import type { TierRate } from '../commission.types';
 import styles from './commission.module.css';
 
@@ -32,13 +37,16 @@ export function TierRatesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue }) 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const q = useTierRates('all', scopeParam(scope));
   const clients = useClients(canViewClients);
+  const tierMode = useScopeTierMode(scope);
+  const tiersOff = tierMode.mode === 'base_prices';
+  const editable = canEdit && !tiersOff;
 
   const columns: EffectiveColumn<TierRate>[] = [
     ...(scope === SCOPE_ALL
       ? [{ header: 'Applies to', render: (r: TierRate) => scopeLabel(r.client_id, clients.data) }]
       : []),
     { header: 'Product', render: (r) => r.product?.name ?? r.product_id },
-    { header: 'Tier', render: (r) => `Tier ${r.tier_number}` },
+    ...(tiersOff ? [] : [{ header: 'Tier', render: (r: TierRate) => `Tier ${r.tier_number}` }]),
     { header: 'Rate', align: 'right', render: (r) => money(r.amount) },
   ];
   const rows = q.data ?? [];
@@ -54,8 +62,15 @@ export function TierRatesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue }) 
   return (
     <Card
       title="Per-product rates"
-      actions={canEdit ? <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>Add rate</Button> : undefined}
+      actions={editable ? <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>Add rate</Button> : undefined}
     >
+      {tiersOff && (
+        <p className={styles.note}>
+          <strong>Tiers are off{tierMode.inherited ? ' (following Global)' : ''}.</strong> Product prices for this scope are
+          set under <strong>Tier schedule → {tierMode.inherited ? 'Set own prices' : 'Edit prices'}</strong>, so this list is
+          read-only here.
+        </p>
+      )}
       <DataState
         isLoading={q.isLoading}
         isError={q.isError}
@@ -71,7 +86,7 @@ export function TierRatesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue }) 
         <EffectiveDatedTable
           rows={rows}
           columns={columns}
-          rowActions={canEdit ? (r) => <PendingRowActions status={r.status} onEdit={() => setEditRate(r)} onDelete={() => setDeleteId(r.id)} /> : undefined}
+          rowActions={editable ? (r) => <PendingRowActions status={r.status} onEdit={() => setEditRate(r)} onDelete={() => setDeleteId(r.id)} /> : undefined}
         />
       </DataState>
       {canEdit && open && (

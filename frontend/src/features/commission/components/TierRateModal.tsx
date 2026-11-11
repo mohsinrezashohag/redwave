@@ -21,7 +21,7 @@ import { useClientProducts } from '../../clients/api/useClients';
 import { useCreateTierRate, useUpdateTierRate } from '../api/useCommissionMutations';
 import { useClients, useTierSchedules } from '../api/useCommission';
 import type { TierBracket, TierRate } from '../commission.types';
-import { deriveTierMode } from '../tierMode';
+import { deriveTierMode, isBasePriceSchedule } from '../tierMode';
 import { SCOPE_GLOBAL } from '../clientScope';
 import styles from './commission.module.css';
 
@@ -93,6 +93,8 @@ export function TierRateModal({
   const schedules = useTierSchedules(clientId || undefined, !!clientId);
   const globalSchedules = useTierSchedules(SCOPE_GLOBAL);
   const inForce = deriveTierMode(true, schedules.data, globalSchedules.data).current;
+  // Tiers OFF for this client: its product prices are owned by Tier schedule → Edit prices (2026-11-11).
+  const tiersOff = !isEdit && !!clientId && !!inForce && isBasePriceSchedule(inForce);
   const tierOptions = (inForce?.tiers ?? []).map((t: TierBracket) => ({
     value: String(t.tier_number),
     label: `Tier ${t.tier_number} — ${t.min_count}${t.max_count === null ? '+' : `–${t.max_count}`} activations`,
@@ -136,6 +138,11 @@ export function TierRateModal({
       title={isEdit ? 'Edit product rate' : 'Add product rate'}
     >
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
+        {tiersOff && (
+          <Banner tone="warning" title="Tiers are off for this client">
+            Its product prices are set under Tier schedule → Edit prices (pick this client under Rate scope).
+          </Banner>
+        )}
         <Banner tone="info" title="This sets the RATE, not the tier">
           {isEdit
             ? 'Only a pending rate can be edited; the product and tier are fixed.'
@@ -242,7 +249,7 @@ export function TierRateModal({
           <Button variant="secondary" type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" type="submit" loading={create.isPending || update.isPending}>
+          <Button variant="primary" type="submit" loading={create.isPending || update.isPending} disabled={tiersOff}>
             {isEdit ? 'Save changes' : 'Add rate'}
           </Button>
         </div>
