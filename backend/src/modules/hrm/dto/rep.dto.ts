@@ -13,7 +13,9 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { PaginationQuery } from '../../../common/pagination/pagination.query';
 import { CLOTHING_SIZES, PROVINCES } from '../rep-profile.logic';
 
@@ -25,6 +27,28 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/; // 'YYYY-MM-DD' date-only
  * "DOB not in the future" are checked in the service, so one rule set serves both DTOs.
  * DOB / contact / address / SIN are PII — redacted unless hrm:edit (HRM-008).
  */
+/** Canadian direct-deposit details. Formats are checked in the service (rep-profile.logic). */
+export class RepBankingDto {
+  @ApiProperty({ example: '001', description: 'Institution number (3 digits).' })
+  @IsString()
+  @MaxLength(10)
+  institution_no!: string;
+
+  @ApiProperty({ example: '12345', description: 'Transit (branch) number (5 digits).' })
+  @IsString()
+  @MaxLength(10)
+  transit_no!: string;
+
+  @ApiPropertyOptional({
+    example: '1234567',
+    description: 'Account number (7–12 digits). WRITE-ONLY; blank on edit keeps the one on file.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  account_no?: string;
+}
+
 export class RepProfileFieldsDto {
   @ApiPropertyOptional({ example: '1994-03-21', nullable: true, description: 'YYYY-MM-DD. PII (hrm:edit).' })
   @IsOptional()
@@ -86,6 +110,18 @@ export class RepProfileFieldsDto {
   @IsOptional()
   @IsIn([...CLOTHING_SIZES])
   tshirt_size?: string | null;
+
+  @ApiPropertyOptional({
+    type: () => RepBankingDto,
+    nullable: true,
+    description:
+      'Direct-deposit banking (2026-11-12). PII — hrm:edit. The ACCOUNT number is write-only and stored encrypted; ' +
+      'leave it blank on edit to keep the one on file. null clears banking.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RepBankingDto)
+  banking?: RepBankingDto | null;
 }
 
 export class CreateRepDto extends RepProfileFieldsDto {

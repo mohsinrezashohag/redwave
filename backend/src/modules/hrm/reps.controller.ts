@@ -35,6 +35,7 @@ import { AuthUser } from '../../common/rbac/auth-user.type';
 import { UploadedFile as UploadedFileShape } from '../../common/storage/storage.service';
 import { FileUrlResponse } from '../documents/dto/document.response';
 import { RepsService } from './reps.service';
+import { REP_DOC_TYPES, repDocumentProblem } from './rep-documents.logic';
 import { RepDocumentsService } from './rep-documents.service';
 import { RepEquipmentService } from './rep-equipment.service';
 import { BulkAssignManagerDto, CreateRepDto, ListRepsQuery, UpdateRepDto } from './dto/rep.dto';
@@ -47,6 +48,7 @@ import {
   RepPageResponse,
   RepResponse,
   RevealSinResponse,
+  RevealAccountResponse,
 } from './dto/hrm.response';
 
 const MAX_REP_DOC_BYTES = 25 * 1024 * 1024; // 25 MB
@@ -136,6 +138,19 @@ export class RepsController {
     return this.reps.revealSin(id, actorId);
   }
 
+  @Post(':id/banking/reveal')
+  @RequirePermission('hrm', 'edit')
+  @ApiOperation({
+    summary: "Reveal a rep's bank account number",
+    description:
+      'Requires hrm:edit. Decrypts and returns the account number; EVERY call writes a reveal_account audit row ' +
+      '(the value itself is never logged). 503 without PII_ENCRYPTION_KEY. null when none is on file.',
+  })
+  @ApiOkResponse({ type: RevealAccountResponse })
+  revealAccount(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') actorId: string) {
+    return this.reps.revealAccount(id, actorId);
+  }
+
   // ── Nested: documents ───────────────────────────────────────────────────────────────────────
 
   @Get(':id/documents')
@@ -156,7 +171,11 @@ export class RepsController {
   @ApiBody({
     schema: {
       type: 'object',
-      properties: { file: { type: 'string', format: 'binary' }, doc_type: { type: 'string' } },
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        doc_type: { type: 'string', enum: [...REP_DOC_TYPES] },
+        expires_on: { type: 'string', example: '2027-06-30' },
+      },
     },
   })
   @ApiOperation({
@@ -179,6 +198,9 @@ export class RepsController {
     file: UploadedFileShape,
     @CurrentUser('id') actorId: string,
   ) {
+    // The kind-specific rules (2026-11-12): a known type, a headshot is JPG/PNG, expiry only where it applies.
+    const problem = repDocumentProblem(dto.doc_type, file.mimetype, dto.expires_on);
+    if (problem) throw new UnprocessableEntityException(problem);
     return this.documents.create(id, dto, file, actorId);
   }
 

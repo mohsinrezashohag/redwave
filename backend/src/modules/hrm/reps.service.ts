@@ -16,7 +16,16 @@ import {
 } from '@nestjs/common';
 import { decryptField, encryptField, loadFieldKey } from '../../common/crypto/field-cipher';
 import { todayInWinnipeg } from '../../common/timezone';
-import { formatSin, maskSin, normalizePostal, normalizeSin } from './rep-profile.logic';
+import {
+  formatSin,
+  maskAccount,
+  maskSin,
+  normalizeAccount,
+  normalizeInstitution,
+  normalizePostal,
+  normalizeSin,
+  normalizeTransit,
+} from './rep-profile.logic';
 import { Prisma, Rep, RepStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
@@ -92,17 +101,48 @@ const PII_FIELDS = [
  * Returning raw rows (as create/update used to) would have shipped the ciphertext to the browser.
  */
 export function toRepView(rep: Rep, canSee: boolean) {
-  const { sin_ciphertext, sin_last3, ...rest } = rep;
+  const { sin_ciphertext, sin_last3, payment_details, ...rest } = rep;
+  const pd = asPaymentDetails(payment_details);
+  // The account ciphertext never leaves the server: strip it from payment_details, and expose banking only
+  // as the DERIVED, masked shape (2026-11-12).
+  const publicPd = Object.fromEntries(Object.entries(pd ?? {}).filter(([k]) => k !== 'account_ciphertext'));
   const view = {
     ...rest,
+    payment_details: pd ? (publicPd as Prisma.JsonObject) : null,
     sin_on_file: sin_ciphertext !== null,
     sin_masked: canSee ? maskSin(sin_last3) : null,
+    banking:
+      canSee && pd?.institution_no
+        ? {
+            institution_no: pd.institution_no,
+            transit_no: pd.transit_no ?? null,
+            account_masked: maskAccount(pd.account_last4),
+          }
+        : null,
   };
   if (canSee) return view;
   const redacted: Record<string, unknown> = { ...view };
   for (const field of PII_FIELDS) redacted[field] = null;
   return redacted as typeof view;
 }
+
+/**
+ * `payment_details` as stored. Banking (2026-11-12) lives under these keys; any other keys an older client
+ * wrote are preserved untouched. The account number itself is ONLY ever `account_ciphertext` (AES-GCM).
+ */
+interface PaymentDetails {
+  institution_no?: string;
+  transit_no?: string;
+  account_last4?: string;
+  account_ciphertext?: string;
+  [key: string]: unknown;
+}
+
+function asPaymentDetails(value: Prisma.JsonValue | null): PaymentDetails | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as PaymentDetails) : null;
+}
+
+const BANKING_KEYS = ['institution_no', 'transit_no', 'account_last4', 'account_ciphertext'] as const;
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -216,10 +256,7 @@ export class RepsService {
           hire_date: dateOnly(dto.hire_date),
           status: 'active',
           user_id: dto.user_id ?? null,
-          payment_details:
-            dto.payment_details === undefined
-              ? undefined
-              : (dto.payment_details as Prisma.InputJsonValue),
+          payment_details: this.paymentDetailsData(dto, null),
           ...this.profileData(dto),
         },
       });
@@ -259,8 +296,8 @@ export class RepsService {
     if (dto.field_manager_id !== undefined) data.field_manager_id = dto.field_manager_id;
     if (dto.hire_date !== undefined) data.hire_date = dateOnly(dto.hire_date);
     if (dto.user_id !== undefined) data.user_id = dto.user_id ?? null;
-    if (dto.payment_details !== undefined)
-      data.payment_details = dto.payment_details as Prisma.InputJsonValue;
+    const paymentDetails = this.paymentDetailsData(dto, before.payment_details);
+    if (paymentDetails !== undefined) data.payment_details = paymentDetails;
     Object.assign(data, this.profileData(dto));
 
     // Termination / reactivation (HRM-004): never delete — soft status change preserves history.
@@ -344,6 +381,67 @@ export class RepsService {
     return data;
   }
 
+  /**
+   * The `payment_details` to write, or undefined to leave it alone. Banking keys come ONLY from the validated
+   * `banking` field (2026-11-12) — a raw `payment_details` write can never set or wipe them, so it can never plant
+   * an unencrypted account number. Other keys are preserved. The ACCOUNT number is encrypted (`field-cipher`,
+   * same key as the SIN); a blank one on edit keeps the account on file; `banking: null` clears banking.
+   */
+  private paymentDetailsData(
+    dto: RepProfileFieldsDto & { payment_details?: Record<string, unknown> },
+    stored: Prisma.JsonValue | null,
+  ): Prisma.InputJsonValue | typeof Prisma.DbNull | undefined {
+    if (dto.payment_details === undefined && dto.banking === undefined) return undefined;
+    const existing = asPaymentDetails(stored) ?? {};
+    const withoutBanking = (o: Record<string, unknown>) =>
+      Object.fromEntries(Object.entries(o).filter(([k]) => !(BANKING_KEYS as readonly string[]).includes(k)));
+    const other = withoutBanking(dto.payment_details !== undefined ? (dto.payment_details ?? {}) : existing);
+
+    let banking: Record<string, string> = Object.fromEntries(
+      BANKING_KEYS.filter((k) => typeof existing[k] === 'string').map((k) => [k, existing[k] as string]),
+    );
+    if (dto.banking === null) {
+      banking = {};
+    } else if (dto.banking !== undefined) {
+      const institution = normalizeInstitution(dto.banking.institution_no);
+      if (!institution) throw new UnprocessableEntityException('The institution number is 3 digits (e.g. 001)');
+      const transit = normalizeTransit(dto.banking.transit_no);
+      if (!transit) throw new UnprocessableEntityException('The transit number is 5 digits (e.g. 12345)');
+      const typed = dto.banking.account_no?.trim();
+      let account: { account_last4: string; account_ciphertext: string };
+      if (typed) {
+        const digits = normalizeAccount(typed);
+        if (!digits) throw new UnprocessableEntityException('The account number is 7 to 12 digits');
+        account = { account_last4: digits.slice(-4), account_ciphertext: encryptField(digits, this.requirePiiKey()) };
+      } else if (existing.account_ciphertext && existing.account_last4) {
+        account = { account_last4: existing.account_last4, account_ciphertext: existing.account_ciphertext };
+      } else {
+        throw new UnprocessableEntityException('Enter the account number');
+      }
+      banking = { institution_no: institution, transit_no: transit, ...account };
+    }
+    const merged = { ...other, ...banking };
+    return Object.keys(merged).length > 0 ? (merged as Prisma.InputJsonValue) : Prisma.DbNull;
+  }
+
+  /**
+   * Decrypt and return a rep's bank ACCOUNT number. hrm:edit only (controller); EVERY reveal is audited,
+   * without the value. — 2026-11-12
+   */
+  async revealAccount(id: string, actorId: string): Promise<{ account_no: string | null }> {
+    const rep = await this.prisma.rep.findUnique({ where: { id }, select: { id: true, payment_details: true } });
+    if (!rep) {
+      throw new NotFoundException('Rep not found');
+    }
+    const ciphertext = asPaymentDetails(rep.payment_details)?.account_ciphertext;
+    if (!ciphertext) {
+      return { account_no: null };
+    }
+    const account_no = decryptField(ciphertext, this.requirePiiKey());
+    await this.audit.log({ actorId, entityType: 'reps', entityId: id, action: 'reveal_account' });
+    return { account_no };
+  }
+
   /** The PII key, or 503 — a SIN is never stored or revealed without it (never a plain-text fallback). */
   private requirePiiKey(): Buffer {
     if (!this.piiKey) {
@@ -411,6 +509,7 @@ export class RepsService {
         ? rep.termination_date.toISOString().slice(0, 10)
         : null,
       payment_details_present: rep.payment_details !== null,
+      banking_present: !!asPaymentDetails(rep.payment_details)?.institution_no,
       // Profile: sizes are not PII; everything else is logged as PRESENCE only, never the value.
       jacket_size: rep.jacket_size,
       tshirt_size: rep.tshirt_size,

@@ -2579,3 +2579,39 @@ amounts are the frozen snapshot, blank until paid (§13.10). Redwave uses the ba
 **Verified LOCAL:** 1212+ backend tests (+`base-prices.spec`, +engine base-price cases, +`sales-export.spec`,
 RBAC specs) + typecheck + lint + build + contract regen; FE build + lint + stylelint + vitest (+`tierMode`,
 +`basePricesForm`, +`saleExportLog`). Not yet seen in a browser.
+
+### Rep profile — banking, headshot, immigration + government ID documents with expiry (migration `20261112100000`)
+
+**Ask (Naimur, 2026-11-12).** Banking (institution, transit, account, plus a void cheque / direct deposit
+form), a JPG/PNG headshot for the future ID card, an immigration document (work permit / study permit / PR
+card) and a government ID (driver's licence / passport). Everything `hrm:edit`. Decided with the user: reps
+see their own **read-only** (account masked, no self-reveal); the account number is **encrypted like the
+SIN** with an audited Reveal; documents carry an **expiry** with a 60-day warning.
+
+- **Banking lives in `reps.payment_details`** (no new column): `{institution_no, transit_no, account_last4,
+  account_ciphertext}`. The account is encrypted with `common/crypto/field-cipher` (no key → 503, never
+  stored in clear). Written only through the DTO's `banking` object (`reps.service#paymentDetailsData`):
+  a raw `payment_details` write cannot set or remove a banking key, so a client can't plant an unencrypted
+  account. A blank account keeps the one on file; `banking: null` clears it; other `payment_details` keys
+  are preserved. Bad digit counts → 422 with a plain message (3 / 5 / 7–12 digits).
+- **Reads:** `toRepView` strips `account_ciphertext` from `payment_details` always and adds a derived
+  `banking: {institution_no, transit_no, account_masked: '••••4567'}` for `hrm:edit` and the rep's own view.
+  `POST /v1/reps/:id/banking/reveal` (`hrm:edit`) decrypts and audits `reveal_account` without the value.
+  The rep audit payload carries `banking_present` only.
+- **Documents:** `doc_type` is now an allowlist (`hrm/rep-documents.logic.ts#REP_DOC_TYPES`: banking,
+  headshot, work_permit, study_permit, pr_card, drivers_licence, passport, contract, other); older free-text
+  rows still display as written. A headshot must be JPG/PNG; `expires_on` (new DATE column) is accepted only
+  for the permit / PR card / licence / passport types. All 422 on violation; the FE mirrors the rules
+  (`features/reps/repDocTypes.ts`).
+- **Frontend:** a Banking card on the profile (masked account, HR Reveal 30 s, "void cheque on file"); a
+  Banking section in the rep form (`PrivateInput`, account write-only, all-or-nothing checks); a document
+  type picker + "Expires on" date + Expired / Expires-in-N-days badges; the latest headshot as the avatar on
+  the rep detail page and on My Account (`RepHeadshot`, signed URL; initials otherwise).
+- **No new permission.** The ID card itself is a later step; this only stores the photo.
+
+**Operator:** `prisma:deploy` (adds `20261112100000`) before the backend deploy. `PII_ENCRYPTION_KEY` is
+already required (SIN).
+
+**Verified LOCAL:** 1226 backend tests (+banking cases in `reps.profile.spec`, +`rep-documents.logic.spec`)
++ typecheck + lint + build + contract regen; FE build + lint + stylelint + vitest 143 (+`repDocTypes`,
++banking form cases). Not yet seen in a browser.

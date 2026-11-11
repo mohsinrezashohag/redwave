@@ -34,7 +34,12 @@ export class RepDocumentsService {
     await this.assertRepExists(repId);
     const stored = await this.storage.upload('rep-docs', file); // returns the object PATH (or local:// ref)
     const doc = await this.prisma.repDocument.create({
-      data: { rep_id: repId, doc_type: dto.doc_type, file_url: stored.path },
+      data: {
+        rep_id: repId,
+        doc_type: dto.doc_type,
+        file_url: stored.path,
+        expires_on: dto.expires_on ? new Date(`${dto.expires_on}T00:00:00.000Z`) : null,
+      },
     });
     // Do not log file_url (identity docs are sensitive).
     await this.audit.log({

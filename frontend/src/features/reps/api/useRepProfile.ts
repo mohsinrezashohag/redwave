@@ -96,10 +96,11 @@ export function useRepDocuments(id: string | undefined, enabled = true) {
 export function useUploadRepDocument(repId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ file, docType }: { file: File; docType: string }) => {
+    mutationFn: ({ file, docType, expiresOn }: { file: File; docType: string; expiresOn?: string }) => {
       const form = new FormData();
       form.append('file', file);
       form.append('doc_type', docType);
+      if (expiresOn) form.append('expires_on', expiresOn);
       return multipartPost<RepDocument>(`/v1/reps/${repId}/documents`, form);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: repKeys.documents(repId) }),
@@ -152,5 +153,33 @@ export function useMyDocumentUrl() {
   return useMutation({
     mutationFn: (docId: string) =>
       unwrap<{ url: string }>(api.GET('/v1/account/rep-profile/documents/{docId}/file-url', { params: { path: { docId } } })),
+  });
+}
+
+/** Decrypt the bank account number — hrm:edit; the server AUDITS every call (2026-11-12). Never cached. */
+export function useRevealAccount() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap<{ account_no: string | null }>(api.POST('/v1/reps/{id}/banking/reveal', { params: { path: { id } } })),
+  });
+}
+
+/**
+ * A short-lived URL for the rep's latest HEADSHOT, to show as their photo. HR reads it through the rep's
+ * documents; the rep's own view through the token-scoped endpoint. null when there is no headshot.
+ */
+export function useHeadshotUrl(repId: string, docs: RepDocument[] | undefined, self: boolean, enabled = true) {
+  const latest = (docs ?? [])
+    .filter((d) => d.doc_type === 'headshot')
+    .sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at))[0];
+  return useQuery({
+    queryKey: ['reps', 'headshot', repId, latest?.id ?? 'none', self],
+    queryFn: async () =>
+      (self
+        ? await unwrap<{ url: string }>(api.GET('/v1/account/rep-profile/documents/{docId}/file-url', { params: { path: { docId: latest!.id } } }))
+        : await unwrap<{ url: string }>(api.GET('/v1/reps/{id}/documents/{docId}/file-url', { params: { path: { id: repId, docId: latest!.id } } }))
+      ).url,
+    enabled: enabled && !!latest,
+    staleTime: 45_000, // the signed URL lives ~60 s
   });
 }

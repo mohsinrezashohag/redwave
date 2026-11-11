@@ -16,6 +16,7 @@ import { RepProfileCard } from '../components/RepProfileCard';
 import { RepEquipmentPanel } from '../components/RepEquipmentPanel';
 import { RepDocumentsPanel } from '../components/RepDocumentsPanel';
 import { RepFormModal, type RepFormState } from '../components/RepFormModal';
+import { RepHeadshot } from '../components/RepHeadshot';
 import styles from '../components/reps.module.css';
 
 export default function RepDetailPage() {
@@ -49,6 +50,7 @@ export default function RepDetailPage() {
         {r && (
           <>
             <div className={styles.detailHead}>
+              <RepHeadshot repId={r.id} name={r.full_name} canOpen={canEdit} />
               <span className={styles.code}>{r.rep_code}</span>
               <Badge tone={r.status === 'active' ? 'success' : 'neutral'}>{r.status === 'active' ? 'Active' : 'Terminated'}</Badge>
             </div>
