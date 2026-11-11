@@ -2661,3 +2661,27 @@ next deploy's `prisma:seed` updates the production row (channel toggles are unto
 
 **Verified LOCAL:** 1235 backend tests (11 specs updated to the new wording) + typecheck + lint + build +
 contract regen; FE build + lint + stylelint + vitest 145.
+
+### Photo editing: pen on hover, crop / zoom / rotate before saving (no migration, no API change)
+
+**Ask (2026-11-12).** An admin should change a rep's photo from the profile itself: a pen on hover over the
+photo, the same on the Edit profile form, a preview in the circle once a photo is picked, and a way to
+adjust it before saving.
+
+- **Shared primitives** (`components/ui/`): `PhotoEditorDialog` (drag to position inside a circle mask,
+  zoom slider 1–3×, rotate 90°, arrow keys / +− for keyboard users; Save renders a 512×512 JPEG on a canvas
+  with the same numbers the preview uses) and `EditableAvatar` (Avatar + a pen overlay on hover / focus; a
+  permanent pen badge on touch screens via `@media (hover: none)`). Geometry is pure and tested
+  (`lib/files/photoCrop.ts`). `Avatar` gained an `xl` (88px) size.
+- **Rep page** (`/admin/reps/:id`, `hrm:edit`): the header photo is editable; Save photo uploads a new
+  `headshot` rep document straight away (older headshots stay under Documents as history). `hrm:view`-only
+  callers still see initials.
+- **Rep Edit / Add form:** a Photo row at the top. The picked + edited photo previews in the circle, with
+  **Edit photo** (reopens the editor at the same crop) and **Undo**; it uploads only when the form is saved,
+  after the rep exists, so it works on Add too. If the photo upload fails after the rep saved, the user is
+  told to retry with the pen.
+- **My Account** (non-reps): the same pen + editor; the edited image goes through `POST /v1/files`
+  (purpose `avatar`) and still waits for review.
+
+**Verified LOCAL:** FE build + lint + stylelint + vitest 149 (+`photoCrop`). No backend change. **Not seen in
+a browser** (the local app points at production); check hover, the editor drag on touch, and dark mode.

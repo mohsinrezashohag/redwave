@@ -9,7 +9,7 @@ import styles from './Avatar.module.css';
 export interface AvatarProps {
   name: string;
   src?: string | null;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
 }
 

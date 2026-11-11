@@ -33,3 +33,9 @@
   height: 64px;
   font-size: var(--text-lg);
 }
+
+.xl {
+  width: 88px;
+  height: 88px;
+  font-size: var(--text-xl);
+}

@@ -524,7 +524,7 @@ pattern.
 · `ExportMenu` + `exportRows` · `DatePicker` (value is always `'YYYY-MM-DD'`; **never** a native
 `<input type=date>` — OS-locale bug) · `PayPeriodSelect` · `SelectWithOther` · `EffectiveDatedTable`
 + `RateStatusBadge` · `StatCard` (the KPI tile) · `Avatar` · `FileUpload` · `HistoryTab` (per-record
-audit trail) · `SegmentedControl` · `MultiSelect` · `MoneyInput` · `SignaturePad` · `PrivateInput`.
+audit trail) · `SegmentedControl` · `MultiSelect` · `MoneyInput` · `SignaturePad` · `PrivateInput` · `EditableAvatar` + `PhotoEditorDialog` (photo: pen on hover → crop / zoom / rotate → a 512px JPEG; the caller decides whether to upload now or on Save).
 
 - **A form holding SOMEONE ELSE's details (an admin entering a rep's phone, email, address or SIN) uses
   `PrivateInput`, not `Input`.** Chrome ignores `autocomplete="off"` on address-like fields and filled the

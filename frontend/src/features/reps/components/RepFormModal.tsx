@@ -6,16 +6,33 @@
  * SIN is WRITE-ONLY here: the form never holds the stored value. On edit it shows what is on file
  * (masked) and a blank field keeps it; typing a new one replaces it. Viewing it is the profile's audited
  * Reveal, not this form. rep_code is set once at create and never editable (#11). Tokens only.
+ *
+ * PHOTO (2026-11-12): click the photo (pen on hover) to pick one, crop / zoom / rotate it, and see it in the
+ * circle straight away. "Edit photo" reopens the editor; nothing is uploaded until Save, when it becomes the
+ * rep's new headshot.
  */
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { Button, DatePicker, FormField, Input, Modal, PrivateInput, Select, useToast } from '../../../components/ui';
+import { Crop, Undo2 } from 'lucide-react';
+import {
+  Button,
+  DatePicker,
+  EditableAvatar,
+  FormField,
+  Input,
+  Modal,
+  PhotoEditorDialog,
+  PrivateInput,
+  Select,
+  useToast,
+  type PhotoEditResult,
+} from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
 import { useCan } from '../../../auth/useCan';
 import { useUsers } from '../../admin/api/useUsers';
-import { useCreateRep, useUpdateRep } from '../api/useRepProfile';
+import { useCreateRep, useRepHeadshotUrl, useUpdateRep, useUploadHeadshot } from '../api/useRepProfile';
 import { CLOTHING_SIZES, NONE, PROVINCES, repFormDefaults, repFormSchema, toCreateBody, toUpdateBody, type RepFormValues } from '../repForm';
 import type { Rep } from '../reps.types';
 import styles from './reps.module.css';
@@ -37,6 +54,24 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
   const onError = useApiErrorToast();
   const create = useCreateRep();
   const update = useUpdateRep();
+  const uploadPhoto = useUploadHeadshot();
+  const currentPhoto = useRepHeadshotUrl(editing?.id, { canOpen: open && !!editing });
+  // A picked + edited photo waiting for Save, with its preview URL and what's needed to re-edit it.
+  const [photo, setPhoto] = useState<(PhotoEditResult & { preview: string }) | null>(null);
+  const [reEditing, setReEditing] = useState(false);
+  const setPending = (next: PhotoEditResult | null) =>
+    setPhoto((prev) => {
+      if (prev) URL.revokeObjectURL(prev.preview);
+      return next ? { ...next, preview: URL.createObjectURL(next.file) } : null;
+    });
+  // A fresh form never inherits the last rep's unsaved photo.
+  useEffect(() => {
+    setPhoto((prev) => {
+      if (prev) URL.revokeObjectURL(prev.preview);
+      return null;
+    });
+    setReEditing(false);
+  }, [state]);
   const canViewUsers = useCan('users:view');
   const users = useUsers(open && canViewUsers);
 
@@ -60,15 +95,27 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
   const status = useWatch({ control, name: 'status' });
 
   const onSubmit = (values: RepFormValues) => {
-    const done = (rep: Rep, title: string) => {
+    const done = async (rep: Rep, title: string) => {
+      // The photo is uploaded once the rep exists (a new rep has no id until now).
+      if (photo) {
+        try {
+          await uploadPhoto.mutateAsync({ repId: rep.id, file: photo.file });
+        } catch (e) {
+          onError(e);
+          toast({ title: `${title}, but the photo didn’t upload`, description: 'Use the pen on the profile photo to try again.', tone: 'warning' });
+          onSaved?.(rep);
+          onClose();
+          return;
+        }
+      }
       toast({ title, description: rep.rep_code, tone: 'success' });
       onSaved?.(rep);
       onClose();
     };
     if (editing) {
-      update.mutate({ id: editing.id, body: toUpdateBody(values, !!editing?.banking) }, { onSuccess: (r) => done(r, 'Rep updated'), onError });
+      update.mutate({ id: editing.id, body: toUpdateBody(values, !!editing?.banking) }, { onSuccess: (r) => void done(r, 'Rep updated'), onError });
     } else {
-      create.mutate(toCreateBody(values), { onSuccess: (r) => done(r, 'Rep created'), onError });
+      create.mutate(toCreateBody(values), { onSuccess: (r) => void done(r, 'Rep created'), onError });
     }
   };
 
@@ -99,6 +146,39 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
   return (
     <Modal open={open} onOpenChange={(o) => !o && onClose()} title={editing ? `Edit ${editing.full_name}` : 'Add rep'} size="lg">
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
+        <div className={styles.photoRow}>
+          <EditableAvatar
+            name={editing?.full_name || 'New rep'}
+            src={photo?.preview ?? currentPhoto}
+            onChange={(r) => setPending(r)}
+          />
+          <div className={styles.photoText}>
+            <span className={styles.photoTitle}>Photo</span>
+            <span className={styles.muted}>
+              {photo ? 'New photo selected. It is saved with the rest of the profile.' : 'Click the photo to upload one (JPG or PNG). It is also used for the ID card.'}
+            </span>
+            {photo && (
+              <span className={styles.photoActions}>
+                <Button variant="tertiary" size="sm" type="button" leftIcon={<Crop size={14} />} onClick={() => setReEditing(true)}>
+                  Edit photo
+                </Button>
+                <Button variant="tertiary" size="sm" type="button" leftIcon={<Undo2 size={14} />} onClick={() => setPending(null)}>
+                  Undo
+                </Button>
+              </span>
+            )}
+          </div>
+        </div>
+        <PhotoEditorDialog
+          source={reEditing && photo ? photo.source : null}
+          initialCrop={photo?.crop}
+          onCancel={() => setReEditing(false)}
+          onSave={(r) => {
+            setPending(r);
+            setReEditing(false);
+          }}
+        />
+
         <section className={styles.section}>
           <h3 className={styles.sectionTitle}>Rep</h3>
           <div className={styles.grid2}>
@@ -199,7 +279,7 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
           <Button variant="secondary" type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" type="submit" loading={create.isPending || update.isPending}>
+          <Button variant="primary" type="submit" loading={create.isPending || update.isPending || uploadPhoto.isPending}>
             {editing ? 'Save changes' : 'Add rep'}
           </Button>
         </div>

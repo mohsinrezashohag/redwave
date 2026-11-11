@@ -1,0 +1,65 @@
+.editor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* Keep the size in step with VIEWPORT in PhotoEditorDialog.tsx. */
+.viewport {
+  position: relative;
+  width: 280px;
+  height: 280px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background-color: var(--surface-2);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.viewport:active {
+  cursor: grabbing;
+}
+
+.viewport:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.image {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  max-width: none;
+  pointer-events: none;
+  transform-origin: center;
+}
+
+/* Darkens everything outside the circle the saved photo is shown in. */
+.mask {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 0 200px var(--scrim);
+  pointer-events: none;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 320px;
+}
+
+.slider {
+  flex: 1;
+  accent-color: var(--accent-600);
+}
+
+.icon {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
