@@ -27,6 +27,8 @@ import type {
   CreateTierRateBody,
   UpdateTierRateBody,
   TierRate,
+  SetBasePricesBody,
+  BasePricesResult,
 } from '../commission.types';
 
 export function useCreateTierSchedule() {
@@ -35,6 +37,19 @@ export function useCreateTierSchedule() {
     // The max_count swagger quirk is fixed (Batch A #2), so the generated request type is used directly.
     mutationFn: (body: CreateTierScheduleBody) =>
       unwrap<TierConfig>(api.POST('/v1/commission/tiers', { body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
+  });
+}
+
+/**
+ * Switch a scope to BASE PRICES (tiers off): one [0,∞) bracket at the default + each product's own price,
+ * written in ONE server transaction. — client request 2026-11-11
+ */
+export function useSetBasePrices() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SetBasePricesBody) =>
+      unwrap<BasePricesResult>(api.POST('/v1/commission/base-prices', { body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
   });
 }

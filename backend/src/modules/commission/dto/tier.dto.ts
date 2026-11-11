@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
@@ -106,4 +107,13 @@ export class CreateTierScheduleDto {
   @ValidateNested({ each: true })
   @Type(() => TierBracketDto)
   tiers!: TierBracketDto[];
+
+  @ApiPropertyOptional({
+    description:
+      "Switching BACK to tiers from base prices: also end this scope's tier-1 per-product base prices from " +
+      'effective_from, so a product base price cannot keep overriding the new ladder’s tier 1.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  end_product_base_prices?: boolean;
 }

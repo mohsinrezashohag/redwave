@@ -3,6 +3,7 @@ import { CommissionController, IncentivesController, ProductTypesController } fr
 import { TierScheduleService } from './tier-schedule.service';
 import { FlatRateService } from './flat-rate.service';
 import { TierRateService } from './tier-rate.service';
+import { BasePricesService } from './base-prices.service';
 import { HoldbackService } from './holdback.service';
 import { IncentiveService } from './incentive.service';
 import { ProductTypeService } from './product-type.service';
@@ -14,6 +15,7 @@ import { CommissionConfigProvider } from './commission-config.provider';
     TierScheduleService,
     FlatRateService,
     TierRateService,
+    BasePricesService,
     HoldbackService,
     IncentiveService,
     ProductTypeService,

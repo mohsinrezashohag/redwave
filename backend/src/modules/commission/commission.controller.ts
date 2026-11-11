@@ -30,6 +30,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TierScheduleService } from './tier-schedule.service';
 import { FlatRateService } from './flat-rate.service';
 import { TierRateService } from './tier-rate.service';
+import { BasePricesService } from './base-prices.service';
+import { SetBasePricesDto } from './dto/base-prices.dto';
 import { HoldbackService } from './holdback.service';
 import { IncentiveService } from './incentive.service';
 import { ProductTypeService } from './product-type.service';
@@ -44,6 +46,7 @@ import {
 import { CreateIncentiveDto, ListIncentivesQuery, UpdateIncentiveDto } from './dto/incentive.dto';
 import { CreateProductTypeDto, ListProductTypesQuery, UpdateProductTypeDto } from './dto/product-type.dto';
 import {
+  BasePricesResponse,
   FlatRateResponse,
   TierRateResponse,
   HoldbackConfigResponse,
@@ -62,6 +65,7 @@ export class CommissionController {
     private readonly tiers: TierScheduleService,
     private readonly flatRates: FlatRateService,
     private readonly tierRates: TierRateService,
+    private readonly basePrices: BasePricesService,
     private readonly holdback: HoldbackService,
   ) {}
 
@@ -87,6 +91,20 @@ export class CommissionController {
   @ApiCreatedResponse({ type: TierConfigResponse })
   createTiers(@Body() dto: CreateTierScheduleDto, @CurrentUser('id') actorId: string) {
     return this.tiers.create(dto, actorId);
+  }
+
+  @Post('base-prices')
+  @RequirePermission('commission', 'edit')
+  @ApiOperation({
+    summary: 'Switch a scope to base prices (tiers off)',
+    description:
+      'Requires commission:edit. In ONE transaction: the scope’s schedule becomes a single [0,∞) tier-1 bracket at ' +
+      'default_rate, and each listed internet product gets its own tier-1 price; products left out use the default. ' +
+      'Global takes a default only. Effective-dated like every rate (#10): back-dating → 422.',
+  })
+  @ApiCreatedResponse({ type: BasePricesResponse })
+  setBasePrices(@Body() dto: SetBasePricesDto, @CurrentUser('id') actorId: string) {
+    return this.basePrices.setBasePrices(dto, actorId);
   }
 
   @Patch('tiers/:id')

@@ -565,3 +565,39 @@ describe('CommissionEngineService — per-product rates', () => {
     ).toThrow(/No flat rate/);
   });
 });
+
+// Client directive 2026-11-11 — "tiers off": the scope's ladder is ONE bracket [0, ∞) (tier 1) and each
+// internet product has its own tier-1 price. The engine is unchanged; this proves the config pays each
+// product its OWN price at 100%, whatever the tally, and the default for a product without one.
+describe('CommissionEngineService — base prices (single bracket + per-product price)', () => {
+  const engine = new CommissionEngineService();
+  const GIG = 'prod-1gig';
+  const MB500 = 'prod-500';
+  const OTHER = 'prod-no-price';
+  const withProduct = (a: ActivationInput, productId: string): ActivationInput => ({ ...a, productId });
+  const BASE = baseConfig({
+    tiers: [{ tierNumber: 1, minCount: 0, maxCount: null, ratePerActivation: d('140') }],
+    tierRatesByProduct: { [GIG]: { 1: d('160') }, [MB500]: { 1: d('145') } },
+    holdback: { advancePct: d('1'), holdbackPct: d('0') },
+  });
+
+  it('pays each product its own base price, the default for the rest, nothing held', () => {
+    const activations = [
+      ...mkMany(internet, 2).map((a) => withProduct(a, GIG)),
+      ...mkMany(internet, 3).map((a) => withProduct(a, MB500)),
+      withProduct(mk(internet), OTHER),
+    ];
+    const result = engine.computePeriod({ activations, config: BASE });
+    expect(money(result.grossCommission)).toBe('895.00'); // 2×160 + 3×145 + 1×140
+    expect(money(result.advanceAmount)).toBe('895.00');
+    expect(money(result.holdbackAmount)).toBe('0.00');
+    expect(result.items.every((i) => i.tierAtPayment === 1)).toBe(true);
+  });
+
+  it('the price does not change with volume — 40 activations pay the same per unit as 1', () => {
+    const one = engine.computePeriod({ activations: [withProduct(mk(internet), GIG)], config: BASE });
+    const forty = engine.computePeriod({ activations: mkMany(internet, 40).map((a) => withProduct(a, GIG)), config: BASE });
+    expect(money(one.grossCommission)).toBe('160.00');
+    expect(money(forty.grossCommission)).toBe('6400.00');
+  });
+});

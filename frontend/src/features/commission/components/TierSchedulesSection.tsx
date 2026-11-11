@@ -3,19 +3,29 @@
  * pending / past). "Add schedule" opens the bracket editor (supersedes). A PENDING schedule can be Deleted
  * (ConfirmDialog) — to change one, delete it and add a new one (the bracket editor is the create surface).
  * The server is the real gate (current/past → 422). Reuses the Session-1 component (#10).
+ *
+ * "Use tier schedule" switch (client request 2026-11-11). Per scope (Global or one client):
+ *   - ON  → the tier ladder, as before;
+ *   - OFF → BASE PRICES: every internet sale pays its product's own price (else the scope's default),
+ *           whatever the volume. Stored as one [0,∞) bracket + tier-1 product prices; the engine is unchanged.
+ * Flipping it opens a dated form — nothing changes until that is saved, and past periods never change (#10).
+ * The switch is disabled on "All scopes": a scope must be picked first.
  */
 import { useState } from 'react';
-import { Button, Card, ConfirmDialog, EffectiveDatedTable, useToast, type EffectiveColumn } from '../../../components/ui';
+import { Button, Card, ConfirmDialog, EffectiveDatedTable, Switch, useToast, type EffectiveColumn } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { money } from '../../../lib/format/money';
+import { displayDate } from '../../../lib/format/date';
 import styles from './commission.module.css';
-import { useClients, useTierSchedules } from '../api/useCommission';
+import { useClients, useTierRates, useTierSchedules } from '../api/useCommission';
 import { useDeleteTierSchedule } from '../api/useCommissionMutations';
 import { TierScheduleModal } from './TierScheduleModal';
+import { BasePricesModal } from './BasePricesModal';
 import { PendingRowActions } from './PendingRowActions';
-import { SCOPE_ALL, scopeDefaultClientId, scopeLabel, scopeParam, type ScopeValue } from '../clientScope';
+import { SCOPE_ALL, SCOPE_GLOBAL, scopeDefaultClientId, scopeLabel, scopeParam, type ScopeValue } from '../clientScope';
+import { deriveTierMode, isBasePriceSchedule } from '../tierMode';
 import type { TierConfig, TierBracket } from '../commission.types';
 
 function rateRange(tiers: TierBracket[]): string {
@@ -26,23 +36,39 @@ function rateRange(tiers: TierBracket[]): string {
   return `${money(min)}–${money(max)}`;
 }
 
+/** A schedule as one line: a ladder's range, or "base prices" for the single-bracket form. */
+function describe(c: TierConfig): string {
+  return isBasePriceSchedule(c)
+    ? `Base prices · default ${money(c.tiers[0].rate_per_activation)} per activation`
+    : `${c.tiers.length} tiers · ${rateRange(c.tiers)} per activation`;
+}
+
+type Dialog = 'add' | 'tiers_on' | 'tiers_off' | 'edit_prices' | null;
+
 export function TierSchedulesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue }) {
   const canEdit = useCan('commission:edit');
   const canViewClients = useCan('clients:view');
   const { toast } = useToast();
   const onError = useApiErrorToast();
   const remove = useDeleteTierSchedule();
-  const [open, setOpen] = useState(false);
+  const [dialog, setDialog] = useState<Dialog>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const q = useTierSchedules(scopeParam(scope));
   const clients = useClients(canViewClients);
 
+  const clientId = scopeDefaultClientId(scope);
+  const isAll = scope === SCOPE_ALL;
+  // A client follows Global when it has no schedule of its own — read Global too so the mode is right.
+  const globalQ = useTierSchedules(SCOPE_GLOBAL, !!clientId);
+  const tierMode = deriveTierMode(!!clientId, q.data, scope === SCOPE_GLOBAL ? q.data : globalQ.data);
+  const basePrices = tierMode.mode === 'base_prices';
+  const productPrices = useTierRates('current', clientId, undefined, basePrices && !!clientId && !tierMode.inherited);
+  const scopeName = scope === SCOPE_GLOBAL ? 'Global' : scopeLabel(clientId, clients.data);
+
   const columns: EffectiveColumn<TierConfig>[] = [
     // Only worth a column when scopes are mixed — a single-scope view already says which in the selector.
-    ...(scope === SCOPE_ALL
-      ? [{ header: 'Applies to', render: (c: TierConfig) => scopeLabel(c.client_id, clients.data) }]
-      : []),
-    { header: 'Schedule', render: (c) => `${c.tiers.length} tiers · ${rateRange(c.tiers)} per activation` },
+    ...(isAll ? [{ header: 'Applies to', render: (c: TierConfig) => scopeLabel(c.client_id, clients.data) }] : []),
+    { header: 'Schedule', render: (c) => describe(c) },
   ];
   const rows = q.data ?? [];
 
@@ -54,11 +80,59 @@ export function TierSchedulesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue
     });
   };
 
+  const toggle = canEdit ? (
+    <Switch
+      label="Use tier schedule"
+      checked={tierMode.mode !== 'base_prices'}
+      disabled={isAll || tierMode.mode === null}
+      onCheckedChange={(on) => setDialog(on ? 'tiers_on' : 'tiers_off')}
+    />
+  ) : undefined;
+
   return (
     <Card
       title="Tier schedule"
-      actions={canEdit ? <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>Add schedule</Button> : undefined}
+      actions={
+        canEdit ? (
+          <div className={styles.cardActions}>
+            {toggle}
+            {!basePrices && <Button variant="secondary" size="sm" onClick={() => setDialog('add')}>Add schedule</Button>}
+          </div>
+        ) : undefined
+      }
     >
+      {isAll && canEdit && (
+        <p className={styles.note}>Pick Global or a client under Rate scope to switch tiers on or off for it.</p>
+      )}
+
+      {!isAll && basePrices && tierMode.current && (
+        <div className={styles.basePrices}>
+          <p className={styles.note}>
+            <strong>Tiers are off{tierMode.inherited ? ' (following Global)' : ''}.</strong> Every internet sale pays its
+            product&rsquo;s base price, whatever the volume. Since {displayDate(tierMode.current.effective_from)}.
+          </p>
+          <dl className={styles.basePriceList}>
+            <dt>Default price</dt>
+            <dd className="mono">{money(tierMode.current.tiers[0].rate_per_activation)}</dd>
+            {(productPrices.data ?? [])
+              .filter((r) => r.tier_number === 1)
+              .map((r) => (
+                <div key={r.id} className={styles.basePriceRow}>
+                  <dt>{r.product?.name ?? 'Product'}</dt>
+                  <dd className="mono">{money(r.amount)}</dd>
+                </div>
+              ))}
+          </dl>
+          {canEdit && (
+            <div>
+              <Button variant="secondary" size="sm" onClick={() => setDialog('edit_prices')}>
+                {tierMode.inherited ? 'Set own prices for this client' : 'Edit prices'}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       <DataState
         isLoading={q.isLoading}
         isError={q.isError}
@@ -66,8 +140,8 @@ export function TierSchedulesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue
         onRetry={() => q.refetch()}
         emptyNode={
           <p className={styles.note}>
-            {scopeDefaultClientId(scope)
-              ? 'No schedule of its own — this client is paid at the global tier schedule.'
+            {clientId
+              ? 'No schedule of its own — this client follows the Global setting.'
               : 'No tier schedule yet.'}
           </p>
         }
@@ -78,8 +152,27 @@ export function TierSchedulesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue
           rowActions={canEdit ? (c) => <PendingRowActions status={c.status} onDelete={() => setDeleteId(c.id)} /> : undefined}
         />
       </DataState>
-      {canEdit && open && (
-        <TierScheduleModal open defaultClientId={scopeDefaultClientId(scope)} onClose={() => setOpen(false)} />
+
+      {canEdit && (dialog === 'add' || dialog === 'tiers_on') && (
+        <TierScheduleModal
+          open
+          defaultClientId={clientId}
+          endBasePrices={dialog === 'tiers_on'}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {canEdit && (dialog === 'tiers_off' || dialog === 'edit_prices') && (
+        <BasePricesModal
+          clientId={clientId}
+          scopeName={scopeName}
+          switching={dialog === 'tiers_off'}
+          defaultRate={
+            basePrices
+              ? tierMode.current?.tiers[0].rate_per_activation
+              : undefined
+          }
+          onClose={() => setDialog(null)}
+        />
       )}
       <ConfirmDialog
         open={!!deleteId}

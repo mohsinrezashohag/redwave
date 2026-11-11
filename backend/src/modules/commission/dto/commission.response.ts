@@ -218,3 +218,12 @@ export class TierRateResponse {
   @ApiProperty({ enum: RATE_STATUS })
   status!: RateStatus;
 }
+
+/** The result of switching a scope to BASE PRICES: its new one-bracket schedule + each product's price. */
+export class BasePricesResponse {
+  @ApiProperty({ type: () => TierConfigResponse })
+  schedule!: TierConfigResponse;
+
+  @ApiProperty({ type: () => [TierRateResponse] })
+  rates!: TierRateResponse[];
+}

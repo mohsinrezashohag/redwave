@@ -40,11 +40,14 @@ export function TierScheduleModal({
   open,
   defaultClientId,
   onClose,
+  endBasePrices = false,
 }: {
   open: boolean;
   /** Pre-selects the scope from the page selector; undefined = the global row. */
   defaultClientId?: string;
   onClose: () => void;
+  /** Turning tiers back ON from base prices: also end the scope's product base prices from the same date. */
+  endBasePrices?: boolean;
 }) {
   const { toast } = useToast();
   const onError = useApiErrorToast();
@@ -67,14 +70,14 @@ export function TierScheduleModal({
 
   const onSubmit = (values: TierFormValues) => {
     if (validateTierBrackets(toBracketInputs(values.tiers))) return; // guarded by the disabled button
-    create.mutate(buildTierBody(values), {
-      onSuccess: () => { toast({ title: 'Tier schedule added', tone: 'success' }); onClose(); },
+    create.mutate({ ...buildTierBody(values), ...(endBasePrices ? { end_product_base_prices: true } : {}) }, {
+      onSuccess: () => { toast({ title: endBasePrices ? 'Tiers turned on' : 'Tier schedule added', tone: 'success' }); onClose(); },
       onError,
     });
   };
 
   return (
-    <Modal open={open} onOpenChange={(o) => !o && onClose()} title="Add tier schedule" size="lg">
+    <Modal open={open} onOpenChange={(o) => !o && onClose()} title={endBasePrices ? 'Turn tiers on' : 'Add tier schedule'} size="lg">
       <FormProvider {...methods}>
         <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
           <Banner tone="info" title="Effective-dated">
@@ -83,6 +86,13 @@ export function TierScheduleModal({
             can&rsquo;t be edited — add a new one. The engine determines tiers at runtime; this only stores
             the schedule.
           </Banner>
+
+          {endBasePrices && (
+            <Banner tone="warning" title="Product base prices end">
+              From the period you pick, this scope pays by the tier ladder below. Its product base prices stop then;
+              earlier periods keep what they were paid.
+            </Banner>
+          )}
 
           <ClientScopeField
             control={control}
