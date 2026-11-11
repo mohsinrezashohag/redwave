@@ -186,7 +186,7 @@ export function SignDeclineModal({ open, onClose, documentId, request, decision 
         {isSign ? (
           <>
             <p className={styles.note}>
-              Your assigned fields are highlighted. Apply your signature — a signed copy is stored; the original is never modified.
+              Your assigned fields are highlighted. Apply your signature. A signed copy is stored, and the original is never modified.
             </p>
             {myFields.length > 0 && <DocumentPreview query={fileUrl} renderPageOverlay={overlay} maxWidth={520} />}
 

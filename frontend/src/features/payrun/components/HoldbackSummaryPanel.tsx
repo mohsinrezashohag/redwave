@@ -54,13 +54,13 @@ export function HoldbackSummaryPanel({ runId, labels }: { runId: string; labels:
           <>
             {s.is_projection && !labels.holdsNothing && (
               <Banner tone="info">
-                Draft — the {labels.heldPct}% held below is a projection. It is written to the holdback ledger when
+                Draft: the {labels.heldPct}% held below is a projection. It is written to the holdback ledger when
                 the run is finalized.
               </Banner>
             )}
             {labels.holdsNothing && (
               <Banner tone="info">
-                Nothing is held back this period — reps are paid 100%. Holds taken under the earlier split still
+                Nothing is held back this period, so reps are paid 100%. Holds taken under the earlier split still
                 release as scheduled below.
               </Banner>
             )}

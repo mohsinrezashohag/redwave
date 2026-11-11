@@ -64,7 +64,7 @@ export default function PayRunListPage() {
     <div className={styles.page}>
       <PageHeader
         title="Pay Run"
-        subtitle="Draft, review, and finalize bi-weekly pay. Every amount is computed by the engine and the pay-run service — this screen reviews and commits."
+        subtitle="Draft, review, and finalize bi-weekly pay. Every amount is computed by the engine and the pay-run service. This screen is for reviewing and finalizing."
       />
       <DataState
         isLoading={isLoading}

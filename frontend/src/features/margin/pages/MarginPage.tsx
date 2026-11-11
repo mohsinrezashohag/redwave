@@ -171,7 +171,7 @@ export default function MarginPage() {
                 </TBody>
               </Table>
               <p className={styles.note}>
-                Groups are kept separate per currency — amounts in different currencies are never added
+                Each currency is kept separate. Amounts in different currencies are never added
                 together.
               </p>
             </DataState>

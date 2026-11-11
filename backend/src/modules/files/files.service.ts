@@ -75,7 +75,7 @@ export class FilesService {
    */
   async claim(path: string, user: AuthUser, purpose: FilePurpose) {
     const unknown = () =>
-      new UnprocessableEntityException(`unknown ${purpose} file reference — upload it via POST /v1/files first`);
+      new UnprocessableEntityException(`Unknown ${purpose} file. Please upload it again.`);
 
     if (!path.startsWith(purposePrefix(purpose))) {
       throw unknown();

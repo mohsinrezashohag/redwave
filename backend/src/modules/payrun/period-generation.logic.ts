@@ -62,11 +62,11 @@ export function validatePeriodShape(shape: PeriodShape): string[] {
   if (!Number.isInteger(shape.lengthDays) || shape.lengthDays < 1) {
     errors.push('length_days must be a whole number of at least 1');
   } else if (shape.lengthDays > 366) {
-    errors.push('length_days must be 366 or fewer — a period longer than a year is not a cycle');
+    errors.push('A period can be at most 366 days long.');
   }
   if (shape.paydayOffsetDays !== undefined && shape.paydayOffsetDays !== null) {
     if (!Number.isInteger(shape.paydayOffsetDays) || shape.paydayOffsetDays < 0) {
-      errors.push('payday_offset_days must be a whole number of 0 or more — a rep is never paid before the period closes');
+      errors.push('The payday offset must be a whole number of 0 or more, because a rep is never paid before the period closes.');
     }
   }
   return errors;

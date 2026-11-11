@@ -305,7 +305,7 @@ export async function seedDemo(
         {
           category: 'km',
           expense_date: curMid,
-          description: 'Client visits — Winnipeg loop',
+          description: 'Client visits, Winnipeg loop',
           km: {
             trip_type: 'round',
             total_km: '130.00',
@@ -329,7 +329,7 @@ export async function seedDemo(
   const w2 = businessWeek(p1Mid);
   const folder2 = await expenseReports.create({ name: `Field week of ${w2.week_start}`, ...w2, rep_id: repByCode['RW-D-0002'].id }, sa);
   await expenses.createItems(
-    { expense_report_id: folder2.id, items: [{ category: 'gas', expense_date: p1Mid, amount: '60.00', description: 'Fuel — field route', receipt_url: 's3://redwave-demo/receipts/gas-1.jpg' }] },
+    { expense_report_id: folder2.id, items: [{ category: 'gas', expense_date: p1Mid, amount: '60.00', description: 'Fuel for field route', receipt_url: 's3://redwave-demo/receipts/gas-1.jpg' }] },
     sa,
   );
   await expenseReports.submit(folder2.id, sa); // → submitted (feeds the approval queue)

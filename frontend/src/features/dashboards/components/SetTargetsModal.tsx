@@ -56,7 +56,7 @@ export function SetTargetsModal({
   return (
     <Modal open={open} onOpenChange={(o) => !o && onClose()} title="Set roster targets">
       {!periodId ? (
-        <p className="mono">No open pay period — load the schedule first.</p>
+        <p className="mono">No open pay period. Load the schedule first.</p>
       ) : (
         <div className={styles.targetForm}>
           {rows.length === 0 && <p className="mono">No reps in your roster.</p>}

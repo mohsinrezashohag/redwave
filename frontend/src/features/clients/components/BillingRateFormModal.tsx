@@ -139,7 +139,7 @@ export function BillingRateFormModal({
         </Banner>
 
         {isEdit ? (
-          <FormField label="Scope" help="Immutable — delete and re-add to change the scope.">
+          <FormField label="Scope" help="Can’t be changed. Delete and re-add the rate to change the scope.">
             <span className={styles.readonlyType}>
               <Badge tone="neutral">{RATE_KIND_OPTIONS.find((o) => o.value === rate!.rate_kind)?.label}</Badge>
               {rate!.rate_kind === 'product' && <Badge tone="neutral">{productName(rate!.product_id)}</Badge>}
@@ -187,7 +187,7 @@ export function BillingRateFormModal({
                 label="Trigger product types"
                 required
                 error={errors.bundle_product_types?.message}
-                help="The bundle applies to a sale that has ALL of these product types (client-wide — pick at least 2)."
+                help="The bundle applies to a sale that has ALL of these product types (client-wide; pick at least 2)."
               >
                 <MultiSelect
                   placeholder="Add a product type…"
@@ -217,7 +217,7 @@ export function BillingRateFormModal({
           control={control}
           name="effective_to"
           render={({ field }) => (
-            <FormField label="Effective to" error={errors.effective_to?.message} help="Ends after the chosen period — or open-ended.">
+            <FormField label="Effective to" error={errors.effective_to?.message} help="Ends after the chosen period, or leave open-ended.">
               <PayPeriodSelect value={field.value} onChange={field.onChange} boundary="end" allowOpenEnded aria-label="Effective to period" />
             </FormField>
           )}

@@ -60,8 +60,8 @@ export function ReleaseSettingSection() {
       <DataState isLoading={q.isLoading} isError={q.isError} isEmpty={false} onRetry={() => q.refetch()}>
         <div className={styles.form}>
           <Banner tone="info" title="Sticky setting">
-            The Pay Run releases each period's held 30% per this rule. Changing it affects only <strong>future</strong> holds —
-            already-scheduled releases are never moved.
+            The Pay Run releases each period's held 30% per this rule. Changing it affects only <strong>future</strong> holds.
+            Releases already scheduled are never moved.
           </Banner>
           <div className={styles.grid2}>
             <FormField label="Release mode">

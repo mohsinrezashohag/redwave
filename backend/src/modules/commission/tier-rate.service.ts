@@ -205,7 +205,7 @@ export class TierRateService {
     if (product.product_type_ref.behaviour !== 'tiered') {
       throw new UnprocessableEntityException(
         `product '${productId}' is '${product.product_type}' (${product.product_type_ref.behaviour}); ` +
-          'tier rates apply to TIERED products only — use a flat rate',
+          'Tier rates apply to tiered products only. Use a flat rate instead.',
       );
     }
     return product;
@@ -241,8 +241,8 @@ export class TierRateService {
       const available = [...new Set(schedule.tiers.map((t) => t.tier_number))].sort((a, b) => a - b);
       throw new UnprocessableEntityException(
         `tier ${tierNumber} is not in the schedule that prices this product ` +
-          `(it has ${available.length === 0 ? 'no tiers' : `tier ${available.join(', ')}`}) — ` +
-          'a rate for it could never apply',
+          `(it has ${available.length === 0 ? 'no tiers' : `tier ${available.join(', ')}`}), ` +
+          'so a rate for it could never apply.',
       );
     }
   }

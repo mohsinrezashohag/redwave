@@ -25,7 +25,7 @@ export default function AuthenticatedHome() {
     <div className={styles.stack}>
       <PageHeader
         title={`Welcome, ${user?.full_name ?? 'there'}`}
-        subtitle="You're signed in. This is a placeholder home — feature screens are built next."
+        subtitle="You're signed in. This is a placeholder home page."
       />
 
       <Banner tone="success" title="Foundation + authentication are live">
@@ -48,7 +48,7 @@ export default function AuthenticatedHome() {
           {roles.length > 0 ? ` across role(s): ${roles.join(', ')}.` : '.'}
         </p>
         <p className={styles.note}>
-          Cards above are gated by <code>useCan</code> for convenience only — the server enforces every
+          Cards above are gated by <code>useCan</code> for convenience only. The server enforces every
           action server-side (CLAUDE §5). A control you can&rsquo;t see is still rejected server-side if
           called directly.
         </p>

@@ -17,7 +17,7 @@ export function IssueGroupsBanner({ groups, blocking = true }: { groups: ImportI
   return (
     <Banner
       tone={blocking ? 'danger' : 'warning'}
-      title={`${total} row${total === 1 ? '' : 's'} need attention — ${groups.length} distinct issue${groups.length === 1 ? '' : 's'}`}
+      title={`${total} row${total === 1 ? '' : 's'} need attention (${groups.length} distinct issue${groups.length === 1 ? '' : 's'})`}
     >
       {blocking
         ? 'Every row must be matched or ignored before this batch can be committed. Fix the source file and re-upload, or resolve the rows below.'

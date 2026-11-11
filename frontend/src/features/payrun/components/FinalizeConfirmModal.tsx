@@ -54,7 +54,7 @@ export function FinalizeConfirmModal({
       </Banner>
       <p className={styles.note}>Finalizing will:</p>
       <ul className={styles.finalizeList}>
-        <li>freeze each rep&rsquo;s commission snapshots (tier, rate, amount — immutable thereafter);</li>
+        <li>freeze each rep&rsquo;s commission snapshots (tier, rate and amount, which can’t change afterwards);</li>
         <li>mark this period&rsquo;s sales <strong>Paid</strong>;</li>
         <li>
           {labels.holdsNothing

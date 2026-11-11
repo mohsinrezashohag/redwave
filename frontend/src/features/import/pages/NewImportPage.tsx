@@ -108,7 +108,7 @@ export default function NewImportPage() {
           </FormField>
           {kindDef.note && <Banner tone="info" title="Reference-only">{kindDef.note}</Banner>}
           {kindDef.needsClient && (
-            <FormField label="Client" required help="The client whose report you're importing — its entered sales are matched by MPU ID.">
+            <FormField label="Client" required help="The client whose report you're importing. Its entered sales are matched by MPU ID.">
               {canViewClients ? (
                 <Select placeholder="Select a client" options={(clientsQ.data ?? []).map((c) => ({ value: c.id, label: `${c.name} (${c.client_code})` }))} value={clientId} onValueChange={setClientId} />
               ) : (
@@ -117,7 +117,7 @@ export default function NewImportPage() {
             </FormField>
           )}
           {kindDef.needsReconcileTotal && (
-            <FormField label="Reconcile total" required help="The source's total — the server verifies it matches the staged sum at commit (IMP-007).">
+            <FormField label="Reconcile total" required help="The total from the source file. At commit, the server checks it matches the staged rows.">
               <MoneyInput value={reconcileTotal} onChange={(e) => setReconcileTotal(e.target.value)} placeholder="0.00" />
             </FormField>
           )}
@@ -127,7 +127,7 @@ export default function NewImportPage() {
           {kind === 'historical_sales' && (
             <FormField
               label="Create missing master data"
-              help="Off by default. When on, a client / rep / product this file references but that doesn’t exist yet is created as a minimal placeholder — no billing rate, no money. Preview first to see exactly what would be created."
+              help="Off by default. When on, a client / rep / product this file references but that doesn’t exist yet is created as a minimal placeholder, with no billing rate and no money. Preview first to see exactly what would be created."
             >
               <Checkbox
                 checked={createMissing}
@@ -153,12 +153,12 @@ export default function NewImportPage() {
           <FileUpload
             accept=".xlsx,.xls,.csv,.tsv"
             multiple={false}
-            hint="Excel (.xlsx/.xls) or CSV/TSV — up to 15 MB"
+            hint="Excel (.xlsx/.xls) or CSV/TSV, up to 15 MB"
             onFiles={(f) => { setFile(f[0] ?? null); setError(null); resetPreview(); }}
           />
           <p className={styles.hint}>
             Need the format? Download a template from the import home. Column names are matched loosely, and a
-            title row or an extra worksheet is fine — check the preview to confirm.
+            title row or an extra worksheet is fine. Check the preview to confirm.
           </p>
           {error && <Banner tone="danger" title="Can’t continue yet">{error}</Banner>}
         </div>

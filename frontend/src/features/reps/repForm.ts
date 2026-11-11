@@ -74,7 +74,7 @@ export function repFormSchema(mode: 'create' | 'edit', today: string, accountOnF
     })
     .superRefine((v, ctx) => {
       if (mode === 'create' && !v.rep_code.trim()) {
-        ctx.addIssue({ code: 'custom', path: ['rep_code'], message: 'Required — permanent, never reused' });
+        ctx.addIssue({ code: 'custom', path: ['rep_code'], message: 'Required. It’s permanent and never reused.' });
       }
       if (v.status === 'terminated' && !v.termination_date) {
         ctx.addIssue({ code: 'custom', path: ['termination_date'], message: 'Required when terminating' });

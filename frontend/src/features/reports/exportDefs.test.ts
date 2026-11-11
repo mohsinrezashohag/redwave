@@ -63,7 +63,7 @@ describe('businessSummaryRows — scalars → metric/value rows (pure formatting
     expect(byMetric.get('Revenue (billing stream)')).toBe('$12,000.00');
     expect(byMetric.get('Net margin %')).toBe('33.3%');
     expect(byMetric.get('Internet activations (tally)')).toBe('48');
-    expect(byMetric.get('Activations — TV')).toBe('8');
+    expect(byMetric.get('Activations: TV')).toBe('8');
     // every cell is a string (the exportRows contract)
     expect(rows.every((r) => typeof r.metric === 'string' && typeof r.value === 'string')).toBe(true);
   });

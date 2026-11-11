@@ -63,7 +63,7 @@ const CARDS: ReportCard[] = [
   },
   {
     title: 'Leaderboard',
-    description: 'Company-wide activation rankings (counts only — never money).',
+    description: 'Company-wide activation rankings (counts only, never money).',
     icon: <Trophy size={20} />,
     to: '/dashboards/leaderboard',
     show: canReport,

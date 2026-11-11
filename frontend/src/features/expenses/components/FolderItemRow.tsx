@@ -116,7 +116,7 @@ export function FolderItemRow({
           ) : (
             <>
               {item.validation.alert_count > 0 && (
-                <Banner tone="danger" title={`${item.validation.alert_count} alert(s) — must be fixed`}>
+                <Banner tone="danger" title={`${item.validation.alert_count} alert(s) to fix`}>
                   <ul className={styles.warnList}>{item.validation.alerts.map((r) => <li key={r.code + (r.field ?? '')}>{r.message}</li>)}</ul>
                 </Banner>
               )}

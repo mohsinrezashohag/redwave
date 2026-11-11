@@ -2642,3 +2642,22 @@ photo IS their HR headshot** (reps don't set their own); admins / managers uploa
 **Verified LOCAL:** 1235 backend tests (+`avatar.service.spec`, +avatar claim, +profile-photo request rules
 and review preview) + typecheck + lint + build + contract regen; FE build + lint + stylelint + vitest
 (+`profileFields`). Not yet seen in a browser.
+
+### Copy pass: no em-dashes in user-facing sentences (no migration)
+
+**Ask (2026-11-12).** Em-dashes joining clauses ("Optional — shown to the submitter") read as machine-written.
+The client asked for the copy a professional product would use. Every user-visible sentence was rewritten by
+hand, about 230 frontend strings plus the backend messages users see: error toasts (422/409 messages),
+import issues and the import template dictionary, reconciliation discrepancies, chatbot replies, the
+password-reset email, the expense-document PDF footer and the "document completed" notification (seed
+template + service fallback). Each became two sentences, a comma, a colon or parentheses, whichever read
+naturally; a few were also de-jargoned ("FX" → "exchange rate", "re-tier" → "recalculate the tier").
+
+**Kept:** the em-dash as an **empty-value placeholder** (table cells, `'—'`), en-dash ranges ("Mon–Sun"),
+code comments, Swagger descriptions and operator console output. The rule is in CLAUDE §7.
+
+**Note:** the "document completed" notification template is seeded. Bootstrap refreshes templates, so the
+next deploy's `prisma:seed` updates the production row (channel toggles are untouched).
+
+**Verified LOCAL:** 1235 backend tests (11 specs updated to the new wording) + typecheck + lint + build +
+contract regen; FE build + lint + stylelint + vitest 145.

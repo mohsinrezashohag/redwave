@@ -11,13 +11,13 @@ import type { UnpricedDetail } from '../billing.types';
 
 export function UnpricedBanner({ unpriced, clientId }: { unpriced: UnpricedDetail[]; clientId?: string }) {
   return (
-    <Banner tone="danger" title="Can’t generate — some products have no billing rate">
+    <Banner tone="danger" title="Can’t generate: some products have no billing rate">
       Add an effective client billing rate for each product below in{' '}
       {clientId ? <Link to={`/admin/clients/${clientId}`}>Clients &amp; Products</Link> : 'Clients & Products'}, then regenerate.
       <ul className={styles.unpricedList}>
         {unpriced.map((u, i) => (
           <li key={`${u.product_id}-${i}`}>
-            <code>{u.product_name}</code> — no rate effective on <code>{displayDate(u.sale_date)}</code>
+            <code>{u.product_name}</code>: no rate effective on <code>{displayDate(u.sale_date)}</code>
           </li>
         ))}
       </ul>

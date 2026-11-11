@@ -168,7 +168,7 @@ export class StatementService {
         fxOverride != null ? new Decimal(fxOverride) : await this.fx.getRateToCad(currency, freezeDate);
       if (resolved === null) {
         throw new UnprocessableEntityException(
-          `cannot issue a ${currency} document without an FX rate — provide fx_rate or enable the FX source`,
+          `Cannot issue a ${currency} document without an exchange rate. Enter the rate, or turn on the exchange-rate source.`,
         );
       }
       rate = resolved;

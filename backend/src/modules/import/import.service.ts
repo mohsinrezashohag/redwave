@@ -203,7 +203,7 @@ export class ImportService {
     // is refused outright rather than quietly ignored.
     if (dto.create_missing && kind !== 'historical_sales') {
       throw new UnprocessableEntityException(
-        'create_missing is only supported for historical sales (master_migration + sales) — every other target requires the referenced records to already exist',
+        'Creating missing records is only supported for historical sales. Every other import needs the referenced records to exist already.',
       );
     }
 

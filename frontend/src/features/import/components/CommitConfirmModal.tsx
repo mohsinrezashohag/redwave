@@ -34,7 +34,7 @@ export function CommitConfirmModal({ batchId, kind, matchedCount, open, onClose 
       onConfirm={onConfirm}
     >
       <Banner tone="warning" title="This applies the batch atomically and cannot be undone.">
-        All matched rows are applied in one transaction — if anything fails, the whole batch rolls back and stays staged.
+        All matched rows are applied together. If anything fails, nothing is applied and the batch stays staged.
       </Banner>
       <p className={styles.note}>
         Committing {kind ? <>{kind.commitEffect}</> : 'applies the matched rows'}. <strong>{matchedCount}</strong> matched row(s) will be applied; ignored rows are skipped. Type <span className="mono">COMMIT</span> to confirm.

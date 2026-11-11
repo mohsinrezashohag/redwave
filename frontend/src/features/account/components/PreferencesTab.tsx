@@ -15,7 +15,7 @@ export function PreferencesTab() {
       </FormField>
       <p className={styles.help}>
         Light, Dark, or System (follows your device). Unlike your profile fields, this change is applied
-        immediately — no review.
+        immediately, with no review.
       </p>
     </div>
   );

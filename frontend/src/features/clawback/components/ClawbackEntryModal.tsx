@@ -64,7 +64,7 @@ export function ClawbackEntryModal({ saleItem, saleCode, onClose }: Props) {
     <Modal open={saleItem !== null} onOpenChange={(o) => !o && onClose()} title={saleItem ? `Claw back · ${productTypeLabel(saleItem.product_type)}` : 'Claw back'}>
       {saleItem && (
         <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
-          <Banner tone="info" title="Per-item recovery — no re-tier">
+          <Banner tone="info" title="Per-item recovery (the tier is not recalculated)">
             This recovers <strong>this item only</strong>. It does not touch the internet activation or re-tier the period (#5/#6).
           </Banner>
 
@@ -86,12 +86,12 @@ export function ClawbackEntryModal({ saleItem, saleCode, onClose }: Props) {
           <FormField
             label="Recovery amount"
             error={formState.errors.amount?.message}
-            help="Leave blank to recover the exact amount paid — the server computes it from the snapshot (rate + any incentive). Enter a value only to override."
+            help="Leave blank to recover the exact amount paid. The server works it out from the frozen payment (rate plus any incentive). Enter a value only to override it."
           >
             <MoneyInput {...register('amount')} placeholder="Exact amount paid (default)" />
           </FormField>
           <FormField label="Reason" required error={formState.errors.reason?.message}>
-            <Textarea {...register('reason')} placeholder="e.g. Customer cancelled — client reported." />
+            <Textarea {...register('reason')} placeholder="e.g. Customer cancelled, reported by the client." />
           </FormField>
           <Controller
             control={control}
@@ -101,7 +101,7 @@ export function ClawbackEntryModal({ saleItem, saleCode, onClose }: Props) {
                 label="Client-reported date"
                 required
                 error={formState.errors.reported_date?.message}
-                help="Informational only — it drives no logic; no cancellation window is computed or enforced (#6)."
+                help="For reference only. It drives no logic, and no cancellation window is calculated or enforced."
               >
                 <DatePicker value={field.value ?? ''} onChange={field.onChange} invalid={!!formState.errors.reported_date} aria-label="Client-reported date" />
               </FormField>

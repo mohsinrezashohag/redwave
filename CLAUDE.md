@@ -312,6 +312,7 @@ The product must feel **fast, polished, and purpose-built — never generic.**
 - **Performance:** fast first load; navigation feels instant; long lists virtualized + paginated; optimistic UI where safe; no layout shift.
 - **Responsive:** clean from mobile width upward; the future mobile app shares the same API.
 - **Accessible:** keyboard-navigable, sufficient contrast, labelled controls, focus states.
+- **Copy style (2026-11-12): no em-dash (—) inside a sentence** in any user-visible text: UI, toasts, help text, error messages, emails, notifications, exported documents. Split into two sentences, or use a comma, colon or parentheses. The em-dash is reserved for an **empty value** in a table cell or field (`'—'`). Code comments and Swagger descriptions are exempt.
 - **Every interactive element has all its states:** default, hover, focus, active, disabled, **loading, empty, error, success**. Nothing fails silently — every action shows feedback.
 - **CRUD pattern:** list views have filtering, sorting, pagination, and clear row actions; forms validate inline with helpful messages; destructive actions confirm.
 - **Data/analytics widgets** (dashboards, leaderboard) are readable at a glance: clear hierarchy, real units, no chartjunk.

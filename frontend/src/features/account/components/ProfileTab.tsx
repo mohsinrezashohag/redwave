@@ -100,7 +100,7 @@ function ProfileEditForm({ profile, rep }: { profile: AccountProfile; rep: MyRep
       onSuccess: () =>
         toast({
           title: 'Submitted for review',
-          description: 'Your profile updates once a reviewer approves — it is not changed live.',
+          description: 'Your profile updates once a reviewer approves it.',
           tone: 'success',
         }),
       onError,
@@ -123,8 +123,8 @@ function ProfileEditForm({ profile, rep }: { profile: AccountProfile; rep: MyRep
     <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
       <p className={styles.help}>
         Editing your {rep ? 'name, phone, contact email, address or uniform sizes' : 'name, phone or photo'}{' '}
-        creates a <strong>change request</strong> — it is reviewed before it applies, so your live profile won&rsquo;t
-        change until then. (Your theme, by contrast, applies instantly — see Preferences.)
+        creates a <strong>change request</strong>. It is reviewed before it applies, so your live profile won&rsquo;t
+        change until then. Your theme applies instantly (see Preferences).
       </p>
       <FormField label="Full name" required error={errors.full_name?.message}>
         <Input {...register('full_name')} />
@@ -142,7 +142,7 @@ function ProfileEditForm({ profile, rep }: { profile: AccountProfile; rep: MyRep
 
       {rep && (
         <>
-          <FormField label="Contact email" error={errors.email?.message} help="Where HR can reach you — your sign-in email does not change.">
+          <FormField label="Contact email" error={errors.email?.message} help="Where HR can reach you. Your sign-in email does not change.">
             <Input {...register('email')} type="email" placeholder="you@example.com" />
           </FormField>
           <FormField label="Street" error={errors.address_street?.message}>

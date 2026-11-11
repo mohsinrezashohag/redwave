@@ -78,7 +78,7 @@ export function TierRatesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue }) 
         onRetry={() => q.refetch()}
         emptyNode={
           <p className={styles.note}>
-            No per-product rates — every product is paid the tier schedule&rsquo;s own rate. Add one only
+            No per-product rates. Every product is paid the tier schedule&rsquo;s own rate. Add one only
             where a product should pay differently.
           </p>
         }

@@ -13,7 +13,7 @@ import type { Sale, SaleItem } from '../../sales/sales.types';
 
 function reasonNotClawable(item: SaleItem): string {
   if (item.item_status === 'clawed_back') return 'Already clawed back';
-  if (item.commission_paid === null) return 'Not paid yet — only paid items can be clawed back';
+  if (item.commission_paid === null) return 'Not paid yet. Only paid items can be clawed back.';
   return '';
 }
 
@@ -21,7 +21,7 @@ export function PaidItemsPanel({ sale, onClawback }: { sale: Sale; onClawback: (
   return (
     <div>
       <h3 className={styles.sectionTitle}>Items on {sale.sale_code}</h3>
-      <p className={styles.note}>A clawback targets one item — it does not affect the internet activation or re-tier the period (#5).</p>
+      <p className={styles.note}>A clawback targets one item. It does not affect the internet activation or recalculate the period’s tier.</p>
       <div className={styles.items}>
         {sale.sale_items.map((item) => {
           const clawable = isClawable(item);

@@ -96,7 +96,7 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
           <FileUpload
             accept={acceptFor(docType)}
             multiple={false}
-            hint={docType === 'headshot' ? 'JPG or PNG photo — up to 25 MB' : 'PDF, JPG or PNG — up to 25 MB'}
+            hint={docType === 'headshot' ? 'JPG or PNG photo, up to 25 MB' : 'PDF, JPG or PNG, up to 25 MB'}
             onFiles={onFiles}
           />
         </div>

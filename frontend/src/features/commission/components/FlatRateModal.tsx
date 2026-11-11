@@ -114,7 +114,7 @@ export function FlatRateModal({
         <Banner tone="info" title="Effective-dated">
           {isEdit
             ? 'Only a pending rate can be edited; the product type and scope are fixed.'
-            : 'A future-dated rate supersedes the pending one for this product type — within its own scope — and bounds the current.'}
+            : 'A future-dated rate supersedes the pending one for this product type (within its own scope) and ends the current one.'}
         </Banner>
         {isEdit ? (
           <FormField label="Applies to">
@@ -139,7 +139,7 @@ export function FlatRateModal({
             control={control}
             name="product_type"
             render={({ field }) => (
-              <FormField label="Product type" required error={errors.product_type?.message} help="Internet is tiered — set it in the tier schedule.">
+              <FormField label="Product type" required error={errors.product_type?.message} help="Internet is tiered. Set it in the tier schedule.">
                 <Select
                   options={flatOptions}
                   value={field.value}
@@ -167,7 +167,7 @@ export function FlatRateModal({
             control={control}
             name="effective_to"
             render={({ field }) => (
-              <FormField label="Effective to" help="Ends after the chosen period — or open-ended.">
+              <FormField label="Effective to" help="Ends after the chosen period, or leave open-ended.">
                 <PayPeriodSelect value={field.value} onChange={field.onChange} boundary="end" allowOpenEnded aria-label="Effective to period" />
               </FormField>
             )}

@@ -60,7 +60,7 @@ export function FlatRatesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue }) 
         emptyNode={
           <p className={styles.note}>
             {scopeDefaultClientId(scope)
-              ? 'No flat rates of its own — this client is paid at the global flat rates.'
+              ? 'No flat rates of its own. This client is paid at the global flat rates.'
               : 'No flat rates yet.'}
           </p>
         }

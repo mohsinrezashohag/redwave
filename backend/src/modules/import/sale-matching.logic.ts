@@ -118,7 +118,7 @@ export function matchReportRow(row: ReportRow, sales: CandidateSale[]): MatchOut
     .sort((a, b) => b.score - a.score || a.sale.sale_code.localeCompare(b.sale.sale_code));
 
   if (scored.length === 0) {
-    return { candidates: [], issue: 'no entered sale matches this customer — match manually' };
+    return { candidates: [], issue: 'No entered sale matches this customer. Match it manually.' };
   }
 
   const [best, runnerUp] = scored;
@@ -133,7 +133,7 @@ export function matchReportRow(row: ReportRow, sales: CandidateSale[]): MatchOut
     candidates: top,
     issue:
       best.score >= STRONG_MATCH
-        ? `several sales match equally well — confirm one: ${listed}`
-        : `no confident match — closest: ${listed}`,
+        ? `Several sales match equally well. Confirm one: ${listed}`
+        : `No confident match. Closest: ${listed}`,
   };
 }

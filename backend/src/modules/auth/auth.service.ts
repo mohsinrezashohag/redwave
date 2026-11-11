@@ -94,7 +94,7 @@ export class AuthService {
     try {
       ({ sub: userId } = await this.tokens.verifyMfaChallenge(mfaToken));
     } catch {
-      throw new UnauthorizedException('MFA challenge expired — sign in again');
+      throw new UnauthorizedException('Your verification step expired. Please sign in again.');
     }
     await this.mfa.verifyChallenge(userId, code); // throws 401 on a bad/used code
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { status: true, must_change_password: true } });

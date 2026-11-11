@@ -9,7 +9,7 @@ import styles from './TierProgressBar.module.css';
 
 export function TierProgressBar({ tier }: { tier: RepTier | null }) {
   if (!tier) {
-    return <p className={styles.empty}>No tier yet — activations this period will set it.</p>;
+    return <p className={styles.empty}>No tier yet. Activations this period will set it.</p>;
   }
 
   const atTop = tier.to_next === null || tier.next_tier_min === null;

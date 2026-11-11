@@ -69,7 +69,7 @@ export function ClientScopeField<T extends FieldValues>({
           />
           <Banner tone="info" title="Scoped to one client">
             This client&rsquo;s sales are paid at these rates instead of the global ones. It is a separate
-            effective-dated stream — it never supersedes or bounds the global rows. The internet tally that
+            effective-dated set of rates and never replaces or ends the global ones. The internet tally that
             picks the tier still counts <strong>every client together</strong>.
           </Banner>
         </>

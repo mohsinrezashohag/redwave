@@ -89,7 +89,7 @@ export function GenerateBillingModal({ open, onClose, clients, periods, presetCl
                 navigate(`/billing/statements/${statement.id}`);
               },
               onError: () => {
-                toast({ title: 'Statement issued — re-issue to refresh the invoice', tone: 'warning' });
+                toast({ title: 'Statement issued. Re-issue to refresh the invoice.', tone: 'warning' });
                 onClose();
                 navigate(`/billing/statements/${statement.id}`);
               },
@@ -140,7 +140,7 @@ export function GenerateBillingModal({ open, onClose, clients, periods, presetCl
 
         {alreadyExists && !preview && (
           <Banner tone="info" title="A statement already exists for this client + week">
-            Issuing again creates a <strong>new numbered version</strong>; the current one is kept (superseded) for the record — it is never changed.
+            Issuing again creates a <strong>new numbered version</strong>; the current one is kept (superseded) for the record and is never changed.
           </Banner>
         )}
 
@@ -148,7 +148,7 @@ export function GenerateBillingModal({ open, onClose, clients, periods, presetCl
 
         {preview && (
           <>
-            <Banner tone="info" title="Preview — not yet issued">
+            <Banner tone="info" title="Preview (not yet issued)">
               {preview.summary.line_count} sale(s) · {preview.summary.internet_count} internet ·{' '}
               {preview.summary.tv_count} TV · {preview.summary.home_phone_count} home phone · total{' '}
               {money(preview.total_amount)}. No GST. Issuing mints a new gapless number.
@@ -191,7 +191,7 @@ export function GenerateBillingModal({ open, onClose, clients, periods, presetCl
         )}
 
         <p className={styles.note}>
-          The server prices every component — internet, TV, home phone, bundle and spiff — from client billing
+          The server prices every component (internet, TV, home phone, bundle and spiff) from client billing
           rates effective on each sale’s own date. This screen computes nothing.
         </p>
       </div>

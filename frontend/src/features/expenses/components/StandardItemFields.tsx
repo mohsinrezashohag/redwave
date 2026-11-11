@@ -46,7 +46,7 @@ export function StandardItemFields({
         label="Description"
         required={requiresDescription}
         error={itemErrors?.description?.message}
-        help={requiresDescription ? undefined : 'Optional — add a note only if it helps explain the expense.'}
+        help={requiresDescription ? undefined : 'Optional. Add a note only if it helps explain the expense.'}
       >
         <Input placeholder={requiresDescription ? 'Lunch with client' : 'Optional note'} {...register(`items.${index}.description`)} />
       </FormField>
@@ -62,7 +62,7 @@ export function StandardItemFields({
             help={
               requiresReceipt
                 ? 'Mandatory for this category.'
-                : 'Optional — attach one if you have it. No problem if there isn’t one (a home-made meal, or a vendor that gives none).'
+                : 'Optional. Attach one if you have it. It’s fine if there isn’t one, such as a home-made meal or a vendor that doesn’t give receipts.'
             }
           >
             <ReceiptField value={field.value} onChange={field.onChange} />

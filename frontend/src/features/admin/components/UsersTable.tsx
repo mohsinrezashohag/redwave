@@ -186,7 +186,7 @@ export function UsersTable({ users, onEdit }: { users: AdminUser[]; onEdit: (u: 
         }
       >
         <Banner tone="info" title="You can’t see their password">
-          For security, passwords are never visible. Choose how to help <strong>{reset?.full_name}</strong> — we email them directly.
+          For security, passwords are never visible. Choose how to help <strong>{reset?.full_name}</strong>. We email them directly.
         </Banner>
         <div className={styles.form} style={{ marginTop: 'var(--space-4)' }}>
           <Button variant="primary" fullWidth leftIcon={<Link2 size={16} />} loading={resetPw.isPending} onClick={() => triggerReset('link')}>

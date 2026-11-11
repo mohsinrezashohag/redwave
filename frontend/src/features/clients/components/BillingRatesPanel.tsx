@@ -179,7 +179,7 @@ export function BillingRatesPanel({
         isError={q.isError}
         isEmpty={rates.length === 0}
         onRetry={() => q.refetch()}
-        emptyNode={<p className={styles.supersedeNote}>No billing rates yet — add one to set what this client is charged.</p>}
+        emptyNode={<p className={styles.supersedeNote}>No billing rates yet. Add one to set what this client is charged.</p>}
       >
         <EffectiveDatedTable
           rows={rates}

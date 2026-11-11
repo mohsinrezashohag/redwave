@@ -41,7 +41,7 @@ export default function MyPayStatementsPage() {
         {list.isLoading && <TableSkeleton rows={3} />}
         {list.isError && <TableError message="Could not load your statements." onRetry={() => list.refetch()} />}
         {!list.isLoading && runs.length === 0 && (
-          <p className={styles.note}>No pay statements yet — one appears here after a pay run is finalized.</p>
+          <p className={styles.note}>No pay statements yet. One appears here after a pay run is finalized.</p>
         )}
         {runs.length > 0 && (
           <Table>
@@ -80,13 +80,13 @@ export default function MyPayStatementsPage() {
           )}
           {s && !s.is_finalized && (
             <Banner tone="info" title="Not finalized yet">
-              This period has not been finalized, so no amounts are frozen — nothing is owed for it yet.
+              This period has not been finalized, so no amounts are frozen and nothing is owed for it yet.
             </Banner>
           )}
           {s && s.is_finalized && s.lines.length === 0 && (
             <Banner tone="info" title="Statement not available yet">
               This period was paid, but its statement lines have not been recorded. Your administrator can
-              rebuild them from the frozen amounts — please check back later.
+              rebuild them from the frozen amounts. Please check back later.
             </Banner>
           )}
           {s && s.lines.length > 0 && (

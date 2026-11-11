@@ -68,7 +68,7 @@ describe('saving a layout', () => {
     const { service } = make();
     await expect(
       service.save({ name: 'X', report_type: 'margin', columns: [{ field: 'sale_date' }] }, user),
-    ).rejects.toThrow(/unknown report type/);
+    ).rejects.toThrow(/Unknown report type/);
   });
 });
 

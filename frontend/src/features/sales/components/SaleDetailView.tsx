@@ -84,7 +84,7 @@ export function SaleDetailView({ id }: { id: string }) {
       isError={query.isError}
       isEmpty={false}
       onRetry={() => query.refetch()}
-      errorMessage="This sale could not be loaded — it may not exist or you may not have access."
+      errorMessage="This sale could not be loaded. It may not exist, or you may not have access."
     >
       {sale && (
         <div className={styles.wrap}>

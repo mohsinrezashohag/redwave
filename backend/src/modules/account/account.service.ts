@@ -152,14 +152,14 @@ export class AccountService {
     }
     if (!user.repId && REP_FIELDS.some((f) => proposed[f] !== undefined)) {
       throw new UnprocessableEntityException(
-        'Contact email, address and uniform sizes belong to a rep profile — your account is not linked to a rep',
+        'Contact email, address and uniform sizes belong to a rep profile, and your account is not linked to a rep.',
       );
     }
     // The photo is UPLOADED, never a link (2026-11-12): '' removes it, otherwise it must be an avatar file
     // this user uploaded. A rep's photo is their HR headshot, so a rep can't set one here.
     if (proposed.avatar_url !== undefined) {
       if (user.repId) {
-        throw new UnprocessableEntityException('Your photo is the headshot HR keeps on file — ask HR to update it');
+        throw new UnprocessableEntityException('Your photo is the headshot HR keeps on file. Please ask HR to update it.');
       }
       if (proposed.avatar_url) await this.files.claim(proposed.avatar_url, user, 'avatar');
     }

@@ -36,7 +36,7 @@ export interface FileUploadProps {
 export function FileUpload({
   accept,
   multiple = true,
-  hint = 'PDF, JPG or PNG — up to 10 MB',
+  hint = 'PDF, JPG or PNG, up to 10 MB',
   onFiles,
   uploads,
   onRetry,

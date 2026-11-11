@@ -102,7 +102,7 @@ export class PeriodConfigService {
     const errors = validatePeriodShape(shape);
     // A billing week has no payday; accepting one would imply a bill pays a rep (§14 rule 1).
     if (dto.kind === 'billing' && dto.payday_offset_days !== undefined && dto.payday_offset_days !== null) {
-      errors.push('payday_offset_days does not apply to a billing calendar — a bill has no payday');
+      errors.push('A payday offset doesn’t apply to a billing calendar, because a bill has no payday.');
     }
     if (errors.length > 0) {
       throw new UnprocessableEntityException({ message: 'invalid period configuration', errors });

@@ -45,7 +45,7 @@ export function ExportModal({
           );
           toast({
             title: 'Export downloaded',
-            description: `${res.line_count} lines (${res.format.toUpperCase()}) — saved to your Downloads folder`,
+            description: `${res.line_count} lines (${res.format.toUpperCase()}), saved to your Downloads folder`,
             tone: 'success',
           });
           onClose();

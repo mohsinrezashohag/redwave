@@ -10,7 +10,7 @@ import type { RepClawback } from '../dashboards.types';
 
 export function RecentClawbacks({ rows }: { rows: RepClawback[] }) {
   if (rows.length === 0) {
-    return <TableEmpty message="No clawbacks — nothing recovered against your pay." />;
+    return <TableEmpty message="No clawbacks. Nothing has been recovered from your pay." />;
   }
   return (
     <Table density="comfortable">

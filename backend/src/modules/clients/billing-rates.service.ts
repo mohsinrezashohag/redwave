@@ -320,7 +320,7 @@ export class BillingRatesService {
       return [];
     }
     if (productId) {
-      throw new UnprocessableEntityException('a bundle_bonus rate is client-wide — it must not target a product_id');
+      throw new UnprocessableEntityException('A bundle bonus applies to the whole client, so it can’t target a single product.');
     }
     const types = [...new Set((raw ?? []).map((t) => t.trim()).filter(Boolean))];
     if (types.length < 2) {

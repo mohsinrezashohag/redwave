@@ -101,8 +101,8 @@ export default function ExportLayoutsPage() {
 
       <Banner tone="info" title="Some columns are load-bearing">
         A report marked <strong>fixed layout engine</strong> is a real workbook with live totals above the
-        data. Its money columns must stay together and its required columns cannot be removed — otherwise
-        the totals would sum the wrong cells. A layout that breaks that is refused, with the reason.
+        data. Its money columns must stay together and its required columns cannot be removed.
+        Otherwise the totals would add up the wrong cells. A layout that breaks that is refused, with the reason.
       </Banner>
 
       <Card title="Report">
@@ -217,7 +217,7 @@ export default function ExportLayoutsPage() {
             )}
             <p className={styles.note}>
               Only fields this report owns are listed. A payroll layout cannot reference a client rate, and
-              a statement cannot reference rep pay — the two are kept apart by design.
+              a statement cannot reference rep pay. The two are kept apart by design.
             </p>
           </Card>
         </div>
@@ -227,7 +227,7 @@ export default function ExportLayoutsPage() {
             <div className={styles.controls}>
               <Input
                 aria-label="Layout name"
-                placeholder="e.g. Payroll — no address column"
+                placeholder="e.g. Payroll without address"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
@@ -252,7 +252,7 @@ export default function ExportLayoutsPage() {
             onRetry={() => saved.refetch()}
             emptyNode={
               <p className={styles.note}>
-                No saved layouts — every report uses its built-in default.
+                No saved layouts. Every report uses its built-in default.
               </p>
             }
           >

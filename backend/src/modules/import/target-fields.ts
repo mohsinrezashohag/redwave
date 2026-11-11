@@ -22,10 +22,10 @@ export const targetKey = (sourceType: string, importType: string): string => `${
 export const TARGET_FIELDS: Record<string, TargetField[]> = {
   // ── Recurring client report → bulk sales validation (match on MPU). — SALE-007 ──
   'client_report:sales': [
-    { field: 'mpu_id', type: 'text', required: false, label: 'MPU ID', aliases: ['mpu', 'mpu #', 'mpu id', 'mpu_id', 'house id', 'unit id'], example: 'MPU-1042', dict: 'Client house/unit identifier; matches an entered sale (CTI/VF supply it; RF Now does not — leave blank and match manually).' },
+    { field: 'mpu_id', type: 'text', required: false, label: 'MPU ID', aliases: ['mpu', 'mpu #', 'mpu id', 'mpu_id', 'house id', 'unit id'], example: 'MPU-1042', dict: 'Client house/unit identifier; matches an entered sale (CTI/VF supply it; RF Now does not, so leave it blank and match manually).' },
     { field: 'customer_name', type: 'text', required: false, label: 'Customer', aliases: ['customer', 'name', 'customer name', 'subscriber', 'account name'], example: 'Jane Doe', dict: 'Customer/household name. Used to match the sale when the partner supplies no MPU ID.' },
     { field: 'service_address', type: 'text', required: false, label: 'Service address', aliases: ['address', 'service address', 'street', 'install address', 'property'], example: '23 Shoreline Dr', dict: 'Service address. Combined with the customer name to match a sale when there is no MPU ID.' },
-    { field: 'activation_date', type: 'date', required: false, label: 'Activation date', aliases: ['activation', 'activation date', 'activated', 'install date'], example: '2026-02-14', dict: 'Reference only — drives no logic (sale_date governs the period). Corroborates a no-MPU match.' },
+    { field: 'activation_date', type: 'date', required: false, label: 'Activation date', aliases: ['activation', 'activation date', 'activated', 'install date'], example: '2026-02-14', dict: 'For reference only. It drives no logic (the sale date sets the pay period) and helps confirm a match when there is no MPU ID.' },
   ],
 
   // ── Go-live master data: clients ──
@@ -62,7 +62,7 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
     { field: 'client_code', type: 'code', required: false, label: 'Client code', aliases: ['code', 'client code', 'client'], example: 'VF', dict: 'Client (by code). LEAVE BLANK for the global default rate.' },
     { field: 'stream', type: 'text', required: true, label: 'Stream', aliases: ['stream', 'type', 'rate type', 'which'], example: 'rep', dict: "'rep' (reimbursed to the rep) or 'client_bill' (charged to the client). Separate streams — never combined (#3)." },
     { field: 'rate_per_km', type: 'text', required: true, label: 'Rate per km', aliases: ['rate', 'rate per km', 'per km', 'km rate', '$/km'], example: '0.45', dict: 'Rate per kilometre, up to 3 decimals (e.g. 0.45).' },
-    { field: 'effective_from', type: 'date', required: true, label: 'Effective from', aliases: ['effective', 'effective from', 'start', 'from'], example: '2026-01-01', dict: 'Date the rate took effect. Back-dating is allowed HERE only — the admin screen rejects it (#10).' },
+    { field: 'effective_from', type: 'date', required: true, label: 'Effective from', aliases: ['effective', 'effective from', 'start', 'from'], example: '2026-01-01', dict: 'Date the rate took effect. Back-dating is allowed here only; the admin screen rejects it.' },
     { field: 'effective_to', type: 'date', required: false, label: 'Effective to', aliases: ['effective to', 'end', 'to', 'until'], example: '2026-06-30', dict: 'Optional end date (open-ended if blank).' },
   ],
 
@@ -78,8 +78,8 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
   // ── Back-dated commission flat rates (what the REP is paid per add-on / greenfield activation). ──
   'master_migration:commission_flat_rates': [
     { field: 'client_code', type: 'code', required: false, label: 'Client code', aliases: ['code', 'client code', 'client'], example: 'VF', dict: 'Client (by code). LEAVE BLANK for the global flat rate for this product type.' },
-    { field: 'product_type', type: 'code', required: true, label: 'Product type', aliases: ['product type', 'product_type', 'type', 'product'], example: 'tv', dict: 'Product-type catalogue key (tv, home_phone, greenfield_internet, …). Must already exist — an import never adds a type.' },
-    { field: 'amount', type: 'money', required: true, label: 'Amount', aliases: ['amount', 'rate', 'commission', 'flat rate'], example: '30.00', dict: 'Commission paid to the rep per activation (CAD, exact decimal). This is the REP stream — never a client billing rate (#3).' },
+    { field: 'product_type', type: 'code', required: true, label: 'Product type', aliases: ['product type', 'product_type', 'type', 'product'], example: 'tv', dict: 'Product-type catalogue key (tv, home_phone, greenfield_internet, …). It must already exist, because an import never adds a type.' },
+    { field: 'amount', type: 'money', required: true, label: 'Amount', aliases: ['amount', 'rate', 'commission', 'flat rate'], example: '30.00', dict: 'Commission paid to the rep per activation (CAD, exact decimal). This is what the rep is paid, never a client billing rate.' },
     { field: 'effective_from', type: 'date', required: true, label: 'Effective from', aliases: ['effective', 'effective from', 'start', 'from'], example: '2026-01-01', dict: 'Date the rate took effect. Back-dating is allowed HERE only (#10).' },
     { field: 'effective_to', type: 'date', required: false, label: 'Effective to', aliases: ['effective to', 'end', 'to', 'until'], example: '2026-12-31', dict: 'Optional end date (open-ended if blank).' },
   ],
@@ -98,10 +98,10 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
   'master_migration:sales': [
     { field: 'client_code', type: 'code', required: true, label: 'Client code', aliases: ['code', 'client code', 'client', 'partner'], example: 'VF', dict: 'Client (by code).' },
     { field: 'rep_code', type: 'code', required: true, label: 'Rep code', aliases: ['rep', 'rep code', 'distributor', 'agent', 'agent code'], example: 'RW-D-0001', dict: 'Rep (by code).' },
-    { field: 'product_types', type: 'text', required: true, label: 'Product type(s)', aliases: ['type', 'product type', 'product types', 'product', 'products', 'service', 'services'], example: 'internet,tv', dict: 'One or more product types on this household — "internet" or "internet,tv,home_phone". Names are matched loosely, so "Internet, TV" works.' },
+    { field: 'product_types', type: 'text', required: true, label: 'Product type(s)', aliases: ['type', 'product type', 'product types', 'product', 'products', 'service', 'services'], example: 'internet,tv', dict: 'One or more product types on this household, e.g. "internet" or "internet,tv,home_phone". Names are matched loosely, so "Internet, TV" works.' },
     { field: 'sale_date', type: 'date', required: true, label: 'Sale date', aliases: ['date', 'sale date', 'sold', 'order date'], example: '2025-03-12', dict: 'The sale date (reference; historical sales never enter a pay period).' },
     { field: 'activation_date', type: 'date', required: false, label: 'Activation date', aliases: ['activation', 'activation date', 'activated', 'install date'], example: '2025-03-20', dict: 'Reference only.' },
-    { field: 'billed_amount', type: 'money', required: true, label: 'Billed amount', aliases: ['amount', 'billed', 'billed amount', 'revenue', 'value'], example: '60.00', dict: 'The historical BILLED amount for the WHOLE row (business-aggregation reference; NOT rep commission, #3). Recorded once, on the base item — never split across products.' },
+    { field: 'billed_amount', type: 'money', required: true, label: 'Billed amount', aliases: ['amount', 'billed', 'billed amount', 'revenue', 'value'], example: '60.00', dict: 'The historical BILLED amount for the WHOLE row (business-aggregation reference; NOT rep commission, #3). Recorded once, on the base item, and never split across products.' },
     { field: 'customer_name', type: 'text', required: false, label: 'Customer', aliases: ['customer', 'name', 'subscriber', 'household'], example: 'Jane Doe', dict: 'Customer/household name (reference).' },
     { field: 'mpu_id', type: 'text', required: false, label: 'MPU ID', aliases: ['mpu', 'mpu id', 'house id'], example: 'MPU-1042', dict: 'Client identifier (reference).' },
     { field: 'is_greenfield', type: 'bool', required: false, label: 'Greenfield', aliases: ['greenfield', 'is greenfield', 'gf'], example: 'false', dict: 'true/false (reference flag). Yes/Y/1 are also accepted.' },
@@ -112,18 +112,18 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
   //    SALE-001a) fits on a single row. Address columns are optional (blank → '—') so a tier/clawback test
   //    sheet stays quick to write. No commission is written here — Pay Run freezes snapshots (#2/#5).
   'sales_entry:sales': [
-    { field: 'client_code', type: 'code', required: true, label: 'Client code', aliases: ['code', 'client code', 'client', 'partner'], example: 'VF', dict: 'Client (by code) — must already exist.' },
-    { field: 'rep_code', type: 'code', required: true, label: 'Rep code', aliases: ['rep', 'rep code', 'distributor', 'agent', 'agent code'], example: 'RW-D-0001', dict: 'Rep (by code) — must already exist and be active.' },
-    { field: 'product_types', type: 'text', required: true, label: 'Product types', aliases: ['products', 'product types', 'product type', 'type', 'services'], example: 'internet,tv', dict: 'Comma-separated product types on this sale (e.g. "internet" or "internet,tv,home_phone"). MUST include an internet/greenfield base — add-ons cannot be sold standalone (SALE-001a).' },
+    { field: 'client_code', type: 'code', required: true, label: 'Client code', aliases: ['code', 'client code', 'client', 'partner'], example: 'VF', dict: 'Client code. The client must already exist.' },
+    { field: 'rep_code', type: 'code', required: true, label: 'Rep code', aliases: ['rep', 'rep code', 'distributor', 'agent', 'agent code'], example: 'RW-D-0001', dict: 'Rep code. The rep must already exist and be active.' },
+    { field: 'product_types', type: 'text', required: true, label: 'Product types', aliases: ['products', 'product types', 'product type', 'type', 'services'], example: 'internet,tv', dict: 'Comma-separated product types on this sale (e.g. "internet" or "internet,tv,home_phone"). Must include an internet or greenfield base, because add-ons can’t be sold on their own.' },
     { field: 'sale_date', type: 'date', required: true, label: 'Sale date', aliases: ['date', 'sale date', 'sold', 'order date'], example: '2026-07-06', dict: 'YYYY-MM-DD. GOVERNS the pay period (#7).' },
     { field: 'customer_name', type: 'text', required: true, label: 'Customer', aliases: ['customer', 'name', 'subscriber', 'household'], example: 'Jane Doe', dict: 'Customer/household name. Ignored when the first/last columns are supplied (the name is derived from them).' },
     { field: 'customer_first_name', type: 'text', required: false, label: "Customer's first name", aliases: ['first name', 'first', 'given name', "customer's first name"], example: 'Jane', dict: 'Optional. The client bill prints first and last name as separate columns.' },
     { field: 'customer_last_name', type: 'text', required: false, label: "Customer's last name", aliases: ['last name', 'last', 'surname', 'family name', "customer's last name"], example: 'Doe', dict: 'Optional. Supplied with the first name, it becomes the customer name.' },
-    { field: 'activation_date', type: 'date', required: false, label: 'Activation date', aliases: ['activation', 'activation date', 'activated', 'install date'], example: '2026-07-10', dict: 'Reference only — drives no logic.' },
-    { field: 'street', type: 'text', required: false, label: 'Street', aliases: ['street', 'address', 'address 1'], example: '12 Main St', dict: 'Optional — blank becomes “—”.' },
-    { field: 'city', type: 'text', required: false, label: 'City', aliases: ['city', 'town'], example: 'Winnipeg', dict: 'Optional — blank becomes “—”.' },
-    { field: 'province_state', type: 'text', required: false, label: 'Province/State', aliases: ['province', 'state', 'province/state', 'region'], example: 'MB', dict: 'Optional — blank becomes “—”.' },
-    { field: 'postal_code', type: 'text', required: false, label: 'Postal code', aliases: ['postal', 'postal code', 'zip', 'zip code'], example: 'R3C 1A1', dict: 'Optional — blank becomes “—”.' },
+    { field: 'activation_date', type: 'date', required: false, label: 'Activation date', aliases: ['activation', 'activation date', 'activated', 'install date'], example: '2026-07-10', dict: 'For reference only. It drives no logic.' },
+    { field: 'street', type: 'text', required: false, label: 'Street', aliases: ['street', 'address', 'address 1'], example: '12 Main St', dict: 'Optional. Shows as a dash when left blank.' },
+    { field: 'city', type: 'text', required: false, label: 'City', aliases: ['city', 'town'], example: 'Winnipeg', dict: 'Optional. Shows as a dash when left blank.' },
+    { field: 'province_state', type: 'text', required: false, label: 'Province/State', aliases: ['province', 'state', 'province/state', 'region'], example: 'MB', dict: 'Optional. Shows as a dash when left blank.' },
+    { field: 'postal_code', type: 'text', required: false, label: 'Postal code', aliases: ['postal', 'postal code', 'zip', 'zip code'], example: 'R3C 1A1', dict: 'Optional. Shows as a dash when left blank.' },
     { field: 'mpu_id', type: 'text', required: false, label: 'MPU ID', aliases: ['mpu', 'mpu id', 'house id', 'unit id'], example: 'MPU-1042', dict: 'Client house/unit identifier (also disambiguates the Sale ID).' },
     { field: 'is_greenfield', type: 'bool', required: false, label: 'Greenfield', aliases: ['greenfield', 'is greenfield', 'gf'], example: 'false', dict: 'true/false (Yes/Y/1 also accepted). Greenfield internet is flat-rated and EXCLUDED from the tier tally (#9).' },
     { field: 'status', type: 'text', required: false, label: 'Status', aliases: ['status', 'state', 'validated'], example: 'entered', dict: 'entered (default) or validated. "validated" also runs the entered→validated transition at commit.' },

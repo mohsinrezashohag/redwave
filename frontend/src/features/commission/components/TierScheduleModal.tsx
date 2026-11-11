@@ -82,8 +82,8 @@ export function TierScheduleModal({
         <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
           <Banner tone="info" title="Effective-dated">
             A future-dated schedule <strong>supersedes the pending one</strong> and <strong>bounds the
-            current</strong> — within its own scope. Closed periods are never recomputed; schedules
-            can&rsquo;t be edited — add a new one. The engine determines tiers at runtime; this only stores
+            current</strong> within its own scope. Closed periods are never recalculated. Schedules
+            can&rsquo;t be edited, so add a new one instead. The engine determines tiers at runtime; this only stores
             the schedule.
           </Banner>
 
@@ -117,7 +117,7 @@ export function TierScheduleModal({
               control={control}
               name="effective_to"
               render={({ field }) => (
-                <FormField label="Effective to" help="Ends after the chosen period — or open-ended.">
+                <FormField label="Effective to" help="Ends after the chosen period, or leave open-ended.">
                   <PayPeriodSelect value={field.value} onChange={field.onChange} boundary="end" allowOpenEnded aria-label="Effective to period" />
                 </FormField>
               )}

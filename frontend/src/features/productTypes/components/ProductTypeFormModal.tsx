@@ -79,7 +79,7 @@ function CreateForm({ onClose }: { onClose: () => void }) {
     <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
       <Banner tone="info" title="Standard add-on">
         A new type is billable and flat-rated, but does NOT count toward the internet tier tally and is not
-        greenfield — that behaviour is reserved for the core types and can’t be changed.
+        greenfield. That behaviour is reserved for the core types and can’t be changed.
       </Banner>
       <FormField label="Key" required error={errors.key?.message} help="Immutable identifier, e.g. satellite.">
         <Input {...register('key')} placeholder="satellite" />
@@ -144,7 +144,7 @@ function EditForm({ type, onClose }: { type: ProductType; onClose: () => void })
 
   return (
     <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
-      <FormField label="Key" help="Immutable — set at creation.">
+      <FormField label="Key" help="Set when the type is created and can’t be changed.">
         <span className={styles.readonlyRow}>
           <Badge tone="neutral">{type.key}</Badge>
           <Badge tone={behaviourTone(type.behaviour)}>{behaviourLabel(type.behaviour)}</Badge>

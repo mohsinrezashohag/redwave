@@ -66,14 +66,14 @@ export function MappingEditor({ batch, kind }: { batch: ImportBatch; kind?: Kind
   return (
     <Card title="Column mapping">
       <p className={styles.hint}>
-        This is the mapping the server applied to these rows. Adjust any mismatch and Apply to re-classify —
-        a field left “not mapped” is simply absent from every row.
+        This is the mapping the server applied to these rows. Adjust any mismatch and click Apply to re-check the rows.
+        A field left “Not mapped” is left out of every row.
       </p>
       <div className={styles.mapGrid}>
         {fields.map((fld) => (
           <FormField key={fld.field} label={`${fld.label}${fld.required ? ' *' : ''}`}>
             <Select
-              options={[{ value: NONE, label: '— not mapped —' }, ...sourceColumns.map((c) => ({ value: c, label: c }))]}
+              options={[{ value: NONE, label: 'Not mapped' }, ...sourceColumns.map((c) => ({ value: c, label: c }))]}
               value={mapping[fld.field] ?? NONE}
               onValueChange={(v) => setMapping((m) => ({ ...m, [fld.field]: v }))}
             />

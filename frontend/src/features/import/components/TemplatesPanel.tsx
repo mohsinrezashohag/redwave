@@ -54,8 +54,8 @@ export function TemplatesPanel() {
   return (
     <Card title="Download templates">
       <p className={styles.hint}>
-        Each template has the exact expected columns + example rows. Import is mapping-driven, so your real layout still works —
-        these are starting points (VF / RF / CTI report formats are sensible defaults to refine from a real file).
+        Each template has the expected columns and example rows. Columns are matched to your file, so your real layout still works.
+        These are starting points; the VF, RF and CTI report formats are sensible defaults to refine from a real file.
       </p>
       {GROUPS.map((group) => {
         const defs = TEMPLATES.filter((t) => t.group === group);

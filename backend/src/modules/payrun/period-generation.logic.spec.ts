@@ -85,7 +85,7 @@ describe('a bad shape fails loudly rather than generating a broken calendar', ()
 
   it('rejects a NEGATIVE payday offset — a rep is never paid before the period closes', () => {
     expect(validatePeriodShape({ ...PAY, paydayOffsetDays: -1 })).toContainEqual(
-      expect.stringContaining('payday_offset_days'),
+      expect.stringContaining('payday offset'),
     );
   });
 

@@ -101,7 +101,7 @@ export class IncentiveService {
     }
     const referenced = await this.prisma.saleItem.count({ where: { incentive_id: id } });
     if (referenced > 0) {
-      throw new UnprocessableEntityException('This incentive has been applied to paid items — end it instead of deleting');
+      throw new UnprocessableEntityException('This incentive has been applied to paid items. End it instead of deleting it.');
     }
     await this.prisma.incentive.delete({ where: { id } });
     await this.audit.log({

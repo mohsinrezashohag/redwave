@@ -12,7 +12,7 @@ describe('tieOutStatement — billing tie-out (SRS §12)', () => {
     const r = tieOutStatement({ frozenTotal: '140.00', lineTotals: ['50.00', '90.00'], liveTotal: '160.00' });
     expect(r.ok).toBe(false);
     expect(r.statement_matches_live).toBe(false);
-    expect(r.discrepancies.join(' ')).toMatch(/stale/i);
+    expect(r.discrepancies.join(' ')).toMatch(/out of date/i);
   });
 
   it('flags total ≠ sum of lines', () => {

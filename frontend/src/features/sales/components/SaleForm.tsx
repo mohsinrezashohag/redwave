@@ -264,7 +264,7 @@ export function SaleForm() {
 
         {missingBase && (
           <Banner tone="warning" title="Internet is required">
-            A sale must include an internet activation as its base — TV, Home Phone and other add-ons
+            A sale must include an internet activation as its base. TV, Home Phone and other add-ons
             can&rsquo;t be sold on their own. Add an internet product to continue.
           </Banner>
         )}

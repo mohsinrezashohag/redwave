@@ -75,7 +75,7 @@ export function buildPriceChart(
         sample.rate_kind === 'bundle_bonus'
           ? sample.bundle_product_types.map(productTypeLabel).join(' + ') || 'Bundle'
           : KIND_LABEL[sample.rate_kind],
-      detail: sample.rate_kind === 'bundle_bonus' ? 'Bundle bonus — applies when all types are on one sale' : 'Client-wide',
+      detail: sample.rate_kind === 'bundle_bonus' ? 'Bundle bonus: applies when all types are on one sale' : 'Client-wide',
       rateKind: sample.rate_kind,
       current: pick(list, 'current'),
       pending: pick(list, 'pending'),

@@ -239,7 +239,7 @@ export class RepsService {
     });
     if (existing) {
       throw new ConflictException(
-        'rep_code already used — codes are never reused, including terminated reps',
+        'This rep code is already used. Codes are never reused, including those of terminated reps.',
       );
     }
 

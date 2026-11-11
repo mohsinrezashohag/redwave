@@ -59,11 +59,11 @@ export function BulkGenerateModal({ open, onClose, periods, presetPeriodId }: Pr
           if (data.failed.length > 0) {
             toast({
               title: `${data.generated.length} issued, ${data.failed.length} failed`,
-              description: 'Fix the rates below, then run again — issued statements are skipped.',
+              description: 'Fix the rates below, then run again. Issued statements are skipped.',
               tone: 'warning',
             });
           } else if (data.generated.length === 0) {
-            toast({ title: 'Nothing to issue — every client already has a statement for this week', tone: 'info' });
+            toast({ title: 'Nothing to issue. Every client already has a statement for this week.', tone: 'info' });
           } else {
             toast({ title: `${data.generated.length} statements issued`, tone: 'success' });
           }
@@ -107,13 +107,13 @@ export function BulkGenerateModal({ open, onClose, periods, presetPeriodId }: Pr
                 onValueChange={setPeriodId}
                 options={periods.map((p) => ({
                   value: p.id,
-                  label: `Bill ${p.period_number} — ${displayDate(p.start_date)} to ${displayDate(p.end_date)}`,
+                  label: `Bill ${p.period_number}: ${displayDate(p.start_date)} to ${displayDate(p.end_date)}`,
                 }))}
               />
             </FormField>
             <p className={styles.note}>
               Issues a statement for <strong>every active client</strong> with sales in this week. A client
-              that already has a statement is <strong>skipped</strong> — nothing is renumbered or replaced.
+              that already has a statement is <strong>skipped</strong>. Nothing is renumbered or replaced.
               If one client is missing a billing rate, it fails on its own and the others still issue.
             </p>
           </>
@@ -123,7 +123,7 @@ export function BulkGenerateModal({ open, onClose, periods, presetPeriodId }: Pr
           <div className={styles.bulkResult}>
             <Banner
               tone={result.failed.length > 0 ? 'warning' : 'success'}
-              title={`Bill ${result.period_number} — ${result.generated.length} issued, ${result.skipped.length} skipped, ${result.failed.length} failed`}
+              title={`Bill ${result.period_number}: ${result.generated.length} issued, ${result.skipped.length} skipped, ${result.failed.length} failed`}
             >
               {result.total_clients} active {result.total_clients === 1 ? 'client' : 'clients'} considered.
             </Banner>
@@ -136,7 +136,7 @@ export function BulkGenerateModal({ open, onClose, periods, presetPeriodId }: Pr
                 <ul className={styles.bulkList}>
                   {result.generated.map((g) => (
                     <li key={g.client_id}>
-                      <Link to={`/billing/${g.statement_id}`}>{statementNo(g.statement_number)}</Link> — {g.client_code}
+                      <Link to={`/billing/${g.statement_id}`}>{statementNo(g.statement_number)}</Link> ({g.client_code})
                     </li>
                   ))}
                 </ul>
@@ -146,12 +146,12 @@ export function BulkGenerateModal({ open, onClose, periods, presetPeriodId }: Pr
             {result.skipped.length > 0 && (
               <section>
                 <h4 className={styles.bulkHeading}>
-                  <SkipForward size={15} aria-hidden /> Already issued — skipped
+                  <SkipForward size={15} aria-hidden /> Already issued (skipped)
                 </h4>
                 <ul className={styles.bulkList}>
                   {result.skipped.map((s) => (
                     <li key={s.client_id}>
-                      {s.client_code} —{' '}
+                      {s.client_code}:{' '}
                       {s.statement_number === null ? 'existing statement' : statementNo(s.statement_number)}
                     </li>
                   ))}
@@ -162,7 +162,7 @@ export function BulkGenerateModal({ open, onClose, periods, presetPeriodId }: Pr
             {result.failed.length > 0 && (
               <section>
                 <h4 className={styles.bulkHeading}>
-                  <AlertTriangle size={15} aria-hidden /> Failed — nothing was issued for these
+                  <AlertTriangle size={15} aria-hidden /> Failed: nothing was issued for these
                 </h4>
                 {result.failed.map((f) => {
                   const unpriced = unpricedOf(f);
@@ -171,19 +171,19 @@ export function BulkGenerateModal({ open, onClose, periods, presetPeriodId }: Pr
                       <strong>{f.client_code}</strong>
                       {unpriced.length > 0 ? (
                         <>
-                          {' '}— add a billing rate in{' '}
+                          : add a billing rate in{' '}
                           <Link to={`/admin/clients/${f.client_id}`}>Clients &amp; Products</Link>, then run again:
                           <ul className={styles.unpricedList}>
                             {unpriced.map((u, i) => (
                               <li key={`${u.product_id}-${i}`}>
-                                <code>{u.product_name}</code> — no rate effective on{' '}
+                                <code>{u.product_name}</code>: no rate effective on{' '}
                                 <code>{displayDate(u.sale_date)}</code>
                               </li>
                             ))}
                           </ul>
                         </>
                       ) : (
-                        <span className={styles.subtle}> — {f.message}</span>
+                        <span className={styles.subtle}>: {f.message}</span>
                       )}
                     </div>
                   );

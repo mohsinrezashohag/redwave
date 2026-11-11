@@ -28,7 +28,7 @@ export default function ShowcasePage() {
       </Banner>
 
       <ShowcaseSection
-        title="Light &amp; dark — co-equal"
+        title="Light and dark themes"
         description="Same components, swapped token values, zero component changes (design-system §3.5)."
       >
         <ThemePanels>
@@ -38,7 +38,7 @@ export default function ShowcasePage() {
 
       <ShowcaseSection
         title="Interactive &amp; overlays"
-        description="Modals, drawers, selects, menus, toasts and tooltips portal to the document root, so they follow the global theme — toggle the top bar to see them in both."
+        description="Modals, drawers, selects, menus, toasts and tooltips portal to the document root, so they follow the global theme. Use the toggle in the top bar to see both."
       >
         <Interactive />
       </ShowcaseSection>

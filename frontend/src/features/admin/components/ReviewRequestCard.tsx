@@ -109,8 +109,8 @@ export function ReviewRequestCard({ request }: { request: ReviewRequest }) {
           </>
         }
       >
-        The proposed changes to <strong>{request.subject.full_name}</strong>&rsquo;s profile will be discarded
-        — their profile stays as it is, and they&rsquo;ll be notified.
+        The proposed changes to <strong>{request.subject.full_name}</strong>&rsquo;s profile will be discarded.
+        Their profile stays as it is, and they&rsquo;ll be notified.
       </Modal>
     </Card>
   );

@@ -41,7 +41,7 @@ export class BasePricesService {
 
     if (clientId === null && dto.prices.length > 0) {
       throw new UnprocessableEntityException(
-        'the global setting takes a default price only — set per-product prices on each client',
+        'The global setting takes a default price only. Set per-product prices on each client.',
       );
     }
     const ids = dto.prices.map((p) => p.product_id);
@@ -63,7 +63,7 @@ export class BasePricesService {
         }
         if (p.product_type_ref.behaviour !== 'tiered') {
           throw new UnprocessableEntityException(
-            `'${p.name}' is not an internet product — greenfield, TV, home phone and add-ons are priced under Flat rates`,
+            `'${p.name}' is not an internet product. Greenfield, TV, home phone and add-ons are priced under Flat rates.`,
           );
         }
       }

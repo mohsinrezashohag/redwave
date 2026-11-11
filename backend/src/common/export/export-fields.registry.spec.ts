@@ -105,7 +105,7 @@ describe('a layout must stay renderable', () => {
       { field: 'channel' }, // a text column wedged into the money block
       ...layout.slice(moneyStart + 1).filter((c) => c.field !== 'channel'),
     ];
-    expect(validateLayout('payroll', broken).some((e) => e.includes('contiguous'))).toBe(true);
+    expect(validateLayout('payroll', broken).some((e) => e.includes('stay next to each other'))).toBe(true);
   });
 
   // The sales/expense exports are generated client-side with no formulas, so ordering is free.

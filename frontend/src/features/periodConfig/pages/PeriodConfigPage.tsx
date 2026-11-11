@@ -116,7 +116,7 @@ export default function PeriodConfigPage() {
     <div className={styles.page}>
       <PageHeader
         title="Period calendars"
-        subtitle="Define the pay and billing cycles. Changes apply to future periods only — a period holding a finalized pay run or an issued document is never moved."
+        subtitle="Define the pay and billing cycles. Changes apply to future periods only. A period with a finalized pay run or an issued document is never moved."
         actions={
           canEdit ? (
             <Button variant="primary" leftIcon={<CalendarCog size={16} />} onClick={() => setModalOpen(true)}>
@@ -139,7 +139,7 @@ export default function PeriodConfigPage() {
           onRetry={() => configs.refetch()}
           emptyNode={
             <p className={styles.note}>
-              No custom calendars — both cycles use the seeded defaults: pay periods run Sunday–Saturday
+              No custom calendars. Both cycles use the defaults: pay periods run Sunday–Saturday
               every 14 days with payday 13 days after close; billing weeks run Monday–Sunday.
             </p>
           }
@@ -203,14 +203,14 @@ export default function PeriodConfigPage() {
         </div>
 
         {blocked.length > 0 && (
-          <Banner tone="danger" title="Cannot regenerate — these periods are frozen">
+          <Banner tone="danger" title="Cannot regenerate: these periods are frozen">
             Each of these holds a finalized pay run or an issued document. Moving its boundary would break
             a record that is already committed, so nothing was changed.
             <ul className={styles.blockedList}>
               {blocked.map((b) => (
                 <li key={b.period_number}>
                   <strong>Period {b.period_number}</strong> ({displayDate(b.start_date)} –{' '}
-                  {displayDate(b.end_date)}) — {b.reason}
+                  {displayDate(b.end_date)}): {b.reason}
                 </li>
               ))}
             </ul>
@@ -296,8 +296,8 @@ export default function PeriodConfigPage() {
               </TBody>
             </Table>
             <p className={styles.note}>
-              A week marked <em>crosses the boundary</em> is split across two pay periods. This is expected
-              — the calendars have different anchors and lengths — so a pay period will never reconcile
+              A week marked <em>crosses the boundary</em> is split across two pay periods. This is expected,
+              because the calendars start on different days and have different lengths, so a pay period will never line up
               exactly against a billing week.
             </p>
           </>

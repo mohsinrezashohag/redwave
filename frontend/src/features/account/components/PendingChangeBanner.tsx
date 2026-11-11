@@ -13,7 +13,7 @@ export function PendingChangeBanner({ request }: { request: PendingRequestSummar
   const entries = Object.entries(request.proposed_changes).filter(([, v]) => v !== undefined && v !== null);
   return (
     <Banner tone="info" title="Profile change pending review">
-      You submitted these changes — they are awaiting a reviewer and are <strong>not applied yet</strong>:
+      You submitted these changes. They are awaiting a reviewer and are <strong>not applied yet</strong>:
       <ul className={styles.pendingList}>
         {entries.map(([key, value]) => (
           <li key={key} className={styles.pendingItem}>

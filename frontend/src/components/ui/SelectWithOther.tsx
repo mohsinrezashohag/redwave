@@ -61,7 +61,7 @@ export function SelectWithOther({
           placeholder={otherPlaceholder}
           value={otherText}
           disabled={disabled}
-          aria-label="Other — specify"
+          aria-label="Other (please specify)"
           onChange={(e) => onChange({ value: otherValue, other_text: e.target.value })}
         />
       )}

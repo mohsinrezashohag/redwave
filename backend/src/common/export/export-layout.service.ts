@@ -89,7 +89,7 @@ export class ExportLayoutService {
   async save(dto: SaveExportLayoutDto, user: AuthUser) {
     if (!isReportType(dto.report_type)) {
       throw new UnprocessableEntityException(
-        `unknown report type '${dto.report_type}' — expected one of ${REPORT_TYPES.join(', ')}`,
+        `Unknown report type '${dto.report_type}'. Expected one of: ${REPORT_TYPES.join(', ')}.`,
       );
     }
     const columns: LayoutColumn[] = dto.columns.map((c) => ({ field: c.field, header: c.header }));

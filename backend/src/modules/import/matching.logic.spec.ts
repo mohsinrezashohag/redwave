@@ -84,7 +84,7 @@ describe('classifyHistoricalSaleRow (reference-only)', () => {
   it('no product for the client+type → error (import products first)', () => {
     const res = classifyHistoricalSaleRow(good, { ...ctx, missingProductTypes: ['internet'] });
     expect(res.match_status).toBe('error');
-    expect(res.issue).toContain('import products first');
+    expect(res.issue).toContain('Import products first');
   });
   it('bad billed_amount → error', () => {
     expect(classifyHistoricalSaleRow({ ...good, billed_amount: 'x' }, ctx).match_status).toBe('error');
@@ -104,7 +104,7 @@ describe('classifyHistoricalSaleRow (reference-only)', () => {
     const res = classifyHistoricalSaleRow(row, { ...ctx, unknownProductTypes: ['Fibre Optic'], resolvedCount: 0, suggestion: null });
     expect(res.match_status).toBe('error');
     expect(res.issue).toContain('unknown product type');
-    expect(res.issue).not.toContain('import products first');
+    expect(res.issue).not.toContain('Import products first');
   });
   // ── create_missing: opt-in auto-creation of referenced master data (migration only) ──
   describe('create_missing', () => {
@@ -146,7 +146,7 @@ describe('classifyHistoricalSaleRow (reference-only)', () => {
   it('a partially resolvable cell suggests the canonical form', () => {
     const row = { ...good, product_types: 'Internet, Fibre Optic' };
     const res = classifyHistoricalSaleRow(row, { ...ctx, unknownProductTypes: ['Fibre Optic'], suggestion: 'internet' });
-    expect(res.issue).toContain('did you mean internet?');
+    expect(res.issue).toContain('Did you mean internet?');
   });
 });
 
