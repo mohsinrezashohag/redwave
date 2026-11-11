@@ -53,7 +53,7 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
 
   const today = todayIso();
   const { control, register, handleSubmit, formState } = useForm<RepFormValues>({
-    resolver: zodResolver(repFormSchema(mode, today)),
+    resolver: zodResolver(repFormSchema(mode, today, !!editing?.banking?.account_masked)),
     values: repFormDefaults(editing),
   });
   const errors = formState.errors;
@@ -66,7 +66,7 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
       onClose();
     };
     if (editing) {
-      update.mutate({ id: editing.id, body: toUpdateBody(values) }, { onSuccess: (r) => done(r, 'Rep updated'), onError });
+      update.mutate({ id: editing.id, body: toUpdateBody(values, !!editing?.banking) }, { onSuccess: (r) => done(r, 'Rep updated'), onError });
     } else {
       create.mutate(toCreateBody(values), { onSuccess: (r) => done(r, 'Rep created'), onError });
     }
@@ -160,6 +160,29 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
             {select('address_province', 'Province', PROVINCE_OPTIONS)}
             <FormField label="Postal code" error={errors.address_postal?.message}>
               <PrivateInput {...register('address_postal')} placeholder="R3G 0T7" className="mono" />
+            </FormField>
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <h3 className={styles.sectionTitle}>Banking</h3>
+          <div className={styles.grid2}>
+            <FormField label="Institution no." error={errors.bank_institution?.message} help="3 digits, e.g. 001">
+              <PrivateInput {...register('bank_institution')} inputMode="numeric" placeholder="001" className="mono" />
+            </FormField>
+            <FormField label="Transit no." error={errors.bank_transit?.message} help="5 digits, e.g. 12345">
+              <PrivateInput {...register('bank_transit')} inputMode="numeric" placeholder="12345" className="mono" />
+            </FormField>
+            <FormField
+              label="Account no."
+              error={errors.bank_account?.message}
+              help={
+                editing?.banking?.account_masked
+                  ? `On file (${editing.banking.account_masked}). Leave blank to keep it, or type a new one to replace it.`
+                  : '7 to 12 digits. Saved encrypted; only HR can reveal it. Upload the void cheque under Documents.'
+              }
+            >
+              <PrivateInput {...register('bank_account')} inputMode="numeric" placeholder="1234567" className="mono" />
             </FormField>
           </div>
         </section>

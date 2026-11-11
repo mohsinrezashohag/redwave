@@ -65,3 +65,35 @@ describe('form → body', () => {
     expect(repFormDefaults({ sin_masked: '••• ••• 286' } as never).sin).toBe('');
   });
 });
+
+describe('banking (2026-11-12)', () => {
+  const bankErrors = (v: RepFormValues, accountOnFile = false) => {
+    const r = repFormSchema('edit', TODAY, accountOnFile).safeParse(v);
+    return r.success ? {} : Object.fromEntries(r.error.issues.map((i) => [i.path.join('.'), i.message]));
+  };
+
+  it('checks the digit counts the server enforces', () => {
+    const e = bankErrors(base({ bank_institution: '01', bank_transit: '1234', bank_account: '123' }));
+    expect(Object.keys(e).sort()).toEqual(['bank_account', 'bank_institution', 'bank_transit']);
+    expect(bankErrors(base({ bank_institution: '001', bank_transit: '12-345', bank_account: '1234 567' }))).toEqual({});
+  });
+
+  it('is all-or-nothing; a blank account is fine only when one is on file', () => {
+    expect(bankErrors(base({ bank_institution: '001' }))).toHaveProperty('bank_transit');
+    expect(bankErrors(base({ bank_institution: '001', bank_transit: '12345' }))).toHaveProperty('bank_account');
+    expect(bankErrors(base({ bank_institution: '001', bank_transit: '12345' }), true)).toEqual({});
+  });
+
+  it('builds the body: omitted, kept, replaced or cleared', () => {
+    expect(toCreateBody(base())).not.toHaveProperty('banking');
+    expect(toUpdateBody(base({ bank_institution: '001', bank_transit: '12345' }), true)).toMatchObject({
+      banking: { institution_no: '001', transit_no: '12345' },
+    });
+    expect((toUpdateBody(base({ bank_institution: '001', bank_transit: '12345' }), true) as { banking: object }).banking).not.toHaveProperty('account_no');
+    expect(toUpdateBody(base({ bank_institution: '001', bank_transit: '12345', bank_account: '1234567' }))).toMatchObject({
+      banking: { account_no: '1234567' },
+    });
+    expect(toUpdateBody(base(), true)).toMatchObject({ banking: null });
+    expect(toUpdateBody(base(), false)).not.toHaveProperty('banking');
+  });
+});

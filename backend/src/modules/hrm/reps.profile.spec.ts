@@ -7,6 +7,7 @@
  *   - Every reveal is audited; no audit payload ever contains a PII value.
  */
 import { ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { RepsService, toRepView } from './reps.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 
@@ -183,5 +184,70 @@ describe('revealing the SIN', () => {
     prisma.rep.findUnique.mockResolvedValue({ id: 'r1', sin_ciphertext: null });
     await expect(service.revealSin('r1', 'actor-1')).resolves.toEqual({ sin: null });
     expect(audit.log).not.toHaveBeenCalled();
+  });
+});
+
+// ── Banking (client request 2026-11-12): routing codes plain, ACCOUNT encrypted + masked ──────────────
+describe('banking', () => {
+  const BANK = { institution_no: '001', transit_no: '12345', account_no: '1234567' };
+
+  it('create ENCRYPTS the account, keeps only its last 4, and the response shows it masked', async () => {
+    const { service, prisma } = make();
+    const res = (await service.create({ ...newRepDto, banking: BANK }, EDITOR)) as Record<string, unknown>;
+    const pd = written(prisma.rep.create).payment_details as Record<string, string>;
+    expect(pd).toMatchObject({ institution_no: '001', transit_no: '12345', account_last4: '4567' });
+    expect(pd.account_ciphertext).toMatch(/^v1\./);
+    expect(JSON.stringify(pd)).not.toContain('1234567');
+    expect(res.banking).toEqual({ institution_no: '001', transit_no: '12345', account_masked: '••••4567' });
+    expect(JSON.stringify(res)).not.toContain('v1.');
+  });
+
+  it('a blank account on edit KEEPS the one on file; a new one replaces it', async () => {
+    const { service, prisma } = make();
+    prisma.rep.findUnique.mockResolvedValue(
+      row({ payment_details: { institution_no: '001', transit_no: '12345', account_last4: '9999', account_ciphertext: 'v1.keep' } }),
+    );
+    await service.update('r1', { banking: { institution_no: '002', transit_no: '54321', account_no: '' } }, EDITOR);
+    expect(written(prisma.rep.update).payment_details).toEqual({
+      institution_no: '002', transit_no: '54321', account_last4: '9999', account_ciphertext: 'v1.keep',
+    });
+  });
+
+  it('a raw payment_details write can never set or wipe the banking keys (no clear-text account)', async () => {
+    const { service, prisma } = make();
+    prisma.rep.findUnique.mockResolvedValue(
+      row({ payment_details: { institution_no: '001', transit_no: '12345', account_last4: '9999', account_ciphertext: 'v1.keep' } }),
+    );
+    await service.update('r1', { payment_details: { note: 'e-transfer ok', account_ciphertext: 'PLAIN-1234567' } }, EDITOR);
+    expect(written(prisma.rep.update).payment_details).toEqual({
+      note: 'e-transfer ok', institution_no: '001', transit_no: '12345', account_last4: '9999', account_ciphertext: 'v1.keep',
+    });
+  });
+
+  it('banking: null clears it; bad numbers are refused with 422', async () => {
+    const { service, prisma } = make();
+    prisma.rep.findUnique.mockResolvedValue(row({ payment_details: { institution_no: '001', transit_no: '12345' } }));
+    await service.update('r1', { banking: null }, EDITOR);
+    expect(written(prisma.rep.update).payment_details).toBe(Prisma.DbNull);
+    for (const bad of [{ ...BANK, institution_no: '01' }, { ...BANK, transit_no: '1234' }, { ...BANK, account_no: '123' }]) {
+      await expect(service.create({ ...newRepDto, banking: bad }, EDITOR)).rejects.toBeInstanceOf(UnprocessableEntityException);
+    }
+  });
+
+  it('view-only callers get no banking; the rep’s own view gets it masked', () => {
+    const r = row({ payment_details: { institution_no: '001', transit_no: '12345', account_last4: '4567', account_ciphertext: 'v1.x' } });
+    expect((toRepView(r, false) as Record<string, unknown>).banking).toBeNull();
+    expect((toRepView(r, true) as Record<string, unknown>).banking).toEqual({ institution_no: '001', transit_no: '12345', account_masked: '••••4567' });
+  });
+
+  it('reveal decrypts what create encrypted and AUDITS without the value', async () => {
+    const { service, prisma, audit } = make();
+    await service.create({ ...newRepDto, banking: BANK }, EDITOR);
+    const pd = written(prisma.rep.create).payment_details;
+    prisma.rep.findUnique.mockResolvedValue({ id: 'r1', payment_details: pd });
+    audit.log.mockClear();
+    await expect(service.revealAccount('r1', 'actor-1')).resolves.toEqual({ account_no: '1234567' });
+    expect(audit.log).toHaveBeenCalledWith({ actorId: 'actor-1', entityType: 'reps', entityId: 'r1', action: 'reveal_account' });
+    expect(JSON.stringify(audit.log.mock.calls)).not.toContain('1234567');
   });
 });

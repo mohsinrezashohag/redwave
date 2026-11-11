@@ -91,6 +91,33 @@ export class RepResponse {
     description: 'Masked SIN (last 3 digits) — null unless hrm:edit. Use POST …/sin/reveal for the full value.',
   })
   sin_masked!: string | null;
+
+  @ApiProperty({
+    type: () => RepBankingResponse,
+    nullable: true,
+    description:
+      "Direct-deposit banking, account MASKED. null unless hrm:edit (or the rep's own profile). " +
+      'Reveal via POST /v1/reps/{id}/banking/reveal.',
+  })
+  banking!: RepBankingResponse | null;
+}
+
+/** Banking as a response carries it: routing codes + the MASKED account. Never the account itself. */
+export class RepBankingResponse {
+  @ApiProperty({ example: '001' })
+  institution_no!: string;
+
+  @ApiProperty({ type: String, nullable: true, example: '12345' })
+  transit_no!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '••••4567' })
+  account_masked!: string | null;
+}
+
+/** POST /v1/reps/{id}/banking/reveal (hrm:edit; every call audited). */
+export class RevealAccountResponse {
+  @ApiProperty({ type: String, nullable: true, example: '1234567' })
+  account_no!: string | null;
 }
 
 /** A rep's OWN profile (GET /v1/account/rep-profile) — the rep view plus their field manager's name. */
@@ -129,6 +156,14 @@ export class RepDocumentResponse {
 
   @ApiProperty({ type: String, format: 'date-time' })
   uploaded_at!: string;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: "When the document stops being valid (permits, PR card, driver's licence, passport).",
+  })
+  expires_on!: string | null;
 }
 
 export class RepEquipmentResponse {

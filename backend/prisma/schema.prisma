@@ -586,6 +586,8 @@ model RepDocument {
   doc_type    String
   file_url    String
   uploaded_at DateTime @default(now())
+  /// Permits, PR card, driver's licence, passport: when it stops being valid (2026-11-12).
+  expires_on  DateTime? @db.Date
 
   @@map("rep_documents")
 }

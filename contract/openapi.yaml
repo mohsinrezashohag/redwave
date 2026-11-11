@@ -2400,6 +2400,34 @@ paths:
       security: *a105
       summary: Reveal a rep's SIN
       tags: *a106
+  /v1/reps/{id}/banking/reveal:
+    post:
+      description: Requires hrm:edit. Decrypts and returns the account number; EVERY
+        call writes a reveal_account audit row (the value itself is never
+        logged). 503 without PII_ENCRYPTION_KEY. null when none is on file.
+      operationId: RepsController_revealAccount_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevealAccountResponse"
+        "400": *a99
+        "401": *a100
+        "403": *a101
+        "404": *a102
+        "409": *a103
+        "422": *a104
+      security: *a105
+      summary: Reveal a rep's bank account number
+      tags: *a106
   /v1/reps/{id}/documents:
     get:
       description: Requires hrm:view. file_url shown only with hrm:edit.
@@ -2450,6 +2478,19 @@ paths:
                   format: binary
                 doc_type:
                   type: string
+                  enum:
+                    - banking
+                    - headshot
+                    - work_permit
+                    - study_permit
+                    - pr_card
+                    - drivers_licence
+                    - passport
+                    - contract
+                    - other
+                expires_on:
+                  type: string
+                  example: 2027-06-30
       responses:
         "201":
           description: ""
@@ -10502,6 +10543,24 @@ components:
         is_active:
           type: boolean
           description: Set false to deactivate (soft — history preserved).
+    RepBankingResponse:
+      type: object
+      properties:
+        institution_no:
+          type: string
+          example: "001"
+        transit_no:
+          type: string
+          nullable: true
+          example: "12345"
+        account_masked:
+          type: string
+          nullable: true
+          example: ••••4567
+      required:
+        - institution_no
+        - transit_no
+        - account_masked
     RepResponse:
       type: object
       properties:
@@ -10588,6 +10647,14 @@ components:
           example: ••• ••• 286
           description: Masked SIN (last 3 digits) — null unless hrm:edit. Use POST
             …/sin/reveal for the full value.
+        banking:
+          nullable: true
+          description: Direct-deposit banking, account MASKED. null unless hrm:edit (or
+            the rep's own profile). Reveal via POST
+            /v1/reps/{id}/banking/reveal.
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/RepBankingResponse"
       required:
         - id
         - rep_code
@@ -10611,6 +10678,7 @@ components:
         - tshirt_size
         - sin_on_file
         - sin_masked
+        - banking
     RepPageResponse:
       type: object
       properties:
@@ -10623,6 +10691,25 @@ components:
       required:
         - data
         - meta
+    RepBankingDto:
+      type: object
+      properties:
+        institution_no:
+          type: string
+          example: "001"
+          description: Institution number (3 digits).
+        transit_no:
+          type: string
+          example: "12345"
+          description: Transit (branch) number (5 digits).
+        account_no:
+          type: string
+          example: "1234567"
+          description: Account number (7–12 digits). WRITE-ONLY; blank on edit keeps the
+            one on file.
+      required:
+        - institution_no
+        - transit_no
     CreateRepDto:
       type: object
       properties:
@@ -10673,6 +10760,14 @@ components:
           type: string
           enum: *a371
           nullable: true
+        banking:
+          nullable: true
+          description: Direct-deposit banking (2026-11-12). PII — hrm:edit. The ACCOUNT
+            number is write-only and stored encrypted; leave it blank on edit to
+            keep the one on file. null clears banking.
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/RepBankingDto"
         rep_code:
           type: string
           example: Redwave07
@@ -10770,6 +10865,14 @@ components:
           type: string
           enum: *a371
           nullable: true
+        banking:
+          nullable: true
+          description: Direct-deposit banking (2026-11-12). PII — hrm:edit. The ACCOUNT
+            number is write-only and stored encrypted; leave it blank on edit to
+            keep the one on file. null clears banking.
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/RepBankingDto"
         external_code:
           type: string
           example: Redwave20
@@ -10806,6 +10909,15 @@ components:
           description: null when no SIN is on file.
       required:
         - sin
+    RevealAccountResponse:
+      type: object
+      properties:
+        account_no:
+          type: string
+          nullable: true
+          example: "1234567"
+      required:
+        - account_no
     RepDocumentResponse:
       type: object
       properties:
@@ -10822,12 +10934,19 @@ components:
         uploaded_at:
           type: string
           format: date-time
+        expires_on:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the document stops being valid (permits, PR card, driver's
+            licence, passport).
       required:
         - id
         - rep_id
         - doc_type
         - file_url
         - uploaded_at
+        - expires_on
     RepEquipmentResponse:
       type: object
       properties:
@@ -10986,6 +11105,14 @@ components:
           example: ••• ••• 286
           description: Masked SIN (last 3 digits) — null unless hrm:edit. Use POST
             …/sin/reveal for the full value.
+        banking:
+          nullable: true
+          description: Direct-deposit banking, account MASKED. null unless hrm:edit (or
+            the rep's own profile). Reveal via POST
+            /v1/reps/{id}/banking/reveal.
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/RepBankingResponse"
         field_manager_name:
           type: string
           nullable: true
@@ -11013,6 +11140,7 @@ components:
         - tshirt_size
         - sin_on_file
         - sin_masked
+        - banking
         - field_manager_name
     TierBracketResponse:
       type: object

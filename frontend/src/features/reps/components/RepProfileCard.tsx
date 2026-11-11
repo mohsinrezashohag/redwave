@@ -11,7 +11,7 @@ import { Button, Card, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useCan } from '../../../auth/useCan';
 import { displayDate } from '../../../lib/format/date';
-import { useRevealSin } from '../api/useRepProfile';
+import { useMyDocuments, useRepDocuments, useRevealAccount, useRevealSin } from '../api/useRepProfile';
 import type { Rep } from '../reps.types';
 import styles from './reps.module.css';
 
@@ -47,6 +47,7 @@ export function RepProfileCard({ rep, self = false, managerName }: { rep: Rep; s
           </dd>
         </dl>
       </Card>
+      <BankingCard rep={rep} canSee={canSeePii} canReveal={isHr && !self} self={self} />
       <Card title="Uniform">
         <dl className={styles.dl}>
           <dt>Jacket size</dt>
@@ -131,5 +132,80 @@ function SinValue({ rep, canReveal }: { rep: Rep; canReveal: boolean }) {
         </Button>
       )}
     </span>
+  );
+}
+
+/**
+ * Banking (2026-11-12): institution + transit plainly, the ACCOUNT masked. HR can Reveal it (30 s, audited);
+ * the rep's own view stays masked. Also says whether the void cheque / direct-deposit form is on file — it
+ * lives under Documents as a "Banking" document.
+ */
+function BankingCard({ rep, canSee, canReveal, self }: { rep: Rep; canSee: boolean; canReveal: boolean; self: boolean }) {
+  const reveal = useRevealAccount();
+  const onError = useApiErrorToast();
+  const { toast } = useToast();
+  const [shown, setShown] = useState<string | null>(null);
+  const adminDocs = useRepDocuments(rep.id, canSee && !self);
+  const ownDocs = useMyDocuments(self);
+  const docs = (self ? ownDocs : adminDocs).data;
+  const chequeOnFile = (docs ?? []).some((d) => d.doc_type === 'banking');
+
+  useEffect(() => {
+    if (!shown) return;
+    const t = setTimeout(() => setShown(null), REVEAL_MS);
+    return () => clearTimeout(t);
+  }, [shown]);
+  useEffect(() => setShown(null), [rep.id]);
+
+  const b = rep.banking;
+  return (
+    <Card title="Banking">
+      {!canSee ? (
+        <p className={styles.muted}>Restricted</p>
+      ) : !b ? (
+        <p className={styles.muted}>No banking details on file.</p>
+      ) : (
+        <dl className={styles.dl}>
+          <dt>Institution</dt>
+          <dd className="mono">{b.institution_no}</dd>
+          <dt>Transit</dt>
+          <dd className="mono">{b.transit_no ?? '—'}</dd>
+          <dt>Account</dt>
+          <dd>
+            <span className={styles.sinRow}>
+              <span className="mono">{shown ?? b.account_masked ?? '—'}</span>
+              {canReveal && b.account_masked && (
+                shown ? (
+                  <Button variant="tertiary" size="sm" type="button" leftIcon={<EyeOff size={14} />} onClick={() => setShown(null)}>
+                    Hide
+                  </Button>
+                ) : (
+                  <Button
+                    variant="tertiary"
+                    size="sm"
+                    type="button"
+                    leftIcon={<Eye size={14} />}
+                    loading={reveal.isPending}
+                    onClick={() =>
+                      reveal.mutate(rep.id, {
+                        onSuccess: (r) => {
+                          setShown(r.account_no);
+                          toast({ title: 'Account number revealed', description: 'This view has been recorded in the audit log.', tone: 'info' });
+                        },
+                        onError,
+                      })
+                    }
+                  >
+                    Reveal
+                  </Button>
+                )
+              )}
+            </span>
+          </dd>
+          <dt>Void cheque</dt>
+          <dd>{chequeOnFile ? 'On file (see Documents)' : 'Not on file'}</dd>
+        </dl>
+      )}
+    </Card>
   );
 }

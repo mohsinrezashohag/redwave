@@ -42,3 +42,31 @@ export function normalizePostal(input: string): string | null {
   const compact = input.replace(/[\s-]/g, '').toUpperCase();
   return /^[A-Z]\d[A-Z]\d[A-Z]\d$/.test(compact) ? `${compact.slice(0, 3)} ${compact.slice(3)}` : null;
 }
+
+// ── Banking (client request 2026-11-12) ─────────────────────────────────────────────────────────────
+// Canadian direct deposit: a 3-digit institution number, a 5-digit transit (branch) number and an account
+// number of 7–12 digits. Institution + transit are bank routing codes (printed on every cheque), so they are
+// stored plainly; the ACCOUNT number is encrypted like the SIN and shown masked.
+
+/** The digits of `input` when they form a valid institution number (3 digits), else null. */
+export function normalizeInstitution(input: string): string | null {
+  const d = input.replace(/[\s-]/g, '');
+  return /^\d{3}$/.test(d) ? d : null;
+}
+
+/** The digits of `input` when they form a valid transit number (5 digits), else null. */
+export function normalizeTransit(input: string): string | null {
+  const d = input.replace(/[\s-]/g, '');
+  return /^\d{5}$/.test(d) ? d : null;
+}
+
+/** The digits of `input` when they form a valid account number (7–12 digits), else null. */
+export function normalizeAccount(input: string): string | null {
+  const d = input.replace(/[\s-]/g, '');
+  return /^\d{7,12}$/.test(d) ? d : null;
+}
+
+/** "••••4567" from the stored last four; null when none is on file. */
+export function maskAccount(last4: string | null | undefined): string | null {
+  return last4 ? `••••${last4}` : null;
+}

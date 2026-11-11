@@ -34,7 +34,14 @@ export function isValidSin(input: string): boolean {
 
 const POSTAL = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
 
-export function repFormSchema(mode: 'create' | 'edit', today: string) {
+/** Digits only after removing spaces / dashes — the same normalisation the server applies. */
+const bankDigits = (v: string) => v.replace(/[\s-]/g, '');
+
+/**
+ * @param accountOnFile the rep already has a bank account stored — then a blank account field means "keep it"
+ *   (it is write-only, like the SIN).
+ */
+export function repFormSchema(mode: 'create' | 'edit', today: string, accountOnFile = false) {
   return z
     .object({
       rep_code: z.string().max(50),
@@ -60,6 +67,10 @@ export function repFormSchema(mode: 'create' | 'edit', today: string) {
         ),
       jacket_size: z.string(),
       tshirt_size: z.string(),
+      // Banking (2026-11-12): institution 3 digits, transit 5, account 7–12. Blank = not set.
+      bank_institution: z.string().refine((v) => !v.trim() || /^\d{3}$/.test(bankDigits(v)), '3 digits, e.g. 001'),
+      bank_transit: z.string().refine((v) => !v.trim() || /^\d{5}$/.test(bankDigits(v)), '5 digits, e.g. 12345'),
+      bank_account: z.string().refine((v) => !v.trim() || /^\d{7,12}$/.test(bankDigits(v)), '7 to 12 digits'),
     })
     .superRefine((v, ctx) => {
       if (mode === 'create' && !v.rep_code.trim()) {
@@ -67,6 +78,14 @@ export function repFormSchema(mode: 'create' | 'edit', today: string) {
       }
       if (v.status === 'terminated' && !v.termination_date) {
         ctx.addIssue({ code: 'custom', path: ['termination_date'], message: 'Required when terminating' });
+      }
+      // Banking is all-or-nothing: once any part is entered, institution + transit (+ an account, unless one is
+      // already on file) are required.
+      const anyBank = [v.bank_institution, v.bank_transit, v.bank_account].some((x) => x.trim());
+      if (anyBank) {
+        if (!v.bank_institution.trim()) ctx.addIssue({ code: 'custom', path: ['bank_institution'], message: 'Required for banking' });
+        if (!v.bank_transit.trim()) ctx.addIssue({ code: 'custom', path: ['bank_transit'], message: 'Required for banking' });
+        if (!v.bank_account.trim() && !accountOnFile) ctx.addIssue({ code: 'custom', path: ['bank_account'], message: 'Required for banking' });
       }
     });
 }
@@ -94,7 +113,22 @@ export function repFormDefaults(rep: Rep | null): RepFormValues {
     sin: '', // write-only: never pre-filled
     jacket_size: rep?.jacket_size ?? NONE,
     tshirt_size: rep?.tshirt_size ?? NONE,
+    bank_institution: rep?.banking?.institution_no ?? '',
+    bank_transit: rep?.banking?.transit_no ?? '',
+    bank_account: '', // write-only: never pre-filled
   };
+}
+
+/**
+ * Banking for the request body: omitted when untouched and none was on file; `null` (clear) when every field
+ * was emptied on a rep that had banking; otherwise the details, with a blank account meaning "keep".
+ */
+export function bankingBody(v: RepFormValues, hadBanking: boolean) {
+  const inst = v.bank_institution.trim();
+  const transit = v.bank_transit.trim();
+  const account = v.bank_account.trim();
+  if (!inst && !transit && !account) return hadBanking ? { banking: null } : {};
+  return { banking: { institution_no: inst, transit_no: transit, ...(account ? { account_no: account } : {}) } };
 }
 
 const orNull = (v: string) => (v.trim() ? v.trim() : null);
@@ -124,10 +158,12 @@ export function toCreateBody(v: RepFormValues): CreateRepBody {
     hire_date: v.hire_date,
     ...(v.external_code.trim() ? { external_code: v.external_code.trim() } : {}),
     ...profileBody(v),
+    ...bankingBody(v, false),
   } as CreateRepBody;
 }
 
-export function toUpdateBody(v: RepFormValues): UpdateRepBody {
+/** @param hadBanking the rep had banking on file — emptying every banking field then CLEARS it. */
+export function toUpdateBody(v: RepFormValues, hadBanking = false): UpdateRepBody {
   return {
     full_name: v.full_name.trim(),
     external_code: v.external_code.trim(),
@@ -136,5 +172,6 @@ export function toUpdateBody(v: RepFormValues): UpdateRepBody {
     status: v.status,
     ...(v.status === 'terminated' ? { termination_date: v.termination_date } : {}),
     ...profileBody(v),
+    ...bankingBody(v, hadBanking),
   } as UpdateRepBody;
 }
