@@ -92,7 +92,7 @@ export default function ExpensesListPage() {
     <div className={styles.page}>
       <PageHeader
         title="Expenses"
-        subtitle="Weekly report folders — create a report, add expenses into it, then submit the whole folder for approval."
+        subtitle="Weekly report folders. Create a report, add your expenses to it, then submit the whole folder for approval."
         actions={
           <div className={styles.headerActions}>
             {view === 'items' && <ExpenseExportControls filters={filters} groupMode={groupMode} onGroupChange={setGroupMode} configs={configs.data} />}

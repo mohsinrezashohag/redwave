@@ -432,7 +432,7 @@ export class SalesService {
     const count = await this.prisma.sale.count({ where });
     if (count > MAX_EXPORT_ROWS) {
       throw new UnprocessableEntityException(
-        `${count} sales match — narrow the filters (date range, client, status) to ${MAX_EXPORT_ROWS} or fewer per export`,
+        `${count} sales match. Narrow the filters (date range, client, status) to ${MAX_EXPORT_ROWS} or fewer per export.`,
       );
     }
     const rows = await this.prisma.sale.findMany({ where, include: SALE_INCLUDE, orderBy: { sale_date: 'desc' } });

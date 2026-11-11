@@ -1,6 +1,6 @@
 /**
  * StatusPill — design-system §6.7. Maps each sale lifecycle status to its semantic tone + label
- * (colour + text, never colour alone). Plus the "Proposed — confirm" chip for SRS-flagged rules.
+ * (colour + text, never colour alone). Plus the "Proposed: confirm" chip for SRS-flagged rules.
  */
 import { Badge, type BadgeTone } from './Badge';
 
@@ -32,5 +32,5 @@ export function StatusPill({ status }: { status: SaleStatus }) {
 
 /** Marks an SRS-flagged proposed rule that needs Redwave confirmation (config screens). — §6.7 */
 export function ProposedChip() {
-  return <Badge tone="warning">Proposed — confirm</Badge>;
+  return <Badge tone="warning">Proposed: confirm</Badge>;
 }

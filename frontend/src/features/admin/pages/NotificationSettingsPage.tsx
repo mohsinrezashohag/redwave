@@ -26,7 +26,7 @@ export default function NotificationSettingsPage() {
     <div className={styles.page}>
       <PageHeader
         title="Notification settings"
-        subtitle="Per event: choose the channels (in-app / email) and edit the title & body templates. Recipients are intrinsic to each trigger and shown read-only. Applies to everyone — no per-user override."
+        subtitle="Per event: choose the channels (in-app / email) and edit the title & body templates. Recipients are intrinsic to each trigger and shown read-only. Applies to everyone, with no per-user override."
       />
       <DataState
         isLoading={q.isLoading}

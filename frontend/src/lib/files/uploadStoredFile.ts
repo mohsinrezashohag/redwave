@@ -11,7 +11,7 @@ import { getCsrfToken } from '../../auth/session';
 import { ApiError } from '../api/apiError';
 
 export type StoredFile = components['schemas']['StoredFileResponse'];
-export type FilePurpose = 'receipt' | 'document';
+export type FilePurpose = 'receipt' | 'document' | 'avatar';
 
 export interface UploadOptions {
   file: File;
@@ -69,8 +69,8 @@ export function uploadStoredFile({ file, purpose, displayName, onProgress }: Upl
         ),
       );
     };
-    xhr.onerror = () => reject(new ApiError(0, 'Upload failed — check your connection and try again.'));
-    xhr.ontimeout = () => reject(new ApiError(0, 'Upload timed out — try again.'));
+    xhr.onerror = () => reject(new ApiError(0, 'Upload failed. Check your connection and try again.'));
+    xhr.ontimeout = () => reject(new ApiError(0, 'Upload timed out. Please try again.'));
     xhr.send(form);
   });
 }

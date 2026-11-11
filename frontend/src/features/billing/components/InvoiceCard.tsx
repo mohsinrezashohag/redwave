@@ -44,7 +44,7 @@ export function InvoiceCard({ invoice, canView, onDownload, downloading, onGener
       {invoice ? (
         <div className={styles.invoiceTotal}>
           <span className={styles.invoiceAmount}>{money(invoice.total_commission)}</span>
-          <span className={styles.note}>One-line total (CAD) — the billing-stream statement total (not the rep payout). No GST.</span>
+          <span className={styles.note}>One-line total in CAD: the statement total billed to the client, not the rep payout. No GST.</span>
         </div>
       ) : (
         <div className={styles.invoiceTotal}>

@@ -64,7 +64,7 @@ describe('summariseIssues', () => {
       row(2, 'error', 'unknown product type "Internet, TV"'),
       row(3, 'error', 'client_code is required'),
     ]);
-    expect(summariseIssues(groups)).toBe('3 rows need attention — 2× unknown product type "Internet, TV" (+1 other issue)');
+    expect(summariseIssues(groups)).toBe('3 rows need attention: 2× unknown product type "Internet, TV" (+1 other issue)');
   });
 
   it('is null when nothing needs attention', () => {

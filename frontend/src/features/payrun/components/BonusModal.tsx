@@ -47,7 +47,7 @@ export function BonusModal({ runId, line, onClose }: { runId: string; line: PayR
           <FormField label="Bonus amount" required error={formState.errors.amount?.message}>
             <MoneyInput {...register('amount')} placeholder="0.00" />
           </FormField>
-          <FormField label="Note" help="Optional — the reason for the bonus." error={formState.errors.note?.message}>
+          <FormField label="Note" help="Optional. The reason for the bonus." error={formState.errors.note?.message}>
             <Input {...register('note')} placeholder="e.g. quarterly spiff" />
           </FormField>
           <div className={styles.footer}>

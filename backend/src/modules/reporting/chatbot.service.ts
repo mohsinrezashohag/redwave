@@ -15,9 +15,9 @@ import { ChatbotQueryDto } from './dto/chatbot-query.dto';
 import { ChatTool, LLM_PROVIDER, LlmProvider } from './chatbot/llm.provider';
 import { isToolAllowed } from './chatbot/tools';
 
-const REFUSAL = "I can't answer that — it's outside what you're permitted to see.";
-const RATE_MESSAGE = "You're sending messages quickly — give it a moment and try again shortly.";
-const DAILY_MESSAGE = "You've reached today's assistant limit. It resets tomorrow — try again then.";
+const REFUSAL = "Sorry, I can't answer that. It's outside what you have access to.";
+const RATE_MESSAGE = "You're sending messages quickly. Please wait a moment and try again.";
+const DAILY_MESSAGE = "You've reached today's assistant limit. It resets tomorrow, so please try again then.";
 
 const intCfg = (config: ConfigService, key: string, fallback: number): number => {
   const raw = config.get<string>(key);

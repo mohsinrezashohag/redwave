@@ -111,7 +111,7 @@ export class ExpenseDocPdfRenderer {
       text(`CAD equivalent: CAD ${doc.amount_cad}`, left + 8, 11, bold, navy);
       y -= 18;
     }
-    text(`All amounts in ${doc.currency}. Kilometres + food only — no receipts, no commission, no GST.`, left, 9, font, muted);
+    text(`All amounts in ${doc.currency}. Kilometres and food only. No receipts, commission or GST.`, left, 9, font, muted);
 
     return Buffer.from(await pdf.save());
   }

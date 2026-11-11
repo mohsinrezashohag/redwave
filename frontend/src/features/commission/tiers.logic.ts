@@ -36,7 +36,7 @@ export function validateTierBrackets(brackets: BracketInput[]): string | null {
     if (i > 0) {
       const prev = sorted[i - 1];
       if (prev.max_count === null || b.min_count !== prev.max_count + 1) {
-        return 'Brackets must be contiguous — each min = the previous max + 1 (no gaps or overlaps).';
+        return 'Brackets must be continuous: each minimum is the previous maximum plus 1, with no gaps or overlaps.';
       }
     }
   }

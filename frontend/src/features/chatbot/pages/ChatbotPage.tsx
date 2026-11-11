@@ -36,9 +36,9 @@ export default function ChatbotPage() {
 
   return (
     <div className={styles.page}>
-      <PageHeader title="Assistant" subtitle="Ask about your Redwave data in plain language — answers are scoped to your access." />
+      <PageHeader title="Assistant" subtitle="Ask about your Redwave data in plain language. Answers are limited to what you have access to." />
       <Banner tone="info" title="Preview assistant">
-        Limited capability while the full natural-language model is wired up. It answers a few questions about your own Redwave data, within your access — nothing outside it. This conversation isn’t saved.
+        Limited capability while the full natural-language model is wired up. It answers a few questions about your own Redwave data, and only within your access. This conversation isn’t saved.
       </Banner>
       <Card flush>
         <div className={styles.panel}>

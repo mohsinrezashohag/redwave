@@ -40,7 +40,10 @@ export class ProfileChangeRequestDto {
   @MaxLength(50)
   phone?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      'The new photo: the storage path returned by POST /v1/files (purpose=avatar, JPG/PNG), or "" to remove it. Links are not accepted. Not available to reps — their photo is their HR headshot.',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(1024)

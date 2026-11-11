@@ -140,7 +140,7 @@ export function LineBreakdownDrawer({ line, open, onClose, isDraft, periods, lab
           )}
           <p className={styles.footnote}>
             Incentives are paid in full and are <strong>not</strong> part of the {labels.paidPct}/{labels.heldPct} base. Every amount
-            here is the server&rsquo;s — nothing is calculated in this screen.
+            here comes from the server. Nothing is calculated on this screen.
           </p>
 
           <h3 className={styles.sectionTitle}>Holdback ledger</h3>

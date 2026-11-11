@@ -34,7 +34,7 @@ export function PreviewPanel({ preview, onSheetChange, busy }: Props) {
     .join(', ');
 
   return (
-    <Card title="Preview — nothing has been imported yet">
+    <Card title="Preview (nothing has been imported yet)">
       <div className={styles.previewGrid}>
         <div className={styles.previewStat}>
           <span className={styles.previewStatLabel}>Rows found</span>
@@ -58,7 +58,7 @@ export function PreviewPanel({ preview, onSheetChange, busy }: Props) {
       {preview.sheets.length > 1 && (
         <div className={styles.form}>
           <label className={styles.previewStatLabel} htmlFor="preview-sheet">
-            Worksheet — picked automatically as the best match for this import type
+            Worksheet (picked automatically as the best match for this import type)
           </label>
           <Select
             options={preview.sheets.map((s) => ({ value: s, label: s }))}
@@ -107,8 +107,8 @@ export function PreviewPanel({ preview, onSheetChange, busy }: Props) {
           {preview.create_missing ? (
             <>
               These records don’t exist yet and will be created when you stage and commit. They are created
-              minimally — named after their own code, with <strong>no billing rate and no money of any kind</strong>
-              {' '}— so review and complete them in Clients &amp; Products and HRM afterwards.
+              with the minimum: named after their own code, with <strong>no billing rate and no money of any kind</strong>.
+              Review and complete them in Clients &amp; Products and HRM afterwards.
             </>
           ) : (
             <>

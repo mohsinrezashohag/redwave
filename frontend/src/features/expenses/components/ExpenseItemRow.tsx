@@ -132,8 +132,8 @@ export function ExpenseItemRow({
               label="Client"
               help={
                 isKm
-                  ? 'Tag the client this trip was for — required to bill the kilometres to that client.'
-                  : 'Optional — tag to a client/program.'
+                  ? 'Tag the client this trip was for. Required to bill the kilometres to that client.'
+                  : 'Optional. Tag a client or program.'
               }
             >
               <Select

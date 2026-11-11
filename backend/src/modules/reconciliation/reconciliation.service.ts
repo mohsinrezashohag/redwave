@@ -49,7 +49,7 @@ export class ReconciliationService {
         total_equals_lines: true,
         statement_matches_live: false,
         ok: false,
-        discrepancies: ['No issued statement for this client and billing week — generate one.'],
+        discrepancies: ['No statement has been issued for this client and billing week. Generate one.'],
       };
     }
 
@@ -100,7 +100,7 @@ export class ReconciliationService {
         total_equals_lines: true,
         document_matches_live: false,
         ok: false,
-        discrepancies: ['No issued expense document for this client and pay period — generate one.'],
+        discrepancies: ['No expense document has been issued for this client and pay period. Generate one.'],
       };
     }
 

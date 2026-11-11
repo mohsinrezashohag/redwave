@@ -97,7 +97,7 @@ export function TierRateModal({
   const tiersOff = !isEdit && !!clientId && !!inForce && isBasePriceSchedule(inForce);
   const tierOptions = (inForce?.tiers ?? []).map((t: TierBracket) => ({
     value: String(t.tier_number),
-    label: `Tier ${t.tier_number} — ${t.min_count}${t.max_count === null ? '+' : `–${t.max_count}`} activations`,
+    label: `Tier ${t.tier_number}: ${t.min_count}${t.max_count === null ? '+' : `–${t.max_count}`} activations`,
   }));
 
   const onSubmit = (values: FormValues) => {
@@ -146,7 +146,7 @@ export function TierRateModal({
         <Banner tone="info" title="This sets the RATE, not the tier">
           {isEdit
             ? 'Only a pending rate can be edited; the product and tier are fixed.'
-            : 'The activation count still decides which tier a period lands in — this only changes what that tier pays for this product. A product with no rate here is paid the schedule rate.'}
+            : 'The activation count still decides which tier a period lands in. This only changes what that tier pays for this product. A product with no rate here is paid the schedule rate.'}
         </Banner>
 
         {isEdit ? (
@@ -185,7 +185,7 @@ export function TierRateModal({
                   label="Product"
                   required
                   error={errors.product_id?.message}
-                  help="Tiered products only — an add-on is priced by a flat rate."
+                  help="Tiered products only. An add-on is priced by a flat rate."
                 >
                   <Select
                     options={tieredProducts.map((p) => ({ value: p.id, label: p.name }))}
@@ -239,7 +239,7 @@ export function TierRateModal({
             control={control}
             name="effective_to"
             render={({ field }) => (
-              <FormField label="Effective to" help="Ends after the chosen period — or open-ended.">
+              <FormField label="Effective to" help="Ends after the chosen period, or leave open-ended.">
                 <PayPeriodSelect value={field.value} onChange={field.onChange} boundary="end" allowOpenEnded aria-label="Effective to period" />
               </FormField>
             )}

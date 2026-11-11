@@ -14,7 +14,6 @@ import { useMyRepProfile } from '../api/useRepProfile';
 import { RepProfileCard } from './RepProfileCard';
 import { RepEquipmentPanel } from './RepEquipmentPanel';
 import { RepDocumentsPanel } from './RepDocumentsPanel';
-import { RepHeadshot } from './RepHeadshot';
 import styles from './reps.module.css';
 
 export function MyRepProfileSection() {
@@ -24,10 +23,6 @@ export function MyRepProfileSection() {
     <DataState isLoading={q.isLoading} isError={q.isError} isEmpty={false} onRetry={() => q.refetch()}>
       {rep && (
         <div className={styles.page}>
-          <div className={styles.detailHead}>
-            <RepHeadshot repId={rep.id} name={rep.full_name} self canOpen />
-            <span className={styles.code}>{rep.rep_code}</span>
-          </div>
           <p className={styles.muted}>
             Your rep code, status, dates, field manager, date of birth, SIN, equipment and documents are managed by
             HR. Contact HR if any of these is wrong.

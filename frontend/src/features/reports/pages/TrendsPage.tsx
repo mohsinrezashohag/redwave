@@ -30,7 +30,7 @@ export default function TrendsPage() {
     <div className={styles.page}>
       <PageHeader
         title="Cross-period trends"
-        subtitle="Revenue, payout, and activation trends over recent pay periods. Money is read from frozen records — nothing is recomputed."
+        subtitle="Revenue, payout, and activation trends over recent pay periods. Money is read from frozen records and never recalculated."
         actions={<Select aria-label="Periods" options={DEPTHS} value={depth} onValueChange={setDepth} />}
       />
       <BusinessTrends periods={Number(depth)} />

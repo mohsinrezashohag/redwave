@@ -113,7 +113,7 @@ export function validateExpenseItem(item: ValidatableItem, schema: CategorySchem
   // km commute deduction zeroed the claim → $0 reimbursable (the named km Warning; fires only at $0, not on
   // every km item, so it isn't noisy). — EXP-013 / meeting-3 §5
   if (isKm && item.km && new Decimal(item.km.billable_km).isZero()) {
-    warnings.push({ code: 'km_zero_claim', severity: 'warning', field: 'km', message: 'Trip below the commute threshold — $0 reimbursable after the deduction' });
+    warnings.push({ code: 'km_zero_claim', severity: 'warning', field: 'km', message: 'Trip is below the commute threshold, so $0 is reimbursable after the deduction' });
   }
 
   return { alerts, warnings };

@@ -82,7 +82,7 @@ export default function RepsListPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
       <PageHeader
         title="Reps"
-        subtitle="The field-rep roster. Codes are permanent and never reused — terminated reps keep their code."
+        subtitle="The field-rep roster. Codes are permanent and never reused, so terminated reps keep their code."
         actions={
           <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
             <SearchBox value={search} onChange={setSearch} />

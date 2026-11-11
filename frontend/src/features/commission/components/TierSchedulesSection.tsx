@@ -144,7 +144,7 @@ export function TierSchedulesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue
         emptyNode={
           <p className={styles.note}>
             {clientId
-              ? 'No schedule of its own — this client follows the Global setting.'
+              ? 'No schedule of its own. This client follows the Global setting.'
               : 'No tier schedule yet.'}
           </p>
         }

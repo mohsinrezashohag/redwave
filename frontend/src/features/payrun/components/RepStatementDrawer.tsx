@@ -78,7 +78,7 @@ export function RepStatementDrawer({
           </Table>
           {!s.is_finalized && (
             <p className={styles.note}>
-              This run has not been finalized, so no amounts are frozen yet — nothing is owed for it.
+              This run has not been finalized, so no amounts are frozen yet and nothing is owed for it.
             </p>
           )}
           {s.is_finalized && s.lines.length === 0 && (

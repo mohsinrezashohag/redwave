@@ -69,7 +69,7 @@ export default function ExpenseDocsListPage() {
     <div className={styles.page}>
       <PageHeader
         title="Client Expense Documents"
-        subtitle="Generate and view the per-client expense billing document (kilometres + food, per rep/day). Priced by the server from the client-bill km rate + native-currency food — no receipts, no commission. This screen computes nothing."
+        subtitle="Generate and view the per-client expense billing document (kilometres + food, per rep/day). Priced by the server from the client-bill km rate and food in its original currency. No receipts or commission are included, and this screen computes nothing."
         actions={
           canCreate ? (
             <Button variant="primary" leftIcon={<ReceiptText size={16} />} onClick={() => setGenerateOpen(true)}>

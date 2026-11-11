@@ -25,14 +25,14 @@ export function PriceChart({
   const unpriced = unpricedRows(rows);
 
   if (rows.length === 0) {
-    return <p className={styles.supersedeNote}>No products or rates yet — add a product, then price it.</p>;
+    return <p className={styles.supersedeNote}>No products or rates yet. Add a product, then price it.</p>;
   }
 
   return (
     <div className={styles.priceChart}>
       {unpriced.length > 0 && (
         <Banner tone="warning" title="Some products have no rate in force">
-          {unpriced.map((r) => r.label).join(', ')} — a statement covering a sale of these will be refused as
+          {unpriced.map((r) => r.label).join(', ')}. A statement covering a sale of these will be refused as
           unpriced. Add a rate effective on or before the sale date.
         </Banner>
       )}

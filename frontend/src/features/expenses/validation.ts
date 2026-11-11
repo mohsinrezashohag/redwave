@@ -84,7 +84,7 @@ export function validateFormItem(item: ValidatableFormItem, config: FieldConfig 
     }
   }
   if (isKm && item.billable_km === 0) {
-    warnings.push({ code: 'km_zero_claim', severity: 'warning', field: 'km', message: 'Trip below the commute threshold — $0 reimbursable after the deduction' });
+    warnings.push({ code: 'km_zero_claim', severity: 'warning', field: 'km', message: 'Trip is below the commute threshold, so $0 is reimbursable after the deduction' });
   }
   return { alerts, warnings };
 }

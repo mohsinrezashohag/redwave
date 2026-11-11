@@ -192,7 +192,7 @@ export function validateLayout(reportType: ReportType, columns: LayoutColumn[]):
   for (const c of columns) {
     if (!byKey.has(c.field)) {
       errors.push(
-        `'${c.field}' is not a field of the ${def.label} — a layout can only use fields this report owns`,
+        `'${c.field}' is not a field of the ${def.label}. A layout can only use fields this report owns.`,
       );
       continue;
     }
@@ -219,8 +219,8 @@ export function validateLayout(reportType: ReportType, columns: LayoutColumn[]):
         .map((x) => x.i);
       if (at.length > 0 && at[at.length - 1] - at[0] + 1 !== at.length) {
         errors.push(
-          `${what} columns must be contiguous — this workbook carries a live ${formula} strip over a ` +
-            `range, so another column placed between them would make the totals cover the wrong cells`,
+          `${what} columns must stay next to each other. This workbook has live ${formula} totals over a ` +
+            `range, so another column placed between them would make the totals cover the wrong cells.`,
         );
       }
     };

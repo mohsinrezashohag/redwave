@@ -176,7 +176,7 @@ export function GenerateExpenseDocModal({ open, onClose, clients, periods, prese
 
         {alreadyExists && (
           <Banner tone="info" title="A document already exists for this client + period">
-            Issuing again creates a <strong>new numbered version</strong>; the current one is kept (superseded) — it is never changed.
+            Issuing again creates a <strong>new numbered version</strong>; the current one is kept (superseded) and is never changed.
           </Banner>
         )}
 
@@ -205,7 +205,7 @@ export function GenerateExpenseDocModal({ open, onClose, clients, periods, prese
           </div>
         )}
         {preview && (repIds.length > 0 || dates.length > 0) && (
-          <p className={styles.note}>Selection changed — click <strong>Refresh preview</strong> to update the total before issuing.</p>
+          <p className={styles.note}>Selection changed. Click <strong>Refresh preview</strong> to update the total before issuing.</p>
         )}
 
         {isForeign && (
@@ -222,7 +222,7 @@ export function GenerateExpenseDocModal({ open, onClose, clients, periods, prese
 
         {preview && (
           <>
-            <Banner tone="info" title="Preview — not yet issued">
+            <Banner tone="info" title="Preview (not yet issued)">
               {preview.lines.length} line(s) · total {money(preview.total_amount, currency)}. Kilometres + food only. Issuing mints a new gapless number.
             </Banner>
             {preview.lines.length > 0 ? (

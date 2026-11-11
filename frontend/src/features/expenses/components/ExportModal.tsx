@@ -67,7 +67,7 @@ export function ExportModal({ open, onOpenChange }: { open: boolean; onOpenChang
           />
         </FormField>
         {canViewClients && (
-          <FormField label="Client" help="Optional — limit to one client.">
+          <FormField label="Client" help="Optional. Limit to one client.">
             <Select
               options={[{ value: NONE, label: 'All clients' }, ...(clients.data ?? []).map((c) => ({ value: c.id, label: c.name }))]}
               value={clientId ?? NONE}
@@ -76,7 +76,7 @@ export function ExportModal({ open, onOpenChange }: { open: boolean; onOpenChang
           </FormField>
         )}
         {canViewPeriods && (
-          <FormField label="Pay period" help="Optional — limit to one period.">
+          <FormField label="Pay period" help="Optional. Limit to one period.">
             <Select
               options={[
                 { value: NONE, label: 'All periods' },

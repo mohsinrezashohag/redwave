@@ -84,7 +84,7 @@ export function ReceiptField({ value, onChange }: { value?: string; onChange: (v
         accept="image/*,.pdf"
         capture="environment"
         multiple={false}
-        hint="Photo or PDF — images are compressed automatically (max 10 MB)"
+        hint="Photo or PDF, up to 10 MB. Images are compressed automatically."
         uploads={fileName && state ? { [fileName]: state } : undefined}
         onRetry={() => lastFile.current && void startUpload(lastFile.current)}
         onFiles={(files) => {

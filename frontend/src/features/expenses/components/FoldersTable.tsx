@@ -128,7 +128,7 @@ export function FoldersTable({ filters, canReview }: { filters: ReportFilters; c
       isError={list.isError}
       error={list.error}
       onRetry={() => void list.refetch()}
-      emptyNode={<p className="mono">No expense reports yet — create one to start adding items.</p>}
+      emptyNode={<p className="mono">No expense reports yet. Create one to start adding items.</p>}
       forbiddenMessage="You don’t have permission to view expenses."
       aria-label="Expense report folders"
     />

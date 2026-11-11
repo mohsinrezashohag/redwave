@@ -82,5 +82,5 @@ export function summariseIssues(groups: IssueGroup[]): string | null {
   const lead = groups[0];
   const rest = groups.length - 1;
   const tail = rest > 0 ? ` (+${rest} other issue${rest === 1 ? '' : 's'})` : '';
-  return `${total} row${total === 1 ? '' : 's'} need attention — ${lead.count}× ${lead.sample_issue}${tail}`;
+  return `${total} row${total === 1 ? '' : 's'} need attention: ${lead.count}× ${lead.sample_issue}${tail}`;
 }

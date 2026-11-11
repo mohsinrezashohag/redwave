@@ -77,7 +77,7 @@ export function ReviewActions({ item, onDone }: { item: ExpenseItem; onDone?: ()
           // Never dismiss mid-freeze (the mutation keeps running) — matches the disabled primary button.
           if (!o && !review.isPending) setFxOpen(false);
         }}
-        title="Approve — confirm FX rate"
+        title="Approve and confirm the exchange rate"
         footer={
           <>
             <Button variant="secondary" disabled={review.isPending} onClick={() => setFxOpen(false)}>
@@ -92,7 +92,7 @@ export function ReviewActions({ item, onDone }: { item: ExpenseItem; onDone?: ()
         <Banner tone="info" title={`This expense is in ${item.original_currency}`}>
           Approving freezes the {item.original_currency}→CAD rate for{' '}
           <span className="mono">{money(item.amount, item.original_currency)}</span> and the converted CAD
-          amount — it is never re-converted. Enter the rate if the FX source isn’t configured.
+          amount, which is never converted again. Enter the rate if the exchange-rate source isn’t set up.
         </Banner>
         {review.isError && (
           <Banner tone="danger" title="Couldn’t approve">
@@ -128,7 +128,7 @@ export function ReviewActions({ item, onDone }: { item: ExpenseItem; onDone?: ()
           </>
         }
       >
-        <FormField label="Reason" help="Optional — shown to the submitter.">
+        <FormField label="Reason" help="Optional. Shown to the submitter.">
           <Textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="What needs fixing?" />
         </FormField>
       </Modal>

@@ -21,7 +21,7 @@ export function NotificationsTab() {
     return (
       <Banner tone="info" title="Notifications are managed by your administrator">
         You receive in-app (and sometimes email) notifications for account and activity events. The channels
-        are configured centrally by a Super Admin — there is no per-user override.
+        are configured centrally by a Super Admin. There is no per-user override.
       </Banner>
     );
   }
@@ -51,7 +51,7 @@ export function NotificationsTab() {
           </div>
         </Card>
       </DataState>
-      <p className={styles.help}>These channels are set by a Super Admin for everyone — there is no per-user override.</p>
+      <p className={styles.help}>These channels are set by a Super Admin for everyone. There is no per-user override.</p>
     </div>
   );
 }

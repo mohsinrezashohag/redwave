@@ -38,7 +38,7 @@ export const REPORT_TYPE_DEFS: ReportTypeDef[] = [
   {
     type: 'leaderboard',
     label: 'Leaderboard standings',
-    description: 'Current-period activation rankings (counts only — never money).',
+    description: 'Current-period activation rankings (counts only, never money).',
     permission: 'reports:view',
     scope: 'none',
   },
@@ -120,7 +120,7 @@ export function businessSummaryRows(d: BusinessDashboard): MetricRow[] {
     { metric: 'Clawback total', value: money(d.clawback_total) },
     { metric: 'Clawback rate', value: d.clawback_rate },
     { metric: 'Expenses total', value: money(d.expense.total) },
-    { metric: 'Expenses — KM', value: money(d.expense.km) },
+    { metric: 'Expenses: KM', value: money(d.expense.km) },
     { metric: 'Total activations', value: String(d.total_activations) },
     { metric: 'Internet activations (tally)', value: String(d.internet_activations) },
     { metric: 'Greenfield activations', value: String(d.greenfield.count) },
@@ -128,7 +128,7 @@ export function businessSummaryRows(d: BusinessDashboard): MetricRow[] {
     { metric: 'Active reps', value: String(d.active_rep_count) },
   ];
   for (const p of d.activations_by_product) {
-    rows.push({ metric: `Activations — ${p.label}`, value: String(p.count) });
+    rows.push({ metric: `Activations: ${p.label}`, value: String(p.count) });
   }
   return rows;
 }

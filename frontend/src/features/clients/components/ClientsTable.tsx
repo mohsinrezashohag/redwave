@@ -163,14 +163,14 @@ export function ClientsTable({ filters, onEdit }: { filters: ClientsFilters; onE
         }
       >
         <strong>{confirm?.name}</strong> will be marked inactive. Its history (products, billing rates, sales)
-        is <strong>preserved</strong> — you can reactivate it later.
+        is <strong>preserved</strong>, and you can reactivate it later.
       </Modal>
 
       <ConfirmDialog
         open={confirmBulk}
         onOpenChange={setConfirmBulk}
         title={`Deactivate ${selected.size} client(s)?`}
-        description="Selected clients are marked inactive (soft — history is preserved). You can reactivate them later."
+        description="Selected clients are marked inactive and their history is preserved. You can reactivate them later."
         confirmLabel="Deactivate clients"
         requireTyped="DEACTIVATE"
         loading={bulkDeactivate.isPending}

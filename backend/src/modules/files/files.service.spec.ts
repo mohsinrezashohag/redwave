@@ -135,4 +135,13 @@ describe('FilesService.claim — a consumer may attach ONLY its own uploads (sec
       /PDF file is required/,
     );
   });
+  it('an AVATAR claim must be a JPG or PNG; a photo upload refuses a PDF (2026-11-12)', async () => {
+    const { service, prisma } = makeService();
+    prisma.storedFile.findUnique.mockResolvedValue({ path: 'avatars/2026/11/a.pdf', uploaded_by: user.id, mime: 'application/pdf' });
+    await expect(service.claim('avatars/2026/11/a.pdf', user, 'avatar')).rejects.toThrow(/JPG or PNG/);
+    prisma.storedFile.findUnique.mockResolvedValue({ path: 'avatars/2026/11/a.jpg', uploaded_by: user.id, mime: 'image/jpeg' });
+    await expect(service.claim('avatars/2026/11/a.jpg', user, 'avatar')).resolves.toBeTruthy();
+    await expect(service.claim('receipts/2026/11/a.jpg', user, 'avatar')).rejects.toThrow(UnprocessableEntityException);
+    await expect(service.upload(file({ mimetype: 'application/pdf' }), { purpose: 'avatar' }, user)).rejects.toThrow(/JPG or PNG/);
+  });
 });

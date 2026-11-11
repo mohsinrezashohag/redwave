@@ -85,7 +85,7 @@ export default function ReportExportsPage() {
   const record = useRecordReportExport();
 
   if (available.length === 0) {
-    return <AccessDenied message="Report exports ride your existing export permissions — none of the report types are available to your role." />;
+    return <AccessDenied message="Report exports use your existing export permissions, and none of the report types are available to your role." />;
   }
 
   const def = REPORT_TYPE_DEFS.find((d) => d.type === type) ?? available[0];
@@ -123,7 +123,7 @@ export default function ReportExportsPage() {
         const l = await unwrap<Leaderboard>(api.GET('/v1/leaderboard'));
         rows = l.rankings;
         columns = leaderboardColumns;
-        title = l.period ? `${def.label} — period ${l.period.period_number}` : def.label;
+        title = l.period ? `${def.label}, period ${l.period.period_number}` : def.label;
       } else if (def.type === 'payrun_summary') {
         if (!chosenPeriod) {
           toast({ title: 'Pick a pay period', description: 'The pay-run summary needs a specific period.', tone: 'warning' });
@@ -131,13 +131,13 @@ export default function ReportExportsPage() {
         }
         const run = runForPeriod(chosenPeriod);
         if (!run) {
-          toast({ title: 'No pay run for that period', description: 'Draft a run first — there is nothing to export yet.', tone: 'warning' });
+          toast({ title: 'No pay run for that period', description: 'Draft a run first. There is nothing to export yet.', tone: 'warning' });
           return;
         }
         const detail = await unwrap<PayRun>(api.GET('/v1/pay-runs/{id}', { params: { path: { id: run.id } } }));
         rows = detail.lines;
         columns = payrunColumns;
-        title = `${def.label} — period ${detail.pay_period.period_number} (${detail.status})`;
+        title = `${def.label}, period ${detail.pay_period.period_number} (${detail.status})`;
       } else {
         rows = await fetchAllExpenseItems({ from: from || undefined, to: to || undefined });
         columns = expenseColumns;
@@ -228,7 +228,7 @@ export default function ReportExportsPage() {
         <p className={styles.hint}>{def.description}</p>
         {def.type === 'payrun_summary' && periodId === CURRENT && (
           <Banner tone="info" title="Pick a period">
-            The pay-run summary exports one period&apos;s run — choose the pay period above.
+            The pay-run summary exports one period&apos;s run. Choose the pay period above.
           </Banner>
         )}
       </Card>
@@ -269,7 +269,7 @@ export default function ReportExportsPage() {
       </Card>
 
       <Banner tone="info" title="Scheduled exports">
-        Recurring/scheduled report delivery is not built yet — exports here are generated on demand.
+        Scheduled report delivery isn’t available yet. Exports here are generated on demand.
       </Banner>
     </div>
   );

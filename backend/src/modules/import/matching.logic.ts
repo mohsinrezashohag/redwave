@@ -44,7 +44,7 @@ export function classifySalesRow(
   }
   return {
     match_status: 'unmatched',
-    issue: mpuId ? `no entered sale matches MPU ${mpuId}` : 'no MPU ID — manual match required',
+    issue: mpuId ? `no entered sale matches MPU ${mpuId}` : 'No MPU ID, so a manual match is required',
   };
 }
 
@@ -187,7 +187,7 @@ export function classifyRepRow(mapped: RawRow, ctx: { codeExists: boolean }): Cl
   if (!rep_code) return error('rep_code is required');
   if (!full_name) return error('full_name is required');
   if (!hire_date || !DATE.test(hire_date)) return error('hire_date must be YYYY-MM-DD');
-  if (ctx.codeExists) return error(`rep_code ${rep_code} already exists — codes are never reused (#11)`);
+  if (ctx.codeExists) return error(`Rep code ${rep_code} already exists. Codes are never reused.`);
   return matched();
 }
 
@@ -248,7 +248,7 @@ export function classifyHistoricalSaleRow(
   }
   if (ctx.missingProductTypes.length > 0) {
     if (!ctx.createMissing) {
-      return error(`no ${ctx.missingProductTypes.join(', ')} product for client ${client_code} — import products first`);
+      return error(`no ${ctx.missingProductTypes.join(', ')} product for client ${client_code}. Import products first.`);
     }
     willCreate.push(`${ctx.missingProductTypes.join(', ')} product${ctx.missingProductTypes.length > 1 ? 's' : ''}`);
   }
@@ -264,7 +264,7 @@ export function classifyHistoricalSaleRow(
  */
 export function unknownTypeIssue(unknown: string[], suggestion: string | null): string {
   const listed = unknown.map((u) => `"${u}"`).join(', ');
-  const hint = suggestion ? ` — did you mean ${suggestion}?` : ' — check the product-type catalogue';
+  const hint = suggestion ? `. Did you mean ${suggestion}?` : '. Check the product-type catalogue.';
   return `unknown product type ${listed}${hint}`;
 }
 
@@ -329,7 +329,7 @@ export function classifyLiveSaleRow(
   if (!ctx.repActive) return error(`rep ${rep_code} not found or not active`);
   if (ctx.missingProductTypes.length > 0) {
     return error(
-      `no active ${ctx.missingProductTypes.join(', ')} product for client ${client_code} — import products first`,
+      `no active ${ctx.missingProductTypes.join(', ')} product for client ${client_code}. Import products first.`,
     );
   }
   // SALE-001a — internet is the mandatory base; add-ons cannot be sold standalone.
@@ -358,7 +358,7 @@ export function classifyHoldbackRow(
   if (ctx.originPeriodStatus === null) return error('origin pay period not found');
   // An OPEN origin would collide with a future finalize's freeze-once slot and underpay the rep. — seam
   if (ctx.originPeriodStatus === 'open') {
-    return error('origin pay period is open — opening balances require a closed/paid period');
+    return error('The origin pay period is still open. Opening balances need a closed or paid period.');
   }
   // Idempotent against re-import: one opening balance per rep + origin (mirrors Pay Run freeze-once).
   if (ctx.ledgerExists) {

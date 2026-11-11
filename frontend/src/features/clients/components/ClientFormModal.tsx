@@ -86,7 +86,7 @@ export function ClientFormModal({ state, onClose }: { state: ClientFormState; on
   return (
     <Modal open={open} onOpenChange={(o) => !o && onClose()} title={state?.mode === 'edit' ? 'Edit client' : 'Create client'}>
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
-        <FormField label="Client code" required error={errors.client_code?.message} help="Unique — never reused.">
+        <FormField label="Client code" required error={errors.client_code?.message} help="Must be unique. Codes are never reused.">
           <Input {...register('client_code')} placeholder="VF" />
         </FormField>
         <FormField label="Name" required error={errors.name?.message}>

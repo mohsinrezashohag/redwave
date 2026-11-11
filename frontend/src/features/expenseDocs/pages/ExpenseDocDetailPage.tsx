@@ -114,7 +114,7 @@ export default function ExpenseDocDetailPage() {
         <StatCard label="Lines" value={String(lines.length)} />
       </div>
 
-      <Card title="Kilometres + food — one line per rep per day">
+      <Card title="Kilometres and food (one line per rep per day)">
         {lines.length === 0 ? (
           <p className="mono">This document has no billable kilometres or food for the period.</p>
         ) : (

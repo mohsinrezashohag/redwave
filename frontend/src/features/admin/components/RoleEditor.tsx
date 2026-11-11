@@ -80,7 +80,7 @@ export function RoleEditor({
     <form className={styles.editor} onSubmit={handleSubmit(onSubmit)} noValidate>
       {isBuiltIn && !isSuperAdmin && (
         <Banner tone="warning" title="Built-in role">
-          This is a built-in role — its name can&rsquo;t be changed, but you can adjust its permissions.
+          This is a built-in role. Its name can&rsquo;t be changed, but you can adjust its permissions.
           <strong> Editing them affects everyone assigned this role.</strong>
         </Banner>
       )}

@@ -79,7 +79,7 @@ function CreateUserForm({
   return (
     <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
       <Banner tone="info" title="The user sets their own password">
-        We email them a secure link to set a password — you never see or choose it. (You can also trigger a reset later from the user’s row.)
+        We email them a secure link to set a password, so you never see or choose it. You can also send a reset later from the user’s row.
       </Banner>
       <FormField label="Email" required error={errors.email?.message}>
         <Input type="email" {...register('email')} placeholder="jane@redwave.local" />
@@ -217,7 +217,7 @@ export function UserFormModal({ state, onClose }: { state: UserFormState; onClos
       {state?.mode === 'edit' && <EditUserForm user={state.user} roleOptions={roleOptions} onDone={onClose} />}
       {open && roles.isError && (
         <Banner tone="warning" title="Couldn’t load roles">
-          Role options are unavailable right now — you can still save the other fields.
+          Role options are unavailable right now. You can still save the other fields.
         </Banner>
       )}
     </Modal>

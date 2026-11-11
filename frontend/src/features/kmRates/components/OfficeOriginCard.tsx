@@ -26,7 +26,7 @@ import { useSaveOfficeOrigin } from '../api/useKmRates';
 const SIX = 6; // lat/lng are Decimal(9,6) server-side
 
 const HELP =
-  'Every new kilometre log starts from here — a rep can still replace it for a trip that began elsewhere. Leave blank for no default.';
+  'Every new kilometre log starts from here. A rep can still replace it for a trip that began elsewhere. Leave blank for no default.';
 
 export function OfficeOriginCard() {
   const canEdit = useCan('settings:edit');
@@ -84,7 +84,7 @@ export function OfficeOriginCard() {
             title: trimmed ? 'Office origin saved' : 'Office origin cleared',
             description: trimmed
               ? coords
-                ? 'Located — new kilometre logs will start here and it counts toward the route distance.'
+                ? 'Located. New kilometre logs will start here, and it counts toward the route distance.'
                 : 'New kilometre logs will start from this address.'
               : undefined,
             tone: 'success',
@@ -119,7 +119,7 @@ export function OfficeOriginCard() {
         help={
           mapsEnabled
             ? coords
-              ? `${HELP} Located — this address also counts toward the measured route distance.`
+              ? `${HELP} Located. This address also counts toward the measured route distance.`
               : `${HELP} Pick a suggestion to locate it on the map.`
             : HELP
         }

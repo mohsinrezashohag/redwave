@@ -84,7 +84,7 @@ export function StaticGallery() {
           <div className={styles.stack}>
             <h1 style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)' }}>Page title</h1>
             <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)' }}>Section header</h2>
-            <p style={{ fontSize: 'var(--text-base)' }}>Body text — 14px operations default.</p>
+            <p style={{ fontSize: 'var(--text-base)' }}>Body text: 14px default.</p>
             <p className="mono" style={{ fontSize: 'var(--text-sm)' }}>SALE-2026-03-10-VF · $1,234.56</p>
           </div>
         </div>
@@ -233,10 +233,10 @@ export function StaticGallery() {
         </div>
         <div className={styles.col} style={{ marginTop: 'var(--space-3)' }}>
           <Banner tone="info" title="This sale is paid">
-            Snapshots are locked — corrections happen via a new clawback.
+            Snapshots are locked. Corrections are made through a new clawback.
           </Banner>
           <Banner tone="warning" title="Proposed rule">
-            Holdback release timing is proposed — confirm with Redwave.
+            Holdback release timing is proposed. Confirm with Redwave.
           </Banner>
           <TableSkeleton rows={3} columns={4} />
         </div>

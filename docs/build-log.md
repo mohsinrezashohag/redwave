@@ -2615,3 +2615,49 @@ already required (SIN).
 **Verified LOCAL:** 1226 backend tests (+banking cases in `reps.profile.spec`, +`rep-documents.logic.spec`)
 + typecheck + lint + build + contract regen; FE build + lint + stylelint + vitest 143 (+`repDocTypes`,
 +banking form cases). Not yet seen in a browser.
+
+### Profile photo: upload only, and a rep's photo is their HR headshot (no migration)
+
+**Ask (2026-11-12).** The "Avatar URL" text field on My Account ("file upload is coming later") looked
+unprofessional; storage is in place, so photos are uploaded, never linked. Decided with the user: **a rep's
+photo IS their HR headshot** (reps don't set their own); admins / managers upload theirs.
+
+- **New file purpose `avatar`** on `POST /v1/files` (`avatars/yyyy/mm/uuid.ext`); upload refuses a PDF and
+  `FilesService.claim(…, 'avatar')` accepts JPEG/PNG only.
+- **`common/avatar/`** (`AvatarService`, @Global; rules in the pure `avatar.logic.ts`): a rep-linked user →
+  latest `headshot` rep document; anyone else → their `avatars/` path; an old pasted http(s) link still
+  displays; anything else → null. Paths are signed in ONE batch call (`StorageService.signedUrls`, 1 h TTL),
+  because the bucket is private and an `<img>` can't send the bearer. **`avatar_url` in every user response
+  now carries a display URL, never a path** (`/me`, account profile, users list/one, review queue).
+- **Writes:** the profile-change request takes `avatar_url` = a claimed own `avatars/` path or `''` (remove);
+  a link fails the claim (422); a rep gets 422 ("Your photo is the headshot HR keeps on file"). Approval is
+  unchanged. `avatar_url` was **removed** from the admin user create/update DTOs (unused, and a second way to
+  set a raw link).
+- **Review queue:** `proposed_avatar_preview` (signed URL of the proposed upload) → the card shows current →
+  proposed photos; the pending banner says "New photo" / "Removed" rather than a path.
+- **Frontend:** `PhotoPicker` (Upload / Change / Remove, browser-side downscale, progress, local preview) on
+  My Account for non-reps; reps see one line pointing to HR. The duplicate headshot block in
+  `MyRepProfileSection` is gone — the header photo is the headshot now.
+
+**Verified LOCAL:** 1235 backend tests (+`avatar.service.spec`, +avatar claim, +profile-photo request rules
+and review preview) + typecheck + lint + build + contract regen; FE build + lint + stylelint + vitest
+(+`profileFields`). Not yet seen in a browser.
+
+### Copy pass: no em-dashes in user-facing sentences (no migration)
+
+**Ask (2026-11-12).** Em-dashes joining clauses ("Optional — shown to the submitter") read as machine-written.
+The client asked for the copy a professional product would use. Every user-visible sentence was rewritten by
+hand, about 230 frontend strings plus the backend messages users see: error toasts (422/409 messages),
+import issues and the import template dictionary, reconciliation discrepancies, chatbot replies, the
+password-reset email, the expense-document PDF footer and the "document completed" notification (seed
+template + service fallback). Each became two sentences, a comma, a colon or parentheses, whichever read
+naturally; a few were also de-jargoned ("FX" → "exchange rate", "re-tier" → "recalculate the tier").
+
+**Kept:** the em-dash as an **empty-value placeholder** (table cells, `'—'`), en-dash ranges ("Mon–Sun"),
+code comments, Swagger descriptions and operator console output. The rule is in CLAUDE §7.
+
+**Note:** the "document completed" notification template is seeded. Bootstrap refreshes templates, so the
+next deploy's `prisma:seed` updates the production row (channel toggles are untouched).
+
+**Verified LOCAL:** 1235 backend tests (11 specs updated to the new wording) + typecheck + lint + build +
+contract regen; FE build + lint + stylelint + vitest 145.

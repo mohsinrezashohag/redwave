@@ -94,10 +94,10 @@ export function RequestSignatureModal({ open, onClose, documentId }: { open: boo
             <FormField label="Recipients" required help="Each recipient is asked to sign.">
               <MultiSelect options={options} value={recipientIds} onChange={setRecipientIds} placeholder="Add recipients…" />
             </FormField>
-            <FormField label="Message" help="Optional — included in the notification.">
+            <FormField label="Message" help="Optional. Included in the notification.">
               <Textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Please review and sign." maxLength={500} />
             </FormField>
-            <FormField label="Due date" help="Optional — recorded for reference only.">
+            <FormField label="Due date" help="Optional. Recorded for reference only.">
               <DatePicker value={dueDate} min={todayIso()} onChange={setDueDate} aria-label="Due date" />
             </FormField>
 

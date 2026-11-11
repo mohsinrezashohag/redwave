@@ -280,7 +280,7 @@ export class SignaturesService {
         eventType: 'document_completed',
         userId: meta.ownerId,
         title: 'Your document is fully signed',
-        body: `${meta.documentName} is complete — all recipients signed.`,
+        body: `${meta.documentName} is complete. All recipients have signed.`,
         relatedEntityType: 'documents',
         relatedEntityId: meta.documentId,
         variables: { document_name: meta.documentName },

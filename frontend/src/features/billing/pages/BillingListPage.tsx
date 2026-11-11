@@ -70,7 +70,7 @@ export default function BillingListPage() {
     <div className={styles.page}>
       <PageHeader
         title="Billing & Statements"
-        subtitle="Generate and view what Redwave bills each program partner (CAD, no GST). Priced by the server from client billing rates — this screen computes nothing."
+        subtitle="Generate and view what Redwave bills each program partner (CAD, no GST). Priced by the server from client billing rates. This screen computes nothing."
         actions={
           canCreate ? (
             <>

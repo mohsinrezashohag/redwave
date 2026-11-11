@@ -110,13 +110,13 @@ export default function FolderDetailPage() {
               {folder.validation.flagged > 0 && (
                 <Banner tone={folder.validation.alert_count > 0 ? 'danger' : 'warning'} title={`${folder.validation.flagged} flagged item(s)`}>
                   {folder.validation.alert_count > 0 && `${folder.validation.alert_count} alert(s) `}
-                  {folder.validation.warning_count > 0 && `${folder.validation.warning_count} warning(s)`} — expand an item to see the details.
+                  {folder.validation.warning_count > 0 && `${folder.validation.warning_count} warning(s)`}. Expand an item to see the details.
                 </Banner>
               )}
 
               <Card title="Items" flush>
                 {items.length === 0 ? (
-                  <p className="mono" style={{ padding: 'var(--space-4)' }}>No items yet — add your first expense below.</p>
+                  <p className="mono" style={{ padding: 'var(--space-4)' }}>No items yet. Add your first expense below.</p>
                 ) : (
                   <ol className={styles.itemList} style={{ padding: 'var(--space-4)' }}>
                     {items.map((it) => (

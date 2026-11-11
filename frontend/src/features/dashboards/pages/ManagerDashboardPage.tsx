@@ -25,7 +25,7 @@ export default function ManagerDashboardPage() {
   const canEditTargets = useCan('hrm:edit');
   const [targetsOpen, setTargetsOpen] = useState(false);
 
-  if (isForbidden(q.error)) return <AccessDenied message="The team view needs a roster — you have no reps assigned." />;
+  if (isForbidden(q.error)) return <AccessDenied message="The team view needs a roster, and you have no reps assigned." />;
 
   const d = q.data;
   return (

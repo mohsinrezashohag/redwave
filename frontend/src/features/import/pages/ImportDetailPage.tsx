@@ -110,7 +110,7 @@ export default function ImportDetailPage() {
       <StepIndicator steps={steps} />
 
       {committed ? (
-        <Banner tone="success" title="Committed — locked">
+        <Banner tone="success" title="Committed and locked">
           Applied {batch.matched_rows} matched row(s){batch.committed_at ? ` on ${displayDate(batch.committed_at)}` : ''}. This batch is read-only; re-committing is a no-op.
         </Banner>
       ) : outstanding > 0 ? (
@@ -131,7 +131,7 @@ export default function ImportDetailPage() {
 
       {kind?.needsReconcileTotal && (
         <p className={styles.note}>
-          Reconcile total: <span className="mono">{money(batch.reconcile_total)}</span> — the server verifies this matches the staged total of matched rows at commit (the UI computes no total).
+          Reconcile total: <span className="mono">{money(batch.reconcile_total)}</span>. At commit, the server checks this matches the total of the matched rows.
         </p>
       )}
 

@@ -180,7 +180,7 @@ describe('UAT file — docs/uat/Sales Upload.xlsx (historical sales)', () => {
     expect(groups[0].count).toBe(16);
     expect(groups[0].sample_issue).toContain('unknown product type');
     // …and it must NOT send the operator off to re-import their product master.
-    expect(groups[0].sample_issue).not.toContain('import products first');
+    expect(groups[0].sample_issue).not.toContain('Import products first');
     expect(evaluateGate(rows.map((r) => ({ match_status: r.match_status as never }))).ok).toBe(false);
   });
 });

@@ -103,7 +103,7 @@ export class MailerService {
       wrap(`<p>Hi ${escapeHtml(name)},</p>
         <p>We received a request to reset your Redwave password. Click below to choose a new one:</p>
         ${button('Reset password', appLink(base, '/reset-password', { token }))}
-        <p class="muted">This link expires in 1 hour. If you didn’t request this, you can safely ignore this email — your password won’t change.</p>`),
+        <p class="muted">This link expires in 1 hour. If you didn’t request this, you can safely ignore this email. Your password won’t change.</p>`),
     );
   }
 

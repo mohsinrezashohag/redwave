@@ -33,6 +33,9 @@ export class FilesService {
     if (!isAllowedMime(file.mimetype)) {
       throw new UnprocessableEntityException('only JPEG, PNG, or PDF files are accepted');
     }
+    if (dto.purpose === 'avatar' && file.mimetype === 'application/pdf') {
+      throw new UnprocessableEntityException('a photo must be a JPG or PNG image');
+    }
     if (file.size > MAX_FILE_BYTES) {
       throw new UnprocessableEntityException('the file exceeds the 10 MB limit');
     }
@@ -68,11 +71,11 @@ export class FilesService {
    * path must exist in stored_files, carry the purpose's prefix, and have been uploaded BY THE CALLER
    * (Admin/Super Admin exempt) — an unknown or foreign reference can never be attached to a record (422).
    * One 'unknown reference' message for missing AND foreign paths: no existence leak. Document claims must
-   * be PDFs (preserves the DOC-001 422 rule). — security.md (file storage, claim validation)
+   * be PDFs (preserves the DOC-001 422 rule); avatar claims must be JPEG/PNG. — security.md (file storage, claim validation)
    */
   async claim(path: string, user: AuthUser, purpose: FilePurpose) {
     const unknown = () =>
-      new UnprocessableEntityException(`unknown ${purpose} file reference — upload it via POST /v1/files first`);
+      new UnprocessableEntityException(`Unknown ${purpose} file. Please upload it again.`);
 
     if (!path.startsWith(purposePrefix(purpose))) {
       throw unknown();
@@ -83,6 +86,9 @@ export class FilesService {
     }
     if (purpose === 'document' && stored.mime !== 'application/pdf') {
       throw new UnprocessableEntityException('a PDF file is required (save Word documents as PDF first)');
+    }
+    if (purpose === 'avatar' && stored.mime !== 'image/jpeg' && stored.mime !== 'image/png') {
+      throw new UnprocessableEntityException('a photo must be a JPG or PNG image');
     }
     return stored;
   }

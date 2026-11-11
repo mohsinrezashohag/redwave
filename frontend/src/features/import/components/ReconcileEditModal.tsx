@@ -36,7 +36,7 @@ export function ReconcileEditModal({ batchId, row, onClose }: { batchId: string;
     setError(null);
     reconcile.mutate(
       { id: batchId, body: { resolutions: [{ row_id: row.id, action: 'edit', mapped_data: parsed as Record<string, unknown> }] } },
-      { onSuccess: () => { toast({ title: 'Row updated — re-classified', tone: 'success' }); setText(''); onClose(); }, onError },
+      { onSuccess: () => { toast({ title: 'Row updated and re-checked', tone: 'success' }); setText(''); onClose(); }, onError },
     );
   };
 

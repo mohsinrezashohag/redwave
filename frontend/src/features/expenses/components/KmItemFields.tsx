@@ -94,7 +94,7 @@ export function KmItemFields({ index }: { index: number }) {
             help={
               mode.distanceEditable
                 ? 'Total driven distance for the day (round trips include the return).'
-                : 'Auto-derived from the route (round trips include the return to the first stop) — the server re-computes it.'
+                : 'Auto-derived from the route (round trips include the return to the first stop). The server recalculates it.'
             }
           >
             <Input
@@ -143,7 +143,7 @@ export function KmItemFields({ index }: { index: number }) {
       {!mapsEnabled && (
         // No key configured at all — informational; a FAILED key gets the warning banner above instead.
         <Banner tone="info">
-          Address coordinates aren’t captured without a map key — enter the total distance manually. The server computes the final amount.
+          Addresses can’t be located without a map key, so enter the total distance manually. The server computes the final amount.
         </Banner>
       )}
 
@@ -151,7 +151,7 @@ export function KmItemFields({ index }: { index: number }) {
         <span className={`${styles.previewAmount} mono`}>{preview.valid ? money(preview.amount) : '—'}</span>
         <span className={styles.previewNote}>
           {preview.valid
-            ? `${preview.billableKm} km billable × $0.45 — indicative; the server computes the final amount`
+            ? `${preview.billableKm} km billable × $0.45 (estimate). The server calculates the final amount.`
             : 'Enter total km to preview the billable amount'}
         </span>
       </div>

@@ -156,7 +156,7 @@ export class ClientExpenseDocService {
     // km MUST be priceable at the client-bill rate — never fall back to the CAD-flavoured default (422). — decision
     if (missingKmRate.length > 0) {
       throw new UnprocessableEntityException({
-        message: 'cannot generate: some km items have no client-bill km rate for their date — configure one first',
+        message: 'Cannot generate: some km items have no client-bill km rate for their date. Set one up first.',
         missing_km_rate: missingKmRate,
       });
     }

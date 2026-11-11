@@ -197,6 +197,13 @@ export class ReviewRequestResponse {
   @ApiProperty()
   requested_by!: string;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'A short-lived URL of the PROPOSED photo (when the request changes it), for the reviewer to see.',
+  })
+  proposed_avatar_preview!: string | null;
+
   @ApiProperty({ type: () => ReviewSubjectResponse })
   subject!: ReviewSubjectResponse;
 }

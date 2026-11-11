@@ -128,14 +128,14 @@ export default function StatementDetailPage() {
         </div>
       )}
 
-      <Card title="Statement — one row per sale">
+      <Card title="Statement (one row per sale)">
         {lines.length === 0 ? (
           <p className="mono">This statement has no billable sales for the week.</p>
         ) : (
           <StatementLinesTable lines={lines} currency={statement.currency} />
         )}
         <p className={styles.note}>
-          No GST — tax is handled in QuickBooks. Every amount is priced by the server from client billing rates
+          No GST. Tax is handled in QuickBooks. Every amount is priced by the server from client billing rates
           effective on each sale&rsquo;s own date.
         </p>
       </Card>

@@ -99,3 +99,22 @@
   display: flex;
   gap: var(--space-2);
 }
+
+/* Profile photo picker */
+.photoRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.photoActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.photoButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

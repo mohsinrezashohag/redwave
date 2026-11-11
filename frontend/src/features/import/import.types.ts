@@ -84,13 +84,13 @@ export const KINDS: KindDef[] = [
   {
     kind: 'bulk_sales',
     label: 'Bulk sales entry (live)',
-    description: 'Upload real sales from a spreadsheet — one row per sale, products comma-separated.',
+    description: 'Upload real sales from a spreadsheet: one row per sale, products separated by commas.',
     source_type: 'sales_entry',
     import_type: 'sales',
     needsClient: false, // the client is per-row (client_code)
     needsReconcileTotal: false,
     commitEffect: 'creates each sale (entered, or validated where the row says so), in one transaction',
-    note: 'These are LIVE sales: unlike historical imports they DO count toward the tier tally, pay runs and clawbacks. Import clients, products and reps first — an unknown code is reported as an error, never created.',
+    note: 'These are LIVE sales: unlike historical imports they DO count toward the tier tally, pay runs and clawbacks. Import clients, products and reps first. An unknown code is reported as an error and never created.',
   },
   {
     kind: 'create_clients',
@@ -127,7 +127,7 @@ export const KINDS: KindDef[] = [
   {
     kind: 'km_rate',
     label: 'Historical km rates (migration)',
-    description: 'Load back-dated per-km rates — rep reimbursement and client billing are separate streams.',
+    description: 'Load back-dated per-km rates. Rep reimbursement and client billing are kept separate.',
     source_type: 'master_migration',
     import_type: 'km_rates',
     needsClient: false, // the client scope is per-row, and blank means the global default
@@ -138,7 +138,7 @@ export const KINDS: KindDef[] = [
   {
     kind: 'commission_tier_schedule',
     label: 'Historical tier schedules (migration)',
-    description: 'Load back-dated commission tier schedules — one row per schedule, brackets in one cell.',
+    description: 'Load back-dated commission tier schedules: one row per schedule, brackets in one cell.',
     source_type: 'master_migration',
     import_type: 'commission_tiers',
     needsClient: false,
@@ -155,7 +155,7 @@ export const KINDS: KindDef[] = [
     needsClient: false,
     needsReconcileTotal: false,
     commitEffect: 'writes each back-dated commission flat rate, in one transaction',
-    note: 'This is what the REP is paid — never a client billing rate. Product types must already exist in the catalogue; an import never adds one.',
+    note: 'This is what the REP is paid, never a client billing rate. Product types must already exist in the catalogue; an import never adds one.',
   },
   {
     kind: 'create_reps',
@@ -169,7 +169,7 @@ export const KINDS: KindDef[] = [
   },
   {
     kind: 'historical_sales',
-    label: 'Historical sales (migration — reference only)',
+    label: 'Historical sales (migration, reference only)',
     description: 'Load already-paid / migrated sales for the owner’s business reporting.',
     source_type: 'master_migration',
     import_type: 'sales',

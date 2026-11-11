@@ -51,7 +51,7 @@ const CARDS: HubCard[] = [
   { title: 'Roles & Permissions', description: 'Build roles from a module × action permission matrix.', icon: <UserCog size={20} />, permission: 'roles:view', to: '/admin/roles' },
   { title: 'Notification settings', description: 'Per-event channels and title/body templates.', icon: <Bell size={20} />, permission: 'settings:view', to: '/admin/notifications' },
   { title: 'Security settings', description: 'Multi-factor authentication enforcement policy (per role).', icon: <ShieldCheck size={20} />, permission: 'settings:view', to: '/admin/security' },
-  { title: 'Audit log', description: 'Every money & config change — actor, before → after, IP, timestamp.', icon: <ScrollText size={20} />, permission: 'audit:view', to: '/admin/audit' },
+  { title: 'Audit log', description: 'Every money and configuration change: who, what changed, IP address and time.', icon: <ScrollText size={20} />, permission: 'audit:view', to: '/admin/audit' },
   { title: 'Reconciliation', description: 'Tie statements to sales and pay runs to their lines; flag discrepancies.', icon: <Scale size={20} />, permission: 'billing:view', to: '/admin/reconciliation' },
   { title: 'Send broadcast', description: 'Compose a one-off announcement to everyone, a role, or specific people.', icon: <Megaphone size={20} />, permission: 'notifications:broadcast', to: '/admin/broadcast' },
   { title: 'Commission Config', description: 'Tiers, flat rates, holdback split, and incentives.', icon: <SlidersHorizontal size={20} />, permission: 'commission:edit', to: '/admin/commission' },
@@ -59,7 +59,7 @@ const CARDS: HubCard[] = [
   { title: 'Clients', description: 'Partners, their products, and billing rates.', icon: <ShoppingBag size={20} />, permission: 'clients:create', to: '/admin/clients' },
   { title: 'Products', description: 'Every per-client product across all partners.', icon: <ShoppingCart size={20} />, permission: 'clients:create', to: '/admin/products' },
   { title: 'KM rates', description: 'Per-client, effective-dated kilometre rate (rep reimbursement + client bill).', icon: <Route size={20} />, permission: 'km_rates:view', to: '/admin/km-rates' },
-  { title: 'Period calendars', description: 'Pay and billing cycles — anchor, length, payday offset.', icon: <CalendarRange size={20} />, permission: 'payrun:view', to: '/admin/period-configs' },
+  { title: 'Period calendars', description: 'Pay and billing cycles: start date, length and payday.', icon: <CalendarRange size={20} />, permission: 'payrun:view', to: '/admin/period-configs' },
   { title: 'Export layouts', description: 'Which columns each exported report carries, and in what order.', icon: <Columns3 size={20} />, permission: 'settings:edit', to: '/admin/export-layouts' },
   { title: 'Expense categories', description: 'Category catalogue and receipt requirements.', icon: <Receipt size={20} />, permission: 'expenses:edit' },
 ];

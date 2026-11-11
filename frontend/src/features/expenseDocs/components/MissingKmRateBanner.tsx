@@ -20,14 +20,14 @@ export function MissingKmRateBanner({ missing }: { missing: MissingKmRate[] }) {
   // One row per DATE — the admin adds a rate covering a date, not one per item.
   const dates = [...new Set(missing.map((m) => m.expense_date))].sort();
   return (
-    <Banner tone="danger" title="Can’t generate — kilometres have no client-bill rate">
+    <Banner tone="danger" title="Can’t generate: kilometres have no client-bill rate">
       Add a <strong>client-bill</strong> km rate covering the date(s) below in{' '}
       <Link to="/admin/km-rates">KM rates</Link>, then generate again. The rep reimbursement rate is
-      deliberately not used here — what a client is charged and what a rep is paid are separate.
+      deliberately not used here, because what a client is charged and what a rep is paid are kept separate.
       <ul className={styles.missingList}>
         {dates.map((d) => (
           <li key={d}>
-            <code>{displayDate(d)}</code> — no client-bill rate in effect
+            <code>{displayDate(d)}</code>: no client-bill rate in effect
           </li>
         ))}
       </ul>

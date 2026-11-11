@@ -4,7 +4,7 @@
 export const PROFILE_FIELD_LABEL: Record<string, string> = {
   full_name: 'Full name',
   phone: 'Phone',
-  avatar_url: 'Avatar URL',
+  avatar_url: 'Photo',
   email: 'Contact email',
   address_street: 'Street',
   address_city: 'City',
@@ -16,4 +16,10 @@ export const PROFILE_FIELD_LABEL: Record<string, string> = {
 
 export function profileFieldLabel(key: string): string {
   return PROFILE_FIELD_LABEL[key] ?? key;
+}
+
+/** A proposed value as text. The photo is a storage path, so it reads as "New photo" / "Removed". */
+export function profileFieldValue(key: string, value: unknown): string {
+  if (key === 'avatar_url') return value ? 'New photo' : 'Removed';
+  return String(value ?? '') || '—';
 }

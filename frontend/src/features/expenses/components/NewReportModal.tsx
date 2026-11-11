@@ -53,7 +53,7 @@ export function NewReportModal({ open, onClose }: { open: boolean; onClose: () =
           // is how someone concludes the app made a duplicate.
           toast(
             folder.reused
-              ? { title: 'Opened your existing folder for this week', description: 'A week has one folder — your items are all here.', tone: 'info' }
+              ? { title: 'Opened your existing folder for this week', description: 'Each week has one folder, and your items are all here.', tone: 'info' }
               : { title: 'Report folder created', tone: 'success' },
           );
           onClose();
@@ -91,7 +91,7 @@ export function NewReportModal({ open, onClose }: { open: boolean; onClose: () =
             placeholder="e.g. July field expenses"
           />
         </FormField>
-        <FormField label="Week" help={`Business week ${displayDate(week.week_start)} – ${displayDate(week.week_end)} (Mon–Sun). A label only — each item pays in the cycle of its own date.`}>
+        <FormField label="Week" help={`Business week ${displayDate(week.week_start)} – ${displayDate(week.week_end)} (Mon–Sun). This is a label only. Each item is paid in the pay cycle of its own date.`}>
           <DatePicker value={anyDay} onChange={(v) => setAnyDay(v || todayIso())} aria-label="Pick any day in the week" />
         </FormField>
         {canSeeReps && (

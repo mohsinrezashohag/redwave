@@ -67,7 +67,7 @@ export default function SecuritySettingsPage() {
                 <h3 style={{ margin: 0, fontSize: 'var(--text-md)' }}>Enforce MFA</h3>
                 <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
                   When ON, members of an MFA-required role must enrol before using the app. Leave OFF while
-                  testers are still onboarding — they can enrol voluntarily in the meantime.
+                  testers are still onboarding. They can enrol voluntarily in the meantime.
                 </p>
               </div>
               <Switch checked={enforced} onCheckedChange={setEnforced} disabled={!canEdit} tone="success" />
@@ -75,7 +75,7 @@ export default function SecuritySettingsPage() {
             {enforced && (
               <Banner tone="warning" title="Enforcement is on">
                 Make sure required-role members (including you) have a working authenticator before relying on
-                this — recovery codes are the fallback.
+                this. Recovery codes are the fallback.
               </Banner>
             )}
           </Card>

@@ -103,11 +103,11 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
           <h3 className={styles.sectionTitle}>Rep</h3>
           <div className={styles.grid2}>
             {editing ? (
-              <FormField label="Rep code" help="Permanent — never changed or reused.">
+              <FormField label="Rep code" help="Permanent. Never changed or reused.">
                 <Input value={editing.rep_code} readOnly className="mono" />
               </FormField>
             ) : (
-              <FormField label="Rep code" required error={errors.rep_code?.message} help="Permanent — never changed or reused.">
+              <FormField label="Rep code" required error={errors.rep_code?.message} help="Permanent. Never changed or reused.">
                 <Input {...register('rep_code')} placeholder="RW-0100" className="mono" />
               </FormField>
             )}

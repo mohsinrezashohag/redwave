@@ -155,7 +155,7 @@ function EditProductForm({ product, onClose }: { product: Product; onClose: () =
       <FormField label="Name" required error={formState.errors.name?.message}>
         <Input {...register('name')} />
       </FormField>
-      <FormField label="Product type" help="Immutable — set at creation.">
+      <FormField label="Product type" help="Set when the product is created and can’t be changed.">
         <span className={styles.readonlyType}>
           <Badge tone="neutral">{productTypeLabel(product.product_type)}</Badge>
         </span>

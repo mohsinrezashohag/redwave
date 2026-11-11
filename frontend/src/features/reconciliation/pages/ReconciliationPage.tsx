@@ -51,7 +51,7 @@ export default function ReconciliationPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
       <PageHeader
         title="Reconciliation"
-        subtitle="Tie statements to their sales and pay runs to their lines (CAD). Any mismatch is flagged — the integrity safety net."
+        subtitle="Tie statements to their sales and pay runs to their lines (CAD). Any mismatch is flagged here."
       />
 
       {/* ── Statement tie-out ─────────────────────────────────────────────── */}

@@ -31,7 +31,7 @@ export default function ResetPasswordPage({ flavor = 'reset' }: { flavor?: 'rese
   };
 
   const title = flavor === 'invite' ? 'Set your password' : 'Choose a new password';
-  const subtitle = flavor === 'invite' ? 'Welcome to Redwave — set a password to activate your account.' : 'Enter a new password for your account.';
+  const subtitle = flavor === 'invite' ? 'Welcome to Redwave. Set a password to activate your account.' : 'Enter a new password for your account.';
 
   if (!token) {
     return (

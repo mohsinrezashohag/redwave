@@ -502,7 +502,7 @@ export class ExpensesService {
         fxOverride != null ? new Decimal(fxOverride) : await this.fx.getRateToCad(item.original_currency, freezeDate);
       if (rate == null) {
         throw new UnprocessableEntityException(
-          `an FX rate is required to approve a ${item.original_currency} expense — provide fx_rate or enable the FX source`,
+          `An exchange rate is required to approve a ${item.original_currency} expense. Enter the rate, or turn on the exchange-rate source.`,
         );
       }
       fxFreeze.fx_rate = rate.toFixed(8);

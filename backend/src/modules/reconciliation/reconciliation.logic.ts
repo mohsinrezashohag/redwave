@@ -31,8 +31,8 @@ export function tieOutStatement(args: {
   const statement_matches_live = live !== null && frozen === live;
   const discrepancies: string[] = [];
   if (!total_equals_lines) discrepancies.push(`Statement total ${frozen} does not equal the sum of its lines ${lines_sum}.`);
-  if (live === null) discrepancies.push('Could not re-price the period now (a sold product has no effective billing rate) — review billing rates.');
-  else if (!statement_matches_live) discrepancies.push(`Statement total ${frozen} does not equal the live re-priced sales ${live} — the statement is stale; regenerate.`);
+  if (live === null) discrepancies.push('Could not re-price the period now because a sold product has no billing rate in effect. Review the billing rates.');
+  else if (!statement_matches_live) discrepancies.push(`Statement total ${frozen} does not match the sales re-priced today (${live}). The statement is out of date, so regenerate it.`);
   return { frozen_total: frozen, lines_sum, live_total: live, total_equals_lines, statement_matches_live, ok: discrepancies.length === 0, discrepancies };
 }
 
@@ -109,11 +109,11 @@ export function tieOutExpenseDoc(args: {
   }
   if (live === null) {
     discrepancies.push(
-      'Could not re-derive the expenses now (a km item has no effective client rate) — review km rates.',
+      'Could not recalculate the expenses now because a km item has no client rate in effect. Review the km rates.',
     );
   } else if (!document_matches_live) {
     discrepancies.push(
-      `Expense document total ${frozen} does not equal the live re-derived expenses ${live} — the document is stale; re-issue it.`,
+      `Expense document total ${frozen} does not match the expenses recalculated today (${live}). The document is out of date, so re-issue it.`,
     );
   }
   return {

@@ -149,7 +149,7 @@ export function IncentivesSection() {
         open={!!deleteInc}
         onOpenChange={(o) => !o && setDeleteInc(null)}
         title="Delete incentive?"
-        description="This permanently removes the incentive. If it has already been applied to a paid item, the server will refuse — end it instead."
+        description="This permanently removes the incentive. If it has already been applied to a paid item, it can’t be deleted. End it instead."
         confirmLabel="Delete"
         loading={remove.isPending}
         onConfirm={onConfirmDelete}

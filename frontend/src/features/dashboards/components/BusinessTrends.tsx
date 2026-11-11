@@ -61,7 +61,7 @@ export function BusinessTrends({ periods = 6 }: { periods?: number } = {}) {
       isError={q.isError}
       isEmpty={(t?.periods.length ?? 0) === 0}
       onRetry={() => q.refetch()}
-      emptyNode={<p className="mono">No trend data yet — finalize a pay run to populate trends.</p>}
+      emptyNode={<p className="mono">No trend data yet. Finalize a pay run to see trends.</p>}
     >
       <div className={styles.chartGrid}>
         <Card title="Revenue · payout · margin (recent periods)">

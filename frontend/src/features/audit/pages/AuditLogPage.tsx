@@ -50,7 +50,7 @@ export default function AuditLogPage() {
     <div className={styles.page}>
       <PageHeader
         title="Audit log"
-        subtitle="Every money & config mutation (and access denial) — actor, action, before → after, IP, timestamp. Append-only."
+        subtitle="Every money and configuration change, and every access denial: who, what, before and after, IP address and time. Entries can never be edited."
       />
 
       <div className={styles.filters}>

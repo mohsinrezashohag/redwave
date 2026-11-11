@@ -41,11 +41,6 @@ export class CreateUserDto {
   @MaxLength(50)
   phone?: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  avatar_url?: string;
-
   @ApiPropertyOptional({ type: [String], description: 'Role ids to assign on creation.' })
   @IsOptional()
   @IsArray()
@@ -66,11 +61,6 @@ export class UpdateUserDto {
   @IsString()
   @MaxLength(50)
   phone?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  avatar_url?: string;
 
   @ApiPropertyOptional({
     enum: UserStatus,

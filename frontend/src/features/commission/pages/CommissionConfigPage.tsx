@@ -32,7 +32,7 @@ export default function CommissionConfigPage() {
     <div className={styles.page}>
       <PageHeader
         title="Commission Configuration"
-        subtitle="The rep-commission stream — tiers, flat rates, holdback, and incentives. Effective-dated; changes apply prospectively."
+        subtitle="What reps are paid: tiers, flat rates, holdback and incentives. Every change is dated and applies from its start date onward."
       />
       <Card title="Rate scope">
         <ScopeSelector value={scope} onChange={setScope} />

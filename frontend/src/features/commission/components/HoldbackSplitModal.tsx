@@ -91,7 +91,7 @@ export function HoldbackSplitModal({ open, row, onClose }: { open: boolean; row?
             control={control}
             name="effective_to"
             render={({ field }) => (
-              <FormField label="Effective to" help="Ends after the chosen period — or open-ended.">
+              <FormField label="Effective to" help="Ends after the chosen period, or leave open-ended.">
                 <PayPeriodSelect value={field.value} onChange={field.onChange} boundary="end" allowOpenEnded aria-label="Effective to period" />
               </FormField>
             )}

@@ -117,7 +117,7 @@ export function NotificationSettingsEditor({
 
               {isBroadcast ? (
                 <p className={styles.hint}>
-                  The Super Admin supplies the title and body when sending a broadcast — there is no fixed
+                  The Super Admin supplies the title and body when sending a broadcast, so there is no fixed
                   template here.
                 </p>
               ) : (

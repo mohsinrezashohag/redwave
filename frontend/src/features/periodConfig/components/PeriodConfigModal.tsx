@@ -61,7 +61,7 @@ export function PeriodConfigModal({ open, onClose }: { open: boolean; onClose: (
       },
       {
         onSuccess: () => {
-          toast({ title: 'Calendar shape saved — regenerate to apply it', tone: 'success' });
+          toast({ title: 'Calendar saved. Regenerate to apply it.', tone: 'success' });
           onClose();
         },
         onError,

@@ -116,7 +116,7 @@ export default function LoginPage() {
         ) : (
           <>
             <h1 className={styles.title}>Sign in</h1>
-            <p className={styles.subtitle}>Welcome back — enter your credentials to continue.</p>
+            <p className={styles.subtitle}>Welcome back. Sign in to continue.</p>
             {error && (
               <Banner tone="danger" title="Sign-in failed">
                 {error}

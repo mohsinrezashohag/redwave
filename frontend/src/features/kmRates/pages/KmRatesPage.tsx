@@ -80,7 +80,7 @@ export default function KmRatesPage() {
     <div className={styles.page}>
       <PageHeader
         title="KM rates"
-        subtitle="Per-client, effective-dated kilometre rate. Rep rows are reimbursed to reps; client-bill rows are charged to the client — the two streams are never combined."
+        subtitle="Per-client, effective-dated kilometre rate. Rep rows are reimbursed to reps; client-bill rows are charged to the client. The two are never combined."
         actions={
           canEdit ? (
             <Button variant="primary" leftIcon={<Plus size={16} />} onClick={() => setAdding(true)}>
@@ -111,7 +111,7 @@ export default function KmRatesPage() {
           isError={list.isError}
           isEmpty={(list.data?.length ?? 0) === 0}
           onRetry={() => void list.refetch()}
-          emptyNode={<p className="mono">No km rates configured — reps are paid the $0.45 default until one is added.</p>}
+          emptyNode={<p className="mono">No km rates set up yet. Reps are paid the $0.45 default until one is added.</p>}
         >
           <EffectiveDatedTable
             rows={list.data ?? []}
@@ -139,7 +139,7 @@ export default function KmRatesPage() {
         onConfirm={confirmDelete}
       >
         This removes the pending rate and re-opens any predecessor it had bounded. Current and past rates
-        can’t be deleted — supersede them with a new future-dated rate instead.
+        can’t be deleted. Replace them with a new future-dated rate instead.
       </ConfirmDialog>
     </div>
   );

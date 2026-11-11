@@ -143,7 +143,7 @@ export function ProductsTable({ filters }: { filters: ProductsFilters }) {
         open={confirmBulk}
         onOpenChange={setConfirmBulk}
         title={`Deactivate ${selected.size} product(s)?`}
-        description="Selected products are marked inactive (soft — history is preserved). You can reactivate them later."
+        description="Selected products are marked inactive and their history is preserved. You can reactivate them later."
         confirmLabel="Deactivate products"
         requireTyped="DEACTIVATE"
         loading={bulkDeactivate.isPending}

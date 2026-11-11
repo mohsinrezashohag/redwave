@@ -152,11 +152,11 @@ export default function PayRunDetailPage() {
       />
 
       {isDraft ? (
-        <Banner tone="info" title="Draft — not finalized">
+        <Banner tone="info" title="Draft (not finalized)">
           These amounts are a preview computed by the engine. Nothing is committed until you finalize.
         </Banner>
       ) : (
-        <Banner tone="success" title={isExported ? 'Finalized & exported — locked' : 'Finalized — locked'}>
+        <Banner tone="success" title={isExported ? 'Finalized, exported and locked' : 'Finalized and locked'}>
           This run is committed and read-only. Snapshots are frozen, the period&rsquo;s sales are paid, and holdback is recorded.
         </Banner>
       )}
