@@ -13,6 +13,7 @@ import { MailerService } from '../../common/email/mailer.service';
 import { PasswordResetService } from '../auth/password-reset.service';
 import { RefreshSessionService } from '../auth/refresh-session.service';
 import { MfaService } from '../auth/mfa.service';
+import { AvatarService } from '../../common/avatar/avatar.service';
 import { assertPasswordPolicy } from '../auth/password-policy';
 import { AdminResetPasswordDto, CreateUserDto, SetUserRolesDto, UpdateUserDto } from './dto/user.dto';
 
@@ -48,13 +49,15 @@ export class UsersService {
     private readonly passwordReset: PasswordResetService,
     private readonly sessions: RefreshSessionService,
     private readonly mfa: MfaService,
+    private readonly avatars: AvatarService,
   ) {}
 
-  findAll() {
-    return this.prisma.user.findMany({
+  async findAll() {
+    const users = await this.prisma.user.findMany({
       select: USER_WITH_ROLES_SELECT,
       orderBy: { created_at: 'asc' },
     });
+    return this.avatars.withDisplayUrls(users); // photo = signed display URL (a rep's = their headshot)
   }
 
   async findOne(id: string) {
@@ -65,7 +68,7 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    return user;
+    return (await this.avatars.withDisplayUrl(user))!;
   }
 
   async create(dto: CreateUserDto, actorId: string) {
@@ -83,7 +86,6 @@ export class UsersService {
           password_hash,
           full_name: dto.full_name,
           phone: dto.phone,
-          avatar_url: dto.avatar_url,
           theme_preference: 'system',
           status: 'active',
           must_change_password: invite,
@@ -153,7 +155,6 @@ export class UsersService {
       data: {
         full_name: dto.full_name,
         phone: dto.phone,
-        avatar_url: dto.avatar_url,
         status: dto.status,
       },
       select: { full_name: true, phone: true, avatar_url: true, status: true },

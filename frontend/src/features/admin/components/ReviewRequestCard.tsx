@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { Avatar, Button, Card, Modal, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { displayDate } from '../../../lib/format/date';
-import { profileFieldLabel } from '../../../lib/format/profileFields';
+import { profileFieldLabel, profileFieldValue } from '../../../lib/format/profileFields';
 import { useApproveRequest, useRejectRequest } from '../api/useProfileReview';
 import type { ReviewRequest, ReviewSubject } from '../admin.types';
 import styles from './ReviewRequestCard.module.css';
@@ -63,11 +63,24 @@ export function ReviewRequestCard({ request }: { request: ReviewRequest }) {
         {changes.map(([key, proposed]) => (
           <div key={key} className={styles.diffRow}>
             <span className={styles.field}>{profileFieldLabel(key)}</span>
-            <span className={styles.fromTo}>
-              <span className={styles.from}>{currentValue(key)}</span>
-              <ArrowRight size={14} aria-hidden className={styles.arrow} />
-              <span className={styles.to}>{String(proposed) || '—'}</span>
-            </span>
+            {key === 'avatar_url' ? (
+              // The photo: current → proposed as pictures (the server sends a short-lived preview URL).
+              <span className={styles.fromTo}>
+                <Avatar name={request.subject.full_name} src={request.subject.avatar_url} size="md" />
+                <ArrowRight size={14} aria-hidden className={styles.arrow} />
+                {proposed ? (
+                  <Avatar name={request.subject.full_name} src={request.proposed_avatar_preview} size="md" />
+                ) : (
+                  <span className={styles.to}>Removed</span>
+                )}
+              </span>
+            ) : (
+              <span className={styles.fromTo}>
+                <span className={styles.from}>{currentValue(key)}</span>
+                <ArrowRight size={14} aria-hidden className={styles.arrow} />
+                <span className={styles.to}>{profileFieldValue(key, proposed)}</span>
+              </span>
+            )}
           </div>
         ))}
       </div>

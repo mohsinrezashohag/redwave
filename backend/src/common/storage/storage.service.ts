@@ -121,6 +121,25 @@ export class StorageService {
     return data.signedUrl;
   }
 
+  /**
+   * Signed URLs for many PATHS in one call (e.g. every avatar in a users list). Returns path → url; a path
+   * that fails, a local ref, or unconfigured storage is simply absent.
+   */
+  async signedUrls(paths: string[], ttlSeconds: number = SIGNED_URL_TTL_SHORT): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const real = paths.filter((p) => p && !p.startsWith('local://'));
+    if (!this.client || real.length === 0) return out;
+    const { data, error } = await this.client.storage.from(this.bucket).createSignedUrls(real, ttlSeconds);
+    if (error || !data) {
+      this.logger.warn(`Batch sign-url failed: ${error?.message ?? 'no data'}`);
+      return out;
+    }
+    for (const row of data) {
+      if (row.path && row.signedUrl && !row.error) out.set(row.path, row.signedUrl);
+    }
+    return out;
+  }
+
   private async putObject(key: string, body: Buffer, contentType: string): Promise<void> {
     const { error } = await this.client!.storage
       .from(this.bucket)

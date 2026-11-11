@@ -6,7 +6,8 @@
  * — arch §11 / security.md (file storage)
  */
 
-export const FILE_PURPOSES = ['receipt', 'document'] as const;
+/** `avatar` = a non-rep user's profile photo (JPEG/PNG only — enforced at claim). — 2026-11-12 */
+export const FILE_PURPOSES = ['receipt', 'document', 'avatar'] as const;
 export type FilePurpose = (typeof FILE_PURPOSES)[number];
 
 /** Allowed upload mimes. The FE compresses images to JPEG first; PDFs pass through. */

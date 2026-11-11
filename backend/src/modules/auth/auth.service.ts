@@ -18,6 +18,7 @@ import { newCsrfToken } from '../../common/security/cookie.util';
 import { TokenService } from './token.service';
 import { RefreshSessionService } from './refresh-session.service';
 import { MfaService } from './mfa.service';
+import { AvatarService } from '../../common/avatar/avatar.service';
 
 /** What login produced: a full session, or an MFA challenge that must be redeemed first. */
 export interface SessionTokens {
@@ -46,6 +47,7 @@ export class AuthService {
     private readonly mfa: MfaService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
+    private readonly avatars: AvatarService,
   ) {}
 
   async login(email: string, password: string, req?: Request): Promise<LoginOutcome> {
@@ -169,7 +171,7 @@ export class AuthService {
       this.mfa.loginGate(user.id), // 'enrollment_required' = policy requires MFA and the user hasn't enrolled
     ]);
     return {
-      user: profile,
+      user: await this.avatars.withDisplayUrl(profile), // a display URL, never a storage path
       roles: user.roleNames,
       is_super_admin: user.isSuperAdmin,
       rep_id: user.repId,

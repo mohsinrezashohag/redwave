@@ -11,7 +11,7 @@ import { getCsrfToken } from '../../auth/session';
 import { ApiError } from '../api/apiError';
 
 export type StoredFile = components['schemas']['StoredFileResponse'];
-export type FilePurpose = 'receipt' | 'document';
+export type FilePurpose = 'receipt' | 'document' | 'avatar';
 
 export interface UploadOptions {
   file: File;

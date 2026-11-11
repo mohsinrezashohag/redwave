@@ -44,8 +44,14 @@ function makeService() {
     reviewerUserIds: jest.fn().mockResolvedValue([]),
   };
   const emitter = { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() };
-  const service = new AccountService(prisma as never, audit as never, scope as never, emitter as never);
-  return { service, prisma, audit, scope };
+  const avatars = {
+    withDisplayUrl: jest.fn(async (u: unknown) => u),
+    withDisplayUrls: jest.fn(async (u: unknown) => u),
+    previewPath: jest.fn(async (p: string | null) => (p ? `https://signed/${p}` : null)),
+  };
+  const files = { claim: jest.fn().mockResolvedValue({}) };
+  const service = new AccountService(prisma as never, audit as never, scope as never, emitter as never, avatars as never, files as never);
+  return { service, prisma, audit, scope, avatars, files };
 }
 
 describe('AccountService — profile changes (AUTH-010 / AUTH-011, §4.4)', () => {
@@ -214,5 +220,51 @@ describe('AccountService — rep profile change requests', () => {
     for (const forbidden of ['date_of_birth', 'sin', 'rep_code', 'status', 'field_manager_id', 'hire_date']) {
       expect(dto).not.toMatch(new RegExp(`\\b${forbidden}\\??!?:`));
     }
+  });
+});
+
+describe('profile photo — uploaded, never a link (2026-11-12)', () => {
+  const admin: AuthUser = { ...self, id: 'u-admin', roleNames: ['Admin'], repId: null };
+
+  it('a non-rep proposes an uploaded avatar path — claimed as THEIR avatar file', async () => {
+    const { service, prisma, files } = makeService();
+    prisma.profileChangeRequest.create.mockResolvedValue({ id: 'r1', status: 'pending', proposed_changes: {}, created_at: new Date() });
+    await service.requestProfileChange(admin, { avatar_url: 'avatars/2026/11/a.jpg' });
+    expect(files.claim).toHaveBeenCalledWith('avatars/2026/11/a.jpg', admin, 'avatar');
+  });
+
+  it('a pasted link is refused (the claim rejects it); removing the photo needs no claim', async () => {
+    const { service, prisma, files } = makeService();
+    files.claim.mockRejectedValueOnce(new Error('unknown avatar file reference'));
+    await expect(service.requestProfileChange(admin, { avatar_url: 'https://example.com/me.png' })).rejects.toThrow(/unknown avatar/);
+    expect(prisma.profileChangeRequest.create).not.toHaveBeenCalled();
+    prisma.profileChangeRequest.create.mockResolvedValue({ id: 'r2', status: 'pending', proposed_changes: {}, created_at: new Date() });
+    files.claim.mockClear();
+    await service.requestProfileChange(admin, { avatar_url: '' });
+    expect(files.claim).not.toHaveBeenCalled();
+  });
+
+  it('a rep cannot set a photo — it is their HR headshot', async () => {
+    const { service, prisma } = makeService();
+    await expect(service.requestProfileChange(self, { avatar_url: 'avatars/2026/11/a.jpg' })).rejects.toThrow(/headshot/);
+    expect(prisma.profileChangeRequest.create).not.toHaveBeenCalled();
+  });
+
+  it('the review queue shows the PROPOSED photo as a preview URL, and the subject photo resolved', async () => {
+    const { service, prisma, avatars, scope } = makeService();
+    scope.profileReviewWhere.mockReturnValue({});
+    (avatars as unknown as { resolve: jest.Mock }).resolve = jest.fn().mockResolvedValue(new Map([['u-admin', 'https://signed/current']]));
+    prisma.profileChangeRequest.findMany.mockResolvedValue([
+      {
+        id: 'r1',
+        proposed_changes: { avatar_url: 'avatars/2026/11/new.jpg' },
+        created_at: new Date(),
+        requested_by: 'u-admin',
+        subject: { id: 'u-admin', email: 'a@x.co', full_name: 'Ad Min', phone: null, avatar_url: 'avatars/old.jpg', rep_login: null },
+      },
+    ]);
+    const [row] = await service.listReviewQueue(reviewer);
+    expect(row.proposed_avatar_preview).toBe('https://signed/avatars/2026/11/new.jpg');
+    expect(row.subject.avatar_url).toBe('https://signed/current');
   });
 });

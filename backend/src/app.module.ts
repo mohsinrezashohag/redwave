@@ -9,6 +9,7 @@
  * The remaining 11 domain modules are registered here as they are built (CLAUDE §6 build order).
  */
 import { Module } from '@nestjs/common';
+import { AvatarModule } from './common/avatar/avatar.module';
 import { APP_FILTER } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
@@ -42,6 +43,7 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    AvatarModule,
     PrismaModule,
     HealthModule,
     AuditModule,

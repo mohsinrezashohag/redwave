@@ -26,6 +26,7 @@ function make() {
     passwordReset as never,
     sessions as never,
     mfa as never,
+    { withDisplayUrl: async (u: unknown) => u, withDisplayUrls: async (u: unknown) => u } as never,
   );
   return { service, prisma, tx, mailer, passwordReset, sessions, mfa };
 }

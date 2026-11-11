@@ -26,7 +26,7 @@ describe('AuthService.login (AUTH-001 / AUTH-002 / AUTH-008 + MFA gate)', () => 
     mfa = { loginGate: jest.fn().mockResolvedValue('none') };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     config = { get: jest.fn().mockReturnValue(undefined) }; // use defaults (5 attempts / 15 min)
-    service = new AuthService(prisma as never, tokens as never, sessions as never, mfa as never, audit as never, config as never);
+    service = new AuthService(prisma as never, tokens as never, sessions as never, mfa as never, audit as never, config as never, { withDisplayUrl: async (u: unknown) => u } as never);
   });
 
   const activeUser = (over: Record<string, unknown> = {}) => ({

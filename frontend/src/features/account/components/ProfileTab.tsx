@@ -9,6 +9,7 @@
  *   - sees the rest of their rep profile read-only below — rep code, status, dates, manager, DOB, masked SIN,
  *     equipment and their documents — which HR manages (MyRepProfileSection).
  */
+import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -23,6 +24,7 @@ import { MyRepProfileSection } from '../../reps/components/MyRepProfileSection';
 import { CLOTHING_SIZES, NONE, PROVINCES } from '../../reps/repForm';
 import type { MyRepProfile } from '../../reps/reps.types';
 import { PendingChangeBanner } from './PendingChangeBanner';
+import { PhotoPicker, type PhotoChange } from './PhotoPicker';
 import type { AccountProfile, ProfileChangeRequestBody } from '../account.types';
 import styles from './account.module.css';
 
@@ -31,7 +33,6 @@ const POSTAL = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
 const schema = z.object({
   full_name: z.string().min(1, 'Required').max(150),
   phone: z.string().max(50).optional(),
-  avatar_url: z.string().max(1024).optional(),
   // Rep-only (shown only to a rep).
   email: z.string().refine((v) => !v || z.string().email().safeParse(v).success, 'Enter a valid email'),
   address_street: z.string().max(200),
@@ -54,13 +55,14 @@ function ProfileEditForm({ profile, rep }: { profile: AccountProfile; rep: MyRep
   const { toast } = useToast();
   const onError = useApiErrorToast();
   const req = useRequestProfileChange();
+  // The photo is uploaded, not typed (2026-11-12): a new storage path, '' to remove, or undefined = unchanged.
+  const [photo, setPhoto] = useState<PhotoChange>(undefined);
 
   const { control, register, handleSubmit, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
     values: {
       full_name: profile.full_name,
       phone: profile.phone ?? '',
-      avatar_url: profile.avatar_url ?? '',
       email: rep?.email ?? '',
       address_street: rep?.address_street ?? '',
       address_city: rep?.address_city ?? '',
@@ -77,7 +79,7 @@ function ProfileEditForm({ profile, rep }: { profile: AccountProfile; rep: MyRep
     const body: ProfileChangeRequestBody = {};
     if (values.full_name !== profile.full_name) body.full_name = values.full_name;
     if ((values.phone ?? '') !== (profile.phone ?? '')) body.phone = values.phone ?? '';
-    if ((values.avatar_url ?? '') !== (profile.avatar_url ?? '')) body.avatar_url = values.avatar_url ?? '';
+    if (!rep && photo !== undefined) body.avatar_url = photo;
     if (rep) {
       for (const k of REP_TEXT) {
         const next = values[k].trim();
@@ -120,7 +122,7 @@ function ProfileEditForm({ profile, rep }: { profile: AccountProfile; rep: MyRep
   return (
     <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
       <p className={styles.help}>
-        Editing your {rep ? 'name, phone, contact email, address or uniform sizes' : 'name, phone, or avatar'}{' '}
+        Editing your {rep ? 'name, phone, contact email, address or uniform sizes' : 'name, phone or photo'}{' '}
         creates a <strong>change request</strong> — it is reviewed before it applies, so your live profile won&rsquo;t
         change until then. (Your theme, by contrast, applies instantly — see Preferences.)
       </p>
@@ -130,9 +132,13 @@ function ProfileEditForm({ profile, rep }: { profile: AccountProfile; rep: MyRep
       <FormField label="Phone" error={errors.phone?.message}>
         <Input {...register('phone')} placeholder="(204) 555-0123" />
       </FormField>
-      <FormField label="Avatar URL" error={errors.avatar_url?.message} help="A link to an image (file upload is coming later).">
-        <Input {...register('avatar_url')} placeholder="https://…" />
-      </FormField>
+      {rep ? (
+        <p className={styles.help}>Your photo is the headshot HR keeps on file. Ask HR to update it.</p>
+      ) : (
+        <FormField label="Photo">
+          <PhotoPicker name={profile.full_name} currentUrl={profile.avatar_url} value={photo} onChange={setPhoto} />
+        </FormField>
+      )}
 
       {rep && (
         <>

@@ -26,6 +26,8 @@ import { AuditService } from '../../common/audit/audit.service';
 import { ScopeService } from '../../common/scope/scope.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { USER_PUBLIC_SELECT } from '../../common/util/user-public';
+import { AvatarService } from '../../common/avatar/avatar.service';
+import { FilesService } from '../files/files.service';
 import { ChangePasswordDto, ProfileChangeRequestDto, SetThemeDto } from './dto/account.dto';
 import { assertPasswordPolicy } from '../auth/password-policy';
 import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
@@ -86,6 +88,8 @@ export class AccountService {
     private readonly audit: AuditService,
     private readonly scope: ScopeService,
     @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
+    private readonly avatars: AvatarService,
+    private readonly files: FilesService,
   ) {}
 
   /** Own profile + a flag/details if a change is pending review. */
@@ -99,7 +103,7 @@ export class AccountService {
       }),
     ]);
     return {
-      ...profile,
+      ...(await this.avatars.withDisplayUrl(profile)),
       change_pending: pending !== null,
       pending_request: pending,
     };
@@ -150,6 +154,14 @@ export class AccountService {
       throw new UnprocessableEntityException(
         'Contact email, address and uniform sizes belong to a rep profile — your account is not linked to a rep',
       );
+    }
+    // The photo is UPLOADED, never a link (2026-11-12): '' removes it, otherwise it must be an avatar file
+    // this user uploaded. A rep's photo is their HR headshot, so a rep can't set one here.
+    if (proposed.avatar_url !== undefined) {
+      if (user.repId) {
+        throw new UnprocessableEntityException('Your photo is the headshot HR keeps on file — ask HR to update it');
+      }
+      if (proposed.avatar_url) await this.files.claim(proposed.avatar_url, user, 'avatar');
     }
     const request = await this.prisma.profileChangeRequest.create({
       data: {
@@ -230,10 +242,19 @@ export class AccountService {
         },
       },
     });
-    return rows.map(({ subject: { rep_login, ...subject }, ...row }) => ({
-      ...row,
-      subject: { ...subject, rep: rep_login ?? null },
-    }));
+    // Photos: the subject's current one as a display URL, and the PROPOSED upload as a preview, so the reviewer
+    // sees two pictures rather than a storage path. — 2026-11-12
+    const urls = await this.avatars.resolve(rows.map((r) => r.subject));
+    return Promise.all(
+      rows.map(async ({ subject: { rep_login, ...subject }, ...row }) => {
+        const proposedPhoto = (row.proposed_changes as ProposedChanges | null)?.avatar_url;
+        return {
+          ...row,
+          proposed_avatar_preview: proposedPhoto ? await this.avatars.previewPath(proposedPhoto) : null,
+          subject: { ...subject, avatar_url: urls.get(subject.id) ?? null, rep: rep_login ?? null },
+        };
+      }),
+    );
   }
 
   async approve(reviewer: AuthUser, requestId: string) {
