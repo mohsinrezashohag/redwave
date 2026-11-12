@@ -42,7 +42,8 @@ export class ProfileChangeRequestDto {
 
   @ApiPropertyOptional({
     description:
-      'The new photo: the storage path returned by POST /v1/files (purpose=avatar, JPG/PNG), or "" to remove it. Links are not accepted. Not available to reps — their photo is their HR headshot.',
+      'The new photo: the storage path returned by POST /v1/files (purpose=avatar, JPG/PNG), or "" to remove it. Links are not accepted. Not available to reps — their photo is their HR headshot. ' +
+      'The Super Admin instead sends one of preset:compass | preset:wave | preset:summit (applied at once, no review).',
   })
   @IsOptional()
   @IsString()

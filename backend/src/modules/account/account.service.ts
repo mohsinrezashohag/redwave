@@ -27,6 +27,7 @@ import { ScopeService } from '../../common/scope/scope.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { USER_PUBLIC_SELECT } from '../../common/util/user-public';
 import { AvatarService } from '../../common/avatar/avatar.service';
+import { isAvatarPreset } from '../../common/avatar/avatar.logic';
 import { FilesService } from '../files/files.service';
 import { ChangePasswordDto, ProfileChangeRequestDto, SetThemeDto } from './dto/account.dto';
 import { assertPasswordPolicy } from '../auth/password-policy';
@@ -156,13 +157,24 @@ export class AccountService {
       );
     }
     // The photo is UPLOADED, never a link (2026-11-12): '' removes it, otherwise it must be an avatar file
-    // this user uploaded. A rep's photo is their HR headshot, so a rep can't set one here.
+    // this user uploaded. A rep's photo is their HR headshot, so a rep can't set one here. The Super Admin
+    // instead picks one of the built-in avatars (`preset:*`) and has no upload.
     if (proposed.avatar_url !== undefined) {
-      if (user.repId) {
+      if (user.isSuperAdmin) {
+        if (proposed.avatar_url && !isAvatarPreset(proposed.avatar_url)) {
+          throw new UnprocessableEntityException('Choose one of the three built-in avatars.');
+        }
+      } else if (isAvatarPreset(proposed.avatar_url)) {
+        throw new UnprocessableEntityException('Upload a JPG or PNG photo.');
+      } else if (user.repId) {
         throw new UnprocessableEntityException('Your photo is the headshot HR keeps on file. Please ask HR to update it.');
+      } else if (proposed.avatar_url) {
+        await this.files.claim(proposed.avatar_url, user, 'avatar');
       }
-      if (proposed.avatar_url) await this.files.claim(proposed.avatar_url, user, 'avatar');
     }
+    // The Super Admin answers to no reviewer (2026-11-12): their own change applies at once, and is still
+    // recorded as an approved request + audited, so the history reads the same as anyone else's.
+    if (user.isSuperAdmin) return this.applyOwnChange(user, proposed);
     const request = await this.prisma.profileChangeRequest.create({
       data: {
         user_id: user.id,
@@ -188,6 +200,42 @@ export class AccountService {
       relatedEntityType: 'profile_change_requests',
       relatedEntityId: request.id,
       variables: { subject_name: user.full_name },
+    });
+    return request;
+  }
+
+  private async applyOwnChange(user: AuthUser, proposed: ProposedChanges) {
+    // Same mapping as an approved request: '' clears the phone / photo; the name is required.
+    const data: Prisma.UserUpdateInput = {};
+    if (proposed.full_name) data.full_name = proposed.full_name;
+    if (proposed.phone !== undefined) data.phone = proposed.phone || null;
+    if (proposed.avatar_url !== undefined) data.avatar_url = proposed.avatar_url || null;
+    const before = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { full_name: true, phone: true, avatar_url: true },
+    });
+    const now = new Date();
+    const request = await this.prisma.$transaction(async (tx) => {
+      if (Object.keys(data).length > 0) await tx.user.update({ where: { id: user.id }, data });
+      return tx.profileChangeRequest.create({
+        data: {
+          user_id: user.id,
+          requested_by: user.id,
+          proposed_changes: proposed as Prisma.InputJsonValue,
+          status: 'approved',
+          reviewed_by: user.id,
+          reviewed_at: now,
+        },
+        select: { id: true, status: true, proposed_changes: true, created_at: true },
+      });
+    });
+    await this.audit.log({
+      actorId: user.id,
+      entityType: 'profile_change_requests',
+      entityId: request.id,
+      action: 'approve',
+      before,
+      after: auditSafe(proposed),
     });
     return request;
   }

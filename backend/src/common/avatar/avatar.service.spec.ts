@@ -80,3 +80,10 @@ describe('AvatarService.resolveReps — a rep photo wherever the rep is shown', 
     expect(rows).toEqual([{ id: 'r1', name: 'A', photo_url: null }]);
   });
 });
+
+describe('built-in avatars (Super Admin, 2026-11-12)', () => {
+  it('a preset shows from the app itself; an unknown preset shows nothing', () => {
+    expect(avatarSource('preset:wave', null, false)).toEqual({ kind: 'link', url: '/avatars/wave.svg' });
+    expect(avatarSource('preset:unknown', null, false)).toBeNull();
+  });
+});

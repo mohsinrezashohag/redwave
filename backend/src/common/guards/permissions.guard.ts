@@ -5,6 +5,10 @@
  * their effective permission set contains `moduleKey:action`. Otherwise the request is rejected
  * with 403 AND the denied attempt is written to the audit log. Routes with no @RequirePermission
  * require only authentication. — SRS AUTH-006, arch §7, CLAUDE §5
+ *
+ * The Super Admin passes EVERY permission check (client decision 2026-11-12), not only the ones its role row
+ * happens to hold: a permission added later can never lock the owner out. Data scope still applies per
+ * service (the SA's scope is already `all`).
  */
 import {
   CanActivate,
@@ -44,7 +48,7 @@ export class PermissionsGuard implements CanActivate {
     }
 
     const key = permissionKey(required.moduleKey, required.action);
-    if (user.permissions.has(key)) {
+    if (user.isSuperAdmin || user.permissions.has(key)) {
       return true;
     }
 

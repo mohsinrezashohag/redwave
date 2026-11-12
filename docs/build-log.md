@@ -2808,3 +2808,21 @@ in the URL (`lib/files/fileKind.ts`, tested). The pdf.js viewer moved from `feat
 replaces Open, also on the rep's own view) and expense receipts (folder row + item detail). The Documents
 module already had its own inline viewer. Other files still referencing the missing surface tokens:
 `SignaturePad`, `signatures`, `audit`, `fieldPlacer` CSS (not touched).
+
+
+### Super Admin: no permission checks, instant profile edits, three built-in avatars (no migration)
+
+**Ask (2026-11-12).** "The Super Admin doesn't need permission checks; bypass them globally. Remove the photo
+upload for them; let them pick one of three avatars with one click. A fun feature, keep it simple."
+
+- **Guard:** `PermissionsGuard` returns true for `isSuperAdmin` before the permission lookup (spec'd with a
+  permission the role row lacks); FE `useCan` mirrors it. Scope is untouched.
+- **Profile:** the SA's change request is written as `approved` (reviewed_by = self) and applied in the same
+  tx, audited as `approve`; the form says "Save changes" and the toast "Profile updated".
+- **Avatars:** `preset:compass|wave|summit`, drawn in-house as SVGs in the brand navy/orange/blue
+  (`frontend/public/avatars/`, fixed colours like the favicon). `avatarSource` maps a preset to
+  `/avatars/<name>.svg` (same origin as the app, nothing to sign). The SA may send only a preset (or ''); a
+  preset from anyone else is 422. `AvatarPresetPicker`: three 72px circles, click applies at once, selected
+  ring + check.
+
+Scope note: only the Super Admin's own account; Admins and other non-rep users keep the upload.

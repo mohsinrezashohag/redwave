@@ -4,6 +4,9 @@
  * banner appears until a reviewer approves. While a change is pending the form is disabled (one request at
  * a time). Reuses the playbook: TanStack Query + RHF+zod + FormField + DataState + toast. Tokens only.
  *
+ * The Super Admin (2026-11-12) answers to no reviewer: the same form saves at once, and the picture is one
+ * of three built-in avatars picked with one click (AvatarPresetPicker), no upload.
+ *
  * A signed-in REP additionally (client request 2026-11-11):
  *   - may request contact email, address and jacket / t-shirt size (applied to their REP record on approval);
  *   - sees the rest of their rep profile read-only below — rep code, status, dates, manager, DOB, masked SIN,
@@ -25,6 +28,7 @@ import { CLOTHING_SIZES, NONE, PROVINCES } from '../../reps/repForm';
 import type { MyRepProfile } from '../../reps/reps.types';
 import { PendingChangeBanner } from './PendingChangeBanner';
 import { PhotoPicker, type PhotoChange } from './PhotoPicker';
+import { AvatarPresetPicker } from './AvatarPresetPicker';
 import type { AccountProfile, ProfileChangeRequestBody } from '../account.types';
 import styles from './account.module.css';
 
@@ -55,6 +59,9 @@ function ProfileEditForm({ profile, rep }: { profile: AccountProfile; rep: MyRep
   const { toast } = useToast();
   const onError = useApiErrorToast();
   const req = useRequestProfileChange();
+  // The Super Admin answers to no reviewer: their changes apply at once, and their picture is one of three
+  // built-in avatars instead of an upload (2026-11-12).
+  const { isSuperAdmin } = useAuth();
   // The photo is uploaded, not typed (2026-11-12): a new storage path, '' to remove, or undefined = unchanged.
   const [photo, setPhoto] = useState<PhotoChange>(undefined);
 
@@ -79,7 +86,7 @@ function ProfileEditForm({ profile, rep }: { profile: AccountProfile; rep: MyRep
     const body: ProfileChangeRequestBody = {};
     if (values.full_name !== profile.full_name) body.full_name = values.full_name;
     if ((values.phone ?? '') !== (profile.phone ?? '')) body.phone = values.phone ?? '';
-    if (!rep && photo !== undefined) body.avatar_url = photo;
+    if (!rep && !isSuperAdmin && photo !== undefined) body.avatar_url = photo;
     if (rep) {
       for (const k of REP_TEXT) {
         const next = values[k].trim();
@@ -98,11 +105,11 @@ function ProfileEditForm({ profile, rep }: { profile: AccountProfile; rep: MyRep
     }
     req.mutate(body, {
       onSuccess: () =>
-        toast({
-          title: 'Submitted for review',
-          description: 'Your profile updates once a reviewer approves it.',
-          tone: 'success',
-        }),
+        toast(
+          isSuperAdmin
+            ? { title: 'Profile updated', tone: 'success' }
+            : { title: 'Submitted for review', description: 'Your profile updates once a reviewer approves it.', tone: 'success' },
+        ),
       onError,
     });
   };
@@ -121,18 +128,26 @@ function ProfileEditForm({ profile, rep }: { profile: AccountProfile; rep: MyRep
 
   return (
     <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
-      <p className={styles.help}>
-        Editing your {rep ? 'name, phone, contact email, address or uniform sizes' : 'name, phone or photo'}{' '}
-        creates a <strong>change request</strong>. It is reviewed before it applies, so your live profile won&rsquo;t
-        change until then. Your theme applies instantly (see Preferences).
-      </p>
+      {isSuperAdmin ? (
+        <p className={styles.help}>Changes to your profile apply right away. Pick a profile picture with one click.</p>
+      ) : (
+        <p className={styles.help}>
+          Editing your {rep ? 'name, phone, contact email, address or uniform sizes' : 'name, phone or photo'}{' '}
+          creates a <strong>change request</strong>. It is reviewed before it applies, so your live profile won&rsquo;t
+          change until then. Your theme applies instantly (see Preferences).
+        </p>
+      )}
       <FormField label="Full name" required error={errors.full_name?.message}>
         <Input {...register('full_name')} />
       </FormField>
       <FormField label="Phone" error={errors.phone?.message}>
         <Input {...register('phone')} placeholder="(204) 555-0123" />
       </FormField>
-      {rep ? (
+      {isSuperAdmin ? (
+        <FormField label="Profile picture">
+          <AvatarPresetPicker currentUrl={profile.avatar_url} />
+        </FormField>
+      ) : rep ? (
         <p className={styles.help}>Your photo is the headshot HR keeps on file. Ask HR to update it.</p>
       ) : (
         <FormField label="Photo">
@@ -162,7 +177,7 @@ function ProfileEditForm({ profile, rep }: { profile: AccountProfile; rep: MyRep
 
       <div className={styles.actions}>
         <Button variant="primary" type="submit" loading={req.isPending}>
-          Submit for review
+          {isSuperAdmin ? 'Save changes' : 'Submit for review'}
         </Button>
       </div>
     </form>

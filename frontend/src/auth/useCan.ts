@@ -9,5 +9,7 @@
 import { useAuth } from './useAuth';
 
 export function useCan(permission: string): boolean {
-  return useAuth().permissions.has(permission);
+  const { permissions, isSuperAdmin } = useAuth();
+  // The Super Admin passes every check, mirroring the server's PermissionsGuard (2026-11-12).
+  return isSuperAdmin || permissions.has(permission);
 }
