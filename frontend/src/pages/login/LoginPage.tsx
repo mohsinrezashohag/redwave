@@ -5,15 +5,19 @@
  * password is masked, never logged; the error is the backend's message (lockout) or a generic credential error.
  */
 import { useState, type FormEvent } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Banner, Button, FormField, Input, Logo } from '../../components/ui';
 import { useAuth } from '../../auth/useAuth';
 import { SessionLoading } from '../../auth/SessionLoading';
 import styles from './LoginPage.module.css';
 
 export default function LoginPage() {
-  const { status, login, verifyMfa } = useAuth();
+  const { status, login, verifyMfa, sessionExpired } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Back to the page they were on (an in-app path only: never another site). 2026-11-12
+  const fromState = (location.state as { from?: unknown } | null)?.from;
+  const returnTo = typeof fromState === 'string' && fromState.startsWith('/') && !fromState.startsWith('//') ? fromState : '/';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +26,7 @@ export default function LoginPage() {
   const [code, setCode] = useState('');
 
   if (status === 'loading') return <SessionLoading />;
-  if (status === 'authenticated') return <Navigate to="/" replace />;
+  if (status === 'authenticated') return <Navigate to={returnTo} replace />;
 
   const canSubmit = email.trim() !== '' && password !== '' && !submitting;
   const canVerify = code.trim() !== '' && !submitting;
@@ -38,7 +42,7 @@ export default function LoginPage() {
         setMfaToken(result.mfaToken); // switch to the second-factor step
         return;
       }
-      navigate('/', { replace: true }); // a must-change-password / MFA-enrolment user is routed by the shell guard
+      navigate(returnTo, { replace: true }); // a must-change-password / MFA-enrolment user is routed by the shell guard
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
       setError(/lock/i.test(msg) ? msg : 'Invalid email or password. Please try again.');
@@ -54,7 +58,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await verifyMfa(mfaToken, code.trim());
-      navigate('/', { replace: true });
+      navigate(returnTo, { replace: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
       // An expired challenge sends the user back to the password step.
@@ -117,6 +121,11 @@ export default function LoginPage() {
           <>
             <h1 className={styles.title}>Sign in</h1>
             <p className={styles.subtitle}>Welcome back. Sign in to continue.</p>
+            {sessionExpired && !error && (
+              <Banner tone="info" title="Your session expired">
+                Please sign in again. You’ll go back to the page you were on.
+              </Banner>
+            )}
             {error && (
               <Banner tone="danger" title="Sign-in failed">
                 {error}

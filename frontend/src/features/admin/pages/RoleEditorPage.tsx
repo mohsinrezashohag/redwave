@@ -8,7 +8,8 @@ import { useParams } from 'react-router-dom';
 import { PageHeader } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
-import { isForbidden } from '../../../lib/api/apiError';
+import { isForbidden, isNotFound } from '../../../lib/api/apiError';
+import { RecordNotFound } from '../../../components/data/RecordNotFound';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useModules, usePermissions } from '../api/useRbacCatalogue';
 import { useRole } from '../api/useRoles';
@@ -32,6 +33,9 @@ export default function RoleEditorPage() {
   }
   if (isForbidden(modules.error) || isForbidden(permissions.error) || isForbidden(role.error)) {
     return <AccessDenied message="You don’t have access to the role catalogue." />;
+  }
+  if (isNotFound(role.error)) {
+    return <RecordNotFound what="role" backTo="/admin/roles" backLabel="Back to roles" />;
   }
 
   const loading = modules.isLoading || permissions.isLoading || (!isNew && role.isLoading);

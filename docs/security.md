@@ -151,6 +151,11 @@ Redwave handles rep and customer personal information; we follow Canadian **PIPE
   ledger entries is constrained by financial-retention law — anonymise where deletion isn't permitted).
 - **In transit / at rest** — HTTPS everywhere (HSTS); passwords + tokens are hashed; object storage is
   access-controlled.
+- **ID document reading (2026-11-12)** — when HR asks the app to read an ID's dates, the file is sent to
+  Google Gemini (`DocumentReaderService`). Use a **paid** Gemini API key: Google does not use paid-tier
+  inputs to improve its models (free-tier inputs may be). Nothing the model returns is stored or logged; the
+  audit row records only that a read happened and which fields were found. Only the dates HR confirms are
+  saved. Without `GEMINI_API_KEY` the feature is off and the file never leaves our storage.
 
 ## 9. Operator checklist (deploy)
 

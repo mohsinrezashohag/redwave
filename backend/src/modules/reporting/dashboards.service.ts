@@ -5,7 +5,8 @@
  * tables (`pay_run_lines`, `holdback_ledger`, `clawbacks`, `client_statements`); counts come from
  * `sales`/`sale_items`. Aggregation runs in the DB (groupBy/count/aggregate). — SRS §14, CLAUDE §3/§5
  */
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, Optional } from '@nestjs/common';
+import { AvatarService } from '../../common/avatar/avatar.service';
 import { Prisma, SaleStatus } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -31,6 +32,7 @@ export class DashboardsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly scope: ScopeService,
+    @Optional() private readonly avatars?: AvatarService,
   ) {}
 
   // ── REP — own data only ───────────────────────────────────────────────────────────
@@ -147,11 +149,13 @@ export class DashboardsService {
       payoutByRep = new Map(lines.map((l) => [l.rep_id, money(l._sum.net_payout)]));
     }
 
+    // Each roster rep's photo (HR headshot). 2026-11-12
+    const photos = this.avatars ? await this.avatars.resolveReps(rosterReps.map((r) => r.id)) : new Map<string, string | null>();
     const topPerformers = rosterReps
-      .map((r) => ({ rep_id: r.id, rep_name: r.full_name, activations: tallyByRep.get(r.id) ?? 0, payout: canSeeMoney ? payoutByRep.get(r.id) ?? '0.00' : null }))
+      .map((r) => ({ rep_id: r.id, rep_name: r.full_name, photo_url: photos.get(r.id) ?? null, activations: tallyByRep.get(r.id) ?? 0, payout: canSeeMoney ? payoutByRep.get(r.id) ?? '0.00' : null }))
       .sort((a, b) => b.activations - a.activations)
       .slice(0, 5);
-    const targets = rosterReps.map((r) => ({ rep_id: r.id, rep_name: r.full_name, target_activations: targetByRep.get(r.id) ?? null, actual: tallyByRep.get(r.id) ?? 0 }));
+    const targets = rosterReps.map((r) => ({ rep_id: r.id, rep_name: r.full_name, photo_url: photos.get(r.id) ?? null, target_activations: targetByRep.get(r.id) ?? null, actual: tallyByRep.get(r.id) ?? 0 }));
 
     return {
       period: period ? { id: period.id, period_number: period.period_number } : null,

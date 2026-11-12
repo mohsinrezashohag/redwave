@@ -10,6 +10,9 @@ export class AuditActorResponse {
 
   @ApiProperty()
   email!: string;
+
+  @ApiProperty({ type: String, nullable: true, description: "The actor's photo, short-lived URL." })
+  avatar_url!: string | null;
 }
 
 export class AuditLogResponse {

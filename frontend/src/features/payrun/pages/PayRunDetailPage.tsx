@@ -10,7 +10,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, FileSpreadsheet, FileDown, Lock, RefreshCw } from 'lucide-react';
 import { Banner, Button, PageHeader, StatCard, TableError, TableSkeleton, useToast } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
-import { isForbidden, useApiErrorToast } from '../../../lib/api/apiError';
+import { isForbidden, useApiErrorToast, isNotFound } from '../../../lib/api/apiError';
+import { RecordNotFound } from '../../../components/data/RecordNotFound';
 import { downloadFile } from '../../../lib/api/downloadFile';
 import { money, sumMoney } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
@@ -71,6 +72,9 @@ export default function PayRunDetailPage() {
 
   if (!canView || isForbidden(runQ.error)) {
     return <AccessDenied message="Viewing pay runs requires the pay-run view permission." />;
+  }
+  if (isNotFound(runQ.error)) {
+    return <RecordNotFound what="pay run" backTo="/pay-runs" backLabel="Back to pay runs" />;
   }
   if (runQ.isLoading) {
     return (

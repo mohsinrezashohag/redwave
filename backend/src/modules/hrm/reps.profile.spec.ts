@@ -67,7 +67,7 @@ function make() {
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   // The key is read at construction, so the env must be set first.
-  return { service: new RepsService(prisma as never, audit as never), prisma, audit };
+  return { service: new RepsService(prisma as never, audit as never, { withRepPhotos: async (rows: unknown[]) => rows.map((r) => ({ ...(r as object), photo_url: null })) } as never), prisma, audit };
 }
 
 const written = (fn: jest.Mock) => (fn.mock.calls[0][0] as { data: Record<string, unknown> }).data;

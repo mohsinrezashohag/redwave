@@ -4,10 +4,11 @@
  * are never combined (#3). Client = All (global default) or a specific client. Rate is a $/km decimal (≤3dp).
  * The server is the real gate; this mirrors its rules. Tokens only.
  */
+import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Banner, Button, DatePicker, FormField, Input, Modal, Select, useToast } from '../../../components/ui';
+import { Banner, Button, DatePicker, FormField, Input, Modal, Select, useToast, ModalClose } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
 import { useClients } from '../../expenses/api/useLookups';
@@ -35,10 +36,16 @@ export function KmRateModal({ open, onClose }: { open: boolean; onClose: () => v
   const canViewClients = useCan('clients:view');
   const clients = useClients(canViewClients);
 
-  const { control, register, handleSubmit, formState } = useForm<FormValues>({
+  const formDefaults: FormValues = { stream: 'rep', client_id: ALL, rate_per_km: '', effective_from: '', effective_to: '' };
+  const { control, register, handleSubmit, formState, reset } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { stream: 'rep', client_id: ALL, rate_per_km: '', effective_from: '', effective_to: '' },
+    defaultValues: formDefaults,
   });
+  // Reopening starts fresh: nothing typed last time is left in the form. 2026-11-12
+  useEffect(() => {
+    if (open) reset(formDefaults);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the dialog (re)opens; defaults are read then
+  }, [open]);
   const errors = formState.errors;
 
   const onSubmit = (values: FormValues) => {
@@ -61,7 +68,7 @@ export function KmRateModal({ open, onClose }: { open: boolean; onClose: () => v
   };
 
   return (
-    <Modal open={open} onOpenChange={(o) => !o && onClose()} title="Add km rate">
+    <Modal dirty={formState.isDirty} open={open} onOpenChange={(o) => !o && onClose()} title="Add km rate">
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
         <Banner tone="info" title="Effective-dated">
           A future-dated rate supersedes the pending one for this stream + client and bounds the current.
@@ -129,9 +136,11 @@ export function KmRateModal({ open, onClose }: { open: boolean; onClose: () => v
         </div>
 
         <div className={styles.footer}>
-          <Button variant="secondary" type="button" onClick={onClose}>
-            Cancel
-          </Button>
+          <ModalClose asChild>
+            <Button variant="secondary" type="button">
+              Cancel
+            </Button>
+          </ModalClose>
           <Button variant="primary" type="submit" loading={create.isPending}>
             Add rate
           </Button>

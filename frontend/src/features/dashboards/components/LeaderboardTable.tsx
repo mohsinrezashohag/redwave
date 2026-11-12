@@ -4,9 +4,8 @@
  * column — peer earnings are never shown. The current user's own row is highlighted when `highlightRepId`
  * is given. Tokens only.
  */
-import { Table, THead, TBody, TR, TH, TD } from '../../../components/ui';
+import { PersonName, Table, THead, TBody, TR, TH, TD } from '../../../components/ui';
 import type { LeaderboardRow } from '../dashboards.types';
-import styles from './LeaderboardTable.module.css';
 
 export interface LeaderboardTableProps {
   rows: LeaderboardRow[];
@@ -31,8 +30,7 @@ export function LeaderboardTable({ rows, highlightRepId, maxRows }: LeaderboardT
           <TR key={row.rep_id} selected={!!highlightRepId && row.rep_id === highlightRepId}>
             <TD numeric>{row.rank}</TD>
             <TD>
-              <span className={styles.name}>{row.rep_name ?? '—'}</span>
-              {row.rep_code && <span className={styles.code}>{row.rep_code}</span>}
+              <PersonName name={row.rep_name ?? '—'} photoUrl={row.photo_url} detail={row.rep_code} />
             </TD>
             <TD numeric>{row.activation_count}</TD>
           </TR>

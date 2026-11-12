@@ -10,9 +10,11 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Optional,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { AvatarService } from '../../common/avatar/avatar.service';
 import { Prisma } from '@prisma/client';
 import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -103,6 +105,7 @@ export class SalesService {
     private readonly audit: AuditService,
     private readonly scope: ScopeService,
     @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
+    @Optional() private readonly avatars?: AvatarService,
   ) {}
 
   /**
@@ -584,10 +587,14 @@ export class SalesService {
     throw new ConflictException('could not generate a unique sale_code; please retry');
   }
 
-  private async attachPeriods<T extends { sale_date: Date; rep?: RepIdentity | null }>(sales: T[]) {
-    const periods = await this.prisma.payPeriod.findMany({
-      select: { id: true, period_number: true, start_date: true, end_date: true },
-    });
+  private async attachPeriods<T extends { sale_date: Date; rep_id: string; rep?: RepIdentity | null }>(sales: T[]) {
+    const [periods, photos] = await Promise.all([
+      this.prisma.payPeriod.findMany({
+        select: { id: true, period_number: true, start_date: true, end_date: true },
+      }),
+      // The selling rep's photo (HR headshot), one batch per response. 2026-11-12
+      this.avatars ? this.avatars.resolveReps(sales.map((s) => s.rep_id)) : Promise.resolve(new Map<string, string | null>()),
+    ]);
     return sales.map((sale) => ({
       ...sale,
       pay_period: resolvePayPeriod(sale.sale_date, periods),
@@ -596,6 +603,7 @@ export class SalesService {
       rep_external_code: sale.rep?.external_code ?? null,
       rep_code: sale.rep?.rep_code ?? null,
       rep_name: sale.rep?.full_name ?? null,
+      rep_photo_url: photos.get(sale.rep_id) ?? null,
     }));
   }
 

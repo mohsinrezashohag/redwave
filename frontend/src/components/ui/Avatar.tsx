@@ -3,6 +3,7 @@
  * else a coloured initials circle (first letters of the name). Used in the My Account header, the
  * profile-review queue, and (later) the user list. Tokens only.
  */
+import { useState } from 'react';
 import { cx } from './cx';
 import styles from './Avatar.module.css';
 
@@ -25,10 +26,16 @@ function initials(name: string): string {
   );
 }
 
+/**
+ * A photo that fails to load (an expired signed link, a deleted file) falls back to the initials instead of
+ * a broken-image icon; a new `src` gets a fresh try. — 2026-11-12
+ */
 export function Avatar({ name, src, size = 'md', className }: AvatarProps) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const showImage = !!src && src !== failedSrc;
   return (
     <span className={cx(styles.avatar, styles[size], className)} aria-hidden>
-      {src ? <img className={styles.img} src={src} alt="" /> : initials(name)}
+      {showImage ? <img className={styles.img} src={src} alt="" onError={() => setFailedSrc(src)} /> : initials(name)}
     </span>
   );
 }

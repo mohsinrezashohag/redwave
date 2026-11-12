@@ -4,11 +4,12 @@
  * are loaded before any save (the server replaces the whole set, so we never wipe). Soft-deactivate is a
  * separate row action. A duplicate client_code → 409, surfaced as a toast. Tokens only.
  */
+import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useFieldArray, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Trash2 } from 'lucide-react';
-import { Button, FormField, IconButton, Input, Modal, Select, Switch, useToast } from '../../../components/ui';
+import { Button, FormField, IconButton, Input, Modal, Select, Switch, useToast, ModalClose } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useCurrencies } from '../../currencies/api/useCurrencies';
 import { useClient } from '../api/useClients';
@@ -55,17 +56,23 @@ export function ClientFormModal({ state, onClose }: { state: ClientFormState; on
     return [...opts].map(([value, label]) => ({ value, label }));
   })();
 
-  const { control, register, handleSubmit, formState } = useForm<FormValues>({
+  const formDefaults: FormValues = {
+    client_code: editing?.client_code ?? '',
+    name: editing?.name ?? '',
+    market: editing?.market ?? 'CA',
+    currency: editing?.currency ?? 'CAD',
+    supplies_mpu_id: editing?.supplies_mpu_id ?? false,
+    custom_fields: (editing?.custom_fields ?? []).map((f) => ({ field_name: f.field_name, field_value: f.field_value })),
+  };
+  const { control, register, handleSubmit, formState, reset } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    values: {
-      client_code: editing?.client_code ?? '',
-      name: editing?.name ?? '',
-      market: editing?.market ?? 'CA',
-      currency: editing?.currency ?? 'CAD',
-      supplies_mpu_id: editing?.supplies_mpu_id ?? false,
-      custom_fields: (editing?.custom_fields ?? []).map((f) => ({ field_name: f.field_name, field_value: f.field_value })),
-    },
+    values: formDefaults,
   });
+  // Reopening starts fresh: nothing typed last time is left in the form. 2026-11-12
+  useEffect(() => {
+    if (open) reset(formDefaults);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the dialog (re)opens; defaults are read then
+  }, [open]);
   const errors = formState.errors;
   const customFields = useFieldArray({ control, name: 'custom_fields' });
 
@@ -84,7 +91,7 @@ export function ClientFormModal({ state, onClose }: { state: ClientFormState; on
   };
 
   return (
-    <Modal open={open} onOpenChange={(o) => !o && onClose()} title={state?.mode === 'edit' ? 'Edit client' : 'Create client'}>
+    <Modal dirty={formState.isDirty} open={open} onOpenChange={(o) => !o && onClose()} title={state?.mode === 'edit' ? 'Edit client' : 'Create client'}>
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
         <FormField label="Client code" required error={errors.client_code?.message} help="Must be unique. Codes are never reused.">
           <Input {...register('client_code')} placeholder="VF" />
@@ -141,9 +148,11 @@ export function ClientFormModal({ state, onClose }: { state: ClientFormState; on
         </FormField>
 
         <div className={styles.footer}>
-          <Button variant="secondary" type="button" onClick={onClose}>
-            Cancel
-          </Button>
+          <ModalClose asChild>
+            <Button variant="secondary" type="button">
+              Cancel
+            </Button>
+          </ModalClose>
           <Button variant="primary" type="submit" disabled={!fieldsLoaded} loading={create.isPending || update.isPending}>
             {state?.mode === 'edit' ? 'Save changes' : 'Create client'}
           </Button>

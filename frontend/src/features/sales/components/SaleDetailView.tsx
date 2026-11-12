@@ -15,7 +15,8 @@ import {
   useToast,
 } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
-import { useApiErrorToast } from '../../../lib/api/apiError';
+import { useApiErrorToast, isNotFound } from '../../../lib/api/apiError';
+import { RecordNotFound } from '../../../components/data/RecordNotFound';
 import { displayDate } from '../../../lib/format/date';
 import { productTypeLabel } from '../../../lib/format/productType';
 import { DataState } from '../../../components/data/DataState';
@@ -77,6 +78,10 @@ export function SaleDetailView({ id }: { id: string }) {
       },
       onError,
     });
+
+  if (isNotFound(query.error)) {
+    return <RecordNotFound what="sale" backTo="/sales" backLabel="Back to sales" />;
+  }
 
   return (
     <DataState

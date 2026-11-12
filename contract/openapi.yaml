@@ -2569,6 +2569,128 @@ paths:
       security: *a105
       summary: Attach a document to a rep (upload)
       tags: *a106
+  /v1/reps/{id}/documents/read:
+    post:
+      description: Requires hrm:edit. Permits, PR card, driver’s licence, passport.
+        Returns the dates and name as SUGGESTIONS plus consistency checks (name,
+        dates, MRZ check digits); nothing is stored. 503 when reading isn’t set
+        up; 422 when the document can’t be read — the dates are then typed by
+        hand.
+      operationId: RepsController_readDocumentUpload_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                doc_type:
+                  type: string
+                  enum:
+                    - banking
+                    - headshot
+                    - work_permit
+                    - study_permit
+                    - pr_card
+                    - drivers_licence
+                    - passport
+                    - contract
+                    - other
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentReadResponse"
+        "400": *a99
+        "401": *a100
+        "403": *a101
+        "404": *a102
+        "409": *a103
+        "422": *a104
+      security: *a105
+      summary: Read the issue/expiry dates off an ID before uploading it
+      tags: *a106
+  /v1/reps/{id}/documents/{docId}/read:
+    post:
+      description: Requires hrm:edit. Same as reading before upload; nothing is stored
+        until HR saves the dates.
+      operationId: RepsController_readStoredDocument_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: docId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentReadResponse"
+        "400": *a99
+        "401": *a100
+        "403": *a101
+        "404": *a102
+        "409": *a103
+        "422": *a104
+      security: *a105
+      summary: Read the issue/expiry dates off an ID already on file
+      tags: *a106
+  /v1/reps/{id}/documents/{docId}:
+    patch:
+      description: Requires hrm:edit. HR-confirmed dates; null clears one, an omitted
+        field is unchanged. Audited.
+      operationId: RepsController_updateDocumentDates_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: docId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRepDocumentDatesDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepDocumentResponse"
+        "400": *a99
+        "401": *a100
+        "403": *a101
+        "404": *a102
+        "409": *a103
+        "422": *a104
+      security: *a105
+      summary: Save an ID's issue/expiry dates
+      tags: *a106
   /v1/reps/{id}/documents/{docId}/file-url:
     get:
       description: Requires hrm:edit (identity docs are sensitive). Returns a
@@ -10625,6 +10747,11 @@ components:
       properties:
         id:
           type: string
+        photo_url:
+          type: string
+          nullable: true
+          description: "The rep's photo: a short-lived URL of their latest HR headshot.
+            Null when there is none."
         rep_code:
           type: string
         external_code:
@@ -10716,6 +10843,7 @@ components:
             - $ref: "#/components/schemas/RepBankingResponse"
       required:
         - id
+        - photo_url
         - rep_code
         - external_code
         - user_id
@@ -10999,6 +11127,11 @@ components:
           nullable: true
           description: When the document stops being valid (permits, PR card, driver's
             licence, passport).
+        issued_on:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the ID was issued (2026-11-12).
       required:
         - id
         - rep_id
@@ -11006,6 +11139,62 @@ components:
         - file_url
         - uploaded_at
         - expires_on
+        - issued_on
+    IdCheckResponse:
+      type: object
+      properties:
+        key:
+          type: string
+          enum:
+            - name
+            - dates
+            - not_expired
+            - mrz
+            - mrz_expiry
+        ok:
+          type: boolean
+        message:
+          type: string
+          example: The machine-readable strip checks out.
+      required:
+        - key
+        - ok
+        - message
+    DocumentReadResponse:
+      type: object
+      properties:
+        issued_on:
+          type: string
+          nullable: true
+          example: 2022-06-30
+        expires_on:
+          type: string
+          nullable: true
+          example: 2032-06-30
+        name_on_document:
+          type: string
+          nullable: true
+          description: The name printed on the document.
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/IdCheckResponse"
+      required:
+        - issued_on
+        - expires_on
+        - name_on_document
+        - checks
+    UpdateRepDocumentDatesDto:
+      type: object
+      properties:
+        issued_on:
+          type: string
+          nullable: true
+          example: 2022-06-30
+        expires_on:
+          type: string
+          nullable: true
+          example: 2032-06-30
     RepEquipmentResponse:
       type: object
       properties:
@@ -11085,6 +11274,11 @@ components:
       properties:
         id:
           type: string
+        photo_url:
+          type: string
+          nullable: true
+          description: "The rep's photo: a short-lived URL of their latest HR headshot.
+            Null when there is none."
         rep_code:
           type: string
         external_code:
@@ -11178,6 +11372,7 @@ components:
           description: Your field manager (a rep cannot list users).
       required:
         - id
+        - photo_url
         - rep_code
         - external_code
         - user_id
@@ -12064,6 +12259,10 @@ components:
           type: string
           nullable: true
           description: The rep who sold it.
+        rep_photo_url:
+          type: string
+          nullable: true
+          description: The selling rep's photo (HR headshot), short-lived URL.
         client_id:
           type: string
         customer_name:
@@ -13611,6 +13810,10 @@ components:
           type: string
         full_name:
           type: string
+        photo_url:
+          type: string
+          nullable: true
+          description: The rep's photo (HR headshot), short-lived URL.
       required:
         - id
         - rep_code
@@ -16305,6 +16508,10 @@ components:
           type: string
         rep_name:
           type: string
+        photo_url:
+          type: string
+          nullable: true
+          description: The rep's photo (HR headshot), short-lived URL.
         activations:
           type: number
           example: 12
@@ -16316,6 +16523,7 @@ components:
       required:
         - rep_id
         - rep_name
+        - photo_url
         - activations
         - payout
     ManagerTargetRowResponse:
@@ -16325,6 +16533,10 @@ components:
           type: string
         rep_name:
           type: string
+        photo_url:
+          type: string
+          nullable: true
+          description: The rep's photo (HR headshot), short-lived URL.
         target_activations:
           type: number
           nullable: true
@@ -16333,6 +16545,7 @@ components:
       required:
         - rep_id
         - rep_name
+        - photo_url
         - target_activations
         - actual
     ManagerDashboardResponse:
@@ -17074,6 +17287,10 @@ components:
         rep_name:
           type: string
           nullable: true
+        photo_url:
+          type: string
+          nullable: true
+          description: The rep's photo (HR headshot), short-lived URL. Not money.
         activation_count:
           type: number
           description: Internet activation count — the ONLY metric (no earnings).
@@ -17082,6 +17299,7 @@ components:
         - rep_id
         - rep_code
         - rep_name
+        - photo_url
         - activation_count
     LeaderboardResponse:
       type: object
@@ -17459,10 +17677,15 @@ components:
           example: RW-D-0001
         full_name:
           type: string
+        photo_url:
+          type: string
+          nullable: true
+          description: The rep's photo (HR headshot), short-lived URL.
       required:
         - id
         - rep_code
         - full_name
+        - photo_url
     SearchClientResult:
       type: object
       properties:
@@ -17519,10 +17742,15 @@ components:
           type: string
         email:
           type: string
+        avatar_url:
+          type: string
+          nullable: true
+          description: The actor's photo, short-lived URL.
       required:
         - id
         - full_name
         - email
+        - avatar_url
     AuditLogResponse:
       type: object
       properties:

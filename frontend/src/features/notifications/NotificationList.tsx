@@ -10,6 +10,7 @@ import { DataState } from '../../components/data/DataState';
 import { relativeTime } from '../../lib/format/date';
 import { cx } from '../../components/ui';
 import { resolveNotificationLink } from '../../lib/notifications/resolveLink';
+import { useApiErrorToast } from '../../lib/api/apiError';
 import { useMarkAllRead, useNotificationsQuery, useSetNotificationRead } from './api/useNotifications';
 import type { AppNotification } from './notifications.types';
 import styles from './NotificationList.module.css';
@@ -19,11 +20,12 @@ export function NotificationList({ onClose }: { onClose: () => void }) {
   const q = useNotificationsQuery({ page: 1, limit: 8, sort: 'created_at:desc' });
   const setRead = useSetNotificationRead();
   const markAll = useMarkAllRead();
+  const onError = useApiErrorToast(); // never fail silently (the unread dot would just stay)
   const rows = q.data?.data ?? [];
   const hasUnread = rows.some((n) => !n.is_read);
 
   const onActivate = (n: AppNotification) => {
-    if (!n.is_read) setRead.mutate({ id: n.id, is_read: true });
+    if (!n.is_read) setRead.mutate({ id: n.id, is_read: true }, { onError });
     const to = resolveNotificationLink(n);
     onClose();
     if (to) navigate(to);
@@ -34,7 +36,7 @@ export function NotificationList({ onClose }: { onClose: () => void }) {
       <div className={styles.header}>
         <span>Notifications</span>
         {hasUnread && (
-          <button type="button" className={styles.headerAction} onClick={() => markAll.mutate()} disabled={markAll.isPending}>
+          <button type="button" className={styles.headerAction} onClick={() => markAll.mutate(undefined, { onError })} disabled={markAll.isPending}>
             Mark all read
           </button>
         )}

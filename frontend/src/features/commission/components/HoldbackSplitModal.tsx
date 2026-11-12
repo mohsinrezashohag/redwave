@@ -3,11 +3,12 @@
  * two fractions (0..1 decimal strings) must total exactly 100% — checked live via EXACT integer basis
  * points (no float, #1); the server re-validates (422). Tokens only.
  */
+import { useEffect } from 'react';
 import { Check, X } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
-import { Banner, Button, FormField, Input, Modal, useToast } from '../../../components/ui';
+import { Banner, Button, FormField, Input, Modal, useToast, ModalClose } from '../../../components/ui';
 import { cx } from '../../../components/ui';
 import { PayPeriodSelect } from '../../../components/data/PayPeriodSelect';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -40,12 +41,18 @@ export function HoldbackSplitModal({ open, row, onClose }: { open: boolean; row?
   const onError = useApiErrorToast();
   const set = useSetHoldback();
   const update = useUpdateHoldback();
-  const { control, register, handleSubmit, formState } = useForm<FormValues>({
+  const formDefaults: FormValues = row
+    ? { advance_pct: row.advance_pct, holdback_pct: row.holdback_pct, effective_from: dateOnly(row.effective_from), effective_to: dateOnly(row.effective_to) }
+    : { advance_pct: '0.70', holdback_pct: '0.30', effective_from: '', effective_to: '' };
+  const { control, register, handleSubmit, formState, reset } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: row
-      ? { advance_pct: row.advance_pct, holdback_pct: row.holdback_pct, effective_from: dateOnly(row.effective_from), effective_to: dateOnly(row.effective_to) }
-      : { advance_pct: '0.70', holdback_pct: '0.30', effective_from: '', effective_to: '' },
+    defaultValues: formDefaults,
   });
+  // Reopening starts fresh: nothing typed last time is left in the form. 2026-11-12
+  useEffect(() => {
+    if (open) reset(formDefaults);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the dialog (re)opens; defaults are read then
+  }, [open]);
   const errors = formState.errors;
   const advance = useWatch({ control, name: 'advance_pct' }) ?? '';
   const holdback = useWatch({ control, name: 'holdback_pct' }) ?? '';
@@ -61,7 +68,7 @@ export function HoldbackSplitModal({ open, row, onClose }: { open: boolean; row?
   };
 
   return (
-    <Modal open={open} onOpenChange={(o) => !o && onClose()} title={isEdit ? 'Edit holdback split' : 'Set holdback split'}>
+    <Modal dirty={formState.isDirty} open={open} onOpenChange={(o) => !o && onClose()} title={isEdit ? 'Edit holdback split' : 'Set holdback split'}>
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
         <Banner tone="info" title="Effective-dated">
           A future-dated split supersedes the pending one and bounds the current.
@@ -98,9 +105,11 @@ export function HoldbackSplitModal({ open, row, onClose }: { open: boolean; row?
           />
         </div>
         <div className={styles.footer}>
-          <Button variant="secondary" type="button" onClick={onClose}>
-            Cancel
-          </Button>
+          <ModalClose asChild>
+            <Button variant="secondary" type="button">
+              Cancel
+            </Button>
+          </ModalClose>
           <Button variant="primary" type="submit" loading={set.isPending || update.isPending} disabled={!ok}>
             {isEdit ? 'Save changes' : 'Set split'}
           </Button>

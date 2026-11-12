@@ -7,7 +7,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import styles from './reps.module.css';
-import { Badge, Button } from '../../../components/ui';
+import { Badge, Button, PersonName } from '../../../components/ui';
 import { DataTable, type DataColumn } from '../../../components/data/DataTable';
 import { useCan } from '../../../auth/useCan';
 import { displayDate } from '../../../lib/format/date';
@@ -24,7 +24,10 @@ export function RepsTable({ filters }: { filters: RepsFilters }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [assignOpen, setAssignOpen] = useState(false);
 
-  const managerName = (id: string) => users.data?.find((u) => u.id === id)?.full_name ?? '—';
+  const managerCell = (id: string) => {
+    const u = users.data?.find((x) => x.id === id);
+    return u ? <PersonName name={u.full_name} photoUrl={u.avatar_url} /> : '—';
+  };
   const managerOptions = useMemo(
     () =>
       (users.data ?? [])
@@ -50,9 +53,15 @@ export function RepsTable({ filters }: { filters: RepsFilters }) {
       header: 'Name',
       sortKey: 'full_name',
       render: (r) => (
-        <Link to={`/admin/reps/${r.id}`} className={styles.nameLink}>
-          {r.full_name}
-        </Link>
+        <PersonName
+          name={r.full_name}
+          photoUrl={r.photo_url}
+          renderName={(name) => (
+            <Link to={`/admin/reps/${r.id}`} className={styles.nameLink}>
+              {name}
+            </Link>
+          )}
+        />
       ),
     },
     {
@@ -61,7 +70,7 @@ export function RepsTable({ filters }: { filters: RepsFilters }) {
       sortKey: 'status',
       render: (r) => <Badge tone={r.status === 'active' ? 'success' : 'neutral'}>{r.status === 'active' ? 'Active' : 'Terminated'}</Badge>,
     },
-    ...(canViewUsers ? [{ id: 'manager', header: 'Field manager', render: (r: Rep) => managerName(r.field_manager_id) }] : []),
+    ...(canViewUsers ? [{ id: 'manager', header: 'Field manager', render: (r: Rep) => managerCell(r.field_manager_id) }] : []),
     { id: 'hire_date', header: 'Hired', sortKey: 'hire_date', render: (r) => displayDate(r.hire_date) },
   ];
 

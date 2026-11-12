@@ -92,7 +92,8 @@
   cursor: pointer;
 }
 
-.item:hover {
+.item:hover,
+.item[data-active='true'] {
   background-color: var(--accent-50);
 }
 

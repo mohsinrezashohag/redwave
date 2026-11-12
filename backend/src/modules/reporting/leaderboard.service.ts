@@ -7,7 +7,8 @@
  * the per-rep tally is a small reduce over that bounded set. A raw GROUP BY / materialized view is the
  * scale optimization (deferred, §12) — correctness first, identical to the scoped dashboard counts.
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { AvatarService } from '../../common/avatar/avatar.service';
 import { Prisma, SaleStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { winnipegDateOnly } from '../../common/timezone';
@@ -17,7 +18,11 @@ const CONFIRMED: SaleStatus[] = ['validated', 'in_pay_run', 'paid'];
 
 @Injectable()
 export class LeaderboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Optional so unit tests can build the service without storage; the app always provides it (@Global).
+    @Optional() private readonly avatars?: AvatarService,
+  ) {}
 
   async list() {
     const periods = await this.prisma.payPeriod.findMany({
@@ -47,6 +52,9 @@ export class LeaderboardService {
       .map(([rep_id, activation_count]) => ({ rep_id, activation_count }))
       .sort((a, b) => b.activation_count - a.activation_count || a.rep_id.localeCompare(b.rep_id));
 
+    // Each rep's photo (their HR headshot) — a face, never money. 2026-11-12
+    const photos = this.avatars ? await this.avatars.resolveReps(ranked.map((r) => r.rep_id)) : new Map<string, string | null>();
+
     return {
       period: period ? { id: period.id, period_number: period.period_number } : null,
       // COUNTS ONLY — never any commission/earnings field.
@@ -55,6 +63,7 @@ export class LeaderboardService {
         rep_id: r.rep_id,
         rep_code: repById.get(r.rep_id)?.rep_code ?? null,
         rep_name: repById.get(r.rep_id)?.full_name ?? null,
+        photo_url: photos.get(r.rep_id) ?? null,
         activation_count: r.activation_count,
       })),
     };

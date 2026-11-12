@@ -6,7 +6,7 @@
  */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, ConfirmDialog, StatusPill, useToast } from '../../../components/ui';
+import { Button, ConfirmDialog, PersonName, StatusPill, useToast } from '../../../components/ui';
 import { DataTable, type DataColumn } from '../../../components/data/DataTable';
 import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -104,6 +104,10 @@ export function SalesTable({ filters }: { filters: SalesFilters }) {
       ),
     },
     { id: 'customer', header: 'Customer', sortKey: 'customer_name', render: (s) => s.customer_name },
+    // Who sold it — for managers/admins, who see more than their own sales. 2026-11-12
+    ...(canApprove
+      ? [{ id: 'rep', header: 'Rep', render: (s: Sale) => (s.rep_name ? <PersonName name={s.rep_name} photoUrl={s.rep_photo_url} /> : '—') }]
+      : []),
     ...(canViewClients ? [{ id: 'client', header: 'Client', render: (s: Sale) => clientName(s.client_id) }] : []),
     { id: 'products', header: 'Products', render: (s) => <ProductSummary items={s.sale_items} /> },
     { id: 'sale_date', header: 'Sale date', numeric: true, sortKey: 'sale_date', render: (s) => displayDate(s.sale_date) },

@@ -29,6 +29,7 @@ import {
 import { Prisma, Rep, RepStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { AvatarService } from '../../common/avatar/avatar.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { permissionKey } from '../../common/rbac/permissions.util';
 import { BUILTIN_ROLES } from '../../common/rbac/rbac.constants';
@@ -159,7 +160,14 @@ export class RepsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly avatars: AvatarService,
   ) {}
+
+  /** Adds the rep's photo (latest HR headshot, signed) — shown wherever the rep is shown. 2026-11-12 */
+  private async withPhoto<T extends { id: string }>(view: T): Promise<T & { photo_url: string | null }> {
+    const [row] = await this.avatars.withRepPhotos([view], (r) => r.id);
+    return row;
+  }
 
   async findAll(query: ListRepsQuery, user: AuthUser) {
     const where: Prisma.RepWhereInput = {
@@ -182,7 +190,10 @@ export class RepsService {
     ]);
     const canSee = canSeeSensitive(user);
     return buildPage(
-      reps.map((rep) => toRepView(rep, canSee)),
+      await this.avatars.withRepPhotos(
+        reps.map((rep) => toRepView(rep, canSee)),
+        (r) => r.id,
+      ),
       total,
       page,
       limit,
@@ -194,7 +205,7 @@ export class RepsService {
     if (!rep) {
       throw new NotFoundException('Rep not found');
     }
-    return toRepView(rep, canSeeSensitive(user));
+    return this.withPhoto(toRepView(rep, canSeeSensitive(user)));
   }
 
   /**
@@ -210,7 +221,7 @@ export class RepsService {
       throw new NotFoundException('Rep not found');
     }
     const { field_manager, ...row } = rep;
-    return { ...toRepView(row, true), field_manager_name: field_manager?.full_name ?? null };
+    return this.withPhoto({ ...toRepView(row, true), field_manager_name: field_manager?.full_name ?? null });
   }
 
   /**
@@ -267,7 +278,7 @@ export class RepsService {
         action: 'create',
         after: this.auditView(rep),
       });
-      return toRepView(rep, canSeeSensitive(user));
+      return this.withPhoto(toRepView(rep, canSeeSensitive(user)));
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException('rep_code already used'); // DB backstop for #11
@@ -327,7 +338,7 @@ export class RepsService {
       before: this.auditView(before),
       after: this.auditView(updated),
     });
-    return toRepView(updated, canSeeSensitive(user));
+    return this.withPhoto(toRepView(updated, canSeeSensitive(user)));
   }
 
   /**

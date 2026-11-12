@@ -7,11 +7,13 @@
  * `permission` the caller lacks renders as text, not a link (§5 — convenience only; the server is the
  * real gate). Routes without metadata (the NotFound catch-all) render nothing.
  */
+import { useCallback, useEffect, useState } from 'react';
 import { useMatches, useParams } from 'react-router-dom';
 import { Breadcrumbs, type Crumb } from '../components/ui';
 import { useAuth } from '../auth/useAuth';
 import { CRUMBS, type CrumbHandle, type CrumbMeta } from './crumbs';
 import { DYNAMIC_CRUMBS } from './crumbLabels';
+import { CrumbTitleContext, pageTitle, APP_TITLE } from './crumbTitle';
 
 const MAX_DEPTH = 6; // defensive bound on parent walking (a registry cycle is a config bug)
 
@@ -34,10 +36,27 @@ export function RouteBreadcrumbs() {
   const matches = useMatches();
   const params = useParams();
   const { permissions } = useAuth();
+  // The resolved record name, tagged with the page it belongs to so a new page never shows the old one.
+  const [record, setRecord] = useState<{ key: string; name: string | null }>({ key: '', name: null });
 
   // The deepest matched route that declared a crumb (flat router → effectively the leaf).
   const leaf = [...matches].reverse().find((m) => (m.handle as CrumbHandle | undefined)?.crumb);
   const leafCrumb = (leaf?.handle as CrumbHandle | undefined)?.crumb;
+  const pageKey = `${leafCrumb?.path ?? ''}|${params.id ?? ''}`;
+  const recordName = record.key === pageKey ? record.name : null;
+  const reportName = useCallback((name: string | null) => setRecord({ key: pageKey, name }), [pageKey]);
+
+  // The trail's plain labels (root → leaf), for the browser tab title.
+  const titleTrail: (string | null | undefined)[] = [];
+  for (let meta: CrumbMeta | undefined = leafCrumb, depth = 0; meta && depth < MAX_DEPTH; depth += 1) {
+    titleTrail.unshift(meta === leafCrumb && meta.dynamic ? recordName : meta.label);
+    meta = meta.parent ? CRUMBS[meta.parent] : undefined;
+  }
+  const title = leafCrumb ? pageTitle(titleTrail) : APP_TITLE;
+  useEffect(() => {
+    document.title = title;
+  }, [title]);
+
   if (!leafCrumb) {
     return null;
   }
@@ -64,5 +83,9 @@ export function RouteBreadcrumbs() {
     };
   });
 
-  return <Breadcrumbs items={items} />;
+  return (
+    <CrumbTitleContext.Provider value={reportName}>
+      <Breadcrumbs items={items} />
+    </CrumbTitleContext.Provider>
+  );
 }

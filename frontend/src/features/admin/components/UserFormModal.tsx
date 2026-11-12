@@ -7,16 +7,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import {
-  Banner,
-  Button,
-  FormField,
-  Input,
-  Modal,
-  MultiSelect,
-  Select,
-  useToast,
-} from '../../../components/ui';
+import { Banner, Button, FormField, Input, Modal, MultiSelect, Select, useToast, useModalDirty, ModalClose } from '../../../components/ui';
 import { useAuth } from '../../../auth/useAuth';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useRoles } from '../api/useRoles';
@@ -56,6 +47,7 @@ function CreateUserForm({
     resolver: zodResolver(createSchema),
     defaultValues: { email: '', full_name: '', phone: '', role_ids: [] },
   });
+  useModalDirty(formState.isDirty); // closing with unsaved edits asks first
   const errors = formState.errors;
 
   const onSubmit = (values: CreateValues) =>
@@ -100,9 +92,11 @@ function CreateUserForm({
         )}
       />
       <div className={styles.footer}>
-        <Button variant="secondary" type="button" onClick={onDone}>
-          Cancel
-        </Button>
+        <ModalClose asChild>
+          <Button variant="secondary" type="button">
+            Cancel
+          </Button>
+        </ModalClose>
         <Button variant="primary" type="submit" loading={create.isPending}>
           Send invitation
         </Button>
@@ -137,6 +131,7 @@ function EditUserForm({
       role_ids: currentRoleIds,
     },
   });
+  useModalDirty(formState.isDirty); // closing with unsaved edits asks first
   const errors = formState.errors;
 
   const onSubmit = async (values: EditValues) => {
@@ -195,9 +190,11 @@ function EditUserForm({
         )}
       />
       <div className={styles.footer}>
-        <Button variant="secondary" type="button" onClick={onDone}>
-          Cancel
-        </Button>
+        <ModalClose asChild>
+          <Button variant="secondary" type="button">
+            Cancel
+          </Button>
+        </ModalClose>
         <Button variant="primary" type="submit" loading={update.isPending || setRoles.isPending}>
           Save changes
         </Button>

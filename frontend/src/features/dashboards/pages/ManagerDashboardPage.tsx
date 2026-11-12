@@ -7,7 +7,7 @@
  */
 import { useState } from 'react';
 import { CheckSquare, Receipt, UserCog } from 'lucide-react';
-import { Badge, Button, Card, PageHeader, StatCard } from '../../../components/ui';
+import { Badge, Button, Card, PageHeader, PersonName, StatCard } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
 import { money } from '../../../lib/format/money';
@@ -58,7 +58,7 @@ export default function ManagerDashboardPage() {
                   {d.top_performers.length === 0 && <p className="mono">No activity yet.</p>}
                   {d.top_performers.map((p) => (
                     <div key={p.rep_id} className={styles.rosterRow}>
-                      <span className={styles.rosterName}>{p.rep_name}</span>
+                      <PersonName className={styles.rosterName} name={p.rep_name} photoUrl={p.photo_url} />
                       <span className={`${styles.rosterValue} mono`}>{p.activations} activations</span>
                       {p.payout != null && <Badge tone="neutral">{money(p.payout)}</Badge>}
                     </div>
@@ -70,7 +70,7 @@ export default function ManagerDashboardPage() {
                   {d.targets.length === 0 && <p className="mono">No reps in your roster.</p>}
                   {d.targets.map((t) => (
                     <div key={t.rep_id} className={styles.rosterRow}>
-                      <span className={styles.rosterName}>{t.rep_name}</span>
+                      <PersonName className={styles.rosterName} name={t.rep_name} photoUrl={t.photo_url} />
                       <span className={`${styles.rosterValue} mono`}>
                         {t.actual} / {t.target_activations ?? '—'}
                       </span>

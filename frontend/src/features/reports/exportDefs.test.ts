@@ -78,7 +78,7 @@ describe('column defs — string cells; the leaderboard carries NO money', () =>
   it('leaderboard columns are counts/names only', () => {
     const headers = leaderboardColumns.map((c) => c.header.toLowerCase());
     expect(headers.some((h) => /payout|commission|amount|\$|money/.test(h))).toBe(false);
-    const row = { rank: 1, rep_id: 'r1', rep_code: 'RW-D-001', rep_name: 'Rep One', activation_count: 20 };
+    const row = { rank: 1, rep_id: 'r1', rep_code: 'RW-D-001', rep_name: 'Rep One', photo_url: null, activation_count: 20 };
     expect(leaderboardColumns.map((c) => c.value(row))).toEqual(['1', 'RW-D-001', 'Rep One', '20']);
   });
 

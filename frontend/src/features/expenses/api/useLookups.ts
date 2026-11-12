@@ -20,6 +20,8 @@ export interface RepLite {
   rep_code: string;
   full_name: string;
   status: string;
+  /** The rep's photo (HR headshot), short-lived URL; the reps list carries it. */
+  photo_url?: string | null;
 }
 
 export function useClients(enabled = true) {

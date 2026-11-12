@@ -3,10 +3,11 @@
  * string; the SERVER recomputes the line's net (the UI never does money math, #1/#5). Editable only while
  * the run is a draft; the server is the real gate (§5). Prefills the line's current bonus for editing.
  */
+import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Button, FormField, Input, Modal, MoneyInput, useToast } from '../../../components/ui';
+import { Button, FormField, Input, Modal, MoneyInput, useToast, ModalClose } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { money } from '../../../lib/format/money';
 import { useSetBonus } from '../api/usePayRunMutations';
@@ -24,10 +25,16 @@ export function BonusModal({ runId, line, onClose }: { runId: string; line: PayR
   const { toast } = useToast();
   const onError = useApiErrorToast();
   const setBonus = useSetBonus();
-  const { register, handleSubmit, formState } = useForm<Values>({
+  const formDefaults: Values = { amount: line?.bonus_amount ?? '0.00', note: line?.bonus_note ?? '' };
+  const { register, handleSubmit, formState, reset } = useForm<Values>({
     resolver: zodResolver(schema),
-    values: { amount: line?.bonus_amount ?? '0.00', note: line?.bonus_note ?? '' },
+    values: formDefaults,
   });
+  // Reopening starts fresh: nothing typed last time is left in the form. 2026-11-12
+  useEffect(() => {
+    reset(formDefaults);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the dialog (re)opens; defaults are read then
+  }, [line]);
 
   const onSubmit = (values: Values) => {
     if (!line) return;
@@ -38,7 +45,7 @@ export function BonusModal({ runId, line, onClose }: { runId: string; line: PayR
   };
 
   return (
-    <Modal open={line !== null} onOpenChange={(o) => !o && onClose()} title={line ? `Bonus · ${line.rep.rep_code}` : 'Bonus'}>
+    <Modal dirty={formState.isDirty} open={line !== null} onOpenChange={(o) => !o && onClose()} title={line ? `Bonus · ${line.rep.rep_code}` : 'Bonus'}>
       {line && (
         <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
           <p className={styles.note}>
@@ -51,9 +58,11 @@ export function BonusModal({ runId, line, onClose }: { runId: string; line: PayR
             <Input {...register('note')} placeholder="e.g. quarterly spiff" />
           </FormField>
           <div className={styles.footer}>
-            <Button variant="secondary" type="button" onClick={onClose}>
-              Cancel
-            </Button>
+            <ModalClose asChild>
+              <Button variant="secondary" type="button">
+                Cancel
+              </Button>
+            </ModalClose>
             <Button variant="primary" type="submit" loading={setBonus.isPending}>
               Save bonus
             </Button>

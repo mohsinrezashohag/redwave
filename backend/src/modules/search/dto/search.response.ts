@@ -8,6 +8,7 @@ export class SearchRepResult {
   @ApiProperty() id!: string;
   @ApiProperty({ example: 'RW-D-0001' }) rep_code!: string;
   @ApiProperty() full_name!: string;
+  @ApiProperty({ type: String, nullable: true, description: "The rep's photo (HR headshot), short-lived URL." }) photo_url!: string | null;
 }
 
 export class SearchClientResult {

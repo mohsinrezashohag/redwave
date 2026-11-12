@@ -7,7 +7,7 @@
  * `pay_period` here is the FULL 6-field shape (≠ the sales-nested 4-field `SalePayPeriodResponse`); the
  * nested `rep` is a 3-field lite.
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { HoldbackReleaseStatus, PayPeriodStatus, PayRunStatus } from '@prisma/client';
 
 export class PayPeriodResponse {
@@ -40,6 +40,9 @@ export class RepLiteResponse {
 
   @ApiProperty()
   full_name!: string;
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: "The rep's photo (HR headshot), short-lived URL." })
+  photo_url?: string | null;
 }
 
 export class PayRunLineResponse {

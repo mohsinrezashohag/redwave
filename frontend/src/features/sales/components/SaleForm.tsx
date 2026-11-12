@@ -31,6 +31,7 @@ import { useClientProducts, useClients, useReps } from '../api/useSales';
 import { useCreateSale } from '../api/useSaleMutations';
 import type { Sale } from '../sales.types';
 import styles from './SaleForm.module.css';
+import { useUnsavedChangesGuard } from '../../../lib/forms/useUnsavedChangesGuard';
 
 // Internet is the mandatory base of a sale; TV/Home Phone/Protection Plan/Mesh/Speed-attach are add-ons
 // that can't be sold standalone. Base = a catalogue type whose behaviour is tiered or greenfield. The
@@ -87,6 +88,8 @@ export function SaleForm() {
     },
   });
   const errors = formState.errors;
+  // Leaving a half-entered sale asks first (the redirect after saving is allowed). 2026-11-12
+  const leave = useUnsavedChangesGuard(formState.isDirty);
 
   const clientId = watch('client_id');
   const saleDate = watch('sale_date');
@@ -128,6 +131,7 @@ export function SaleForm() {
       {
         onSuccess: (sale: Sale) => {
           toast({ title: 'Sale entered', description: `Sale ID ${sale.sale_code}`, tone: 'success' });
+          leave.allowLeave();
           navigate(`/sales/${sale.id}`);
         },
         onError,
@@ -146,6 +150,7 @@ export function SaleForm() {
 
   return (
     <Card>
+      {leave.dialog}
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
         <div className={styles.grid}>
           <Controller

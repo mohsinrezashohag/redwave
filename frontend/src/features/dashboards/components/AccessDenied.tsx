@@ -6,10 +6,10 @@
 import { Banner, Button } from '../../../components/ui';
 import { useNavigate } from 'react-router-dom';
 
-export function AccessDenied({ message }: { message?: string }) {
+export function AccessDenied({ message, title = "You don’t have access to this page" }: { message?: string; title?: string }) {
   const navigate = useNavigate();
   return (
-    <Banner tone="warning" title="You don't have access to this dashboard">
+    <Banner tone="warning" title={title}>
       {message ?? 'Your role doesn’t permit this view. The server enforces access regardless of navigation.'}
       <div style={{ marginTop: 'var(--space-3)' }}>
         <Button variant="secondary" onClick={() => navigate('/')}>

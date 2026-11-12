@@ -5,7 +5,7 @@
  * failure/missing → the truncated id. These import only the light feature api/hooks modules.
  */
 /* eslint-disable react-refresh/only-export-components -- this module's purpose is the kind→component map */
-import type { ComponentType } from 'react';
+import { useContext, useEffect, type ComponentType } from 'react';
 import { Skeleton } from '../components/ui';
 import { useSaleQuery } from '../features/sales/api/useSales';
 import { useClient } from '../features/clients/api/useClients';
@@ -22,11 +22,17 @@ import { useRep } from '../features/reps/api/useRepProfile';
 import { categoryLabel } from '../features/expenses/format';
 import { statementNo } from '../features/billing/billing.logic';
 import type { DynamicKind } from './crumbs';
+import { CrumbTitleContext } from './crumbTitle';
 
 const shortId = (id: string): string => `${id.slice(0, 8)}…`;
 
 /** Render the resolved label, a loading skeleton, or the truncated-id fallback. */
 function Resolved({ label, isLoading, id }: { label: string | undefined | null; isLoading: boolean; id: string }) {
+  // Report the record name for the browser tab title (RouteBreadcrumbs). 2026-11-12
+  const reportTitle = useContext(CrumbTitleContext);
+  useEffect(() => {
+    reportTitle?.(label ?? null);
+  }, [label, reportTitle]);
   if (label) return <>{label}</>;
   if (isLoading) return <Skeleton width="72px" height="12px" />;
   return <>{shortId(id)}</>;

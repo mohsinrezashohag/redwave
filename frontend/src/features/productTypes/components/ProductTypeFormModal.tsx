@@ -8,7 +8,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Badge, Banner, Button, FormField, Input, Modal, MoneyInput, Switch, useToast } from '../../../components/ui';
+import { Badge, Banner, Button, FormField, Input, Modal, MoneyInput, Switch, useToast, ModalClose, useModalDirty } from '../../../components/ui';
 import { PayPeriodSelect } from '../../../components/data/PayPeriodSelect';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
@@ -62,6 +62,7 @@ function CreateForm({ onClose }: { onClose: () => void }) {
     resolver: zodResolver(createSchema),
     defaultValues: { key: '', label: '', set_rate: false, amount: '', effective_from: '' },
   });
+  useModalDirty(formState.isDirty); // closing with unsaved edits asks first
   const errors = formState.errors;
   const setRate = watch('set_rate');
 
@@ -116,9 +117,11 @@ function CreateForm({ onClose }: { onClose: () => void }) {
       )}
 
       <div className={styles.footer}>
-        <Button variant="secondary" type="button" onClick={onClose}>
-          Cancel
-        </Button>
+        <ModalClose asChild>
+          <Button variant="secondary" type="button">
+            Cancel
+          </Button>
+        </ModalClose>
         <Button variant="primary" type="submit" loading={create.isPending}>
           Add type
         </Button>
@@ -135,6 +138,7 @@ function EditForm({ type, onClose }: { type: ProductType; onClose: () => void })
     resolver: zodResolver(editSchema),
     defaultValues: { label: type.label, is_active: type.is_active },
   });
+  useModalDirty(formState.isDirty); // closing with unsaved edits asks first
 
   const onSubmit = (v: EditValues) =>
     update.mutate(
@@ -165,9 +169,11 @@ function EditForm({ type, onClose }: { type: ProductType; onClose: () => void })
         )}
       />
       <div className={styles.footer}>
-        <Button variant="secondary" type="button" onClick={onClose}>
-          Cancel
-        </Button>
+        <ModalClose asChild>
+          <Button variant="secondary" type="button">
+            Cancel
+          </Button>
+        </ModalClose>
         <Button variant="primary" type="submit" loading={update.isPending}>
           Save changes
         </Button>
