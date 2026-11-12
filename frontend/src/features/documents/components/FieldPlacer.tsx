@@ -11,7 +11,7 @@ import { FormField, Select } from '../../../components/ui';
 import { DocumentPreview } from './DocumentPreview';
 import { useDocumentFileUrl } from '../api/useDocumentFiles';
 import { seriesColor } from '../../dashboards/charts/chartTheme';
-import type { RenderedPage } from './pdf/PdfDocumentView';
+import type { RenderedPage } from '../../../components/pdf/PdfDocumentView';
 import type { SignatureFieldInput, SignatureFieldType } from '../documents.types';
 import styles from './fieldPlacer.module.css';
 

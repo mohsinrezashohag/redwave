@@ -268,3 +268,31 @@ describe('profile photo — uploaded, never a link (2026-11-12)', () => {
     expect(row.subject.avatar_url).toBe('https://signed/current');
   });
 });
+
+describe('Super Admin profile (2026-11-12): built-in avatars, no review', () => {
+  const sa: AuthUser = { ...reviewer, id: 'sa-1', full_name: 'Super Admin' };
+
+  it('picks a built-in avatar and it applies at once (recorded as an approved request, audited)', async () => {
+    const { service, prisma, audit, files } = makeService();
+    const tx = {
+      user: { update: jest.fn() },
+      profileChangeRequest: { create: jest.fn().mockResolvedValue({ id: 'r1', status: 'approved' }) },
+    };
+    prisma.$transaction.mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx));
+    prisma.user.findUnique.mockResolvedValue({ full_name: 'Super Admin', phone: null, avatar_url: null });
+    const r = await service.requestProfileChange(sa, { avatar_url: 'preset:wave' });
+    expect(r.status).toBe('approved');
+    expect(tx.user.update).toHaveBeenCalledWith({ where: { id: 'sa-1' }, data: { avatar_url: 'preset:wave' } });
+    expect(tx.profileChangeRequest.create.mock.calls[0][0].data).toMatchObject({ status: 'approved', reviewed_by: 'sa-1' });
+    expect(files.claim).not.toHaveBeenCalled();
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'approve' }));
+    expect(prisma.profileChangeRequest.create).not.toHaveBeenCalled(); // no pending request
+  });
+
+  it('the Super Admin cannot upload a photo; nobody else can use a built-in avatar', async () => {
+    const { service } = makeService();
+    await expect(service.requestProfileChange(sa, { avatar_url: 'avatars/2026/11/a.jpg' })).rejects.toThrow(/built-in avatars/);
+    const admin: AuthUser = { ...self, id: 'u-admin', roleNames: ['Admin'], repId: null };
+    await expect(service.requestProfileChange(admin, { avatar_url: 'preset:wave' })).rejects.toThrow(/JPG or PNG/);
+  });
+});

@@ -8,10 +8,10 @@ import { Suspense, lazy, type ReactNode } from 'react';
 import { Banner, LoadingSpinner } from '../../../components/ui';
 import { isNotFound } from '../documents.logic';
 import type { FileUrl } from '../api/useDocumentFiles';
-import type { RenderedPage } from './pdf/PdfDocumentView';
-import styles from './pdf/pdf.module.css';
+import type { RenderedPage } from '../../../components/pdf/PdfDocumentView';
+import styles from '../../../components/pdf/pdf.module.css';
 
-const PdfDocumentView = lazy(() => import('./pdf/PdfDocumentView'));
+const PdfDocumentView = lazy(() => import('../../../components/pdf/PdfDocumentView'));
 
 interface FileUrlQuery {
   data?: FileUrl;

@@ -118,3 +118,66 @@
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+
+/* Super Admin: three built-in avatars, one click (2026-11-12) */
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.preset {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-0);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.preset:hover:not(:disabled) {
+  border-color: var(--accent-600);
+  transform: translateY(-1px);
+}
+
+.preset:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.preset[data-selected] {
+  border-color: var(--accent-600);
+  box-shadow: 0 0 0 3px var(--accent-50);
+}
+
+.preset:disabled {
+  cursor: progress;
+}
+
+.presetImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+}
+
+.presetCheck {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background: var(--accent-600);
+  color: var(--on-brand);
+  border: 2px solid var(--surface-0);
+}

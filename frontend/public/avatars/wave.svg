@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Wave avatar">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e335c"/>
+      <stop offset="1" stop-color="#13213d"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" fill="url(#g)"/>
+  <circle cx="84" cy="36" r="12" fill="#ff6600"/>
+  <path d="M0 70 C 20 58, 40 58, 60 70 S 100 82, 120 70 L120 120 L0 120 Z" fill="#2563eb"/>
+  <path d="M0 84 C 20 72, 40 72, 60 84 S 100 96, 120 84 L120 120 L0 120 Z" fill="#3b82f6" fill-opacity="0.85"/>
+  <path d="M0 98 C 20 88, 40 88, 60 98 S 100 108, 120 98 L120 120 L0 120 Z" fill="#f3f6fc" fill-opacity="0.9"/>
+</svg>

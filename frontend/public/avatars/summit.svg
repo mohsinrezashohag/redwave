@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Summit avatar">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff8a3d"/>
+      <stop offset="1" stop-color="#ff6600"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" fill="url(#g)"/>
+  <circle cx="38" cy="38" r="9" fill="#fff4ea"/>
+  <path d="M8 104 L46 52 L64 76 L80 56 L114 104 Z" fill="#13213d"/>
+  <path d="M46 52 L55 64 L49 66 L44 60 L38 63 Z" fill="#f3f6fc"/>
+  <path d="M80 56 L88 67 L82 68 L78 63 L73 66 Z" fill="#f3f6fc"/>
+  <rect y="104" width="120" height="16" fill="#1e335c"/>
+</svg>

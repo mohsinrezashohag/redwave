@@ -12,7 +12,8 @@ import { useAuth } from '../../../auth/useAuth';
 import { useCan } from '../../../auth/useCan';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
-import { isForbidden, useApiErrorToast } from '../../../lib/api/apiError';
+import { isForbidden } from '../../../lib/api/apiError';
+import { FilePreviewDialog } from '../../../components/data/FilePreviewDialog';
 import type { ReceiptUrl } from '../expenses.types';
 import { displayDate } from '../../../lib/format/date';
 import { money } from '../../../lib/format/money';
@@ -45,24 +46,12 @@ export default function ExpenseDetailPage() {
   const configs = useFieldConfigs();
   const reps = useReps(canViewReps);
   const clients = useClients(canViewClients);
-  const [openingReceipt, setOpeningReceipt] = useState(false);
-  const onReceiptError = useApiErrorToast('Couldn’t open the receipt. Please try again.');
+  const [viewingReceipt, setViewingReceipt] = useState(false);
 
-  // A fresh 60s signed URL is minted per view (the path itself is never a viewable URL). — security.md
-  const openReceipt = async () => {
-    if (!id || openingReceipt) return;
-    setOpeningReceipt(true);
-    try {
-      const { url } = await unwrap<ReceiptUrl>(
-        api.GET('/v1/expense-items/{id}/receipt-url', { params: { path: { id } } }),
-      );
-      window.open(url, '_blank', 'noopener');
-    } catch (err) {
-      onReceiptError(err);
-    } finally {
-      setOpeningReceipt(false);
-    }
-  };
+  // The receipt opens in the in-app viewer; a fresh 60s signed URL is minted per view (the path itself is never
+  // a viewable URL). — security.md
+  const receiptUrl = async () =>
+    (await unwrap<ReceiptUrl>(api.GET('/v1/expense-items/{id}/receipt-url', { params: { path: { id: id ?? '' } } }))).url;
 
   if (isForbidden(q.error)) return <AccessDenied message="You don’t have access to this expense item." />;
 
@@ -152,7 +141,7 @@ export default function ExpenseDetailPage() {
                       <dt>Receipt</dt>
                       <dd>
                         {item.receipt_url ? (
-                          <Button variant="secondary" size="sm" loading={openingReceipt} onClick={() => void openReceipt()}>
+                          <Button variant="secondary" size="sm" onClick={() => setViewingReceipt(true)}>
                             View receipt
                           </Button>
                         ) : (
@@ -225,6 +214,7 @@ export default function ExpenseDetailPage() {
           )}
         </DataState>
       )}
+      <FilePreviewDialog open={viewingReceipt} onOpenChange={setViewingReceipt} title="Receipt" fetchUrl={receiptUrl} />
     </div>
   );
 }

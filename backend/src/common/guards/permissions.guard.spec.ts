@@ -54,4 +54,10 @@ describe('PermissionsGuard (AUTH-006)', () => {
     await expect(guard.canActivate(makeContext(userWith([])))).resolves.toBe(true);
     expect(audit.log).not.toHaveBeenCalled();
   });
+
+  it('the Super Admin passes every check, even one its role row lacks (2026-11-12)', async () => {
+    const { guard, audit } = makeGuard({ moduleKey: 'audit', action: 'approve' });
+    await expect(guard.canActivate(makeContext({ ...userWith([]), isSuperAdmin: true }))).resolves.toBe(true);
+    expect(audit.log).not.toHaveBeenCalled();
+  });
 });

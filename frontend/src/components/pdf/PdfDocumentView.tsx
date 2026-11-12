@@ -8,7 +8,7 @@
  * exist, render the pages onto them. Coordinates an overlay layer per page sized to the display box.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { LoadingSpinner } from '../../../../components/ui';
+import { LoadingSpinner } from '../ui';
 import { pdfjs } from './pdfWorker';
 import styles from './pdf.module.css';
 
@@ -26,11 +26,13 @@ interface Props {
   onReady?: (pageCount: number) => void;
   /** Target render width in px (display). Defaults to 720. */
   maxWidth?: number;
+  /** Extra class on the scrolling viewer (e.g. the file preview dialog lets it fill the window). */
+  viewerClassName?: string;
 }
 
 const renderScale = (baseWidth: number, maxWidth: number) => Math.min(maxWidth / baseWidth, 2);
 
-export default function PdfDocumentView({ url, renderPageOverlay, onReady, maxWidth = 720 }: Props) {
+export default function PdfDocumentView({ url, renderPageOverlay, onReady, maxWidth = 720, viewerClassName }: Props) {
   const [pages, setPages] = useState<RenderedPage[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
@@ -101,7 +103,7 @@ export default function PdfDocumentView({ url, renderPageOverlay, onReady, maxWi
   }
 
   return (
-    <div className={styles.viewer}>
+    <div className={viewerClassName ? `${styles.viewer} ${viewerClassName}` : styles.viewer}>
       {status === 'loading' && pages.length === 0 && (
         <div className={styles.state}>
           <LoadingSpinner size="md" label="Loading document" />

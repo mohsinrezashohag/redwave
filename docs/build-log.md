@@ -2793,3 +2793,36 @@ Admin may delete/restore (seed grants Admin `hrm:delete`).
   The toast has no Undo action (the toast API carries none); Restore sits right below instead.
 
 **Operator:** `prisma:deploy` (adds `20261112300000`); `prisma:seed` re-syncs Admin's grants (deploys run it).
+
+
+### File preview window (no migration)
+
+**Ask (2026-11-12).** "Wherever we have a JPG or PDF there should be a preview window, a bit bigger to suit
+the screen, formal." Built `components/data/FilePreviewDialog` on `Modal` (new `size="xl"`, 1200px max):
+PDFs render page by page with pdf.js filling the window width (capped at 1000px), images fit the window
+without stretching, any other type says so and offers Open in new tab. The dialog asks the caller for a fresh
+signed URL on open and again for Open in new tab (receipt links live 60 s). Kind comes from the object name
+in the URL (`lib/files/fileKind.ts`, tested). The pdf.js viewer moved from `features/documents` to
+`components/pdf/` so two features share it; its CSS referenced three tokens that don't exist
+(`--surface-sunken`, `--surface-raised`, `--shadow-md`), now real ones. **Used by:** rep documents (Preview
+replaces Open, also on the rep's own view) and expense receipts (folder row + item detail). The Documents
+module already had its own inline viewer. Other files still referencing the missing surface tokens:
+`SignaturePad`, `signatures`, `audit`, `fieldPlacer` CSS (not touched).
+
+
+### Super Admin: no permission checks, instant profile edits, three built-in avatars (no migration)
+
+**Ask (2026-11-12).** "The Super Admin doesn't need permission checks; bypass them globally. Remove the photo
+upload for them; let them pick one of three avatars with one click. A fun feature, keep it simple."
+
+- **Guard:** `PermissionsGuard` returns true for `isSuperAdmin` before the permission lookup (spec'd with a
+  permission the role row lacks); FE `useCan` mirrors it. Scope is untouched.
+- **Profile:** the SA's change request is written as `approved` (reviewed_by = self) and applied in the same
+  tx, audited as `approve`; the form says "Save changes" and the toast "Profile updated".
+- **Avatars:** `preset:compass|wave|summit`, drawn in-house as SVGs in the brand navy/orange/blue
+  (`frontend/public/avatars/`, fixed colours like the favicon). `avatarSource` maps a preset to
+  `/avatars/<name>.svg` (same origin as the app, nothing to sign). The SA may send only a preset (or ''); a
+  preset from anyone else is 422. `AvatarPresetPicker`: three 72px circles, click applies at once, selected
+  ring + check.
+
+Scope note: only the Super Admin's own account; Admins and other non-rep users keep the upload.

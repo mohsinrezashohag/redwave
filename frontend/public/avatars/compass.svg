@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Compass avatar">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e335c"/>
+      <stop offset="1" stop-color="#13213d"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" fill="url(#g)"/>
+  <circle cx="60" cy="60" r="34" fill="none" stroke="#aebbd0" stroke-opacity="0.35" stroke-width="3"/>
+  <circle cx="60" cy="60" r="24" fill="none" stroke="#aebbd0" stroke-opacity="0.2" stroke-width="2"/>
+  <path d="M60 26 L69 60 L60 94 L51 60 Z" fill="#f3f6fc"/>
+  <path d="M60 26 L69 60 L51 60 Z" fill="#ff6600"/>
+  <circle cx="60" cy="60" r="4.5" fill="#13213d"/>
+</svg>

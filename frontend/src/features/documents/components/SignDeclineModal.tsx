@@ -16,7 +16,7 @@ import { useSignatures } from '../../account/api/useSignatures';
 import { useSignRequest, useSignUpload } from '../api/useDocumentMutations';
 import { useDocumentFileUrl } from '../api/useDocumentFiles';
 import { DocumentPreview } from './DocumentPreview';
-import type { RenderedPage } from './pdf/PdfDocumentView';
+import type { RenderedPage } from '../../../components/pdf/PdfDocumentView';
 import styles from './documents.module.css';
 import placer from './fieldPlacer.module.css';
 import type { SignBody, SignDecision, SignatureField, SignatureRequest } from '../documents.types';

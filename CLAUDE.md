@@ -230,6 +230,7 @@ One module = one NestJS module owning its tables and endpoints. A module calls a
 - Two reps must never be able to see each other's earnings. The leaderboard shows **counts only, never money**.
 
 ### Implementation (built — Auth & RBAC module). Reuse this pattern in every module.
+- **The Super Admin passes EVERY permission check (2026-11-12):** `PermissionsGuard` allows `user.isSuperAdmin` before looking at the permission set, and the FE `useCan` mirrors it, so a permission added later can never lock the owner out. Data scope still applies per service (the SA's is `all`). The SA's own profile edits apply at once (still recorded as an approved `profile_change_requests` row + audited), and the SA's picture is one of three built-in avatars (`avatar.logic#AVATAR_PRESETS`, stored `preset:<name>`, served from `frontend/public/avatars/`) instead of an upload; no one else may use a preset.
 - **Two global guards** (`backend/src/common/guards/`, registered as `APP_GUARD` in `AuthModule`, in order): `JwtAuthGuard` authenticates (verifies the access JWT, loads the user + roles→permissions fresh each request, **rejects inactive users** → immediate revocation) then `PermissionsGuard` authorizes.
 - **Decorators** (`backend/src/common/decorators/`): `@Public()` skips auth (login/refresh/health); `@RequirePermission(moduleKey, action)` declares the gate; `@CurrentUser()` injects the `AuthUser`. A route with no `@RequirePermission` is **authenticated-only**.
 - **Permission identity is the string `moduleKey:action`** (e.g. `users:view`); effective permissions = the union of the user's roles, built by `buildEffectivePermissions` (`common/rbac/permissions.util.ts`). Denial → `403` **and** an `access_denied` audit row.
@@ -527,7 +528,7 @@ pattern.
 · `ExportMenu` + `exportRows` · `DatePicker` (value is always `'YYYY-MM-DD'`; **never** a native
 `<input type=date>` — OS-locale bug) · `PayPeriodSelect` · `SelectWithOther` · `EffectiveDatedTable`
 + `RateStatusBadge` · `StatCard` (the KPI tile) · `Avatar` · `FileUpload` · `HistoryTab` (per-record
-audit trail) · `SegmentedControl` · `MultiSelect` · `MoneyInput` · `SignaturePad` · `PrivateInput` · `PersonName` (photo + name for a person in any list) · `EditableAvatar` + `PhotoEditorDialog` (photo: pen on hover → crop / zoom / rotate → a 512px JPEG; the caller decides whether to upload now or on Save).
+audit trail) · `SegmentedControl` · `MultiSelect` · `MoneyInput` · `SignaturePad` · `PrivateInput` · `PersonName` (photo + name for a person in any list) · `FilePreviewDialog` (a stored PDF/image in a large in-app window, Modal `size="xl"`; the caller passes `fetchUrl` and it mints a fresh signed URL per view and for "Open in new tab". **Any new place that opens a stored file uses it, never a bare `window.open`**; the pdf.js viewer lives in `components/pdf/`) · `EditableAvatar` + `PhotoEditorDialog` (photo: pen on hover → crop / zoom / rotate → a 512px JPEG; the caller decides whether to upload now or on Save).
 
 - **A form holding SOMEONE ELSE's details (an admin entering a rep's phone, email, address or SIN) uses
   `PrivateInput`, not `Input`.** Chrome ignores `autocomplete="off"` on address-like fields and filled the
@@ -539,7 +540,7 @@ audit trail) · `SegmentedControl` · `MultiSelect` · `MoneyInput` · `Signatur
   more than that, or any narrower viewport, falls back to the kebab. Deciding from the actual item count
   (not per table) means a menu that grows past the threshold collapses back on its own instead of quietly
   overflowing the column. A table with a genuinely empty actions column may pass `maxInline={3}`; never
-  more — past that the column starts driving the table's layout, which is what the kebab exists to prevent.
+  more — past that the column starts driving the table's layout, which is what the kebab exists to prevent. **`iconOnly`** renders the inline actions as labelled icon buttons (native tooltip) and allows up to **4** inline; every item then needs an `icon` (rep documents use it: Open · Edit · Replace file · Delete).
 - **Status badges are per-domain and not interchangeable.** `StatusPill` is **sale-only**; pay
   runs, periods, clawbacks, documents, expenses and rates each have their own badge component.
 - **z-index ladder:** floating menus (dropdown/select/popover = 1300) sit **above** modal/drawer

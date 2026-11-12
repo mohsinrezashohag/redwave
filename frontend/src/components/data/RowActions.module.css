@@ -7,3 +7,8 @@
   gap: var(--space-1);
   white-space: nowrap;
 }
+
+/* A destructive icon action keeps the danger colour; the confirm dialog is still the guard. */
+.danger {
+  color: var(--danger);
+}
