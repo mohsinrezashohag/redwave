@@ -24,7 +24,8 @@ export interface ModalProps {
   description?: ReactNode;
   children?: ReactNode;
   footer?: ReactNode;
-  size?: 'sm' | 'md' | 'lg';
+  /** `xl` = a viewer (file preview): wide, for content rather than a form. */
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   /** Has unsaved edits: closing asks "Discard unsaved changes?" first. */
   dirty?: boolean;
 }

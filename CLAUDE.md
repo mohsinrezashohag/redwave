@@ -527,7 +527,7 @@ pattern.
 · `ExportMenu` + `exportRows` · `DatePicker` (value is always `'YYYY-MM-DD'`; **never** a native
 `<input type=date>` — OS-locale bug) · `PayPeriodSelect` · `SelectWithOther` · `EffectiveDatedTable`
 + `RateStatusBadge` · `StatCard` (the KPI tile) · `Avatar` · `FileUpload` · `HistoryTab` (per-record
-audit trail) · `SegmentedControl` · `MultiSelect` · `MoneyInput` · `SignaturePad` · `PrivateInput` · `PersonName` (photo + name for a person in any list) · `EditableAvatar` + `PhotoEditorDialog` (photo: pen on hover → crop / zoom / rotate → a 512px JPEG; the caller decides whether to upload now or on Save).
+audit trail) · `SegmentedControl` · `MultiSelect` · `MoneyInput` · `SignaturePad` · `PrivateInput` · `PersonName` (photo + name for a person in any list) · `FilePreviewDialog` (a stored PDF/image in a large in-app window, Modal `size="xl"`; the caller passes `fetchUrl` and it mints a fresh signed URL per view and for "Open in new tab". **Any new place that opens a stored file uses it, never a bare `window.open`**; the pdf.js viewer lives in `components/pdf/`) · `EditableAvatar` + `PhotoEditorDialog` (photo: pen on hover → crop / zoom / rotate → a 512px JPEG; the caller decides whether to upload now or on Save).
 
 - **A form holding SOMEONE ELSE's details (an admin entering a rep's phone, email, address or SIN) uses
   `PrivateInput`, not `Input`.** Chrome ignores `autocomplete="off"` on address-like fields and filled the

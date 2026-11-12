@@ -21,6 +21,7 @@ import { ExpenseStatusBadge } from './ExpenseStatusBadge';
 import { ExpenseValidationBadge } from './ExpenseValidationBadge';
 import { ReviewActions } from './ReviewActions';
 import { ExpenseForm } from './ExpenseForm';
+import { FilePreviewDialog } from '../../../components/data/FilePreviewDialog';
 import styles from './expenses.module.css';
 import type { ExpenseItem, FieldConfig, ReceiptUrl } from '../expenses.types';
 
@@ -46,7 +47,7 @@ export function FolderItemRow({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
-  const [openingReceipt, setOpeningReceipt] = useState(false);
+  const [viewingReceipt, setViewingReceipt] = useState(false);
 
   const isOwner = item.submitted_by === user?.id;
   const isAdmin = isSuperAdmin || roles.includes('Admin');
@@ -56,18 +57,9 @@ export function FolderItemRow({
   const km = item.km_log;
   const captured = (configs.find((c) => c.category_key === item.category)?.fields ?? []).filter((f) => item.field_values?.[f.key]);
 
-  const openReceipt = async () => {
-    if (openingReceipt) return;
-    setOpeningReceipt(true);
-    try {
-      const { url } = await unwrap<ReceiptUrl>(api.GET('/v1/expense-items/{id}/receipt-url', { params: { path: { id: item.id } } }));
-      window.open(url, '_blank', 'noopener');
-    } catch (err) {
-      onError(err);
-    } finally {
-      setOpeningReceipt(false);
-    }
-  };
+  // The receipt opens in the in-app viewer; a fresh 60s signed URL is minted per view. — security.md
+  const receiptUrl = async () =>
+    (await unwrap<ReceiptUrl>(api.GET('/v1/expense-items/{id}/receipt-url', { params: { path: { id: item.id } } }))).url;
 
   const confirmDelete = () =>
     del.mutate(item.id, {
@@ -149,7 +141,7 @@ export function FolderItemRow({
               </dl>
               <div className={styles.actions}>
                 {!km && item.receipt_url && (
-                  <Button variant="secondary" size="sm" loading={openingReceipt} onClick={() => void openReceipt()}>
+                  <Button variant="secondary" size="sm" onClick={() => setViewingReceipt(true)}>
                     View receipt
                   </Button>
                 )}
@@ -180,6 +172,9 @@ export function FolderItemRow({
       >
         This permanently removes the item from the folder.
       </ConfirmDialog>
+      {item.receipt_url && (
+        <FilePreviewDialog open={viewingReceipt} onOpenChange={setViewingReceipt} title="Receipt" fetchUrl={receiptUrl} />
+      )}
     </li>
   );
 }

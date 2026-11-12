@@ -2793,3 +2793,18 @@ Admin may delete/restore (seed grants Admin `hrm:delete`).
   The toast has no Undo action (the toast API carries none); Restore sits right below instead.
 
 **Operator:** `prisma:deploy` (adds `20261112300000`); `prisma:seed` re-syncs Admin's grants (deploys run it).
+
+
+### File preview window (no migration)
+
+**Ask (2026-11-12).** "Wherever we have a JPG or PDF there should be a preview window, a bit bigger to suit
+the screen, formal." Built `components/data/FilePreviewDialog` on `Modal` (new `size="xl"`, 1200px max):
+PDFs render page by page with pdf.js filling the window width (capped at 1000px), images fit the window
+without stretching, any other type says so and offers Open in new tab. The dialog asks the caller for a fresh
+signed URL on open and again for Open in new tab (receipt links live 60 s). Kind comes from the object name
+in the URL (`lib/files/fileKind.ts`, tested). The pdf.js viewer moved from `features/documents` to
+`components/pdf/` so two features share it; its CSS referenced three tokens that don't exist
+(`--surface-sunken`, `--surface-raised`, `--shadow-md`), now real ones. **Used by:** rep documents (Preview
+replaces Open, also on the rep's own view) and expense receipts (folder row + item detail). The Documents
+module already had its own inline viewer. Other files still referencing the missing surface tokens:
+`SignaturePad`, `signatures`, `audit`, `fieldPlacer` CSS (not touched).

@@ -6,14 +6,14 @@
   max-height: 70vh;
   overflow-y: auto;
   padding: var(--space-4);
-  background: var(--surface-sunken);
+  background: var(--surface-2);
   border-radius: var(--radius-md);
 }
 
 .page {
   position: relative;
-  box-shadow: var(--shadow-md);
-  background: var(--surface-raised);
+  box-shadow: var(--shadow-2);
+  background: var(--surface-0);
   line-height: 0;
 }
 

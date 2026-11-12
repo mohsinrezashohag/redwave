@@ -9,12 +9,13 @@
  * (expiry flagged "Expired" / "Expires in N days" within 60). For those IDs the dates are READ from the
  * document automatically (when set up) and shown with consistency checks for HR to confirm before saving.
  *
- * Each row: Open · Edit (type + dates) · Replace file (hrm:edit) · Delete (hrm:delete). Delete moves the
- * document to "Recently deleted", restorable for 30 days; the server's daily purge then removes it for good.
+ * Each row: Preview (an in-app viewer for PDFs and images) · Edit (type + dates) · Replace file (hrm:edit)
+ * · Delete (hrm:delete). Delete moves the document to "Recently deleted", restorable for 30 days; the
+ * server's daily purge then removes it for good.
  * Gating here only hides buttons; the server enforces every permission.
  */
 import { useRef, useState } from 'react';
-import { FileText, Pencil, RotateCcw, Trash2, Upload } from 'lucide-react';
+import { Eye, Pencil, RotateCcw, Trash2, Upload } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -33,6 +34,7 @@ import {
 } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { RowActions } from '../../../components/data/RowActions';
+import { FilePreviewDialog } from '../../../components/data/FilePreviewDialog';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useCan } from '../../../auth/useCan';
 import { displayDate, todayIso } from '../../../lib/format/date';
@@ -225,15 +227,11 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
     );
   };
 
-  const onOpenFile = (docId: string) =>
-    open.mutate(docId, {
-      onSuccess: (r) => window.open(r.url, '_blank', 'noopener,noreferrer'),
-      onError,
-    });
+  const [preview, setPreview] = useState<RepDocument | null>(null);
 
   const rowMenu = (d: RepDocument): MenuEntry[] => {
     const items: MenuEntry[] = [];
-    if (canOpen) items.push({ label: 'Open', icon: <FileText size={14} />, onSelect: () => onOpenFile(d.id) });
+    if (canOpen) items.push({ label: 'Preview', icon: <Eye size={14} />, onSelect: () => setPreview(d) });
     if (canEdit) {
       items.push({ label: 'Edit', icon: <Pencil size={14} />, onSelect: () => editDoc(d) });
       items.push({ label: 'Replace file', icon: <Upload size={14} />, onSelect: () => pickReplacement(d) });
@@ -348,6 +346,12 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
         onReadAgain={review?.mode === 'edit' ? () => readStored.mutate(review.doc.id, handleRead) : undefined}
         onSave={onSave}
         onCancel={closeReview}
+      />
+      <FilePreviewDialog
+        open={preview !== null}
+        onOpenChange={(o) => !o && setPreview(null)}
+        title={preview ? docTypeLabel(preview.doc_type) : ''}
+        fetchUrl={async () => (await open.mutateAsync(preview?.id ?? '')).url}
       />
       {confirmDialog}
     </>
