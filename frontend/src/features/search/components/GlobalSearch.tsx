@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { Avatar } from '../../../components/ui';
 import { useGlobalSearch } from '../api/useGlobalSearch';
 import styles from './GlobalSearch.module.css';
 
@@ -92,7 +93,13 @@ export function GlobalSearch() {
               {r!.reps.length > 0 && (
                 <Group title="Reps">
                   {r!.reps.map((rep) => (
-                    <ResultButton key={rep.id} code={rep.rep_code} label={rep.full_name} onSelect={() => go(`/sales?rep_id=${rep.id}`)} />
+                    <ResultButton
+                      key={rep.id}
+                      code={rep.rep_code}
+                      label={rep.full_name}
+                      leading={<Avatar name={rep.full_name} src={rep.photo_url} size="sm" />}
+                      onSelect={() => go(`/sales?rep_id=${rep.id}`)}
+                    />
                   ))}
                 </Group>
               )}
@@ -113,9 +120,10 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function ResultButton({ code, label, onSelect }: { code: string; label: string; onSelect: () => void }) {
+function ResultButton({ code, label, leading, onSelect }: { code: string; label: string; leading?: ReactNode; onSelect: () => void }) {
   return (
     <button type="button" className={styles.item} onClick={onSelect} role="option">
+      {leading}
       <span className={`${styles.code} mono`}>{code}</span>
       <span className={styles.sub}>{label}</span>
     </button>

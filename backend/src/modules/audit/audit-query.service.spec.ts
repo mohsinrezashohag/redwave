@@ -45,7 +45,7 @@ describe('AuditQueryService.buildWhere — filters (arch §security)', () => {
     const page = await service.list(Object.assign(new AuditQueryDto(), { page: 1, limit: 20 }));
     expect(page.meta).toEqual({ total: 1, page: 1, limit: 20, pageCount: 1 });
     expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ include: { actor: { select: { id: true, full_name: true, email: true } } } }),
+      expect.objectContaining({ include: { actor: { select: { id: true, full_name: true, email: true, avatar_url: true } } } }),
     );
   });
 });

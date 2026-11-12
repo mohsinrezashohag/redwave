@@ -2685,3 +2685,32 @@ adjust it before saving.
 
 **Verified LOCAL:** FE build + lint + stylelint + vitest 149 (+`photoCrop`). No backend change. **Not seen in
 a browser** (the local app points at production); check hover, the editor drag on touch, and dark mode.
+
+### Basics sweep, batch 1: photos everywhere, the session and screens stay current (no migration)
+
+**Ask (2026-11-12).** A rep's photo was set but the top bar still showed "RR"; fix every basic rule of that
+kind. Three read-only audits (people/photos, staleness after changes, everyday UX) found the root causes.
+Decided: rep photos show everywhere a rep is shown (including the leaderboard); two batches.
+
+- **Top bar:** shows the signed-in user's photo (`Avatar`; a rep's = their headshot), the role under the
+  email, and the menu now closes after a choice (`Popover` gained controlled `open`).
+- **`Avatar` falls back to initials** when a link fails (an expired signed URL), and retries a new link.
+- **Session:** `/me` was loaded once per session, so name/photo/permissions/rep link went stale after any
+  approval, role edit or self edit, and the photo link died after 1 h. `AuthProvider` now refreshes it
+  quietly after every successful change (debounced), every 45 min, and on tab return after 5 min — without
+  re-applying the theme (so a just-picked theme is never undone).
+- **Screens:** ~110 mutations each refreshed only their own feature (an import commit refreshed 1 of 8
+  areas; finalizing a pay run left sale statuses old; dashboards/leaderboard/margin/history were never
+  refreshed). A global `MutationCache.onSuccess` now marks every cached query stale (on-screen ones refetch;
+  signed file-URL queries excepted), and stale queries refetch on window focus.
+- **Rep photos in responses:** `AvatarService.resolveReps` (latest headshot per rep, one batch sign) →
+  `photo_url` on reps list/detail, leaderboard (still no money — spec-locked), manager roster, sales
+  (`rep_photo_url`), pay-run lines, search; the audit actor gains `avatar_url`. Shown via the new
+  `PersonName` (photo + name) in those screens plus expense folders, the field-manager column and document
+  owners; a new **Rep** column on the sales list for managers/admins.
+- **Silent failures:** notification mark-read / mark-all / bulk now toast on error; "Set default"
+  signature toasts on success.
+
+**Verified LOCAL:** 1237 backend tests (+`resolveReps`, audit actor select) + typecheck + lint + build +
+contract regen; FE build + lint + stylelint + vitest 153 (+`Avatar` fallback, +`queryClient` freshness).
+Not seen in a browser (the local app points at production).

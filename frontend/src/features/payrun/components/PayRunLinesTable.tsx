@@ -5,7 +5,7 @@
  * integer cents, no float #1), never a recomputation. The UI computes no money (#1/#5).
  */
 import { FileText, Gift, Search } from 'lucide-react';
-import { Table, TBody, TD, TH, THead, TR, type MenuEntry } from '../../../components/ui';
+import { PersonName, Table, TBody, TD, TH, THead, TR, type MenuEntry } from '../../../components/ui';
 import { RowActions } from '../../../components/data/RowActions';
 import { money, sumMoney } from '../../../lib/format/money';
 import { NetPayoutCell } from './NetPayoutCell';
@@ -53,7 +53,7 @@ export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBon
         {lines.map((l) => (
           <TR key={l.id}>
             <TD>
-              <span className="mono">{l.rep.rep_code}</span> <span className={styles.note}>{l.rep.full_name}</span>
+              <PersonName name={l.rep.full_name} photoUrl={l.rep.photo_url} detail={<span className="mono">{l.rep.rep_code}</span>} />
             </TD>
             <TD numeric>{money(l.commission_70)}</TD>
             <TD numeric>{money(l.holdback_release_30)}</TD>

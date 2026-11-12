@@ -7,7 +7,7 @@
  */
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Badge, useToast, type MenuEntry } from '../../../components/ui';
+import { Badge, useToast, type MenuEntry, PersonName } from '../../../components/ui';
 import { RowActions } from '../../../components/data/RowActions';
 import { DataTable, type DataColumn } from '../../../components/data/DataTable';
 import { useAuth } from '../../../auth/useAuth';
@@ -37,7 +37,10 @@ export function FoldersTable({ filters, canReview }: { filters: ReportFilters; c
   const submit = useSubmitReport();
   const review = useReviewReport();
 
-  const repName = (id: string | null) => (id ? reps.data?.find((r) => r.id === id)?.full_name ?? '—' : '—');
+  const repCell = (id: string | null) => {
+    const rep = id ? reps.data?.find((r) => r.id === id) : undefined;
+    return rep ? <PersonName name={rep.full_name} photoUrl={rep.photo_url} /> : '—';
+  };
 
   const act = (fn: Promise<unknown>, ok: string) => fn.then(() => toast({ title: ok, tone: 'success' })).catch(onError);
 
@@ -84,7 +87,7 @@ export function FoldersTable({ filters, canReview }: { filters: ReportFilters; c
     // people — exactly when the list must say whose. Shown whenever the viewer can resolve rep names, and
     // forced on as soon as the loaded rows actually span more than one owner, so same-week rows are never
     // indistinguishable.
-    if (canViewReps || multiStakeholder) cols.push({ id: 'rep', header: 'Rep', render: (f) => repName(f.rep_id) });
+    if (canViewReps || multiStakeholder) cols.push({ id: 'rep', header: 'Rep', render: (f) => repCell(f.rep_id) });
     cols.push(
       { id: 'items', header: 'Items', numeric: true, render: (f) => String(f.item_count) },
       { id: 'total', header: 'Reimbursable', align: 'right', numeric: true, render: (f) => money(f.total_reimbursable_cad) },

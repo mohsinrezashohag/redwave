@@ -10,11 +10,14 @@ export interface PopoverProps {
   children: ReactNode;
   align?: 'start' | 'center' | 'end';
   side?: 'top' | 'right' | 'bottom' | 'left';
+  /** Controlled open state (optional), e.g. to close the popover after a menu item is chosen. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function Popover({ trigger, children, align = 'start', side = 'bottom' }: PopoverProps) {
+export function Popover({ trigger, children, align = 'start', side = 'bottom', open, onOpenChange }: PopoverProps) {
   return (
-    <RPopover.Root>
+    <RPopover.Root open={open} onOpenChange={onOpenChange}>
       <RPopover.Trigger asChild>{trigger}</RPopover.Trigger>
       <RPopover.Portal>
         <RPopover.Content className={styles.content} align={align} side={side} sideOffset={6}>

@@ -40,6 +40,40 @@ export class AvatarService {
     return out;
   }
 
+  /**
+   * Display URL per REP id: their latest HR headshot, signed in one batch. For rep-shaped responses (reps
+   * list, leaderboard, sales, pay runs, search…) — a rep's photo shows wherever the rep is shown. A rep with
+   * no headshot (or storage off) → null, and the UI shows initials. — 2026-11-12
+   */
+  async resolveReps(repIds: string[]): Promise<Map<string, string | null>> {
+    const ids = [...new Set(repIds.filter(Boolean))];
+    const out = new Map<string, string | null>();
+    if (ids.length === 0) return out;
+    const docs = await this.prisma.repDocument.findMany({
+      where: { rep_id: { in: ids }, doc_type: 'headshot' },
+      orderBy: { uploaded_at: 'desc' },
+      select: { rep_id: true, file_url: true },
+    });
+    const latest = new Map<string, string>();
+    for (const d of docs) if (!latest.has(d.rep_id)) latest.set(d.rep_id, d.file_url);
+    const paths = [...new Set([...latest.values()].filter((p) => !p.startsWith('local://')))];
+    const signed = await this.storage.signedUrls(paths, AVATAR_URL_TTL_SECONDS);
+    for (const id of ids) {
+      const path = latest.get(id);
+      out.set(id, path ? (signed.get(path) ?? null) : null);
+    }
+    return out;
+  }
+
+  /** Add `photo_url` to rep-shaped rows, read from `repId(row)`. */
+  async withRepPhotos<T>(rows: T[], repId: (row: T) => string | null | undefined): Promise<(T & { photo_url: string | null })[]> {
+    const urls = await this.resolveReps(rows.map((r) => repId(r) ?? '').filter(Boolean));
+    return rows.map((r) => {
+      const id = repId(r);
+      return { ...r, photo_url: id ? (urls.get(id) ?? null) : null };
+    });
+  }
+
   /** Replace `avatar_url` on each user with its display URL. */
   async withDisplayUrls<T extends { id: string; avatar_url: string | null }>(users: T[]): Promise<T[]> {
     const urls = await this.resolve(users);

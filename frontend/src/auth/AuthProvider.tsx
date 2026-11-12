@@ -5,9 +5,9 @@
  * gate (CLAUDE §5). The refresh token is an httpOnly cookie (never in JS); CSRF rides a readable cookie the
  * client echoes. — SRS §4, arch §security
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api } from '../api/client';
-import { queryClient } from '../lib/query/queryClient';
+import { queryClient, setSessionRefresher } from '../lib/query/queryClient';
 import { useTheme } from '../theme/useTheme';
 import type { ThemePreference } from '../theme/theme.types';
 import { AuthContext, type AuthStatus, type LoginOutcome } from './auth-context';
@@ -44,7 +44,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus('unauthenticated');
   }, []);
 
-  const loadMe = useCallback(async () => {
+  // `applyTheme` is false for the quiet refreshes below, so a background /me can never undo a theme the
+  // user just picked (its PATCH may still be in flight).
+  const loadMe = useCallback(async (applyTheme = true) => {
     const { data, response } = await api.GET('/v1/auth/me');
     if (!response.ok) {
       throw new Error('Failed to load profile');
@@ -58,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMfaEnrollmentRequired(Boolean(me.mfa_enrollment_required));
     setStatus('authenticated');
     // Apply the user's saved theme locally (it IS the server value — no PATCH back). — §3.5
-    setPreference(me.user.theme_preference);
+    if (applyTheme) setPreference(me.user.theme_preference);
   }, [setPreference]);
 
   // ── Boot: restore an existing session (the refresh cookie, if any) ────────────────
@@ -96,6 +98,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [loadMe, clearLocal]);
+
+  // ── Keep the session current (2026-11-12) ────────────────────────────────────────
+  // /me carries the name, photo, roles, permissions and rep link. Refresh it quietly:
+  //   - after any successful change (an approval, a role edit, a new headshot… may concern this user);
+  //   - every 45 min, before the 1 h photo link expires;
+  //   - when the tab comes back after 5+ min away.
+  // Debounced so a burst of changes makes one call; a failure is ignored (the next one will retry).
+  const lastLoaded = useRef(0);
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        lastLoaded.current = Date.now();
+        loadMe(false).catch(() => {});
+      }, 400);
+    };
+    lastLoaded.current = Date.now();
+    setSessionRefresher(refresh);
+    const interval = setInterval(refresh, 45 * 60_000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastLoaded.current > 5 * 60_000) refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      setSessionRefresher(null);
+    };
+  }, [status, loadMe]);
 
   // ── Session-expired (in-session refresh failure) + multi-tab logout sync ───────────
   useEffect(() => {
@@ -165,9 +199,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [setPreference, status],
   );
 
+  const reloadMe = useCallback(() => loadMe(), [loadMe]);
+
   const value = useMemo(
-    () => ({ status, user, roles, permissions, isSuperAdmin, repId, mfaEnrollmentRequired, login, verifyMfa, reloadMe: loadMe, logout, setTheme }),
-    [status, user, roles, permissions, isSuperAdmin, repId, mfaEnrollmentRequired, login, verifyMfa, loadMe, logout, setTheme],
+    () => ({ status, user, roles, permissions, isSuperAdmin, repId, mfaEnrollmentRequired, login, verifyMfa, reloadMe, logout, setTheme }),
+    [status, user, roles, permissions, isSuperAdmin, repId, mfaEnrollmentRequired, login, verifyMfa, reloadMe, logout, setTheme],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -9,7 +9,8 @@
  * and freeze/holdback are further guarded (sales become Paid; one ledger row per rep+origin).
  * Money math uses decimal.js; conversion to Prisma Decimal (`.toFixed(2)`) happens only on write.
  */
-import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { AvatarService } from '../../common/avatar/avatar.service';
 import { HoldbackReleaseStatus, Prisma } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -89,6 +90,7 @@ export class PayRunService {
     @Inject(EXPENSE_TOTAL_PROVIDER) private readonly expenseSeam: ExpenseTotalProvider,
     @Inject(CLAWBACK_TOTAL_PROVIDER) private readonly clawbackSeam: ClawbackTotalProvider,
     @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
+    @Optional() private readonly avatars?: AvatarService,
   ) {}
 
   // ── Draft ───────────────────────────────────────────────────────────────────────────────────
@@ -777,11 +779,14 @@ export class PayRunService {
 
   async getLines(runId: string, user: AuthUser) {
     const repIds = await this.scopeRepIds(user);
-    return this.prisma.payRunLine.findMany({
+    const lines = await this.prisma.payRunLine.findMany({
       where: { pay_run_id: runId, ...(repIds ? { rep_id: { in: repIds } } : {}) },
       include: { rep: { select: { id: true, rep_code: true, full_name: true } } },
       orderBy: { rep: { rep_code: 'asc' } },
     });
+    // Each rep's photo (HR headshot) on the line's rep. 2026-11-12
+    const photos = this.avatars ? await this.avatars.resolveReps(lines.map((l) => l.rep_id)) : new Map<string, string | null>();
+    return lines.map((l) => ({ ...l, rep: { ...l.rep, photo_url: photos.get(l.rep_id) ?? null } }));
   }
 
   async listHoldbackLedger(query: ListHoldbackQuery, user: AuthUser) {

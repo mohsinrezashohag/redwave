@@ -32,7 +32,7 @@ function make() {
     $transaction: jest.fn().mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
-  return { service: new RepsService(prisma as never, audit as never), prisma, tx, audit };
+  return { service: new RepsService(prisma as never, audit as never, { withRepPhotos: async (rows: unknown[]) => rows.map((r) => ({ ...(r as object), photo_url: null })) } as never), prisma, tx, audit };
 }
 
 const managerUser = { id: 'mgr-1', status: 'active', user_roles: [{ role: { name: 'Manager' } }] };

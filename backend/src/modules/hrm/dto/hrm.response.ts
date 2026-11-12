@@ -13,6 +13,13 @@ export class RepResponse {
   @ApiProperty()
   id!: string;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The rep's photo: a short-lived URL of their latest HR headshot. Null when there is none.",
+  })
+  photo_url!: string | null;
+
   @ApiProperty()
   rep_code!: string;
 

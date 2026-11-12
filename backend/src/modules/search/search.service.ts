@@ -5,7 +5,8 @@
  * admin=all) via ScopeService — never by filtering after the fact (§5). Case-insensitive substring match;
  * each group capped. No money is returned.
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { AvatarService } from '../../common/avatar/avatar.service';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ScopeService } from '../../common/scope/scope.service';
@@ -20,6 +21,7 @@ export class SearchService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly scope: ScopeService,
+    @Optional() private readonly avatars?: AvatarService,
   ) {}
 
   async search(rawQuery: string, user: AuthUser): Promise<SearchResponse> {
@@ -29,12 +31,14 @@ export class SearchService {
     const like = { contains: term, mode: 'insensitive' as Prisma.QueryMode };
 
     if (user.permissions.has('hrm:view')) {
-      out.reps = await this.prisma.rep.findMany({
+      const reps = await this.prisma.rep.findMany({
         where: { OR: [{ full_name: like }, { rep_code: like }] },
         select: { id: true, rep_code: true, full_name: true },
         take: CAP,
         orderBy: { full_name: 'asc' },
       });
+      // Each rep's photo (HR headshot). 2026-11-12
+      out.reps = this.avatars ? await this.avatars.withRepPhotos(reps, (r) => r.id) : reps.map((r) => ({ ...r, photo_url: null }));
     }
 
     if (user.permissions.has('clients:view')) {

@@ -114,6 +114,9 @@ export class SaleResponse {
   @ApiPropertyOptional({ type: String, nullable: true, description: 'The rep who sold it.' })
   rep_name?: string | null;
 
+  @ApiPropertyOptional({ type: String, nullable: true, description: "The selling rep's photo (HR headshot), short-lived URL." })
+  rep_photo_url?: string | null;
+
   @ApiProperty()
   client_id!: string;
 

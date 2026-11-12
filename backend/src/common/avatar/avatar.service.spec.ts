@@ -50,3 +50,33 @@ describe('AvatarService.resolve', () => {
     expect(u.avatar_url).toBeNull();
   });
 });
+
+describe('AvatarService.resolveReps — a rep photo wherever the rep is shown', () => {
+  it('latest headshot per rep, one batch sign call, null for a rep without one', async () => {
+    const prisma = {
+      repDocument: {
+        findMany: jest.fn().mockResolvedValue([
+          { rep_id: 'r1', file_url: 'rep-docs/2026/new.jpg' }, // newest first
+          { rep_id: 'r1', file_url: 'rep-docs/2025/old.jpg' },
+          { rep_id: 'r2', file_url: 'local://rep-docs/h.jpg' }, // stub ref (storage off) → null
+        ]),
+      },
+    };
+    const storage = { signedUrls: jest.fn(async (paths: string[]) => new Map(paths.map((p) => [p, `https://signed/${p}`]))) };
+    const service = new AvatarService(prisma as never, storage as never);
+    const urls = await service.resolveReps(['r1', 'r2', 'r3', 'r1']);
+    expect(prisma.repDocument.findMany.mock.calls[0][0].where).toEqual({ rep_id: { in: ['r1', 'r2', 'r3'] }, doc_type: 'headshot' });
+    expect(storage.signedUrls).toHaveBeenCalledTimes(1);
+    expect(storage.signedUrls.mock.calls[0][0]).toEqual(['rep-docs/2026/new.jpg']);
+    expect(urls.get('r1')).toBe('https://signed/rep-docs/2026/new.jpg');
+    expect(urls.get('r2')).toBeNull();
+    expect(urls.get('r3')).toBeNull();
+  });
+
+  it('withRepPhotos adds photo_url to each row', async () => {
+    const prisma = { repDocument: { findMany: jest.fn().mockResolvedValue([]) } };
+    const service = new AvatarService(prisma as never, { signedUrls: jest.fn(async () => new Map()) } as never);
+    const rows = await service.withRepPhotos([{ id: 'r1', name: 'A' }], (r) => r.id);
+    expect(rows).toEqual([{ id: 'r1', name: 'A', photo_url: null }]);
+  });
+});

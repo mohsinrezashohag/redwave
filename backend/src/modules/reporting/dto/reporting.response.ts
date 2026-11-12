@@ -134,6 +134,7 @@ export class RepDashboardResponse {
 export class ManagerTopPerformerResponse {
   @ApiProperty() rep_id!: string;
   @ApiProperty() rep_name!: string;
+  @ApiProperty({ type: String, nullable: true, description: "The rep's photo (HR headshot), short-lived URL." }) photo_url!: string | null;
   @ApiProperty({ example: 12, description: 'Internet activations (the count-ranking signal).' }) activations!: number;
   @ApiProperty({ type: String, nullable: true, description: 'Per-rep payout — present ONLY with hrm:edit.' }) payout!: string | null;
 }
@@ -141,6 +142,7 @@ export class ManagerTopPerformerResponse {
 export class ManagerTargetRowResponse {
   @ApiProperty() rep_id!: string;
   @ApiProperty() rep_name!: string;
+  @ApiProperty({ type: String, nullable: true, description: "The rep's photo (HR headshot), short-lived URL." }) photo_url!: string | null;
   @ApiProperty({ type: Number, nullable: true }) target_activations!: number | null;
   @ApiProperty() actual!: number;
 }
@@ -216,6 +218,9 @@ export class LeaderboardRowResponse {
 
   @ApiProperty({ type: String, nullable: true })
   rep_name!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: "The rep's photo (HR headshot), short-lived URL. Not money." })
+  photo_url!: string | null;
 
   @ApiProperty({ description: 'Internet activation count — the ONLY metric (no earnings).' })
   activation_count!: number;

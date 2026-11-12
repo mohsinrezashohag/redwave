@@ -4,7 +4,7 @@
  * — arch §security (audit)
  */
 import { useState } from 'react';
-import { Badge, Button, DatePicker, Drawer, FormField, Input, PageHeader } from '../../../components/ui';
+import { Badge, Button, DatePicker, Drawer, FormField, Input, PageHeader, PersonName } from '../../../components/ui';
 import { DataTable, type DataColumn } from '../../../components/data/DataTable';
 import { useCan } from '../../../auth/useCan';
 import { isForbidden } from '../../../lib/api/apiError';
@@ -39,7 +39,11 @@ export default function AuditLogPage() {
 
   const columns: DataColumn<AuditLog, AuditSortKey>[] = [
     { id: 'created_at', header: 'When', sortKey: 'created_at', render: (r) => <span className="mono">{when(r.created_at)}</span> },
-    { id: 'actor', header: 'Actor', render: (r) => r.actor?.full_name ?? r.user_id.slice(0, 8) },
+    {
+      id: 'actor',
+      header: 'Actor',
+      render: (r) => (r.actor ? <PersonName name={r.actor.full_name} photoUrl={r.actor.avatar_url} /> : r.user_id.slice(0, 8)),
+    },
     { id: 'action', header: 'Action', sortKey: 'action', render: (r) => <Badge tone="neutral">{r.action}</Badge> },
     { id: 'entity_type', header: 'Entity', sortKey: 'entity_type', render: (r) => r.entity_type },
     { id: 'entity_id', header: 'Record', render: (r) => <span className="mono">{r.entity_id.slice(0, 8)}</span> },

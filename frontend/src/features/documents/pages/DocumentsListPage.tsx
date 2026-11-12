@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Upload } from 'lucide-react';
-import { Button, PageHeader, Select, Table, TBody, TD, TH, THead, TR } from '../../../components/ui';
+import { Button, PageHeader, Select, Table, TBody, TD, TH, THead, TR, PersonName } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
 import { DataState } from '../../../components/data/DataState';
 import { isForbidden } from '../../../lib/api/apiError';
@@ -108,7 +108,9 @@ export default function DocumentsListPage() {
               <TR key={d.id}>
                 <TD>{d.title}</TD>
                 <TD>{DOC_TYPE_LABELS[d.doc_type]}</TD>
-                <TD>{resolve(d.owner_user_id).label}</TD>
+                <TD>
+                  <PersonName name={resolve(d.owner_user_id).label} photoUrl={resolve(d.owner_user_id).avatarUrl} />
+                </TD>
                 <TD>
                   <DocumentStatusBadge status={d.status} />
                 </TD>

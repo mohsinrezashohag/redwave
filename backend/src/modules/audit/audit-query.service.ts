@@ -5,7 +5,8 @@
  * entity_id powers the per-record History tab. There are NO write/update/delete paths here — the trail is
  * append-only and stays so. — arch §security (audit)
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { AvatarService } from '../../common/avatar/avatar.service';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
@@ -15,7 +16,10 @@ const SORTABLE = ['created_at', 'action', 'entity_type'] as const;
 
 @Injectable()
 export class AuditQueryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly avatars?: AvatarService,
+  ) {}
 
   buildWhere(query: AuditQueryDto): Prisma.AuditLogWhereInput {
     const where: Prisma.AuditLogWhereInput = {};
@@ -48,10 +52,14 @@ export class AuditQueryService {
         orderBy,
         skip,
         take,
-        include: { actor: { select: { id: true, full_name: true, email: true } } },
+        include: { actor: { select: { id: true, full_name: true, email: true, avatar_url: true } } },
       }),
       this.prisma.auditLog.count({ where }),
     ]);
-    return buildPage(rows, total, page, limit);
+    // The actor's photo as a display URL (never the stored path). 2026-11-12
+    const actors = rows.flatMap((r) => (r.actor ? [r.actor] : []));
+    const urls = this.avatars ? await this.avatars.resolve(actors) : new Map<string, string | null>();
+    const withPhotos = rows.map((r) => (r.actor ? { ...r, actor: { ...r.actor, avatar_url: urls.get(r.actor.id) ?? null } } : r));
+    return buildPage(withPhotos, total, page, limit);
   }
 }

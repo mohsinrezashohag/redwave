@@ -9,6 +9,7 @@ import { Badge, Button, Input, PageHeader, SegmentedControl } from '../../../com
 import { DataTable, type DataColumn } from '../../../components/data/DataTable';
 import { relativeTime } from '../../../lib/format/date';
 import { resolveNotificationLink } from '../../../lib/notifications/resolveLink';
+import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useBulkMarkRead, useMarkAllRead, useNotificationsList, useSetNotificationRead } from '../api/useNotifications';
 import type { AppNotification, NotificationsFilters } from '../notifications.types';
 import styles from './NotificationCenter.module.css';
@@ -29,6 +30,7 @@ function SearchBox({ value, onChange }: { value: string; onChange: (v: string) =
 }
 
 export default function NotificationCenterPage() {
+  const onError = useApiErrorToast(); // mark-read failures surface, never silent
   const navigate = useNavigate();
   const [tab, setTab] = useState<'all' | 'unread'>('all');
   const [search, setSearch] = useState('');
@@ -60,12 +62,12 @@ export default function NotificationCenterPage() {
   const clear = () => setSelected(new Set());
 
   const activate = (n: AppNotification) => {
-    if (!n.is_read) setRead.mutate({ id: n.id, is_read: true });
+    if (!n.is_read) setRead.mutate({ id: n.id, is_read: true }, { onError });
     const to = resolveNotificationLink(n);
     if (to) navigate(to);
   };
   const runBulk = (read: boolean) =>
-    bulkMark.mutate({ ids: [...selected], read }, { onSuccess: clear });
+    bulkMark.mutate({ ids: [...selected], read }, { onSuccess: clear, onError });
 
   const columns: DataColumn<AppNotification>[] = [
     { id: 'status', header: '', render: (n) => <span className={styles.dot} data-on={!n.is_read} aria-label={n.is_read ? 'read' : 'unread'} /> },
@@ -89,7 +91,7 @@ export default function NotificationCenterPage() {
         title="Notifications"
         subtitle="Your activity and approvals across the platform."
         actions={
-          <Button variant="secondary" onClick={() => markAll.mutate()} loading={markAll.isPending}>
+          <Button variant="secondary" onClick={() => markAll.mutate(undefined, { onError })} loading={markAll.isPending}>
             Mark all read
           </Button>
         }

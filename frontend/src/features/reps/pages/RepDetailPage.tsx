@@ -6,7 +6,7 @@
  */
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Badge, Button, PageHeader, Tabs } from '../../../components/ui';
+import { Avatar, Badge, Button, PageHeader, Tabs } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
 import { isForbidden, isNotFound } from '../../../lib/api/apiError';
@@ -16,7 +16,7 @@ import { RepProfileCard } from '../components/RepProfileCard';
 import { RepEquipmentPanel } from '../components/RepEquipmentPanel';
 import { RepDocumentsPanel } from '../components/RepDocumentsPanel';
 import { RepFormModal, type RepFormState } from '../components/RepFormModal';
-import { EditableRepHeadshot, RepHeadshot } from '../components/RepHeadshot';
+import { EditableRepHeadshot } from '../components/RepHeadshot';
 import styles from '../components/reps.module.css';
 
 export default function RepDetailPage() {
@@ -53,7 +53,7 @@ export default function RepDetailPage() {
               {canEdit ? (
                 <EditableRepHeadshot repId={r.id} name={r.full_name} />
               ) : (
-                <RepHeadshot repId={r.id} name={r.full_name} canOpen={false} />
+                <Avatar name={r.full_name} src={r.photo_url} size="xl" />
               )}
               <span className={styles.code}>{r.rep_code}</span>
               <Badge tone={r.status === 'active' ? 'success' : 'neutral'}>{r.status === 'active' ? 'Active' : 'Terminated'}</Badge>

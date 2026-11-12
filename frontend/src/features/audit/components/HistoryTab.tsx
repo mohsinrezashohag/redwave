@@ -4,7 +4,7 @@
  * entry expands to before → after. Degrades to a muted note for callers without audit:view. — arch §security
  */
 import { useState, type CSSProperties } from 'react';
-import { Badge } from '../../../components/ui';
+import { Avatar, Badge } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
 import { useRecordHistory } from '../api/useAuditLogs';
@@ -63,6 +63,7 @@ export function HistoryTab({ entityType, entityId }: { entityType: string; entit
                 }}
               >
                 <Badge tone="neutral">{e.action}</Badge>
+                <Avatar name={e.actor?.full_name ?? 'System'} src={e.actor?.avatar_url} size="sm" />
                 <span style={{ fontSize: 'var(--text-sm)' }}>{e.actor?.full_name ?? 'System'}</span>
                 <span className="mono" style={{ marginLeft: 'auto', color: 'var(--text-secondary)', fontSize: 'var(--text-xs)' }}>
                   {when(e.created_at)}

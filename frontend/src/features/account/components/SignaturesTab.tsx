@@ -125,7 +125,7 @@ export function SignaturesTab() {
                       variant="tertiary"
                       size="sm"
                       leftIcon={<Check size={14} />}
-                      onClick={() => setDefault.mutate(s.id, { onError })}
+                      onClick={() => setDefault.mutate(s.id, { onSuccess: () => toast({ title: 'Default signature updated', tone: 'success' }), onError })}
                       loading={setDefault.isPending && setDefault.variables === s.id}
                     >
                       Set default

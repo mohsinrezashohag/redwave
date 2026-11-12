@@ -31,6 +31,8 @@ export type { StatCardProps } from './StatCard';
 export { Avatar } from './Avatar';
 export type { AvatarProps } from './Avatar';
 export { EditableAvatar } from './EditableAvatar';
+export { PersonName } from './PersonName';
+export type { PersonNameProps } from './PersonName';
 export type { EditableAvatarProps } from './EditableAvatar';
 export { PhotoEditorDialog } from './PhotoEditorDialog';
 export type { PhotoEditorDialogProps, PhotoEditResult } from './PhotoEditorDialog';
