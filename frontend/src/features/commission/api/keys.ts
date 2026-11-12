@@ -13,7 +13,5 @@ export const commissionKeys = {
     ['commission', 'flat-rates', status, clientId ?? 'all'] as const,
   tierRates: (status: RateStatus | 'all', clientId?: string, productId?: string) =>
     ['commission', 'tier-rates', status, clientId ?? 'all', productId ?? 'all'] as const,
-  holdback: () => ['commission', 'holdback'] as const,
-  release: () => ['commission', 'holdback-release'] as const,
   incentives: (status: IncentiveStatus | 'all') => ['commission', 'incentives', status] as const,
 };

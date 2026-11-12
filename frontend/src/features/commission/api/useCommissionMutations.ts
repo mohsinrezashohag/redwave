@@ -1,8 +1,7 @@
 /**
- * Commission Config mutations — add a (future-dated) tier schedule / flat rate / holdback split (each
- * supersedes pending + bounds current server-side; back-date → 422), set the sticky holdback-release rule,
- * and create/update incentives. All invalidate the commission cache. The server validates (contiguity / no
- * internet flat / 100% holdback / target_count) → 422 surfaced by the caller. Responses are typed via the
+ * Commission Config mutations — add a (future-dated) tier schedule / flat rate (each supersedes pending +
+ * bounds current server-side; back-date → 422), and create/update incentives. All invalidate the commission
+ * cache. The server validates (contiguity / no internet flat / target_count) → 422 surfaced by the caller. Responses are typed via the
  * generated schema (Batch A #2).
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -14,14 +13,9 @@ import type {
   CreateIncentiveBody,
   CreateTierScheduleBody,
   FlatRate,
-  HoldbackConfig,
-  HoldbackReleaseSetting,
   Incentive,
-  SetHoldbackConfigBody,
-  SetHoldbackReleaseBody,
   TierConfig,
   UpdateFlatRateBody,
-  UpdateHoldbackConfigBody,
   UpdateIncentiveBody,
   UpdateTierScheduleBody,
   CreateTierRateBody,
@@ -119,40 +113,6 @@ export function useDeleteTierRate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => unwrap<void>(api.DELETE('/v1/commission/tier-rates/{id}', { params: { path: { id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
-  });
-}
-
-export function useSetHoldback() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: SetHoldbackConfigBody) => unwrap<HoldbackConfig>(api.PATCH('/v1/commission/holdback-config', { body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
-  });
-}
-
-export function useUpdateHoldback() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: UpdateHoldbackConfigBody }) =>
-      unwrap<HoldbackConfig>(api.PATCH('/v1/commission/holdback-config/{id}', { params: { path: { id } }, body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
-  });
-}
-
-export function useDeleteHoldback() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => unwrap<void>(api.DELETE('/v1/commission/holdback-config/{id}', { params: { path: { id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
-  });
-}
-
-export function useSetRelease() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: SetHoldbackReleaseBody) =>
-      unwrap<HoldbackReleaseSetting>(api.PATCH('/v1/commission/holdback-release-setting', { body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
   });
 }

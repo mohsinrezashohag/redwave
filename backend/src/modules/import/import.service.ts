@@ -3,7 +3,7 @@
  * parsed (ParserService), auto-mapped (suggestMapping) + cleaned (cleanMappedRow), classified, and staged;
  * nothing touches live tables until a fully reconciled batch is committed, and the COMMIT is ONE
  * `prisma.$transaction` (atomic, idempotent — #8) exactly like Pay Run finalize. Drives Sales'
- * `validateWithinTx` for bulk validation; writes back-dated rates (#10), opening holdback (IMP-007), and
+ * `validateWithinTx` for bulk validation; writes back-dated rates (#10), and
  * the go-live master/HISTORICAL data directly via the transaction. Owns import_batches / import_rows /
  * import_field_mappings. — SRS §15, arch §6.11
  */
@@ -16,7 +16,6 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ImportSourceType, ImportType, MatchStatus, Prisma } from '@prisma/client';
-import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
@@ -35,7 +34,6 @@ import {
   classifyCommissionFlatRateRow,
   classifyCommissionTierRow,
   classifyHistoricalSaleRow,
-  classifyHoldbackRow,
   classifyKmRateRow,
   classifyLiveSaleRow,
   classifyProductRow,
@@ -63,7 +61,6 @@ import { applyBillingRate } from './handlers/billing-rate.handler';
 import { applyKmRate } from './handlers/km-rate.handler';
 import { applyCommissionFlatRate, applyCommissionTierSchedule } from './handlers/commission-config.handler';
 import { parseTierSpec } from './tier-spec.logic';
-import { applyHoldback } from './handlers/holdback.handler';
 import { applyClient, applyHistoricalSale, applyProduct, applyRep } from './handlers/master.handlers';
 import { CreateImportDto } from './dto/create-import.dto';
 import { ReconcileAction, ReconcileDto } from './dto/reconcile.dto';
@@ -78,7 +75,6 @@ type Kind =
   | 'create_products'
   | 'billing_rate'
   | 'create_reps'
-  | 'opening_holdback'
   // Back-dated REP-stream config migration (the counterparts of `billing_rate`, #10).
   | 'km_rate'
   | 'commission_tier_schedule'
@@ -162,7 +158,7 @@ function pairingKind(source: ImportSourceType, type: ImportType): Kind | null {
   if (source === 'master_migration' && type === 'products') return 'create_products';
   if (source === 'master_migration' && type === 'billing_rates') return 'billing_rate';
   if (source === 'master_migration' && type === 'reps') return 'create_reps';
-  if (source === 'balance_migration' && type === 'holdback') return 'opening_holdback';
+  // balance_migration + holdback is gone: there is no holdback since 2026-11-13 (holds are handled offline).
   // Back-dated config migration — one pair per row SHAPE (TARGET_FIELDS holds one field list per pair).
   if (source === 'master_migration' && type === 'km_rates') return 'km_rate';
   if (source === 'master_migration' && type === 'commission_tiers') return 'commission_tier_schedule';
@@ -459,19 +455,16 @@ export class ImportService {
       throw new ConflictException(`cannot commit a ${batch.status} batch`);
     }
 
-    const financial =
-      batch.import_type === 'holdback'
-        ? {
-            reconcileTotal: batch.reconcile_total ? new Decimal(batch.reconcile_total.toString()) : null,
-            stagedSum: this.sumMatchedAmounts(batch.import_rows, 'amount_held'),
-          }
-        : undefined;
-    const gate = evaluateGate(batch.import_rows, financial);
+    const gate = evaluateGate(batch.import_rows);
     if (!gate.ok) {
       throw new UnprocessableEntityException(gate.reason);
     }
 
-    const kind = pairingKind(batch.source_type, batch.import_type)!;
+    const kind = pairingKind(batch.source_type, batch.import_type);
+    if (!kind) {
+      // e.g. an opening-holdback batch staged before holdback was removed (2026-11-13).
+      throw new UnprocessableEntityException('This kind of import is no longer supported, so it cannot be committed.');
+    }
     const commitCtx = await this.buildCommitContext(kind, batch.create_missing);
 
     // ATOMIC: every matched row applied in ONE transaction — any throw rolls the entire batch back (#8).
@@ -542,11 +535,6 @@ export class ImportService {
           createMissing: ctx.createMissing,
           importerUserId: user.id,
         });
-      case 'opening_holdback': {
-        const originId = String(mapped.origin_pay_period_id);
-        const originPeriod = ctx.periodsById.get(originId)!;
-        return applyHoldback(tx, mapped, { originPeriod, allPeriods: ctx.allPeriods, releaseRule: ctx.releaseRule });
-      }
     }
   }
 
@@ -623,8 +611,6 @@ export class ImportService {
         return this.classifyCommissionTiers(mappedRows);
       case 'commission_flat_rate':
         return this.classifyCommissionFlatRates(mappedRows);
-      case 'opening_holdback':
-        return this.classifyHoldbacks(mappedRows);
       case 'create_clients':
         return this.classifyClients(mappedRows);
       case 'create_products':
@@ -932,61 +918,15 @@ export class ImportService {
     });
   }
 
-  private async classifyHoldbacks(mappedRows: RawRow[]): Promise<Classification[]> {
-    const repCodes = uniqCodes(mappedRows, 'rep_code');
-    const periodIds = uniqCodes(mappedRows, 'origin_pay_period_id');
-    const reps = await this.repsByAnyCode(repCodes);
-    const periods = new Map(
-      (await this.prisma.payPeriod.findMany({ where: { id: { in: periodIds } }, select: { id: true, status: true } })).map((p) => [p.id, p.status]),
-    );
-    const repIds = [...reps.values()];
-    const existing = new Set(
-      (
-        await this.prisma.holdbackLedger.findMany({
-          where: { rep_id: { in: repIds }, origin_pay_period_id: { in: periodIds } },
-          select: { rep_id: true, origin_pay_period_id: true },
-        })
-      ).map((h) => `${h.rep_id}|${h.origin_pay_period_id}`),
-    );
-    return mappedRows.map((r) => {
-      const repId = reps.get(up(str(r, 'rep_code')));
-      const origin = str(r, 'origin_pay_period_id');
-      return classifyHoldbackRow(r, {
-        repExists: !!repId,
-        originPeriodStatus: origin ? (periods.get(origin) ?? null) : null,
-        ledgerExists: repId && origin ? existing.has(`${repId}|${origin}`) : false,
-      });
-    });
-  }
-
   private async buildCommitContext(kind: Kind, createMissing = false): Promise<CommitContext> {
-    const empty = { allPeriods: [], periodsById: new Map(), releaseRule: '', behaviours: new Map<string, string>(), createMissing };
+    const empty = { behaviours: new Map<string, string>(), createMissing };
     // Historical sales need the catalogue behaviours to pick the BASE item that carries the row's
     // billed amount (see `applyHistoricalSale`).
     if (kind === 'historical_sales') {
       const types = await this.prisma.productTypeCatalogue.findMany({ select: { key: true, behaviour: true } });
       return { ...empty, behaviours: new Map(types.map((t) => [t.key, t.behaviour as string])) };
     }
-    if (kind !== 'opening_holdback') {
-      return empty;
-    }
-    const allPeriods = await this.prisma.payPeriod.findMany({ select: { id: true, start_date: true, payday: true } });
-    const setting = await this.prisma.holdbackReleaseSetting.findFirst({ orderBy: { effective_from: 'desc' } });
-    return {
-      ...empty,
-      allPeriods,
-      periodsById: new Map(allPeriods.map((p) => [p.id, p])),
-      releaseRule: setting?.release_rule ?? 'next_cycle_after_30_days',
-    };
-  }
-
-  private sumMatchedAmounts(rows: { match_status: MatchStatus; mapped_data: Prisma.JsonValue }[], key: string): Decimal {
-    return rows
-      .filter((r) => r.match_status === 'matched')
-      .reduce((sum, r) => {
-        const v = str(r.mapped_data as RawRow, key);
-        return v ? sum.plus(new Decimal(v)) : sum;
-      }, new Decimal(0));
+    return empty;
   }
 
   private async recountBatch(tx: Prisma.TransactionClient, id: string): Promise<void> {
@@ -1021,9 +961,6 @@ export class ImportService {
 }
 
 interface CommitContext {
-  allPeriods: { id: string; start_date: Date; payday: Date }[];
-  periodsById: Map<string, { id: string; start_date: Date; payday: Date }>;
-  releaseRule: string;
   /** product-type key → catalogue behaviour (`tiered` / `greenfield` / `standard_addon`). */
   behaviours: Map<string, string>;
   /** The batch was staged with `create_missing` — referenced master data may be created at commit. */

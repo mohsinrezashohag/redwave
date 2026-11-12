@@ -31,7 +31,7 @@ export const REPORT_TYPE_DEFS: ReportTypeDef[] = [
   {
     type: 'business_summary',
     label: 'Business summary',
-    description: 'Org-wide financials for a pay period (revenue, payout, margin, holdback, clawback, expenses).',
+    description: 'Org-wide financials for a pay period (revenue, payout, margin, clawback, expenses).',
     permission: 'reports:business',
     scope: 'period',
   },
@@ -75,11 +75,19 @@ export const leaderboardColumns: ExportColumn<LeaderboardRow>[] = [
 ];
 
 // ── Pay-run summary (line components + net, as the server computed them) ────────────
-export const payrunColumns: ExportColumn<PayRunLine>[] = [
-  { header: 'Rep code', value: (l) => l.rep.rep_code },
-  { header: 'Rep', value: (l) => l.rep.full_name },
-  { header: '70% advance', value: (l) => money(l.commission_70) },
-  { header: 'Holdback released', value: (l) => money(l.holdback_release_30) },
+// No holdback since 2026-11-13: "Commission" is paid in full. An OLD run that released a hold (the run's
+// has_holdback) keeps a "Holdback released" column so its net still adds up.
+export function payrunColumns(hasHoldback = false): ExportColumn<PayRunLine>[] {
+  return [
+    { header: 'Rep code', value: (l) => l.rep.rep_code },
+    { header: 'Rep', value: (l) => l.rep.full_name },
+    { header: 'Commission', value: (l) => money(l.commission_70) },
+    ...(hasHoldback ? [{ header: 'Holdback released', value: (l: PayRunLine) => money(l.holdback_release_30) }] : []),
+    ...PAYRUN_TAIL,
+  ];
+}
+
+const PAYRUN_TAIL: ExportColumn<PayRunLine>[] = [
   { header: 'Expenses', value: (l) => money(l.expense_total) },
   { header: 'Incentives', value: (l) => money(l.incentive_total) },
   { header: 'Bonus', value: (l) => money(l.bonus_amount) },
@@ -115,8 +123,6 @@ export function businessSummaryRows(d: BusinessDashboard): MetricRow[] {
     { metric: 'Rep payout', value: money(d.rep_payout) },
     { metric: 'Net margin', value: money(d.net_margin) },
     { metric: 'Net margin %', value: `${d.net_margin_pct}%` },
-    { metric: 'Holdback held', value: money(d.holdback.held) },
-    { metric: 'Holdback scheduled', value: money(d.holdback.scheduled) },
     { metric: 'Clawback total', value: money(d.clawback_total) },
     { metric: 'Clawback rate', value: d.clawback_rate },
     { metric: 'Expenses total', value: money(d.expense.total) },

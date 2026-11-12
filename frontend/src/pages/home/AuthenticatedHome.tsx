@@ -12,7 +12,7 @@ import styles from './home.module.css';
 
 const MODULES: { permission: string; title: string; blurb: string }[] = [
   { permission: 'sales:view', title: 'Sales & Validation', blurb: 'Enter and validate activations.' },
-  { permission: 'payrun:view', title: 'Pay Run & Holdback', blurb: 'Run bi-weekly payroll.' },
+  { permission: 'payrun:view', title: 'Pay Run', blurb: 'Run bi-weekly payroll.' },
   { permission: 'expenses:view', title: 'Expenses', blurb: 'Submit and approve expenses.' },
   { permission: 'reports:view', title: 'Reports & Dashboards', blurb: 'Role-scoped insights.' },
   { permission: 'settings:edit', title: 'System Settings', blurb: 'Org-wide configuration (admin).' },

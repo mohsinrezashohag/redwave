@@ -166,17 +166,6 @@ export const TEMPLATES: TemplateDef[] = [
       f('is_greenfield', 'Greenfield', 'false', 'false', 'true/false (reference flag).'),
     ],
   },
-  {
-    id: 'opening_holdback',
-    label: 'Opening holdback balances',
-    group: 'Balances',
-    description: 'Opening 30% holdback per rep against a closed/paid origin period.',
-    fields: [
-      f('rep_code', 'Rep code', 'RW-D-0001', 'RW-D-0002', 'Rep (by code) holding the balance.', true),
-      f('origin_pay_period_id', 'Origin period id', '<closed-period-uuid>', '<closed-period-uuid>', 'The CLOSED/paid origin pay-period id the 30% was held in.', true),
-      f('amount_held', 'Amount held', '993.00', '450.00', 'Outstanding 30% holdback (CAD, exact decimal).', true),
-    ],
-  },
   // ── Client report variants (bulk validation; match on MPU). Sensible defaults — refine from a real file. ──
   {
     id: 'cti_report',
@@ -225,7 +214,6 @@ export const KIND_TO_TEMPLATE: Record<string, string> = {
   commission_flat_rate: 'commission_flat_rates',
   create_reps: 'reps',
   historical_sales: 'historical_sales',
-  opening_holdback: 'opening_holdback',
 };
 
 export const templateForKind = (kind: string): TemplateDef | undefined => TEMPLATES.find((t) => t.id === KIND_TO_TEMPLATE[kind]);

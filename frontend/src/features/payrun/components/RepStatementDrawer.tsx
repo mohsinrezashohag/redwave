@@ -24,7 +24,9 @@ export function RepStatementDrawer({
 }) {
   const q = useRepStatement(runId, repId ?? undefined, !!repId);
   const s = q.data;
+  // No holdback since 2026-11-13; an OLD run that held some keeps its frozen 70% / 30% columns.
   const labels = splitLabels(s?.split);
+  const old = !!s?.has_holdback;
 
   return (
     <Drawer open={!!repId} onOpenChange={(o) => !o && onClose()} title="Pay statement" size="wide">
@@ -42,9 +44,9 @@ export function RepStatementDrawer({
                 <TH>Sale date</TH>
                 <TH>Customer</TH>
                 <TH>Product</TH>
-                <TH align="right">Price</TH>
-                <TH align="right">Your {labels.paidPct}%</TH>
-                {!labels.holdsNothing && <TH align="right">{labels.held}</TH>}
+                <TH align="right">{old ? 'Price' : 'Commission'}</TH>
+                {old && <TH align="right">Your {labels.paidPct}%</TH>}
+                {old && <TH align="right">{labels.held}</TH>}
               </TR>
             </THead>
             <TBody>
@@ -54,8 +56,8 @@ export function RepStatementDrawer({
                   <TD>{l.customer_name}</TD>
                   <TD>{l.product_name ?? '—'}</TD>
                   <TD numeric>{money(l.total_100)}</TD>
-                  <TD numeric>{money(l.advance_70)}</TD>
-                  {!labels.holdsNothing && <TD numeric>{money(l.holdback_30)}</TD>}
+                  {old && <TD numeric>{money(l.advance_70)}</TD>}
+                  {old && <TD numeric>{money(l.holdback_30)}</TD>}
                 </TR>
               ))}
               <TR>
@@ -65,10 +67,12 @@ export function RepStatementDrawer({
                 <TD numeric>
                   <strong>{money(s.total_100)}</strong>
                 </TD>
-                <TD numeric>
-                  <strong>{money(s.advance_70)}</strong>
-                </TD>
-                {!labels.holdsNothing && (
+                {old && (
+                  <TD numeric>
+                    <strong>{money(s.advance_70)}</strong>
+                  </TD>
+                )}
+                {old && (
                   <TD numeric>
                     <strong>{money(s.holdback_30)}</strong>
                   </TD>

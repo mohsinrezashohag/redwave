@@ -27,7 +27,6 @@ export const EVENT_CATALOGUE: Record<string, EventDoc> = {
   signature_declined: { recipients: 'The document owner', variables: ['signer_name', 'document_name'] },
   document_completed: { recipients: 'The document owner', variables: ['document_name'] },
   pay_run_finalized: { recipients: 'Each rep paid in the run', variables: ['period_number', 'net_payout'] },
-  holdback_released: { recipients: 'The rep whose holdback released', variables: ['amount', 'period_number'] },
   clawback_applied: { recipients: 'The affected rep', variables: ['amount', 'reason'] },
   profile_change_requested: {
     recipients: 'The reviewers (field manager + Admins & Super Admins)',

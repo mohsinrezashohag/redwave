@@ -21,7 +21,7 @@ function make(tool: ChatTool, scopeLevel: 'all' | 'roster' | 'self' = 'self', cf
   };
   const scope = { getRepScope: jest.fn().mockResolvedValue(scopeLevel === 'all' ? { level: 'all' } : { level: scopeLevel, repIds: ['rep-1'] }) };
   const dashboards = {
-    rep: jest.fn().mockResolvedValue({ internet_activations: 5, tier: { tier_number: 3 }, commission: { commission_70: '100.00', net_payout: '120.00' }, holdback_pending_release: '30.00' }),
+    rep: jest.fn().mockResolvedValue({ internet_activations: 5, tier: { tier_number: 3 }, commission: { commission_70: '100.00', net_payout: '120.00' } }),
     manager: jest.fn().mockResolvedValue({ team_internet_activations: 40, pending_validations: 3 }),
     business: jest.fn().mockResolvedValue({ revenue: '1000.00', rep_payout: '600.00', net_margin: '400.00' }),
   };
@@ -64,8 +64,8 @@ describe('ChatbotService scoping (RPT-011 — cannot leak across scope)', () => 
   });
 
   it('persists the conversation + user/assistant messages', async () => {
-    const { service, prisma } = make('my_holdback', 'self');
-    await service.query({ prompt: 'my holdback?' }, user());
+    const { service, prisma } = make('my_commission', 'self');
+    await service.query({ prompt: 'my commission?' }, user());
     expect(prisma.chatbotConversation.create).toHaveBeenCalled();
     const msgs = (prisma.chatbotMessage.createMany.mock.calls[0][0] as { data: { role: string }[] }).data;
     expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant']);

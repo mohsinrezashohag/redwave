@@ -25,19 +25,21 @@ import {
 const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
 const toDecimal = (value: { toString(): string }): Decimal => new Decimal(value.toString());
 
+/** Commission is paid in full; nothing is held back (client decision 2026-11-13). */
+export const NO_HOLDBACK = { advancePct: new Decimal(1), holdbackPct: new Decimal(0) };
+
 @Injectable()
 export class CommissionConfigProvider {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Build the engine config in force on `date` ('YYYY-MM-DD'). Throws 422 if a required piece of
-   * config (tier schedule, any flat rate, holdback split) is missing for the date.
+   * config (tier schedule, any flat rate) is missing for the date. There is no holdback (NO_HOLDBACK).
    */
   /**
-   * Just the advance / holdback split in force on `date` ('YYYY-MM-DD') — for LABELLING a run ("Paid now
-   * 100%" vs "Your 70%"), not for computing anything. Exact decimal strings (#1); null when none is set.
-   * Since 2026-11-11 Redwave runs at 1.0000 / 0.0000 (100% paid, tier + holdback applied manually outside
-   * the system), so the screens must stop hard-coding 70/30.
+   * The advance / holdback split that was in force on `date` ('YYYY-MM-DD'). Used ONLY to label an OLD run
+   * that was finalized with a hold (its frozen 70% / 30% columns); new runs never hold anything
+   * (NO_HOLDBACK). Exact decimal strings (#1); null when none is set.
    */
   async getHoldbackSplit(date: string): Promise<{ advance_pct: string; holdback_pct: string } | null> {
     const row = selectEffectiveRate(await this.prisma.holdbackConfig.findMany(), dateOnly(date));
@@ -147,16 +149,10 @@ export class CommissionConfigProvider {
       }
     }
 
-    // 3. Holdback split.
-    const holdbackRows = await this.prisma.holdbackConfig.findMany();
-    const holdbackRow = selectEffectiveRate(holdbackRows, on);
-    if (!holdbackRow) {
-      throw new UnprocessableEntityException(`no effective holdback split on ${date}`);
-    }
-    const holdback = {
-      advancePct: toDecimal(holdbackRow.advance_pct),
-      holdbackPct: toDecimal(holdbackRow.holdback_pct),
-    };
+    // 3. No holdback (client decision 2026-11-13): commission is paid 100% and nothing is held; holds are
+    // handled offline. Fixed in code, not read from holdback_config, so re-entering a split can't bring it
+    // back. The engine still supports a split (its §6 fixtures prove it); it is simply always given 100%.
+    const holdback = NO_HOLDBACK;
 
     // 4. Active incentives (the engine windows them per sale_date and applies both modes, threshold-relative).
     const incentiveRows = await this.prisma.incentive.findMany({ where: { status: 'active' } });

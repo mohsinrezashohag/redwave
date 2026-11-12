@@ -255,7 +255,7 @@ export async function seedDemo(
   await createSale({ repCode: 'RW-D-0006', clientCode: 'CTI', saleDate: curStart, customer: 'S6-boundary', items: ['internet'], validated: true }); // boundary: first day of the Winnipeg period
   await bulk('RW-D-0005', 'VF', curMid, 'internet', 2, false); // ENTERED (pending validation → admin queue)
 
-  // ── Finalize the earlier (closed) cycle: freezes snapshots, 70/30 split + holdback ledger (#8/#2). ──
+  // ── Finalize the earlier (closed) cycle: freezes snapshots, commission paid in full (#8/#2). ──
   await prisma.payPeriod.update({ where: { id: prev2.id }, data: { status: 'closed' } });
   const draft = await payRuns.createDraft({ pay_period_id: prev2.id }, sa);
   await payRuns.finalize(draft.id, sa);

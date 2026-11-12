@@ -1,7 +1,7 @@
 /**
  * Pure import helpers (no I/O). Parse the JSON rows editor, summarise counts, and mirror the
  * reconcile-before-commit GATE *only to disable + explain* — the SERVER 422 is the real gate (incl. the
- * holdback reconcile_total check, which the UI never computes). The UI does NO matching/commit logic.
+ * reconcile check, which the UI never computes). The UI does NO matching/commit logic.
  */
 import type { ImportBatch, MatchStatus } from './import.types';
 

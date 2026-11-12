@@ -2826,3 +2826,43 @@ upload for them; let them pick one of three avatars with one click. A fun featur
   ring + check.
 
 Scope note: only the Super Admin's own account; Admins and other non-rep users keep the upload.
+
+
+### Holdback removed from payroll entirely (migrations `20261113000000` + `20261113000100`)
+
+**Ask (2026-11-13).** "Remove the 70/30 as a whole, and stop adding any held amount to payroll. We will do those
+items offline." It had only been *configured* away (2026-11-11): the seed still wrote 0.7/0.3 and every
+finalize still released old holds into net and set clawbacks off against them.
+
+**Decided with the user:** holds still waiting are never paid by the system (marked `settled_offline`); old
+runs stay readable, showing their held/released figures only where non-zero.
+
+- **Engine unchanged.** `CommissionConfigProvider.getEngineConfig` passes `NO_HOLDBACK` (100%) in code; it no
+  longer reads `holdback_config`, so a missing row can't 422 and re-entering a split can't revive it.
+  `getHoldbackSplit` stays, only to label an old run.
+- **Finalize:** steps (c) ledger write and (d) release + clawback set-off deleted. Full clawback deducts from
+  net (#6). The draft preview no longer projects a release, so draft net = finalized net (the old preview
+  ignored the set-off and could differ). No `holdback_released` notification.
+- **Migrations:** `HoldbackReleaseStatus += settled_offline` (own file: Postgres can't use a new enum value in
+  the transaction that adds it), then `held|scheduled → settled_offline`. Nothing else is rewritten (#2/#8).
+- **Removed:** `GET /v1/pay-runs/:id/holdback`, `GET /v1/holdback-ledger`, Commission Config
+  `holdback-config` + `holdback-release-setting` (+ `HoldbackService`, DTOs, `holdback-release.logic`), the
+  `balance_migration:holdback` import (a batch staged before now gets a clear 422 at commit), dashboard
+  fields (rep `holdback_pending_release` + `commission.holdback_release_30`, manager `roster_holdback`,
+  business `holdback`, trends `holdback_released`), the chatbot `my_holdback` intent, the seed's split,
+  release rule and `holdback_released` template. The tables stay.
+- **Old runs:** run, payroll report and statement responses carry `has_holdback` (frozen held/released
+  non-zero). Workbook: `advance_70`/`holdback_30` are no longer required layout fields and print only then.
+  ADP export: `commission` column (was `commission_70`); `holdback_release` only for an old run that released.
+- **Frontend:** pay run detail drops the Held card and both holdback panels; lines table says Commission
+  (Released only for an old run); breakdown drawer waterfall is commission + incentives + expenses + bonus −
+  clawback (old split rows only when `has_holdback`); statements show Commission only; Commission Config
+  loses the split and release sections; dashboards lose the holdback cards and the hard-coded "70% advance";
+  reports export says Commission; import, chatbot, notification catalogue and copy cleaned.
+
+**Operator:** `prisma:deploy` (two migrations). The ADP CSV header changed from `commission_70` to
+`commission`; if a payroll import maps by header, update its mapping.
+
+**Verified LOCAL:** 1245 backend tests (payrun spec rewritten: no ledger write, no release even with a waiting
+hold, full clawback, draft = finalize; §6 engine fixtures untouched) + typecheck + lint + build + contract
+regen; FE build + lint + stylelint + vitest 162. Not seen in a browser.

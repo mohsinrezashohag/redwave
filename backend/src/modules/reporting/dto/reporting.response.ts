@@ -11,7 +11,6 @@ import { ClawbackStatus, NotificationChannel, SaleStatus } from '@prisma/client'
 const CHAT_INTENTS = [
   'my_sales_count',
   'my_commission',
-  'my_holdback',
   'roster_summary',
   'business_summary',
   'unknown',
@@ -51,11 +50,8 @@ export class RepTierResponse {
 }
 
 export class RepCommissionResponse {
-  @ApiProperty({ type: String, example: '2317.00', description: 'Decimal string.' })
+  @ApiProperty({ type: String, example: '3310.00', description: 'Decimal string. Commission paid, in full (no holdback since 2026-11-13).' })
   commission_70!: string;
-
-  @ApiProperty({ type: String, example: '993.00', description: 'Decimal string.' })
-  holdback_release_30!: string;
 
   @ApiProperty({ type: String, example: '0.00', description: 'Decimal string.' })
   incentive_total!: string;
@@ -118,9 +114,6 @@ export class RepDashboardResponse {
   @ApiProperty({ type: () => RepCommissionResponse })
   commission!: RepCommissionResponse;
 
-  @ApiProperty({ type: String, example: '0.00', description: 'Decimal string — held, awaiting release.' })
-  holdback_pending_release!: string;
-
   @ApiProperty({ type: () => RepTargetResponse })
   target!: RepTargetResponse;
 
@@ -163,9 +156,6 @@ export class ManagerDashboardResponse {
   // Roster AGGREGATE money — a manager always sees totals (never another rep's earnings exposed here).
   @ApiProperty({ type: String, example: '8000.00', description: 'Decimal — roster total net payout (period).' })
   roster_payout!: string;
-
-  @ApiProperty({ type: String, example: '3000.00', description: 'Decimal — roster outstanding holdback.' })
-  roster_holdback!: string;
 
   @ApiProperty({ description: 'True when the caller holds hrm:edit (per-rep payout is then populated).' })
   can_see_rep_money!: boolean;

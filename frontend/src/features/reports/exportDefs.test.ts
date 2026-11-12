@@ -18,7 +18,6 @@ const biz: BusinessDashboard = {
   rep_payout: '8000.00',
   net_margin: '4000.00',
   net_margin_pct: '33.3',
-  holdback: { held: '3000.00', scheduled: '500.00', released_this_period: '993.00' },
   clawback_total: '145.00',
   clawback_rate: '0.0181',
   expense: { total: '420.00', km: '120.00', other: '300.00' },
@@ -89,8 +88,14 @@ describe('column defs — string cells; the leaderboard carries NO money', () =>
       commission_70: '2317.00', holdback_release_30: '993.00', expense_total: '45.00',
       incentive_total: '0.00', bonus_amount: '100.00', bonus_note: null,
       clawback_total: '30.00', net_payout: '3425.00',
-    } as Parameters<(typeof payrunColumns)[0]['value']>[0];
-    expect(payrunColumns.map((c) => c.value(line))).toEqual([
+    } as Parameters<ReturnType<typeof payrunColumns>[0]['value']>[0];
+    // A new run: commission paid in full, no holdback column (2026-11-13).
+    expect(payrunColumns().map((c) => c.header)).not.toContain('Holdback released');
+    expect(payrunColumns().map((c) => c.value(line))).toEqual([
+      'RW-D-001', 'Rep One', '$2,317.00', '$45.00', '$0.00', '$100.00', '$30.00', '$3,425.00',
+    ]);
+    // An OLD run that released a hold keeps the column, so its net adds up.
+    expect(payrunColumns(true).map((c) => c.value(line))).toEqual([
       'RW-D-001', 'Rep One', '$2,317.00', '$993.00', '$45.00', '$0.00', '$100.00', '$30.00', '$3,425.00',
     ]);
   });

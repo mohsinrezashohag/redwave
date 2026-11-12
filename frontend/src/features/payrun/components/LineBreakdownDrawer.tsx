@@ -1,26 +1,18 @@
 /**
  * LineBreakdownDrawer — the per-rep "how this pay was computed" view. It restates the SERVER's line as a
- * labelled waterfall, from the commission BASIS down to net:
- *   gross − 30% held = 70% advance, then + released + incentives + expenses + bonus − clawback = net.
- * The +/−/= glyphs are presentation ONLY — no money is computed here (#1/#5); every figure, including gross
- * and the 30%, is a raw server string. The basis line (tier · internet tally · rate) explains how gross was
- * reached, so a "70% looks wrong" question is answerable here instead of by digging into sales. Below it,
- * the rep's holdback ledger (held vs released), with period labels joined from the schedule.
+ * labelled waterfall: commission + incentives + expenses + bonus − clawback = net. The +/−/= glyphs are
+ * presentation ONLY — no money is computed here (#1/#5); every figure is a raw server string. The basis line
+ * (tier · internet tally · rate) explains how the commission was reached.
+ *
+ * No holdback since 2026-11-13. An OLD run that held or released some (hasHoldback) still shows its frozen
+ * gross − held = paid split and the released amount, labelled with that run's own split, so it adds up.
  */
-import { Badge, Drawer, Table, TBody, TD, TH, THead, TR, type BadgeTone } from '../../../components/ui';
-import { DataState } from '../../../components/data/DataState';
+import { Drawer } from '../../../components/ui';
 import { money } from '../../../lib/format/money';
-import { useHoldbackLedger } from '../api/usePayRun';
 import { NetPayoutCell } from './NetPayoutCell';
 import styles from './payrun.module.css';
-import type { HoldbackReleaseStatus, PayPeriod, PayRunLine } from '../payrun.types';
+import type { PayRunLine } from '../payrun.types';
 import type { SplitLabels } from '../split';
-
-const RELEASE_TONE: Record<HoldbackReleaseStatus, BadgeTone> = {
-  held: 'neutral',
-  scheduled: 'info',
-  released: 'success',
-};
 
 function Row({ op, label, value }: { op: string; label: string; value: string | null }) {
   return (
@@ -82,21 +74,13 @@ interface Props {
   line: PayRunLine | null;
   open: boolean;
   onClose: () => void;
-  isDraft: boolean;
-  periods: PayPeriod[];
-  /** The split in force for this run — the arithmetic below is labelled with it, not a fixed 70/30. */
+  /** An OLD run that held or released some: show its split and released rows. */
+  hasHoldback: boolean;
+  /** That old run's split labels. */
   labels: SplitLabels;
 }
 
-export function LineBreakdownDrawer({ line, open, onClose, isDraft, periods, labels }: Props) {
-  const ledger = useHoldbackLedger({ rep_id: line?.rep_id }, open && !!line);
-  const periodLabel = (id: string | null) => {
-    if (!id) return '—';
-    const p = periods.find((x) => x.id === id);
-    return p ? `#${p.period_number}` : '—';
-  };
-  const rows = ledger.data ?? [];
-
+export function LineBreakdownDrawer({ line, open, onClose, hasHoldback, labels }: Props) {
   return (
     <Drawer open={open} onOpenChange={(o) => !o && onClose()} title={line ? `${line.rep.rep_code} · ${line.rep.full_name}` : 'Breakdown'}>
       {line && (
@@ -104,19 +88,21 @@ export function LineBreakdownDrawer({ line, open, onClose, isDraft, periods, lab
           <CommissionBasis line={line} />
 
           <div className={styles.breakdown}>
-            {/* The split — gross is the base, the held share is withheld, the rest is paid now. */}
-            <Row op="" label="Gross commission" value={line.gross_commission} />
-            {!labels.holdsNothing && (
-              <Row op="−" label={`Held back (${labels.heldPct}%, this period)`} value={line.amount_held} />
+            {hasHoldback ? (
+              <>
+                {/* An old 70/30 run: gross is the base, the held share was withheld, the rest was paid. */}
+                <Row op="" label="Gross commission" value={line.gross_commission} />
+                <Row op="−" label={`Held back (${labels.heldPct}%, this period)`} value={line.amount_held} />
+                <div className={`${styles.bdRow} ${styles.bdSubtotal}`}>
+                  <span className={styles.bdOp}>=</span>
+                  <span className={styles.bdLabel}>{labels.paid}</span>
+                  <span className={styles.bdValue}>{money(line.commission_70)}</span>
+                </div>
+                <Row op="+" label="Released holdback" value={line.holdback_release_30} />
+              </>
+            ) : (
+              <Row op="" label="Commission" value={line.commission_70} />
             )}
-            <div className={`${styles.bdRow} ${styles.bdSubtotal}`}>
-              <span className={styles.bdOp}>=</span>
-              <span className={styles.bdLabel}>{labels.paid}</span>
-              <span className={styles.bdValue}>{money(line.commission_70)}</span>
-            </div>
-
-            {/* What else composes this cycle's payout. */}
-            <Row op="+" label="Released holdback" value={line.holdback_release_30} />
             <Row op="+" label="Incentives" value={line.incentive_total} />
             <Row op="+" label="Expenses" value={line.expense_total} />
             <Row op="+" label="Bonus" value={line.bonus_amount} />
@@ -135,53 +121,10 @@ export function LineBreakdownDrawer({ line, open, onClose, isDraft, periods, lab
               Bonus note: <em>{line.bonus_note}</em>
             </p>
           )}
-          {isDraft && !labels.holdsNothing && (
-            <p className={styles.note}>The {labels.heldPct}% held above is recorded on the holdback ledger when the run is finalized.</p>
-          )}
           <p className={styles.footnote}>
-            Incentives are paid in full and are <strong>not</strong> part of the {labels.paidPct}/{labels.heldPct} base. Every amount
-            here comes from the server. Nothing is calculated on this screen.
+            Incentives are paid in full. Every amount here comes from the server. Nothing is calculated on this
+            screen.
           </p>
-
-          <h3 className={styles.sectionTitle}>Holdback ledger</h3>
-          <DataState
-            isLoading={ledger.isLoading}
-            isError={ledger.isError}
-            isEmpty={rows.length === 0}
-            onRetry={() => ledger.refetch()}
-            emptyNode={<p className="mono">No holdback records for this rep yet.</p>}
-          >
-            <Table density="dense">
-              <THead>
-                <TR>
-                  <TH align="right">Held</TH>
-                  <TH>Origin</TH>
-                  <TH>Releases into</TH>
-                  <TH>Status</TH>
-                  <TH align="right">Set-off</TH>
-                  <TH align="right">Released</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {rows.map((h) => (
-                  <TR key={h.id}>
-                    <TD numeric>{money(h.amount_held)}</TD>
-                    <TD>
-                      <span className="mono">{periodLabel(h.origin_pay_period_id)}</span>
-                    </TD>
-                    <TD>
-                      <span className="mono">{periodLabel(h.scheduled_release_period_id)}</span>
-                    </TD>
-                    <TD>
-                      <Badge tone={RELEASE_TONE[h.release_status]}>{h.release_status}</Badge>
-                    </TD>
-                    <TD numeric>{h.clawback_applied ? money(h.clawback_applied) : '—'}</TD>
-                    <TD numeric>{money(h.amount_released)}</TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          </DataState>
         </>
       )}
     </Drawer>

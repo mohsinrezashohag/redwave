@@ -1,7 +1,6 @@
 /**
- * The payroll workbook heads its two split columns with the split itself ("0.7" / "0.3" in Redwave's file).
- * Since 2026-11-11 Redwave pays 100% / holds 0%, so the header must follow the run's REAL split — and a
- * header an admin renamed in Export Layouts must be left exactly as they set it.
+ * The payroll workbook: no holdback since 2026-11-13, so the 70% / 30% columns appear only for an OLD run that
+ * held some, headed by that run's own split ("0.7" / "0.3"); a header an admin renamed stays as they set it.
  */
 import * as ExcelJS from 'exceljs';
 import { PayrollExcelRenderer, PayrollReportForExport } from './payroll-excel.renderer';
@@ -52,28 +51,31 @@ async function headerRow(r: PayrollReportForExport): Promise<string[]> {
   return values.slice(1).map((v) => String(v));
 }
 
-describe('PayrollExcelRenderer — split column headers', () => {
-  it('at 100/0 the split columns are headed "1" and "0", not "0.7" / "0.3"', async () => {
+describe('PayrollExcelRenderer — no holdback since 2026-11-13', () => {
+  it('a new run has no 70% / 30% columns: the sheet ends at the total', async () => {
     const h = await headerRow(report({ split: { advance_pct: '1.0000', holdback_pct: '0.0000' } }));
-    expect(h).toContain('1');
-    expect(h).toContain('0');
+    expect(h[h.length - 1]).toBe('Total 100 %');
     expect(h).not.toContain('0.7');
     expect(h).not.toContain('0.3');
   });
 
-  it('a 70/30 run keeps Redwave’s "0.7" / "0.3" headers', async () => {
-    const h = await headerRow(report({ split: { advance_pct: '0.7000', holdback_pct: '0.3000' } }));
+  it('an OLD run that held some keeps Redwave’s "0.7" / "0.3" columns, headed by its own split', async () => {
+    const h = await headerRow(
+      report({ has_holdback: true, split: { advance_pct: '0.7000', holdback_pct: '0.3000' } }),
+    );
     expect(h).toEqual(expect.arrayContaining(['0.7', '0.3']));
   });
 
-  it('a header renamed in Export Layouts is left exactly as the admin set it', async () => {
+  it('a header renamed in Export Layouts is left exactly as the admin set it (old run)', async () => {
     const layout = [
       { field: 'rep_name', header: 'Agent' },
       { field: 'total_100', header: 'Total' },
       { field: 'advance_70', header: 'Paid now' },
       { field: 'holdback_30', header: 'Held' },
     ];
-    const h = await headerRow(report({ layout, split: { advance_pct: '1.0000', holdback_pct: '0.0000' } }));
+    const h = await headerRow(report({ layout, has_holdback: true, split: { advance_pct: '0.7000', holdback_pct: '0.3000' } }));
     expect(h).toEqual(['Agent', 'Total', 'Paid now', 'Held']);
+    const h2 = await headerRow(report({ layout }));
+    expect(h2).toEqual(['Agent', 'Total']);
   });
 });

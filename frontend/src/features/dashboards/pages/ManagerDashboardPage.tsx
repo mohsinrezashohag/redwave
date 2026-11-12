@@ -1,6 +1,6 @@
 /**
  * ManagerDashboardPage — roster aggregates + leaderboard (design-system §10.1). Data is server-scoped to
- * the manager's roster. A manager sees roster AGGREGATE money (payout/holdback) and top performers ranked by
+ * the manager's roster. A manager sees roster AGGREGATE money (payout) and top performers ranked by
  * activation COUNT; per-rep payout/money-ranking appears ONLY when the caller holds hrm:edit (the server
  * decides — `can_see_rep_money`). Target-vs-actual per rep; a hrm:edit manager can Set targets. 403 (a bare
  * rep with no roster) → AccessDenied. — SRS §14
@@ -43,7 +43,6 @@ export default function ManagerDashboardPage() {
               <StatCard label="Sales in period" value={d.sales_in_period} footnote="All products" />
               <StatCard label="Roster size" value={d.roster_size ?? '—'} footnote="Active reps you manage" />
               <StatCard label="Roster payout" value={money(d.roster_payout)} footnote="Roster total (period)" />
-              <StatCard label="Roster holdback" value={money(d.roster_holdback)} footnote="Held + scheduled" />
             </div>
 
             <div className={styles.queueGrid}>

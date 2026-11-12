@@ -9,7 +9,6 @@ import type { components } from '../../api/generated/schema';
 // Enums derived from the contract.
 export type PayPeriodStatus = components['schemas']['PayPeriodResponse']['status'];
 export type PayRunStatus = components['schemas']['PayRunSummaryResponse']['status'];
-export type HoldbackReleaseStatus = components['schemas']['HoldbackLedgerResponse']['release_status'];
 export type ExportFormat = components['schemas']['ExportResultResponse']['format'];
 
 export type PayPeriod = components['schemas']['PayPeriodResponse'];
@@ -18,11 +17,10 @@ export type RepLite = components['schemas']['RepLiteResponse'];
 
 /**
  * One per-rep computed line. The server provides the payout components + the net, PLUS the engine's
- * reconciliation facts — `gross_commission` (the 70/30 base), `amount_held` (THIS period's 30%),
- * `tier_at_payment`, `internet_tally`, `rate_per_activation` — so the split is provable WITHOUT any UI
- * math (#1/#5): gross === commission_70 + amount_held, always. Those five are null only on rows created
- * before the reconciliation migration (and tier/rate are null when the internet tally is 0).
- * net = advance + released + expense + incentive + bonus − clawback, and CAN be negative (never floored).
+ * reconciliation facts (`gross_commission`, `tier_at_payment`, `internet_tally`, `rate_per_activation`).
+ * No holdback since 2026-11-13: `commission_70` is the commission paid in full and `amount_held` /
+ * `holdback_release_30` are zero, except on an OLD run (the run's `has_holdback`).
+ * net = commission + released + expense + incentive + bonus − clawback, and CAN be negative (never floored).
  */
 export type PayRunLine = components['schemas']['PayRunLineResponse'];
 
@@ -31,26 +29,6 @@ export type PayRunSummary = components['schemas']['PayRunSummaryResponse'];
 
 /** A pay run with its computed lines (draft / get / finalize responses). */
 export type PayRun = components['schemas']['PayRunResponse'];
-
-export type HoldbackLedgerEntry = components['schemas']['HoldbackLedgerResponse'];
-
-/**
- * The run's period-level 30% (deferred pay) view. EVERY figure is server-computed — the UI renders these
- * verbatim and never aggregates the ledger itself. `is_projection` is true on a draft (the current hold and
- * its release period are projected; nothing is written to the ledger until finalize).
- */
-export type PayRunHoldbackSummary = components['schemas']['PayRunHoldbackSummaryResponse'];
-
-/** One origin period's hold within the summary (what was held, and when it releases). */
-export type HoldbackByOrigin = components['schemas']['HoldbackByOriginResponse'];
-
-/** A pay period reduced to what the holdback summary needs to name a release period. */
-export type HoldbackPeriodRef = components['schemas']['HoldbackPeriodRefResponse'];
-
-export interface HoldbackFilters {
-  rep_id?: string;
-  status?: HoldbackReleaseStatus;
-}
 
 /** The export action's response (no dedicated table — the audit row is the record). */
 export type ExportResult = components['schemas']['ExportResultResponse'];

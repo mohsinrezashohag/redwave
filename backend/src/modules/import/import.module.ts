@@ -9,7 +9,7 @@ import { ParserService } from './parsing/parser.service';
  * ImportModule — the real upload → parse → stage → reconcile → commit pipeline (bulk validation + go-live
  * master/historical migration). Imports SalesModule to DRIVE `SalesService.validateWithinTx`
  * (Import→Sales is one-directional, no cycle) + StorageModule for the source file. Master/historical/
- * back-dated rates + opening holdback are written directly via PrismaService (the #10 path).
+ * back-dated rates are written directly via PrismaService (the #10 path).
  */
 @Module({
   imports: [StorageModule, SalesModule],

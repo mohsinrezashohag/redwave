@@ -18,8 +18,6 @@ export type IncentiveStatus = components['schemas']['IncentiveResponse']['status
 export type TierBracket = components['schemas']['TierBracketResponse'];
 export type TierConfig = components['schemas']['TierConfigResponse'];
 export type FlatRate = components['schemas']['FlatRateResponse'];
-export type HoldbackConfig = components['schemas']['HoldbackConfigResponse'];
-export type HoldbackReleaseSetting = components['schemas']['HoldbackReleaseSettingResponse'];
 export type Incentive = components['schemas']['IncentiveResponse'];
 
 // ── Request bodies ───────────────────────────────────────────────────────────────
@@ -28,9 +26,6 @@ export type CreateTierScheduleBody = components['schemas']['CreateTierScheduleDt
 export type UpdateTierScheduleBody = components['schemas']['UpdateTierScheduleDto'];
 export type CreateFlatRateBody = components['schemas']['CreateFlatRateDto'];
 export type UpdateFlatRateBody = components['schemas']['UpdateFlatRateDto'];
-export type SetHoldbackConfigBody = components['schemas']['SetHoldbackConfigDto'];
-export type UpdateHoldbackConfigBody = components['schemas']['UpdateHoldbackConfigDto'];
-export type SetHoldbackReleaseBody = components['schemas']['SetHoldbackReleaseSettingDto'];
 export type CreateIncentiveBody = components['schemas']['CreateIncentiveDto'];
 export type UpdateIncentiveBody = components['schemas']['UpdateIncentiveDto'];
 

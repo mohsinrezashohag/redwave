@@ -142,6 +142,8 @@ enum HoldbackReleaseStatus {
   held
   scheduled
   released
+  /// No holdback since 2026-11-13: a hold still waiting then was never paid by the system (handled offline).
+  settled_offline
 }
 
 enum ClawbackStatus {

@@ -72,7 +72,6 @@ export default function BusinessDashboardPage() {
               <StatCard label="Revenue" value={money(d.revenue)} delta={growthDelta(d.revenue_growth)} footnote="Client statements" />
               <StatCard label="Rep payout" value={money(d.rep_payout)} footnote="Pay-run net" />
               <StatCard label="Net margin" value={money(d.net_margin)} footnote={`${d.net_margin_pct}% of revenue`} />
-              <StatCard label="Holdback held" value={money(d.holdback.held)} footnote={`Scheduled ${money(d.holdback.scheduled)} · Released ${money(d.holdback.released_this_period)}`} />
               <StatCard label="Clawbacks" value={money(d.clawback_total)} footnote={`Rate ${ratePct(d.clawback_rate)} of paid commission`} />
               <StatCard label="Expenses" value={money(d.expense.total)} footnote={`KM ${money(d.expense.km)} · Other ${money(d.expense.other)}`} />
             </div>

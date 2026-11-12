@@ -12,8 +12,6 @@ export class TrendPeriodResponse {
   @ApiProperty({ type: String, example: '4000.00' }) net_margin!: string;
   @ApiProperty({ example: 60 }) activations!: number;
   @ApiProperty({ example: 48 }) internet_activations!: number;
-  @ApiProperty({ type: String, example: '993.00', description: 'Holdback released (30% advance) in the period.' })
-  holdback_released!: string;
   @ApiProperty({ type: String, example: '145.00' }) clawback_total!: string;
 }
 

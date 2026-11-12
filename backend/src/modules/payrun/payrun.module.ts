@@ -7,7 +7,6 @@ import {
   PayPeriodController,
   PayRunController,
   PayStatementsController,
-  HoldbackLedgerController,
 } from './pay-run.controller';
 import { PayPeriodService } from './pay-period.service';
 import { PayRunService } from './pay-run.service';
@@ -26,8 +25,7 @@ import { ExportLayoutService } from '../../common/export/export-layout.service';
     PayRunController,
     PayStatementsController,
     PeriodConfigController,
-    HoldbackLedgerController,
-  ],
+    ],
   providers: [PayPeriodService, PayRunService, PayrollExcelRenderer, PeriodConfigService, ExportLayoutService],
   exports: [PayRunService],
 })

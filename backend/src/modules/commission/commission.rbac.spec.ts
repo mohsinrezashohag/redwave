@@ -26,22 +26,6 @@ describe('Commission Config RBAC metadata', () => {
       moduleKey: 'commission',
       action: 'edit',
     });
-    expect(meta(CommissionController, 'listHoldbackConfig')).toEqual({
-      moduleKey: 'commission',
-      action: 'view',
-    });
-    expect(meta(CommissionController, 'setHoldbackConfig')).toEqual({
-      moduleKey: 'commission',
-      action: 'edit',
-    });
-    expect(meta(CommissionController, 'getReleaseSetting')).toEqual({
-      moduleKey: 'commission',
-      action: 'view',
-    });
-    expect(meta(CommissionController, 'setReleaseSetting')).toEqual({
-      moduleKey: 'commission',
-      action: 'edit',
-    });
     expect(meta(IncentivesController, 'list')).toEqual({ moduleKey: 'commission', action: 'view' });
     expect(meta(IncentivesController, 'create')).toEqual({
       moduleKey: 'commission',

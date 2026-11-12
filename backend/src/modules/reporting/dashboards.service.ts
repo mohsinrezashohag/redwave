@@ -2,7 +2,7 @@
  * DashboardsService — the four role-scoped read aggregations. EVERY read is scoped server-side in the
  * Prisma `where` (never post-filtered): rep = own `repId`, manager = roster, business = Super Admin
  * only, admin = operational queues. It recomputes NO money — every dollar is READ from already-computed
- * tables (`pay_run_lines`, `holdback_ledger`, `clawbacks`, `client_statements`); counts come from
+ * tables (`pay_run_lines`, `clawbacks`, `client_statements`; no holdback since 2026-11-13); counts come from
  * `sales`/`sale_items`. Aggregation runs in the DB (groupBy/count/aggregate). — SRS §14, CLAUDE §3/§5
  */
 import { ForbiddenException, Injectable, Optional } from '@nestjs/common';
@@ -59,11 +59,7 @@ export class DashboardsService {
 
     const commission = await this.prisma.payRunLine.aggregate({
       where: { rep_id: repId, ...(period ? { pay_run: { pay_period_id: period.id } } : {}) },
-      _sum: { commission_70: true, holdback_release_30: true, net_payout: true, incentive_total: true },
-    });
-    const heldAgg = await this.prisma.holdbackLedger.aggregate({
-      where: { rep_id: repId, release_status: { in: ['held', 'scheduled'] } },
-      _sum: { amount_held: true },
+      _sum: { commission_70: true, net_payout: true, incentive_total: true },
     });
     const recentClawbacks = await this.prisma.clawback.findMany({
       where: { rep_id: repId },
@@ -88,14 +84,13 @@ export class DashboardsService {
       counts_by_product: byProduct.map((g) => ({ product_type: g.product_type, count: g._count._all })),
       internet_activations: internetTally,
       tier: countToTier(await this.effectiveTierBrackets(), internetTally),
-      // Money — READ from frozen/computed pay-run lines + ledger (never recomputed). #1/#5
+      // Money — READ from frozen/computed pay-run lines (never recomputed). #1/#5. No holdback (2026-11-13):
+      // `commission_70` is the commission paid, in full.
       commission: {
         commission_70: money(commission._sum.commission_70),
-        holdback_release_30: money(commission._sum.holdback_release_30),
         incentive_total: money(commission._sum.incentive_total),
         net_payout: money(commission._sum.net_payout),
       },
-      holdback_pending_release: money(heldAgg._sum.amount_held),
       target: {
         target_activations: targetRow?.target_count ?? null,
         actual: internetTally,
@@ -124,14 +119,13 @@ export class DashboardsService {
     const canSeeMoney = user.permissions.has('hrm:edit'); // per-rep payout/money-ranking gate (Q3)
     const payRunLineWhere = { ...(repFilter ? { rep_id: repFilter } : {}), ...(period ? { pay_run: { pay_period_id: period.id } } : {}) };
 
-    const [teamInternet, pendingValidations, pendingExpenseApprovals, perRep, rosterPayout, rosterHoldback, rosterReps, rosterItems, targetRows, pendingProfile] =
+    const [teamInternet, pendingValidations, pendingExpenseApprovals, perRep, rosterPayout, rosterReps, rosterItems, targetRows, pendingProfile] =
       await Promise.all([
         this.prisma.saleItem.count({ where: { sale: saleWhere, product_type: 'internet', counts_toward_tally: true } }),
         this.prisma.sale.count({ where: { ...(repFilter ? { rep_id: repFilter } : {}), status: 'entered' } }),
         this.prisma.expenseItem.count({ where: { ...(repFilter ? { rep_id: repFilter } : {}), status: 'submitted' } }),
         this.prisma.saleItem.groupBy({ by: ['sale_id'], where: { sale: saleWhere, product_type: 'internet', counts_toward_tally: true }, _count: { _all: true } }),
         this.prisma.payRunLine.aggregate({ where: payRunLineWhere, _sum: { net_payout: true } }),
-        this.prisma.holdbackLedger.aggregate({ where: { ...(repFilter ? { rep_id: repFilter } : {}), release_status: { in: ['held', 'scheduled'] } }, _sum: { amount_held: true } }),
         this.prisma.rep.findMany({ where: repIds ? { id: { in: repIds } } : {}, select: { id: true, full_name: true } }),
         this.prisma.saleItem.findMany({ where: { sale: saleWhere, product_type: 'internet', counts_toward_tally: true }, select: { sale: { select: { rep_id: true } } } }),
         this.prisma.salesTarget.findMany({ where: { ...(repIds ? { rep_id: { in: repIds } } : {}), ...(period ? { period_start: period.start_date, period_end: period.end_date } : {}) }, select: { rep_id: true, target_count: true } }),
@@ -163,7 +157,6 @@ export class DashboardsService {
       team_internet_activations: teamInternet,
       sales_in_period: perRep.length,
       roster_payout: money(rosterPayout._sum.net_payout),
-      roster_holdback: money(rosterHoldback._sum.amount_held),
       can_see_rep_money: canSeeMoney,
       top_performers: topPerformers,
       targets,
@@ -206,16 +199,14 @@ export class DashboardsService {
         : {};
 
     // ── Money (frozen reads) ──
-    const [revAgg, payAgg, heldAgg, schedAgg, clawAgg, expenseGroups] = await Promise.all([
+    const [revAgg, payAgg, clawAgg, expenseGroups] = await Promise.all([
       // Revenue is CONSOLIDATED in CAD across clients (a USD client bills USD but rolls up via its frozen
       // amount_cad, #12). — Meeting 3
       this.prisma.clientStatement.aggregate({ where: stmtIn(period), _sum: { amount_cad: true } }),
       this.prisma.payRunLine.aggregate({
         where: period ? { pay_run: { pay_period_id: period.id } } : {},
-        _sum: { net_payout: true, commission_70: true, holdback_release_30: true },
+        _sum: { net_payout: true, commission_70: true },
       }),
-      this.prisma.holdbackLedger.aggregate({ where: { release_status: 'held' }, _sum: { amount_held: true } }),
-      this.prisma.holdbackLedger.aggregate({ where: { release_status: 'scheduled' }, _sum: { amount_held: true } }),
       this.prisma.clawback.aggregate({
         where: period ? { applied_in_pay_run: { pay_period_id: period.id } } : {},
         _sum: { amount: true },
@@ -335,11 +326,6 @@ export class DashboardsService {
       rep_payout: payout.toFixed(2),
       net_margin: margin.toFixed(2),
       net_margin_pct: rev.isZero() ? '0.0' : margin.div(rev).times(100).toFixed(1),
-      holdback: {
-        held: money(heldAgg._sum.amount_held),
-        scheduled: money(schedAgg._sum.amount_held),
-        released_this_period: money(payAgg._sum.holdback_release_30),
-      },
       clawback_total: money(clawAgg._sum.amount),
       clawback_rate: commission70.isZero() ? '0.0000' : dec(clawAgg._sum.amount).div(commission70).toFixed(4),
       expense: { total: expenseTotal.toFixed(2), km: expenseKm.toFixed(2), other: expenseTotal.minus(expenseKm).toFixed(2) },
@@ -400,7 +386,7 @@ export class DashboardsService {
         },
         select: { pay_period_id: true, client_id: true, amount_cad: true, billing_period: { select: { start_date: true } } },
       }),
-      this.prisma.payRunLine.findMany({ where: { pay_run: { pay_period_id: { in: periodIds } } }, select: { net_payout: true, holdback_release_30: true, pay_run: { select: { pay_period_id: true } } } }),
+      this.prisma.payRunLine.findMany({ where: { pay_run: { pay_period_id: { in: periodIds } } }, select: { net_payout: true, pay_run: { select: { pay_period_id: true } } } }),
       this.prisma.clawback.findMany({ where: { applied_in_pay_run: { pay_period_id: { in: periodIds } } }, select: { amount: true, applied_in_pay_run: { select: { pay_period_id: true } } } }),
       this.prisma.client.findMany({ select: { id: true, client_code: true } }),
       this.effectiveTierBrackets(),
@@ -416,7 +402,7 @@ export class DashboardsService {
       }),
     ]);
 
-    const init = () => ({ revenue: new Decimal(0), payout: new Decimal(0), released: new Decimal(0), clawback: new Decimal(0), activations: 0, internet: 0 });
+    const init = () => ({ revenue: new Decimal(0), payout: new Decimal(0), clawback: new Decimal(0), activations: 0, internet: 0 });
     const perPeriod = new Map(periods.map((p) => [p.id, init()]));
     const clientCode = new Map(clients.map((c) => [c.id, c.client_code]));
     const revByPeriodClient = new Map<string, Map<string, Decimal>>();
@@ -435,7 +421,7 @@ export class DashboardsService {
     }
     for (const l of lines) {
       const acc = perPeriod.get(l.pay_run.pay_period_id);
-      if (acc) { acc.payout = acc.payout.plus(dec(l.net_payout)); acc.released = acc.released.plus(dec(l.holdback_release_30)); }
+      if (acc) acc.payout = acc.payout.plus(dec(l.net_payout));
     }
     for (const c of claws) {
       const pid = c.applied_in_pay_run?.pay_period_id;
@@ -483,7 +469,6 @@ export class DashboardsService {
           net_margin: a.revenue.minus(a.payout).toFixed(2),
           activations: a.activations,
           internet_activations: a.internet,
-          holdback_released: a.released.toFixed(2),
           clawback_total: a.clawback.toFixed(2),
         };
       }),

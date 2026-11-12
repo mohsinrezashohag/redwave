@@ -129,12 +129,6 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
     { field: 'status', type: 'text', required: false, label: 'Status', aliases: ['status', 'state', 'validated'], example: 'entered', dict: 'entered (default) or validated. "validated" also runs the entered→validated transition at commit.' },
   ],
 
-  // ── Opening holdback balances (IMP-007; UUIDs — these reference existing system records) ──
-  'balance_migration:holdback': [
-    { field: 'rep_code', type: 'code', required: true, label: 'Rep code', aliases: ['rep', 'rep code', 'distributor', 'agent'], example: 'RW-D-0001', dict: 'Rep (by code) holding the balance.' },
-    { field: 'origin_pay_period_id', type: 'text', required: true, label: 'Origin period id', aliases: ['period', 'origin', 'origin period', 'pay period', 'period id'], example: 'a1b2c3d4-…', dict: 'The CLOSED/paid origin pay-period id the 30% was held in.' },
-    { field: 'amount_held', type: 'money', required: true, label: 'Amount held', aliases: ['amount', 'held', 'amount held', 'balance', 'holdback'], example: '993.00', dict: 'Outstanding 30% holdback amount (CAD, exact decimal).' },
-  ],
 };
 
 /** The cleaning field-type map for a target (field → type), for `cleanMappedRow`. */

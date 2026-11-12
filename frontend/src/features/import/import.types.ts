@@ -53,8 +53,7 @@ export type ImportKind =
   | 'commission_tier_schedule'
   | 'commission_flat_rate'
   | 'create_reps'
-  | 'historical_sales'
-  | 'opening_holdback';
+  | 'historical_sales';
 
 export interface KindDef {
   kind: ImportKind;
@@ -176,17 +175,7 @@ export const KINDS: KindDef[] = [
     needsClient: false,
     needsReconcileTotal: false,
     commitEffect: 'writes each historical sale (status=historical), in one transaction',
-    note: 'Historical sales are REFERENCE-ONLY: they appear in the business dashboard but NEVER pay out, and never count toward commission / tier / leaderboard / holdback. Import clients, products, and reps first.',
-  },
-  {
-    kind: 'opening_holdback',
-    label: 'Opening holdback balances (migration)',
-    description: 'Load opening 30% holdback balances for reps against a closed/paid period. Requires a reconcile total.',
-    source_type: 'balance_migration',
-    import_type: 'holdback',
-    needsClient: false,
-    needsReconcileTotal: true,
-    commitEffect: 'writes each opening holdback ledger entry, in one transaction',
+    note: 'Historical sales are REFERENCE-ONLY: they appear in the business dashboard but NEVER pay out, and never count toward commission / tier / leaderboard. Import clients, products, and reps first.',
   },
 ];
 

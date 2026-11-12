@@ -20,7 +20,6 @@ const SYSTEM_INSTRUCTION = [
   'Map the user prompt to EXACTLY ONE of these intents and output only that value:',
   "- my_sales_count: the asker's own sales / internet activation count / tier this period.",
   "- my_commission: the asker's own commission / earnings / net payout.",
-  "- my_holdback: the asker's own holdback amount pending release.",
   '- roster_summary: a manager’s team/roster totals (team activations, pending validations).',
   '- business_summary: company-wide revenue / rep payout / net margin.',
   '- unknown: anything else, or if you are unsure.',

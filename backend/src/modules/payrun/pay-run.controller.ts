@@ -1,9 +1,9 @@
 /**
- * Pay Run controllers — /v1/pay-periods, /v1/pay-runs*, /v1/holdback-ledger. — arch §6.6
+ * Pay Run controllers — /v1/pay-periods, /v1/pay-runs*. No holdback since 2026-11-13. — arch §6.6
  * payrun:approve gates the money actions (finalize, bonus). Every route declares its permission;
  * the global guard enforces it and the service scopes data per caller.
  */
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import {
   ApiBearerAuth,
@@ -30,18 +30,15 @@ import {
   RepPayStatementResponse,
   RepPayStatementSummaryResponse,
 } from './dto/pay-run.response';
-import { ListHoldbackQuery } from './dto/list-holdback.query';
 import {
   ExportResultResponse,
-  HoldbackLedgerResponse,
   PayPeriodResponse,
-  PayRunHoldbackSummaryResponse,
   PayRunLineResponse,
   PayRunResponse,
   PayRunSummaryResponse,
 } from './dto/pay-run.response';
 
-@ApiTags('Pay Run & Holdback')
+@ApiTags('Pay Run')
 @ApiBearerAuth()
 @ApiErrorResponses()
 @Controller('pay-periods')
@@ -60,7 +57,7 @@ export class PayPeriodController {
   }
 }
 
-@ApiTags('Pay Run & Holdback')
+@ApiTags('Pay Run')
 @ApiBearerAuth()
 @ApiErrorResponses()
 @Controller('pay-runs')
@@ -112,21 +109,6 @@ export class PayRunController {
     return this.payRuns.getLines(id, user);
   }
 
-  @Get(':id/holdback')
-  @RequirePermission('payrun', 'view')
-  @ApiOperation({
-    summary: "The run's period-level 30% (deferred pay) view",
-    description:
-      'Requires payrun:view (scoped). Every figure is server-computed — what is held this period, WHEN it ' +
-      'releases, what matures into this period, the clawback set-off, and the per-origin ledger breakdown. ' +
-      'On a DRAFT the current hold + release period are a projection (is_projection=true); once finalized ' +
-      'they are read from the frozen holdback_ledger.',
-  })
-  @ApiOkResponse({ type: PayRunHoldbackSummaryResponse })
-  holdbackSummary(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
-    return this.payRuns.getHoldbackSummary(id, user);
-  }
-
   @Post(':id/lines/:lineId/bonus')
   @HttpCode(200)
   @RequirePermission('payrun', 'approve')
@@ -155,8 +137,8 @@ export class PayRunController {
   @ApiOperation({
     summary: 'Finalize a pay run (the money action)',
     description:
-      'Requires payrun:approve. ATOMIC + IDEMPOTENT: freezes snapshots, pays sales, records/releases ' +
-      'holdback (release timing PROPOSED — SRS §17), applies bonuses, composes net. Retry is a no-op.',
+      'Requires payrun:approve. ATOMIC + IDEMPOTENT: freezes snapshots, pays sales, applies bonuses, composes ' +
+      'net (commission paid in full; no holdback since 2026-11-13). Retry is a no-op.',
   })
   @ApiOkResponse({ type: PayRunResponse })
   finalize(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
@@ -242,26 +224,6 @@ export class PayRunController {
   }
 }
 
-@ApiTags('Pay Run & Holdback')
-@ApiBearerAuth()
-@ApiErrorResponses()
-@Controller('holdback-ledger')
-export class HoldbackLedgerController {
-  constructor(private readonly payRuns: PayRunService) {}
-
-  @Get()
-  @RequirePermission('payrun', 'view')
-  @ApiOperation({
-    summary: 'Holdback ledger',
-    description: 'Requires payrun:view. Holds, schedule, release status.',
-  })
-  @ApiOkResponse({ type: HoldbackLedgerResponse, isArray: true })
-  list(@Query() query: ListHoldbackQuery, @CurrentUser() user: AuthUser) {
-    return this.payRuns.listHoldbackLedger(query, user);
-  }
-}
-
-
 /**
  * A rep's OWN pay statements. A SEPARATE controller on purpose, and note what its routes do not have:
  * there is no `repId` parameter anywhere. The rep is resolved from the authenticated token, so another
@@ -270,7 +232,7 @@ export class HoldbackLedgerController {
  * Gated by `pay_statements:view`, its own module row, so statement access is grantable WITHOUT any pay-run
  * access. A rep never reaches the run itself, another rep's lines, or any org-wide total (§5, #3).
  */
-@ApiTags('Pay Run & Holdback')
+@ApiTags('Pay Run')
 @ApiBearerAuth()
 @ApiErrorResponses()
 @Controller('pay-statements')
