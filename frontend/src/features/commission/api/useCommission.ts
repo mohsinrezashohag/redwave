@@ -1,5 +1,5 @@
 /**
- * Commission Config query hooks — tier schedules, flat rates, holdback split, the (sticky) holdback-release
+ * Commission Config query hooks — tier schedules, flat rates,
  * setting, and incentives. Each effective-dated list carries a server-derived `status`. TanStack Query over
  * the typed client via `unwrap<T>()` (the playbook). Responses are `never`-typed → cast to hand types.
  * RATE reads are ONLY /v1/commission/* + /v1/incentives (#3); the client picker (useClients) is a reference.
@@ -10,7 +10,7 @@ import { unwrap } from '../../../lib/query/unwrap';
 import { unwrapList } from '../../../lib/query/unwrapList';
 import { commissionKeys } from './keys';
 import type { RateStatus } from '../../../components/ui';
-import type { FlatRate, HoldbackConfig, HoldbackReleaseSetting, Incentive, IncentiveStatus, TierConfig, TierRate } from '../commission.types';
+import type { FlatRate, Incentive, IncentiveStatus, TierConfig, TierRate } from '../commission.types';
 
 /**
  * Tier schedules for a CLIENT SCOPE: a client id for that client's own ladder, the literal `'global'` for
@@ -45,22 +45,6 @@ export function useTierRates(
       unwrap<TierRate[]>(
         api.GET('/v1/commission/tier-rates', { params: { query: { status, client_id: clientId, product_id: productId } } }),
       ),
-    enabled,
-  });
-}
-
-export function useHoldbackConfig(enabled = true) {
-  return useQuery({
-    queryKey: commissionKeys.holdback(),
-    queryFn: () => unwrap<HoldbackConfig[]>(api.GET('/v1/commission/holdback-config')),
-    enabled,
-  });
-}
-
-export function useReleaseSetting(enabled = true) {
-  return useQuery({
-    queryKey: commissionKeys.release(),
-    queryFn: () => unwrap<HoldbackReleaseSetting | null>(api.GET('/v1/commission/holdback-release-setting')),
     enabled,
   });
 }

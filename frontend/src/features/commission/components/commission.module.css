@@ -119,41 +119,6 @@
   color: var(--text-primary);
 }
 
-/* ── Holdback split total indicator ──────────────────────────────────────── */
-.total {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-}
-
-.totalOk {
-  color: var(--success);
-}
-
-.totalBad {
-  color: var(--danger);
-}
-
-/* ── Release setting ─────────────────────────────────────────────────────── */
-.releaseHead {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-
-.releaseValue {
-  font-family: var(--font-mono);
-  color: var(--text-primary);
-}
-
-.proposedRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 /* ── "Use tier schedule" switch + the base-prices view (2026-11-11) ─────────── */
 .cardActions {
   display: flex;

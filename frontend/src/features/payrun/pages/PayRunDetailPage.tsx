@@ -4,6 +4,9 @@
  * "not finalized" banner and allows bonus + recompute + finalize; once finalized the run is LOCKED and
  * read-only (the UI mirrors the backend's #8 guarantee — re-finalize is a no-op so it isn't offered).
  * payrun:view to see; approve/export gate the actions; the server is the real gate (§5).
+ *
+ * No holdback since 2026-11-13: commission is paid in full. Only an OLD run that held or released some
+ * (`has_holdback`) shows those figures, labelled with that run's own split, so its net still adds up.
  */
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -16,14 +19,12 @@ import { downloadFile } from '../../../lib/api/downloadFile';
 import { money, sumMoney } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
-import { useHoldbackSummary, usePayPeriods, usePayRun } from '../api/usePayRun';
+import { usePayRun } from '../api/usePayRun';
 import { useDraftRun } from '../api/usePayRunMutations';
 import { PayRunStatusBadge } from '../components/PayRunStatusBadge';
 import { PayRunLinesTable } from '../components/PayRunLinesTable';
 import { LineBreakdownDrawer } from '../components/LineBreakdownDrawer';
 import { RepStatementDrawer } from '../components/RepStatementDrawer';
-import { HoldbackPanel } from '../components/HoldbackPanel';
-import { HoldbackSummaryPanel } from '../components/HoldbackSummaryPanel';
 import { BonusModal } from '../components/BonusModal';
 import { FinalizeConfirmModal } from '../components/FinalizeConfirmModal';
 import { ExportModal } from '../components/ExportModal';
@@ -61,8 +62,6 @@ export default function PayRunDetailPage() {
   };
 
   const runQ = usePayRun(id, canView);
-  const periodsQ = usePayPeriods(canView);
-  const holdbackQ = useHoldbackSummary(id, canView); // server-computed 30% view (no UI aggregation)
   const draft = useDraftRun();
 
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
@@ -95,14 +94,14 @@ export default function PayRunDetailPage() {
   }
 
   const isDraft = run.status === 'draft';
-  // The split in force for this period (server-read) — every "70%/30%" label follows it.
+  // Labels for an OLD run's 70/30 figures (has_holdback); a new run never shows them.
   const labels = splitLabels(run.split);
+  const hasHoldback = run.has_holdback;
   const isExported = run.status === 'exported';
   const lines = run.lines;
-  const periods = periodsQ.data ?? [];
   const selectedLine = lines.find((l) => l.id === selectedLineId) ?? null;
   const bonusLine = lines.find((l) => l.id === bonusLineId) ?? null;
-  const totalAdvance = sumMoney(lines.map((l) => l.commission_70));
+  const totalCommission = sumMoney(lines.map((l) => l.commission_70));
   const totalNet = sumMoney(lines.map((l) => l.net_payout));
 
   const onRecompute = () =>
@@ -161,25 +160,13 @@ export default function PayRunDetailPage() {
         </Banner>
       ) : (
         <Banner tone="success" title={isExported ? 'Finalized, exported and locked' : 'Finalized and locked'}>
-          This run is committed and read-only. Snapshots are frozen, the period&rsquo;s sales are paid, and holdback is recorded.
+          This run is committed and read-only. Snapshots are frozen and the period&rsquo;s sales are paid.
         </Banner>
       )}
 
       <div className={styles.summary}>
         <StatCard label="Reps" value={String(lines.length)} />
-        <StatCard label={`Total ${labels.paid.toLowerCase().startsWith('paid') ? 'paid now' : labels.paid}`} value={money(totalAdvance)} />
-        {/* The deferred share — the SERVER's figure, never a client sum. Omitted when the split holds nothing. */}
-        {!labels.holdsNothing && (
-          <StatCard
-            label={`Held this period (${labels.heldPct}%)`}
-            value={money(holdbackQ.data?.held_this_period)}
-            footnote={
-              holdbackQ.data?.held_release_period
-                ? `Releases into period #${holdbackQ.data.held_release_period.period_number}`
-                : undefined
-            }
-          />
-        )}
+        <StatCard label={hasHoldback ? `Total ${labels.paid}` : 'Total commission'} value={money(totalCommission)} />
         <StatCard label="Total net payout" value={<NetPayoutCell value={totalNet} />} />
       </div>
 
@@ -195,13 +182,10 @@ export default function PayRunDetailPage() {
           // Only on a FINALIZED run: the statement reads lines frozen at finalize, so a draft has none.
           onStatement={!isDraft && canExport ? (l) => setStatementRepId(l.rep.id) : undefined}
           canBonus={isDraft && canApprove}
+          hasHoldback={hasHoldback}
           labels={labels}
         />
       )}
-
-      <HoldbackSummaryPanel runId={run.id} labels={labels} />
-
-      <HoldbackPanel lines={lines} periods={periods} />
 
       <RepStatementDrawer
         runId={id ?? ''}
@@ -209,9 +193,9 @@ export default function PayRunDetailPage() {
         onClose={() => setStatementRepId(null)}
       />
 
-      <LineBreakdownDrawer line={selectedLine} open={selectedLine !== null} onClose={() => setSelectedLineId(null)} isDraft={isDraft} periods={periods} labels={labels} />
+      <LineBreakdownDrawer line={selectedLine} open={selectedLine !== null} onClose={() => setSelectedLineId(null)} hasHoldback={hasHoldback} labels={labels} />
       <BonusModal runId={run.id} line={bonusLine} onClose={() => setBonusLineId(null)} />
-      <FinalizeConfirmModal runId={run.id} open={finalizeOpen} onClose={() => setFinalizeOpen(false)} labels={labels} />
+      <FinalizeConfirmModal runId={run.id} open={finalizeOpen} onClose={() => setFinalizeOpen(false)} />
       <ExportModal
         runId={run.id}
         periodNumber={run.pay_period.period_number}

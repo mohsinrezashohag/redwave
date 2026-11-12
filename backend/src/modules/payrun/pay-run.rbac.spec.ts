@@ -2,7 +2,6 @@ import 'reflect-metadata';
 import {
   PayPeriodController,
   PayRunController,
-  HoldbackLedgerController,
 } from './pay-run.controller';
 import { RBAC_KEY } from '../../common/decorators/require-permission.decorator';
 
@@ -18,6 +17,5 @@ describe('Pay Run RBAC metadata', () => {
     expect(meta(PayRunController, 'setBonus')).toEqual({ moduleKey: 'payrun', action: 'approve' });
     expect(meta(PayRunController, 'finalize')).toEqual({ moduleKey: 'payrun', action: 'approve' });
     expect(meta(PayRunController, 'export')).toEqual({ moduleKey: 'payrun', action: 'export' });
-    expect(meta(HoldbackLedgerController, 'list')).toEqual({ moduleKey: 'payrun', action: 'view' });
   });
 });

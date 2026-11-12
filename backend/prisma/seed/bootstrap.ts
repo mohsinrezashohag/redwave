@@ -7,7 +7,7 @@
  *     notifications:broadcast). Counts are derived — see the closing console.log.
  *   • 4 built-in roles (is_system) with sensible default grants.
  *   • One Super Admin user (credentials from env; placeholder + loud warning if unset).
- *   • Genesis Schedule C v2 commission config (tiers, flat rates, holdback split, release setting).
+ *   • Genesis Schedule C v2 commission config (tiers, flat rates). No holdback since 2026-11-13.
  *   • The 2026 bi-weekly pay periods, expense-category catalogue, notification settings, chatbot config.
  */
 import { PrismaClient, PermissionAction, Prisma } from '@prisma/client';
@@ -35,7 +35,7 @@ const MODULE_NAMES: Record<ModuleKey, string> = {
   commission: 'Commission Configuration',
   product_types: 'Product Types',
   sales: 'Sales & Validation',
-  payrun: 'Pay Run & Holdback',
+  payrun: 'Pay Run',
   clawback: 'Clawback',
   expenses: 'Expenses',
   km_rates: 'KM Rates',
@@ -177,7 +177,6 @@ const NOTIFICATION_EVENT_SETTINGS: EventSetting[] = [
   { event_type: 'signature_declined', in_app_enabled: true, email_enabled: false, label: 'Signature declined', title_template: 'A recipient declined to sign', body_template: '{signer_name} declined to sign {document_name}.' },
   { event_type: 'document_completed', in_app_enabled: true, email_enabled: false, label: 'Document completed', title_template: 'Your document is fully signed', body_template: '{document_name} is complete. All recipients have signed.' },
   { event_type: 'pay_run_finalized', in_app_enabled: true, email_enabled: false, label: 'Pay run finalized', title_template: 'Your pay is ready', body_template: 'Pay period {period_number} is finalized. Net payout {net_payout}.' },
-  { event_type: 'holdback_released', in_app_enabled: true, email_enabled: false, label: 'Holdback released', title_template: 'Holdback released', body_template: '{amount} of holdback was released in period {period_number}.' },
   { event_type: 'clawback_applied', in_app_enabled: true, email_enabled: false, label: 'Clawback applied', title_template: 'A clawback was applied', body_template: 'A clawback of {amount} was applied: {reason}.' },
   { event_type: 'profile_change_requested', in_app_enabled: true, email_enabled: false, label: 'Profile change requested', title_template: 'Profile change to review', body_template: '{subject_name} requested a profile change.' },
   { event_type: 'profile_change_decided', in_app_enabled: true, email_enabled: false, label: 'Profile change decided', title_template: 'Profile change {outcome}', body_template: 'Your requested profile change was {outcome}.' },
@@ -337,22 +336,7 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
       });
     }
   }
-  const existingHoldback = await prisma.holdbackConfig.findFirst({ where: { effective_from: effectiveFrom } });
-  if (!existingHoldback) {
-    await prisma.holdbackConfig.create({
-      data: {
-        advance_pct: SCHEDULE_C_V2.holdback.advance_pct,
-        holdback_pct: SCHEDULE_C_V2.holdback.holdback_pct,
-        effective_from: effectiveFrom,
-      },
-    });
-  }
-  const existingRelease = await prisma.holdbackReleaseSetting.findFirst();
-  if (!existingRelease) {
-    await prisma.holdbackReleaseSetting.create({
-      data: { release_rule: SCHEDULE_C_V2.releaseRule, set_by: superAdminUser.id, effective_from: effectiveFrom },
-    });
-  }
+  // No holdback split / release rule: commission is paid in full since 2026-11-13 (NO_HOLDBACK).
 
   // 7. Pay periods — the 2026 bi-weekly schedule (idempotent, by period_number). — PAY-001
   const payPeriods = generate2026PayPeriods();

@@ -13,7 +13,6 @@ type Entitlement = 'self' | 'roster' | 'business' | 'none';
 export const TOOL_ENTITLEMENT: Record<ChatTool, Entitlement> = {
   my_sales_count: 'self',
   my_commission: 'self',
-  my_holdback: 'self',
   roster_summary: 'roster',
   business_summary: 'business',
   unknown: 'none',

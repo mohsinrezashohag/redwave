@@ -106,14 +106,14 @@ describe('DashboardsService.business (Super Admin only — RPT-003)', () => {
   it('a Super Admin gets company-wide figures (net margin = revenue − payout) + the rich KPI shape', async () => {
     const { service, prisma } = make('all');
     prisma.clientStatement.aggregate.mockResolvedValue({ _sum: { amount_cad: '1000.00' } }); // CAD-consolidated (#12)
-    prisma.payRunLine.aggregate.mockResolvedValue({ _sum: { net_payout: '600.00', commission_70: '500.00', holdback_release_30: '200.00' } });
+    prisma.payRunLine.aggregate.mockResolvedValue({ _sum: { net_payout: '600.00', commission_70: '500.00' } });
     prisma.clawback.aggregate.mockResolvedValue({ _sum: { amount: '50.00' } });
     const result = await service.business(user({ isSuperAdmin: true }), {});
     expect(result.revenue).toBe('1000.00');
     expect(result.rep_payout).toBe('600.00');
     expect(result.net_margin).toBe('400.00');
     expect(result.net_margin_pct).toBe('40.0'); // 400/1000
-    expect(result.holdback.released_this_period).toBe('200.00');
+    expect(result).not.toHaveProperty('holdback'); // no holdback since 2026-11-13
     expect(result.clawback_total).toBe('50.00');
     expect(result.clawback_rate).toBe('0.1000'); // 50 / 500 (paid commission), exact-decimal ratio
     expect(result.expense).toEqual({ total: '0.00', km: '0.00', other: '0.00' });

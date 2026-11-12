@@ -31,7 +31,9 @@ export default function MyPayStatementsPage() {
   const selected = runId ?? runs[0]?.pay_run_id;
   const s = statement.data;
   // Each period is labelled with the split it was paid at (100% since 2026-11-11; 70/30 before).
+  // No holdback since 2026-11-13; an OLD run that held some keeps its frozen 70% / 30% columns.
   const labels = splitLabels(s?.split);
+  const old = !!s?.has_holdback;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
@@ -96,9 +98,9 @@ export default function MyPayStatementsPage() {
                   <TH>Sale date</TH>
                   <TH>Customer</TH>
                   <TH>Product</TH>
-                  <TH align="right">Price</TH>
-                  <TH align="right">Your {labels.paidPct}%</TH>
-                  {!labels.holdsNothing && <TH align="right">{labels.held}</TH>}
+                  <TH align="right">{old ? 'Price' : 'Commission'}</TH>
+                  {old && <TH align="right">Your {labels.paidPct}%</TH>}
+                  {old && <TH align="right">{labels.held}</TH>}
                 </TR>
               </THead>
               <TBody>
@@ -108,8 +110,8 @@ export default function MyPayStatementsPage() {
                     <TD>{l.customer_name}</TD>
                     <TD>{l.product_name ?? '—'}</TD>
                     <TD numeric>{money(l.total_100)}</TD>
-                    <TD numeric>{money(l.advance_70)}</TD>
-                    {!labels.holdsNothing && <TD numeric>{money(l.holdback_30)}</TD>}
+                    {old && <TD numeric>{money(l.advance_70)}</TD>}
+                    {old && <TD numeric>{money(l.holdback_30)}</TD>}
                   </TR>
                 ))}
                 <TR>
@@ -119,10 +121,12 @@ export default function MyPayStatementsPage() {
                   <TD numeric>
                     <strong>{money(s.total_100)}</strong>
                   </TD>
-                  <TD numeric>
-                    <strong>{money(s.advance_70)}</strong>
-                  </TD>
-                  {!labels.holdsNothing && (
+                  {old && (
+                    <TD numeric>
+                      <strong>{money(s.advance_70)}</strong>
+                    </TD>
+                  )}
+                  {old && (
                     <TD numeric>
                       <strong>{money(s.holdback_30)}</strong>
                     </TD>

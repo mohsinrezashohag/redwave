@@ -3,6 +3,8 @@
  * Money is right-aligned tabular-mono (TD numeric); the net uses NetPayoutCell (negative shown clearly).
  * A row's "details" opens the per-rep breakdown drawer. The footer totals are a DISPLAY sum (sumMoney —
  * integer cents, no float #1), never a recomputation. The UI computes no money (#1/#5).
+ * No holdback since 2026-11-13: "Commission" is paid in full; the Released column shows only on an OLD run
+ * that released a hold (hasHoldback), so its net still adds up.
  */
 import { FileText, Gift, Search } from 'lucide-react';
 import { PersonName, Table, TBody, TD, TH, THead, TR, type MenuEntry } from '../../../components/ui';
@@ -20,11 +22,13 @@ interface Props {
   /** Issue this rep's own pay statement. Absent on a draft run — nothing is frozen yet. */
   onStatement?: (line: PayRunLine) => void;
   canBonus: boolean;
-  /** Labels for the split in force (e.g. "Paid now (100%)") — the column used to read "70% advance". */
+  /** An OLD run that held or released some: show its split label and the Released column. */
+  hasHoldback: boolean;
+  /** That old run's split labels (e.g. "70% advance"). */
   labels: SplitLabels;
 }
 
-export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBonus, labels }: Props) {
+export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBonus, hasHoldback, labels }: Props) {
   const total = (pick: (l: PayRunLine) => string) => sumMoney(lines.map(pick));
   const rowMenu = (l: PayRunLine): MenuEntry[] => {
     const items: MenuEntry[] = [{ label: 'View breakdown', icon: <Search size={15} />, onSelect: () => onSelect(l) }];
@@ -39,8 +43,8 @@ export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBon
       <THead>
         <TR>
           <TH>Rep</TH>
-          <TH align="right">{labels.paid}</TH>
-          <TH align="right">Released</TH>
+          <TH align="right">{hasHoldback ? labels.paid : 'Commission'}</TH>
+          {hasHoldback && <TH align="right">Released</TH>}
           <TH align="right">Incentives</TH>
           <TH align="right">Expenses</TH>
           <TH align="right">Bonus</TH>
@@ -56,7 +60,7 @@ export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBon
               <PersonName name={l.rep.full_name} photoUrl={l.rep.photo_url} detail={<span className="mono">{l.rep.rep_code}</span>} />
             </TD>
             <TD numeric>{money(l.commission_70)}</TD>
-            <TD numeric>{money(l.holdback_release_30)}</TD>
+            {hasHoldback && <TD numeric>{money(l.holdback_release_30)}</TD>}
             <TD numeric>{money(l.incentive_total)}</TD>
             <TD numeric>{money(l.expense_total)}</TD>
             <TD numeric>{money(l.bonus_amount)}</TD>
@@ -75,7 +79,7 @@ export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBon
               <strong>Total · {lines.length} reps</strong>
             </TD>
             <TD numeric>{money(total((l) => l.commission_70))}</TD>
-            <TD numeric>{money(total((l) => l.holdback_release_30))}</TD>
+            {hasHoldback && <TD numeric>{money(total((l) => l.holdback_release_30))}</TD>}
             <TD numeric>{money(total((l) => l.incentive_total))}</TD>
             <TD numeric>{money(total((l) => l.expense_total))}</TD>
             <TD numeric>{money(total((l) => l.bonus_amount))}</TD>

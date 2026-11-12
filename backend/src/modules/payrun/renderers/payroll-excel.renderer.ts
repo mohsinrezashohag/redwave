@@ -67,11 +67,19 @@ export interface PayrollReportForExport {
   generated_at: string;
   /** The advance / holdback split in force for the run's period — heads the two split columns. */
   split?: { advance_pct: string; holdback_pct: string } | null;
+  /**
+   * There is no holdback since 2026-11-13: the two split columns are printed ONLY for an old run that held
+   * some (true). Omitted / false → the sheet ends at the total.
+   */
+  has_holdback?: boolean;
   lines: PayrollLineForExport[];
   total_100: string;
   advance_70: string;
   holdback_30: string;
 }
+
+/** The 70% / 30% columns: shown only for an old run that held some (no holdback since 2026-11-13). */
+const SPLIT_FIELDS = new Set(['advance_70', 'holdback_30']);
 
 const HEADER_ROW = 2;
 const FIRST_DATA_ROW = 3;
@@ -98,7 +106,7 @@ export class PayrollExcelRenderer {
     const registry = new Map(EXPORT_REGISTRY.payroll.fields.map((f) => [f.key, f]));
     const columns = (r.layout ?? defaultLayout('payroll')).filter(
       // `other_total` is dropped when it carries no money, exactly as before — an empty column adds noise.
-      (c) => c.field !== 'other_total' || showOther,
+      (c) => (c.field !== 'other_total' || showOther) && (r.has_holdback || !SPLIT_FIELDS.has(c.field)),
     );
     // The split columns are headed by the split itself ("0.7" / "0.3", as in Redwave's file). Print the
     // run's REAL split instead of the default label — at 100/0 (Redwave, 2026-11-11) a "0.7" header over a

@@ -32,25 +32,17 @@ import { FlatRateService } from './flat-rate.service';
 import { TierRateService } from './tier-rate.service';
 import { BasePricesService } from './base-prices.service';
 import { SetBasePricesDto } from './dto/base-prices.dto';
-import { HoldbackService } from './holdback.service';
 import { IncentiveService } from './incentive.service';
 import { ProductTypeService } from './product-type.service';
 import { CreateTierScheduleDto, ListTierSchedulesQuery, UpdateTierScheduleDto } from './dto/tier.dto';
 import { CreateFlatRateDto, ListFlatRatesQuery, UpdateFlatRateDto } from './dto/flat-rate.dto';
 import { CreateTierRateDto, ListTierRatesQuery, UpdateTierRateDto } from './dto/tier-rate.dto';
-import {
-  SetHoldbackConfigDto,
-  SetHoldbackReleaseSettingDto,
-  UpdateHoldbackConfigDto,
-} from './dto/holdback.dto';
 import { CreateIncentiveDto, ListIncentivesQuery, UpdateIncentiveDto } from './dto/incentive.dto';
 import { CreateProductTypeDto, ListProductTypesQuery, UpdateProductTypeDto } from './dto/product-type.dto';
 import {
   BasePricesResponse,
   FlatRateResponse,
   TierRateResponse,
-  HoldbackConfigResponse,
-  HoldbackReleaseSettingResponse,
   IncentiveResponse,
   TierConfigResponse,
 } from './dto/commission.response';
@@ -66,7 +58,6 @@ export class CommissionController {
     private readonly flatRates: FlatRateService,
     private readonly tierRates: TierRateService,
     private readonly basePrices: BasePricesService,
-    private readonly holdback: HoldbackService,
   ) {}
 
   // ── Tier schedule ─────────────────────────────────────────────────────────────────────────────
@@ -240,87 +231,6 @@ export class CommissionController {
   @ApiNoContentResponse()
   removeTierRate(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') actorId: string) {
     return this.tierRates.remove(id, actorId);
-  }
-
-  // ── Holdback split ────────────────────────────────────────────────────────────────────────────
-
-  @Get('holdback-config')
-  @RequirePermission('commission', 'view')
-  @ApiOperation({
-    summary: 'Advance/holdback split (current + pending)',
-    description: 'Requires commission:view.',
-  })
-  @ApiOkResponse({ type: HoldbackConfigResponse, isArray: true })
-  listHoldbackConfig() {
-    return this.holdback.listConfig();
-  }
-
-  @Patch('holdback-config')
-  @RequirePermission('commission', 'edit')
-  @ApiOperation({
-    summary: 'Set an effective-dated advance/holdback split',
-    description:
-      'Requires commission:edit. advance_pct + holdback_pct must equal 1; back-dating → 422.',
-  })
-  @ApiOkResponse({ type: HoldbackConfigResponse })
-  setHoldbackConfig(@Body() dto: SetHoldbackConfigDto, @CurrentUser('id') actorId: string) {
-    return this.holdback.setConfig(dto, actorId);
-  }
-
-  @Patch('holdback-config/:id')
-  @RequirePermission('commission', 'edit')
-  @ApiOperation({
-    summary: 'Edit a PENDING advance/holdback split',
-    description: 'Requires commission:edit. Only a pending split can be edited; current/past → 422. Pair must = 1.',
-  })
-  @ApiOkResponse({ type: HoldbackConfigResponse })
-  updateHoldbackConfig(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateHoldbackConfigDto,
-    @CurrentUser('id') actorId: string,
-  ) {
-    return this.holdback.updateConfig(id, dto, actorId);
-  }
-
-  @Delete('holdback-config/:id')
-  @RequirePermission('commission', 'edit')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({
-    summary: 'Delete a PENDING advance/holdback split',
-    description: 'Requires commission:edit. Only a pending split can be deleted; current/past → 422.',
-  })
-  @ApiNoContentResponse()
-  removeHoldbackConfig(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') actorId: string) {
-    return this.holdback.removeConfig(id, actorId);
-  }
-
-  // ── Holdback release setting (PROPOSED, SRS §17.1) ────────────────────────────────────────────
-
-  @Get('holdback-release-setting')
-  @RequirePermission('commission', 'view')
-  @ApiOperation({
-    summary: 'Holdback-release setting (current sticky) — PROPOSED (SRS §17)',
-    description: 'Requires commission:view. PROPOSED/pending Redwave confirmation; stored only.',
-  })
-  @ApiOkResponse({
-    type: HoldbackReleaseSettingResponse,
-    description: 'The current sticky setting, or null if none has been set.',
-  })
-  getReleaseSetting() {
-    return this.holdback.getReleaseSetting();
-  }
-
-  @Patch('holdback-release-setting')
-  @RequirePermission('commission', 'edit')
-  @ApiOperation({
-    summary: 'Set the holdback-release setting (bulk, sticky) — PROPOSED (SRS §17)',
-    description:
-      'Requires commission:edit. PROPOSED/pending Redwave confirmation: release_rule is stored only; ' +
-      'its interpretation (which cycle the 30% releases into) is deferred to the Pay Run module.',
-  })
-  @ApiOkResponse({ type: HoldbackReleaseSettingResponse })
-  setReleaseSetting(@Body() dto: SetHoldbackReleaseSettingDto, @CurrentUser('id') actorId: string) {
-    return this.holdback.setReleaseSetting(dto, actorId);
   }
 }
 

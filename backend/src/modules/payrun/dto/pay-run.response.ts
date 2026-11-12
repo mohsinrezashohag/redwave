@@ -8,7 +8,7 @@
  * nested `rep` is a 3-field lite.
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { HoldbackReleaseStatus, PayPeriodStatus, PayRunStatus } from '@prisma/client';
+import { PayPeriodStatus, PayRunStatus } from '@prisma/client';
 
 export class PayPeriodResponse {
   @ApiProperty()
@@ -111,68 +111,6 @@ export class PayRunLineResponse {
   rate_per_activation!: string | null;
 }
 
-/** A pay period reduced to what the holdback summary needs to say WHEN a hold releases. */
-export class HoldbackPeriodRefResponse {
-  @ApiProperty()
-  id!: string;
-
-  @ApiProperty({ example: 14 })
-  period_number!: number;
-
-  @ApiProperty({ type: String, format: 'date-time' })
-  payday!: string;
-}
-
-/** One origin period's hold, as recorded on the holdback ledger. */
-export class HoldbackByOriginResponse {
-  @ApiProperty({ type: () => HoldbackPeriodRefResponse })
-  origin_period!: HoldbackPeriodRefResponse;
-
-  @ApiProperty({ type: String, example: '993.00', description: 'Decimal string. Held from that origin period.' })
-  amount_held!: string;
-
-  @ApiProperty({ type: () => HoldbackPeriodRefResponse, nullable: true, description: 'When it releases (null if unscheduled).' })
-  scheduled_release_period!: HoldbackPeriodRefResponse | null;
-
-  @ApiProperty({ enum: HoldbackReleaseStatus })
-  release_status!: HoldbackReleaseStatus;
-
-  @ApiProperty({ type: String, nullable: true, example: '993.00', description: 'Decimal string. Amount actually released.' })
-  amount_released!: string | null;
-
-  @ApiProperty({ type: String, nullable: true, example: '0.00', description: 'Decimal string. Clawback set off against the hold.' })
-  clawback_applied!: string | null;
-}
-
-/**
- * The run's period-level 30% (deferred pay) view — every figure SERVER-computed so the UI does no
- * arithmetic. On a DRAFT the current period's hold + release period are a projection (no ledger rows exist
- * until finalize); once finalized they are read from the frozen `holdback_ledger`.
- */
-export class PayRunHoldbackSummaryResponse {
-  @ApiProperty({ type: Boolean, description: 'True while the run is a draft — held/release figures are a projection.' })
-  is_projection!: boolean;
-
-  @ApiProperty({ type: String, example: '993.00', description: "Decimal string. THIS period's 30% withheld (Σ line amount_held)." })
-  held_this_period!: string;
-
-  @ApiProperty({ type: () => HoldbackPeriodRefResponse, nullable: true, description: "The period THIS period's hold releases into." })
-  held_release_period!: HoldbackPeriodRefResponse | null;
-
-  @ApiProperty({ type: String, example: '0.00', description: 'Decimal string. Prior holds maturing INTO this period.' })
-  releasing_this_period!: string;
-
-  @ApiProperty({ type: String, example: '0.00', description: 'Decimal string. Clawback set off against those releases.' })
-  clawback_setoff_this_period!: string;
-
-  @ApiProperty({ type: String, example: '1986.00', description: 'Decimal string. All still-unreleased holds for this run’s reps.' })
-  outstanding_total!: string;
-
-  @ApiProperty({ type: () => [HoldbackByOriginResponse] })
-  by_origin!: HoldbackByOriginResponse[];
-}
-
-/** A pay-run header (no lines) — the list shape. */
 export class PayRunSummaryResponse {
   @ApiProperty()
   id!: string;
@@ -198,8 +136,8 @@ export class PayRunSummaryResponse {
 
 /** A pay-run header + its scoped per-rep lines — the get/draft/finalize shape. */
 /**
- * The advance / holdback split in force for a run's period (exact decimal strings, #1). For LABELS only —
- * every amount is already computed. Since 2026-11-11 Redwave runs at 1.0000 / 0.0000.
+ * The advance / holdback split that was in force for a run's period (exact decimal strings, #1). For LABELS
+ * on an OLD run only (has_holdback = true); there is no holdback since 2026-11-13.
  */
 export class PayRunSplitResponse {
   @ApiProperty({ type: String, example: '1.0000' })
@@ -210,40 +148,18 @@ export class PayRunSplitResponse {
 }
 
 export class PayRunResponse extends PayRunSummaryResponse {
+  @ApiProperty({
+    description:
+      'True only for an OLD run finalized with a 70/30 hold (its frozen held / released figures are non-zero). ' +
+      'There is no holdback since 2026-11-13, so new runs are always false and show no holdback columns.',
+  })
+  has_holdback!: boolean;
+
   @ApiProperty({ type: () => PayRunSplitResponse, nullable: true, description: 'Split in force for this period.' })
   split!: PayRunSplitResponse | null;
 
   @ApiProperty({ type: () => [PayRunLineResponse] })
   lines!: PayRunLineResponse[];
-}
-
-export class HoldbackLedgerResponse {
-  @ApiProperty()
-  id!: string;
-
-  @ApiProperty()
-  rep_id!: string;
-
-  @ApiProperty()
-  origin_pay_period_id!: string;
-
-  @ApiProperty({ type: String, example: '993.00', description: 'Decimal string. The 30% held this origin period.' })
-  amount_held!: string;
-
-  @ApiProperty({ type: String, nullable: true })
-  scheduled_release_period_id!: string | null;
-
-  @ApiProperty({ enum: HoldbackReleaseStatus })
-  release_status!: HoldbackReleaseStatus;
-
-  @ApiProperty({ type: String, nullable: true })
-  released_in_pay_run_id!: string | null;
-
-  @ApiProperty({ type: String, nullable: true, example: '993.00', description: 'Decimal string. Amount released.' })
-  amount_released!: string | null;
-
-  @ApiProperty({ type: String, nullable: true, example: '0.00', description: 'Decimal string. Clawback applied against the hold.' })
-  clawback_applied!: string | null;
 }
 
 export class ExportResultResponse {
@@ -340,6 +256,13 @@ export class PayrollReportLineResponse {
 
 /** The payroll report for one pay run — the workbook's rows plus its row-1 SUBTOTAL strip. */
 export class PayrollReportResponse {
+  @ApiProperty({
+    description:
+      'True only for an OLD run finalized with a 70/30 hold (its frozen held / released figures are non-zero). ' +
+      'There is no holdback since 2026-11-13, so new runs are always false and show no holdback columns.',
+  })
+  has_holdback!: boolean;
+
   @ApiProperty()
   pay_run_id!: string;
 
@@ -445,6 +368,13 @@ export class RepPayStatementLineResponse {
 
 /** One rep's statement for one pay run: per sale, what it paid, their 70%, and the 30% held. */
 export class RepPayStatementResponse {
+  @ApiProperty({
+    description:
+      'True only for an OLD run finalized with a 70/30 hold (its frozen held / released figures are non-zero). ' +
+      'There is no holdback since 2026-11-13, so new runs are always false and show no holdback columns.',
+  })
+  has_holdback!: boolean;
+
   @ApiProperty()
   pay_run_id!: string;
 

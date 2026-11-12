@@ -340,29 +340,3 @@ export function classifyLiveSaleRow(
   }
   return matched();
 }
-
-// ── balance_migration + holdback (opening balances; IMP-007) ─────────────────────────────────────
-/** ctx is pre-fetched by the service: rep existence, origin period status, and any existing ledger row. */
-export function classifyHoldbackRow(
-  mapped: RawRow,
-  ctx: { repExists: boolean; originPeriodStatus: 'open' | 'closed' | 'paid' | null; ledgerExists: boolean },
-): Classification {
-  const rep_code = str(mapped, 'rep_code');
-  const origin = str(mapped, 'origin_pay_period_id');
-  const amount = str(mapped, 'amount_held');
-
-  if (!rep_code) return error('rep_code is required');
-  if (!origin) return error('origin_pay_period_id is required');
-  if (!amount || !MONEY.test(amount)) return error('amount_held must be a decimal string (≤2 dp)');
-  if (!ctx.repExists) return error('rep not found');
-  if (ctx.originPeriodStatus === null) return error('origin pay period not found');
-  // An OPEN origin would collide with a future finalize's freeze-once slot and underpay the rep. — seam
-  if (ctx.originPeriodStatus === 'open') {
-    return error('The origin pay period is still open. Opening balances need a closed or paid period.');
-  }
-  // Idempotent against re-import: one opening balance per rep + origin (mirrors Pay Run freeze-once).
-  if (ctx.ledgerExists) {
-    return { match_status: 'duplicate', issue: 'a holdback already exists for this rep + origin period' };
-  }
-  return matched();
-}

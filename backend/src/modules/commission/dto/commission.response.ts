@@ -99,41 +99,6 @@ export class FlatRateResponse {
   status!: RateStatus;
 }
 
-export class HoldbackConfigResponse {
-  @ApiProperty()
-  id!: string;
-
-  @ApiProperty({ type: String, example: '0.7000', description: 'Decimal STRING (5,4) — NOT money, but never a number.' })
-  advance_pct!: string;
-
-  @ApiProperty({ type: String, example: '0.3000', description: 'Decimal STRING (5,4).' })
-  holdback_pct!: string;
-
-  @ApiProperty({ type: String, format: 'date-time' })
-  effective_from!: string;
-
-  @ApiProperty({ type: String, format: 'date-time', nullable: true })
-  effective_to!: string | null;
-
-  @ApiProperty({ enum: RATE_STATUS })
-  status!: RateStatus;
-}
-
-/** PROPOSED (SRS §17): the sticky release setting (latest wins). Stored only — Pay Run interprets it. */
-export class HoldbackReleaseSettingResponse {
-  @ApiProperty()
-  id!: string;
-
-  @ApiProperty({ example: 'next_cycle_after_30_days' })
-  release_rule!: string;
-
-  @ApiProperty()
-  set_by!: string;
-
-  @ApiProperty({ type: String, format: 'date-time' })
-  effective_from!: string;
-}
-
 export class IncentiveResponse {
   @ApiProperty()
   id!: string;

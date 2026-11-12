@@ -56,7 +56,7 @@ const CARDS: ReportCard[] = [
   },
   {
     title: 'My dashboard',
-    description: 'Your sales, commission, holdback, and tier progress.',
+    description: 'Your sales, commission and tier progress.',
     icon: <UserCircle size={20} />,
     to: '/dashboards/rep',
     show: (a) => !!a.repId,

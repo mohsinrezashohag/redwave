@@ -2,7 +2,7 @@
  * CommitConfirmModal — the high-stakes COMMIT confirm (import:approve). Commit is ATOMIC + IDEMPOTENT
  * SERVER-side (#8); this dialog requires a TYPED confirmation, explains the per-kind apply, and is
  * double-submit-safe. On success the batch is committed + locked; re-commit is a backend no-op so the caller
- * stops offering it. The server is the real gate — a 422 (still-unreconciled / holdback reconcile_total
+ * stops offering it. The server is the real gate — a 422 (still-unreconciled
  * mismatch) is surfaced via the error toast.
  */
 import { Banner, ConfirmDialog, useToast } from '../../../components/ui';

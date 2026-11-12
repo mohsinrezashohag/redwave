@@ -3544,161 +3544,6 @@ paths:
       security: *a121
       summary: Delete a PENDING per-product tier rate
       tags: *a122
-  /v1/commission/holdback-config:
-    get:
-      description: Requires commission:view.
-      operationId: CommissionController_listHoldbackConfig_v1
-      parameters: []
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/HoldbackConfigResponse"
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Advance/holdback split (current + pending)
-      tags: *a122
-    patch:
-      description: Requires commission:edit. advance_pct + holdback_pct must equal 1;
-        back-dating → 422.
-      operationId: CommissionController_setHoldbackConfig_v1
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SetHoldbackConfigDto"
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HoldbackConfigResponse"
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Set an effective-dated advance/holdback split
-      tags: *a122
-  /v1/commission/holdback-config/{id}:
-    patch:
-      description: Requires commission:edit. Only a pending split can be edited;
-        current/past → 422. Pair must = 1.
-      operationId: CommissionController_updateHoldbackConfig_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateHoldbackConfigDto"
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HoldbackConfigResponse"
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Edit a PENDING advance/holdback split
-      tags: *a122
-    delete:
-      description: Requires commission:edit. Only a pending split can be deleted;
-        current/past → 422.
-      operationId: CommissionController_removeHoldbackConfig_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      responses:
-        "204":
-          description: ""
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Delete a PENDING advance/holdback split
-      tags: *a122
-  /v1/commission/holdback-release-setting:
-    get:
-      description: Requires commission:view. PROPOSED/pending Redwave confirmation;
-        stored only.
-      operationId: CommissionController_getReleaseSetting_v1
-      parameters: []
-      responses:
-        "200":
-          description: The current sticky setting, or null if none has been set.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HoldbackReleaseSettingResponse"
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Holdback-release setting (current sticky) — PROPOSED (SRS §17)
-      tags: *a122
-    patch:
-      description: "Requires commission:edit. PROPOSED/pending Redwave confirmation:
-        release_rule is stored only; its interpretation (which cycle the 30%
-        releases into) is deferred to the Pay Run module."
-      operationId: CommissionController_setReleaseSetting_v1
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SetHoldbackReleaseSettingDto"
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HoldbackReleaseSettingResponse"
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Set the holdback-release setting (bulk, sticky) — PROPOSED (SRS §17)
-      tags: *a122
   /v1/incentives:
     get:
       description: Requires commission:view. ?status filter.
@@ -5749,7 +5594,7 @@ paths:
         - bearer: []
       summary: List pay periods
       tags:
-        - Pay Run & Holdback
+        - Pay Run
   /v1/pay-runs:
     get:
       description: Requires payrun:view.
@@ -5804,7 +5649,7 @@ paths:
         - bearer: []
       summary: List pay runs
       tags: &a210
-        - Pay Run & Holdback
+        - Pay Run
     post:
       description: Requires payrun:create. Computes preview lines via the engine;
         nothing frozen.
@@ -5886,37 +5731,6 @@ paths:
       security: *a209
       summary: Per-rep computed lines
       tags: *a210
-  /v1/pay-runs/{id}/holdback:
-    get:
-      description: Requires payrun:view (scoped). Every figure is server-computed —
-        what is held this period, WHEN it releases, what matures into this
-        period, the clawback set-off, and the per-origin ledger breakdown. On a
-        DRAFT the current hold + release period are a projection
-        (is_projection=true); once finalized they are read from the frozen
-        holdback_ledger.
-      operationId: PayRunController_holdbackSummary_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PayRunHoldbackSummaryResponse"
-        "400": *a203
-        "401": *a204
-        "403": *a205
-        "404": *a206
-        "409": *a207
-        "422": *a208
-      security: *a209
-      summary: The run's period-level 30% (deferred pay) view
-      tags: *a210
   /v1/pay-runs/{id}/lines/{lineId}/bonus:
     post:
       description: Requires payrun:approve. Draft only.
@@ -5957,8 +5771,8 @@ paths:
   /v1/pay-runs/{id}/finalize:
     post:
       description: "Requires payrun:approve. ATOMIC + IDEMPOTENT: freezes snapshots,
-        pays sales, records/releases holdback (release timing PROPOSED — SRS
-        §17), applies bonuses, composes net. Retry is a no-op."
+        pays sales, applies bonuses, composes net (commission paid in full; no
+        holdback since 2026-11-13). Retry is a no-op."
       operationId: PayRunController_finalize_v1
       parameters:
         - name: id
@@ -6161,7 +5975,7 @@ paths:
         - bearer: []
       summary: List MY pay statements
       tags: &a218
-        - Pay Run & Holdback
+        - Pay Run
   /v1/pay-statements/{runId}:
     get:
       description: Requires pay_statements:view. The run is named, the REP is not — it
@@ -6361,75 +6175,6 @@ paths:
       security: *a225
       summary: Which billing weeks fall inside one pay period
       tags: *a226
-  /v1/holdback-ledger:
-    get:
-      description: Requires payrun:view. Holds, schedule, release status.
-      operationId: HoldbackLedgerController_list_v1
-      parameters:
-        - name: rep_id
-          required: false
-          in: query
-          schema:
-            type: string
-        - name: status
-          required: false
-          in: query
-          schema:
-            type: string
-            enum:
-              - held
-              - scheduled
-              - released
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/HoldbackLedgerResponse"
-        "400":
-          description: Bad Request — validation failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "401":
-          description: Unauthorized — missing/invalid token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "403":
-          description: Forbidden — RBAC denied
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "404":
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "409":
-          description: Conflict — invalid state transition
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-        "422":
-          description: Unprocessable Entity — domain rule violated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelopeDto"
-      security:
-        - bearer: []
-      summary: Holdback ledger
-      tags:
-        - Pay Run & Holdback
   /v1/clients/{id}/statements/preview:
     post:
       description: Requires billing:create. Returns the one-line-per-customer rows +
@@ -12000,104 +11745,6 @@ components:
           type: string
           example: 2026-12-31
           description: null/omit = open-ended.
-    HoldbackConfigResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        advance_pct:
-          type: string
-          example: "0.7000"
-          description: Decimal STRING (5,4) — NOT money, but never a number.
-        holdback_pct:
-          type: string
-          example: "0.3000"
-          description: Decimal STRING (5,4).
-        effective_from:
-          type: string
-          format: date-time
-        effective_to:
-          type: string
-          format: date-time
-          nullable: true
-        status:
-          type: string
-          enum: *a374
-      required:
-        - id
-        - advance_pct
-        - holdback_pct
-        - effective_from
-        - effective_to
-        - status
-    SetHoldbackConfigDto:
-      type: object
-      properties:
-        advance_pct:
-          type: string
-          example: "0.7000"
-          description: Advance fraction (0..1), decimal STRING.
-        holdback_pct:
-          type: string
-          example: "0.3000"
-          description: Holdback fraction; advance_pct + holdback_pct must = 1.
-        effective_from:
-          type: string
-          example: 2026-07-01
-          description: YYYY-MM-DD; must be today or future.
-        effective_to:
-          type: string
-          example: 2026-12-31
-      required:
-        - advance_pct
-        - holdback_pct
-        - effective_from
-    UpdateHoldbackConfigDto:
-      type: object
-      properties:
-        advance_pct:
-          type: string
-          example: "0.7000"
-          description: Advance fraction (0..1), decimal STRING.
-        holdback_pct:
-          type: string
-          example: "0.3000"
-          description: Holdback fraction; the pair must sum to 1.
-        effective_from:
-          type: string
-          example: 2026-07-01
-          description: YYYY-MM-DD; must be today or future.
-        effective_to:
-          type: string
-          example: 2026-12-31
-    HoldbackReleaseSettingResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        release_rule:
-          type: string
-          example: next_cycle_after_30_days
-        set_by:
-          type: string
-        effective_from:
-          type: string
-          format: date-time
-      required:
-        - id
-        - release_rule
-        - set_by
-        - effective_from
-    SetHoldbackReleaseSettingDto:
-      type: object
-      properties:
-        release_rule:
-          type: string
-          example: days:30
-          description: "Sticky release rule: `cycles:N` (Nth period after origin) or
-            `days:N` (first payday ≥ origin payday + N days)."
-      required:
-        - release_rule
     IncentiveResponse:
       type: object
       properties:
@@ -14148,6 +13795,12 @@ components:
         created_at:
           type: string
           format: date-time
+        has_holdback:
+          type: boolean
+          description: True only for an OLD run finalized with a 70/30 hold (its frozen
+            held / released figures are non-zero). There is no holdback since
+            2026-11-13, so new runs are always false and show no holdback
+            columns.
         split:
           nullable: true
           description: Split in force for this period.
@@ -14166,102 +13819,9 @@ components:
         - status
         - executed_by
         - created_at
+        - has_holdback
         - split
         - lines
-    HoldbackPeriodRefResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        period_number:
-          type: number
-          example: 14
-        payday:
-          type: string
-          format: date-time
-      required:
-        - id
-        - period_number
-        - payday
-    HoldbackByOriginResponse:
-      type: object
-      properties:
-        origin_period:
-          $ref: "#/components/schemas/HoldbackPeriodRefResponse"
-        amount_held:
-          type: string
-          example: "993.00"
-          description: Decimal string. Held from that origin period.
-        scheduled_release_period:
-          nullable: true
-          description: When it releases (null if unscheduled).
-          type: object
-          allOf:
-            - $ref: "#/components/schemas/HoldbackPeriodRefResponse"
-        release_status:
-          type: string
-          enum:
-            - held
-            - scheduled
-            - released
-        amount_released:
-          type: string
-          nullable: true
-          example: "993.00"
-          description: Decimal string. Amount actually released.
-        clawback_applied:
-          type: string
-          nullable: true
-          example: "0.00"
-          description: Decimal string. Clawback set off against the hold.
-      required:
-        - origin_period
-        - amount_held
-        - scheduled_release_period
-        - release_status
-        - amount_released
-        - clawback_applied
-    PayRunHoldbackSummaryResponse:
-      type: object
-      properties:
-        is_projection:
-          type: boolean
-          description: True while the run is a draft — held/release figures are a
-            projection.
-        held_this_period:
-          type: string
-          example: "993.00"
-          description: Decimal string. THIS period's 30% withheld (Σ line amount_held).
-        held_release_period:
-          nullable: true
-          description: The period THIS period's hold releases into.
-          type: object
-          allOf:
-            - $ref: "#/components/schemas/HoldbackPeriodRefResponse"
-        releasing_this_period:
-          type: string
-          example: "0.00"
-          description: Decimal string. Prior holds maturing INTO this period.
-        clawback_setoff_this_period:
-          type: string
-          example: "0.00"
-          description: Decimal string. Clawback set off against those releases.
-        outstanding_total:
-          type: string
-          example: "1986.00"
-          description: Decimal string. All still-unreleased holds for this run’s reps.
-        by_origin:
-          type: array
-          items:
-            $ref: "#/components/schemas/HoldbackByOriginResponse"
-      required:
-        - is_projection
-        - held_this_period
-        - held_release_period
-        - releasing_this_period
-        - clawback_setoff_this_period
-        - outstanding_total
-        - by_origin
     SetBonusDto:
       type: object
       properties:
@@ -14379,6 +13939,12 @@ components:
     PayrollReportResponse:
       type: object
       properties:
+        has_holdback:
+          type: boolean
+          description: True only for an OLD run finalized with a 70/30 hold (its frozen
+            held / released figures are non-zero). There is no holdback since
+            2026-11-13, so new runs are always false and show no holdback
+            columns.
         pay_run_id:
           type: string
         split:
@@ -14418,6 +13984,7 @@ components:
           type: string
           description: "Row-1 strip: Σ 0.3."
       required:
+        - has_holdback
         - pay_run_id
         - split
         - period_number
@@ -14514,6 +14081,12 @@ components:
     RepPayStatementResponse:
       type: object
       properties:
+        has_holdback:
+          type: boolean
+          description: True only for an OLD run finalized with a 70/30 hold (its frozen
+            held / released figures are non-zero). There is no holdback since
+            2026-11-13, so new runs are always false and show no holdback
+            columns.
         pay_run_id:
           type: string
         split:
@@ -14552,6 +14125,7 @@ components:
         holdback_30:
           type: string
       required:
+        - has_holdback
         - pay_run_id
         - split
         - period_number
@@ -14827,51 +14401,6 @@ components:
         - pay_start
         - pay_end
         - billing_periods
-    HoldbackLedgerResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        rep_id:
-          type: string
-        origin_pay_period_id:
-          type: string
-        amount_held:
-          type: string
-          example: "993.00"
-          description: Decimal string. The 30% held this origin period.
-        scheduled_release_period_id:
-          type: string
-          nullable: true
-        release_status:
-          type: string
-          enum:
-            - held
-            - scheduled
-            - released
-        released_in_pay_run_id:
-          type: string
-          nullable: true
-        amount_released:
-          type: string
-          nullable: true
-          example: "993.00"
-          description: Decimal string. Amount released.
-        clawback_applied:
-          type: string
-          nullable: true
-          example: "0.00"
-          description: Decimal string. Clawback applied against the hold.
-      required:
-        - id
-        - rep_id
-        - origin_pay_period_id
-        - amount_held
-        - scheduled_release_period_id
-        - release_status
-        - released_in_pay_run_id
-        - amount_released
-        - clawback_applied
     GenerateBillingDto:
       type: object
       properties:
@@ -16579,12 +16108,9 @@ components:
       properties:
         commission_70:
           type: string
-          example: "2317.00"
-          description: Decimal string.
-        holdback_release_30:
-          type: string
-          example: "993.00"
-          description: Decimal string.
+          example: "3310.00"
+          description: Decimal string. Commission paid, in full (no holdback since
+            2026-11-13).
         incentive_total:
           type: string
           example: "0.00"
@@ -16595,7 +16121,6 @@ components:
           description: Decimal string.
       required:
         - commission_70
-        - holdback_release_30
         - incentive_total
         - net_payout
     RepTargetResponse:
@@ -16696,10 +16221,6 @@ components:
             - $ref: "#/components/schemas/RepTierResponse"
         commission:
           $ref: "#/components/schemas/RepCommissionResponse"
-        holdback_pending_release:
-          type: string
-          example: "0.00"
-          description: Decimal string — held, awaiting release.
         target:
           $ref: "#/components/schemas/RepTargetResponse"
         recent_sales:
@@ -16716,7 +16237,6 @@ components:
         - internet_activations
         - tier
         - commission
-        - holdback_pending_release
         - target
         - recent_sales
         - recent_clawbacks
@@ -16786,10 +16306,6 @@ components:
           type: string
           example: "8000.00"
           description: Decimal — roster total net payout (period).
-        roster_holdback:
-          type: string
-          example: "3000.00"
-          description: Decimal — roster outstanding holdback.
         can_see_rep_money:
           type: boolean
           description: True when the caller holds hrm:edit (per-rep payout is then
@@ -16814,32 +16330,12 @@ components:
         - team_internet_activations
         - sales_in_period
         - roster_payout
-        - roster_holdback
         - can_see_rep_money
         - top_performers
         - targets
         - pending_validations
         - pending_expense_approvals
         - pending_profile_changes
-    HoldbackBreakdownResponse:
-      type: object
-      properties:
-        held:
-          type: string
-          example: "3000.00"
-          description: Decimal — currently held (status=held).
-        scheduled:
-          type: string
-          example: "500.00"
-          description: Decimal — scheduled to release (status=scheduled).
-        released_this_period:
-          type: string
-          example: "993.00"
-          description: Decimal — released in this period (30% advance release).
-      required:
-        - held
-        - scheduled
-        - released_this_period
     ExpenseBreakdownResponse:
       type: object
       properties:
@@ -17013,8 +16509,6 @@ components:
           type: string
           example: "33.3"
           description: Decimal % = margin / revenue.
-        holdback:
-          $ref: "#/components/schemas/HoldbackBreakdownResponse"
         clawback_total:
           type: string
           example: "145.00"
@@ -17064,7 +16558,6 @@ components:
         - rep_payout
         - net_margin
         - net_margin_pct
-        - holdback
         - clawback_total
         - clawback_rate
         - expense
@@ -17100,10 +16593,6 @@ components:
         internet_activations:
           type: number
           example: 48
-        holdback_released:
-          type: string
-          example: "993.00"
-          description: Holdback released (30% advance) in the period.
         clawback_total:
           type: string
           example: "145.00"
@@ -17114,7 +16603,6 @@ components:
         - net_margin
         - activations
         - internet_activations
-        - holdback_released
         - clawback_total
     TrendProductResponse:
       type: object
@@ -17873,7 +17361,6 @@ components:
           enum:
             - my_sales_count
             - my_commission
-            - my_holdback
             - roster_summary
             - business_summary
             - unknown

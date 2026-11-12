@@ -45,9 +45,8 @@ export default function RepDashboardPage() {
           <>
             <div className={styles.kpiGrid}>
               <StatCard label="Internet activations" value={d.internet_activations} footnote="Counts toward your tier" />
-              <StatCard label="Estimated commission" value={money(d.commission.commission_70)} footnote="70% advance this period" />
-              <StatCard label="Net payout (period)" value={money(d.commission.net_payout)} footnote="After holdback + adjustments" />
-              <StatCard label="Holdback pending" value={money(d.holdback_pending_release)} footnote="Releases on schedule" />
+              <StatCard label="Estimated commission" value={money(d.commission.commission_70)} footnote="This period, paid in full" />
+              <StatCard label="Net payout (period)" value={money(d.commission.net_payout)} footnote="After expenses, bonuses and clawbacks" />
               <StatCard
                 label="Target progress"
                 value={`${d.target.actual} / ${d.target.target_activations ?? '—'}`}

@@ -1,11 +1,10 @@
 /**
- * splitLabels — the words for a run's advance / holdback split. Pure; computes NO money (#1) — it only turns
- * the server's split (e.g. '1.0000' / '0.0000') into labels.
+ * splitLabels — the words for an OLD run's advance / holdback split. Pure; computes NO money (#1).
  *
- * Why: every pay screen used to say "70% advance" / "Held 30%" literally. Since 2026-11-11 Redwave pays 100%
- * with nothing held (tier + holdback are applied manually, outside the system), so the labels must follow
- * the split actually in force for the run's period. With no split known, it falls back to 70/30 — the
- * historical default — rather than guessing.
+ * There is no holdback since 2026-11-13: commission is paid in full and new runs show no split at all. A run
+ * finalized earlier with a hold (`has_holdback` on the run / statement) still shows its frozen 70% / 30%
+ * figures, labelled with the split that run used; with no split known it falls back to 70/30, the
+ * historical default.
  */
 export interface Split {
   advance_pct: string;

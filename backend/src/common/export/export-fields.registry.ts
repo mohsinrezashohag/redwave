@@ -69,8 +69,9 @@ const PAYROLL: ReportDefinition = {
     { key: 'spiff', label: 'Spiff', money: true },
     { key: 'other_total', label: 'Other', money: true },
     { key: 'total_100', label: 'Total 100 %', money: true, required: true },
-    { key: 'advance_70', label: '0.7', money: true, required: true },
-    { key: 'holdback_30', label: '0.3', money: true, required: true },
+    // Old runs only: printed just for a run that held some (no holdback since 2026-11-13), so not required.
+    { key: 'advance_70', label: '0.7', money: true },
+    { key: 'holdback_30', label: '0.3', money: true },
   ],
 };
 

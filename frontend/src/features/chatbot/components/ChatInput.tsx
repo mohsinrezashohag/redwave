@@ -30,7 +30,7 @@ export function ChatInput({ onSend, pending }: { onSend: (text: string) => void;
               submit();
             }
           }}
-          placeholder="Ask about your sales, commission, or holdback…"
+          placeholder="Ask about your sales, commission, or team…"
           maxLength={500}
           rows={1}
           maxHeight={140}

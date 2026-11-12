@@ -2,7 +2,7 @@
  * ImportDetailPage — /import/:id. Review the staged rows, RECONCILE the outstanding ones, and COMMIT. The UI
  * does NO matching/commit logic: reconcile + commit are backend calls. The reconcile-before-commit GATE is
  * mirrored to DISABLE the Commit button while outstanding rows remain (+ a banner) — the server 422 is the
- * real gate (incl. the holdback reconcile_total check, which the UI never computes). Commit is atomic +
+ * real gate (incl. the reconcile check, which the UI never computes). Commit is atomic +
  * idempotent server-side (#8); after it the batch is locked and re-commit isn't offered. `import:view`;
  * edit/approve gate the actions. 403 → AccessDenied.
  */

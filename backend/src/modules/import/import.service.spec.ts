@@ -384,40 +384,17 @@ describe('ImportService.commit — migration handlers', () => {
     });
   });
 
-  it('opening holdback: reconcile_total must match the staged sum (else 422)', async () => {
+  it('an opening-holdback batch staged before holdback was removed cannot be committed (422)', async () => {
     const { service, prisma } = make();
     prisma.importBatch.findUnique.mockResolvedValue(
       stagedBatch({
         source_type: 'balance_migration',
         import_type: 'holdback',
         client_id: null,
-        reconcile_total: '900.00',
-        import_rows: [{ id: 'r1', match_status: 'matched', mapped_data: { rep_code: 'RW-D-0001', origin_pay_period_id: 'p-old', amount_held: '993.00' } }],
+        import_rows: [{ id: 'r1', match_status: 'matched', mapped_data: { rep_code: 'RW-D-0001', amount_held: '993.00' } }],
       }),
     );
-    await expect(service.commit('b1', user)).rejects.toBeInstanceOf(UnprocessableEntityException);
-  });
-
-  it('opening holdback (by rep_code): a reconciled balance → a scheduled ledger entry', async () => {
-    const { service, prisma, tx } = make();
-    prisma.payPeriod.findMany.mockResolvedValue([
-      { id: 'p-old', start_date: new Date('2025-12-01T00:00:00Z'), payday: new Date('2025-12-14T00:00:00Z') },
-      { id: 'p-new', start_date: new Date('2026-01-04T00:00:00Z'), payday: new Date('2026-01-17T00:00:00Z') },
-    ]);
-    prisma.importBatch.findUnique.mockResolvedValue(
-      stagedBatch({
-        source_type: 'balance_migration',
-        import_type: 'holdback',
-        client_id: null,
-        reconcile_total: '993.00',
-        import_rows: [{ id: 'r1', match_status: 'matched', mapped_data: { rep_code: 'RW-D-0001', origin_pay_period_id: 'p-old', amount_held: '993.00' } }],
-      }),
-    );
-    await service.commit('b1', user);
-    const data = (tx.holdbackLedger.create.mock.calls[0][0] as { data: { rep_id: string; amount_held: string; release_status: string; scheduled_release_period_id: string | null } }).data;
-    expect(data.rep_id).toBe('rep1'); // resolved from rep_code
-    expect(data.amount_held).toBe('993.00');
-    expect(data.scheduled_release_period_id).toBe('p-new');
+    await expect(service.commit('b1', user)).rejects.toThrow(/no longer supported/);
   });
 });
 

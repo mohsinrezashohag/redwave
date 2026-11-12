@@ -4,7 +4,6 @@ import {
   classifyHistoricalSaleRow,
   classifyLiveSaleRow,
   splitProductTypes,
-  classifyHoldbackRow,
   classifyProductRow,
   classifyRepRow,
   classifySalesRow,
@@ -211,29 +210,5 @@ describe('splitProductTypes', () => {
     expect(splitProductTypes(' Internet , TV ,, home_phone ')).toEqual(['internet', 'tv', 'home_phone']);
     expect(splitProductTypes(null)).toEqual([]);
     expect(splitProductTypes('')).toEqual([]);
-  });
-});
-
-describe('classifyHoldbackRow (opening balances — IMP-007)', () => {
-  const base = { rep_code: 'RW-D-0001', origin_pay_period_id: 'p1', amount_held: '993.00' };
-  const ctx = { repExists: true, originPeriodStatus: 'closed' as const, ledgerExists: false };
-
-  it('rep + closed origin + no existing ledger → matched', () => {
-    expect(classifyHoldbackRow(base, ctx).match_status).toBe('matched');
-  });
-  it('OPEN origin period → error (would collide with a future finalize)', () => {
-    expect(classifyHoldbackRow(base, { ...ctx, originPeriodStatus: 'open' }).match_status).toBe('error');
-  });
-  it('missing origin period → error', () => {
-    expect(classifyHoldbackRow(base, { ...ctx, originPeriodStatus: null }).match_status).toBe('error');
-  });
-  it('rep not found → error', () => {
-    expect(classifyHoldbackRow(base, { ...ctx, repExists: false }).match_status).toBe('error');
-  });
-  it('existing ledger row for rep+origin → duplicate (re-import guard)', () => {
-    expect(classifyHoldbackRow(base, { ...ctx, ledgerExists: true }).match_status).toBe('duplicate');
-  });
-  it('non-decimal amount → error', () => {
-    expect(classifyHoldbackRow({ ...base, amount_held: 'x' }, ctx).match_status).toBe('error');
   });
 });

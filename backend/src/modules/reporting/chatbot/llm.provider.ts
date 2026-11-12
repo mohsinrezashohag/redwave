@@ -16,7 +16,6 @@ export const LLM_PROVIDER = Symbol('LLM_PROVIDER');
 export type ChatTool =
   | 'my_sales_count'
   | 'my_commission'
-  | 'my_holdback'
   | 'roster_summary'
   | 'business_summary'
   | 'unknown';
@@ -25,12 +24,11 @@ export interface ChatIntent {
   tool: ChatTool;
 }
 
-/** The six allow-listed intents — exactly the ChatTool union. Reused as the Gemini responseSchema enum
+/** The five allow-listed intents — exactly the ChatTool union. Reused as the Gemini responseSchema enum
  *  and to validate the model's output. */
 export const CHAT_TOOLS: readonly ChatTool[] = [
   'my_sales_count',
   'my_commission',
-  'my_holdback',
   'roster_summary',
   'business_summary',
   'unknown',
@@ -53,7 +51,6 @@ export class StubLlmProvider implements LlmProvider {
     const p = prompt.toLowerCase();
     if (/\b(company|business|org|total revenue|payout|margin)\b/.test(p)) return { tool: 'business_summary' };
     if (/\b(roster|team|my reps|my distributors)\b/.test(p)) return { tool: 'roster_summary' };
-    if (/\b(holdback|held|release)\b/.test(p)) return { tool: 'my_holdback' };
     if (/\b(commission|earn|earning|pay|paid|net)\b/.test(p)) return { tool: 'my_commission' };
     if (/\b(sale|sales|count|activation|tier)\b/.test(p)) return { tool: 'my_sales_count' };
     return { tool: 'unknown' };

@@ -80,10 +80,6 @@ export class ChatbotService {
         const d = await this.dashboards.rep(user);
         return `Your commission this period: $${d.commission.commission_70} (net payout $${d.commission.net_payout}).`;
       }
-      case 'my_holdback': {
-        const d = await this.dashboards.rep(user);
-        return `You have $${d.holdback_pending_release} in holdback pending release.`;
-      }
       case 'roster_summary': {
         const d = await this.dashboards.manager(user);
         return `Your roster has ${d.team_internet_activations} internet activation(s) and ${d.pending_validations} sale(s) pending validation.`;

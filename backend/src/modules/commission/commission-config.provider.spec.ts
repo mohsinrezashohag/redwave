@@ -55,17 +55,6 @@ function seededPrisma() {
     // Per-product tier rate OVERRIDES. Empty by default: with none, every payout must be identical to
     // what it was before per-product rates existed — which is exactly what the fixtures below assert.
     commissionTierRate: { findMany: jest.fn().mockResolvedValue([]) },
-    holdbackConfig: {
-      findMany: jest.fn().mockResolvedValue([
-        {
-          id: 'h1',
-          advance_pct: dec(SCHEDULE_C_V2.holdback.advance_pct),
-          holdback_pct: dec(SCHEDULE_C_V2.holdback.holdback_pct),
-          effective_from: GENESIS,
-          effective_to: null,
-        },
-      ]),
-    },
     incentive: { findMany: jest.fn().mockResolvedValue([]) },
   };
 }
@@ -82,7 +71,7 @@ describe('CommissionConfigProvider → CommissionEngine (END-TO-END, seeded Sche
   const many = (pt: ProductType, n: number, clientId?: string) =>
     Array.from({ length: n }, () => mk(pt, clientId));
 
-  it('config → provider → engine reproduces the $3,310 case (3310.00 / 2317.00 / 993.00)', async () => {
+  it('config → provider → engine reproduces the $3,310 case, paid in full (no holdback since 2026-11-13)', async () => {
     const provider = new CommissionConfigProvider(seededPrisma() as never);
     const config = await provider.getEngineConfig('2026-01-10');
 
@@ -97,8 +86,9 @@ describe('CommissionConfigProvider → CommissionEngine (END-TO-END, seeded Sche
     expect(result.internetTally).toBe(20);
     expect(result.tierNumber).toBe(2); // $145
     expect(result.grossCommission.toFixed(2)).toBe('3310.00');
-    expect(result.advanceAmount.toFixed(2)).toBe('2317.00'); // 70%
-    expect(result.holdbackAmount.toFixed(2)).toBe('993.00'); // 30%
+    // No holdback: the provider always hands the engine a 100% advance, whatever holdback_config holds.
+    expect(result.advanceAmount.toFixed(2)).toBe('3310.00');
+    expect(result.holdbackAmount.toFixed(2)).toBe('0.00');
   });
 
   it('config → provider → engine reproduces cross-client (3 VF + 9 RF → Tier 3 → 1500.00)', async () => {

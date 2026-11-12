@@ -24,12 +24,5 @@ export const SCHEDULE_C_V2 = {
     home_phone: '30.00',
   },
 
-  /** Advance/holdback split (Decimal(5,4)). */
-  holdback: { advance_pct: '0.7000', holdback_pct: '0.3000' },
-
-  /**
-   * Default holdback-release setting. PROPOSED (SRS §17.1) — stored only; the interpretation of
-   * which cycle the 30% releases into is deferred to Pay Run + Redwave confirmation.
-   */
-  releaseRule: 'next_cycle_after_30_days',
+  // No advance/holdback split: commission is paid in full since 2026-11-13 (NO_HOLDBACK in the provider).
 } as const;

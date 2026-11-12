@@ -2,16 +2,17 @@
  * PayRunService — the orchestrator. COMPOSES the config provider + commission engine + sales; it
  * never reimplements tier/commission math (#5). Draft = preview (nothing frozen). Finalize = the
  * money action: ATOMIC + IDEMPOTENT (#8), freezes immutable snapshots (#2), transitions sales
- * Validated→In Pay Run→Paid (§16), records/releases holdback, applies bonuses, composes net.
+ * Validated→In Pay Run→Paid (§16), applies bonuses, composes net. NO HOLDBACK (client decision 2026-11-13):
+ * commission is paid in full, no hold is recorded and no older hold is released; holds are handled offline.
  * — SRS §9 (PAY-001..011), arch §9
  *
  * Idempotency is STATE-BASED (pay_runs has no key column): re-finalizing a non-draft run is a no-op,
- * and freeze/holdback are further guarded (sales become Paid; one ledger row per rep+origin).
+ * and the freeze is further guarded (sales become Paid).
  * Money math uses decimal.js; conversion to Prisma Decimal (`.toFixed(2)`) happens only on write.
  */
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { AvatarService } from '../../common/avatar/avatar.service';
-import { HoldbackReleaseStatus, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
@@ -41,7 +42,6 @@ type SalesForPayroll = {
   client: { client_code: string } | null;
   sale_items: { id: string; product_type: string; counts_toward_tally: boolean; product: { name: string } | null }[];
 }[];
-import { resolveScheduledReleasePeriod } from './holdback-release.logic';
 import { buildLineAmounts, computeNet } from './line-amounts.logic';
 import { EXPENSE_TOTAL_PROVIDER, ExpenseTotalProvider } from './seams/expense-total.provider';
 import { CLAWBACK_TOTAL_PROVIDER, ClawbackTotalProvider } from './seams/clawback-total.provider';
@@ -49,7 +49,6 @@ import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifica
 import { CreatePayRunDto } from './dto/create-pay-run.dto';
 import { SetBonusDto } from './dto/bonus.dto';
 import { ExportPayRunDto } from './dto/export.dto';
-import { ListHoldbackQuery } from './dto/list-holdback.query';
 
 /**
  * The sale shape behind a PAYROLL REPORT line: the agent as the workbook keys them (external_code), the
@@ -67,6 +66,7 @@ const iso = (date: Date): string => date.toISOString().slice(0, 10);
 const isFinalizedStatus = (status: string): boolean => status === 'finalized' || status === 'exported';
 const dec = (value: { toString(): string }): Decimal => new Decimal(value.toString());
 const money = (value: Decimal): string => value.toFixed(2);
+const nonZero = (value: { toString(): string } | null | undefined): boolean => value != null && !dec(value).isZero();
 
 /** What `backfillPayrollLines` did (or would do, in a dry run) for one run. */
 export interface PayrollBackfillResult {
@@ -140,10 +140,9 @@ export class PayRunService {
         await tx.payRunLine.deleteMany({ where: { pay_run_id: runId } });
         for (const repId of reps) {
           const { result } = await this.gatherAndRun(tx, repId, period, config);
-          const released = await this.previewReleased(tx, repId, period.id);
           const bonus = existingBonuses.get(repId) ?? { amount: new Decimal(0), note: null };
           const amounts = buildLineAmounts(result, {
-            released,
+            released: new Decimal(0), // no holdback: nothing is ever released (2026-11-13)
             expense: await this.expenseSeam.getApprovedExpenseTotal(repId, period.id),
             bonus: bonus.amount,
             clawback: await this.clawbackSeam.getClawbackTotal(repId, period.id),
@@ -215,14 +214,9 @@ export class PayRunService {
     const reps = await this.repsWithValidatedSales(period, await this.scopeRepIds(user));
     const existingBonuses = await this.bonusesByRep(run.id);
     const config = await this.config.getEngineConfig(iso(period.end_date));
-    const allPeriods = await this.prisma.payPeriod.findMany();
-    const releaseSetting = await this.prisma.holdbackReleaseSetting.findFirst({
-      orderBy: { effective_from: 'desc' },
-    });
-    const releaseRule = releaseSetting?.release_rule ?? 'next_cycle_after_30_days';
 
     // Collected during the tx; emitted AFTER it commits (best-effort, never inside the money tx).
-    const notices: { repId: string; net: Decimal; released: Decimal }[] = [];
+    const notices: { repId: string; net: Decimal }[] = [];
 
     // EVERYTHING in one transaction — a mid-step throw rolls back entirely (no partial pay run). (#8)
     await this.prisma.$transaction(
@@ -264,66 +258,22 @@ export class PayRunService {
             await tx.sale.updateMany({ where: { id: { in: saleIds } }, data: { status: 'paid' } });
           }
 
-          // (c) Record this period's holdback (freeze-once: one row per rep+origin). NOTHING is written when
-          // nothing was held: at a 100/0 split (Redwave, 2026-11-11) a zero row per rep per period would only
-          // clutter the ledger and later "release" $0. Prior holds still release in step (d) as scheduled.
-          const existingHold = await tx.holdbackLedger.findFirst({
-            where: { rep_id: repId, origin_pay_period_id: period.id },
-          });
-          if (!existingHold && !result.holdbackAmount.isZero()) {
-            const scheduled = resolveScheduledReleasePeriod(period, allPeriods, releaseRule);
-            await tx.holdbackLedger.create({
-              data: {
-                rep_id: repId,
-                origin_pay_period_id: period.id,
-                amount_held: money(result.holdbackAmount),
-                scheduled_release_period_id: scheduled?.id ?? null,
-                release_status: 'scheduled',
-              },
-            });
-          }
-
-          // (d) Release prior holds scheduled into THIS period, applying the rep's pending clawback as a
-          // SET-OFF first: a clawback reduces a pending release (recorded as clawback_applied on the
-          // ledger), and only the UNCOVERED remainder deducts from net — so the clawback is recovered
-          // exactly once (net is unchanged; the books just show where it came from). — SRS §17.1
+          // (c/d) NO HOLDBACK (client decision 2026-11-13): nothing is held and no older hold is released (any
+          // still waiting were marked settled_offline by migration). The full clawback deducts from net: a flat
+          // deduction with no sequencing. — CLAUDE §3 #6
           const clawback = await this.clawbackSeam.getClawbackTotal(repId, period.id);
-          const due = await tx.holdbackLedger.findMany({
-            where: { rep_id: repId, scheduled_release_period_id: period.id, release_status: 'scheduled' },
-          });
-          const grossDue = due.reduce((s, h) => s.plus(dec(h.amount_held)), new Decimal(0));
-          const setOff = Decimal.min(clawback, grossDue); // the clawback consumes the pending release first
-          let remainingSetOff = setOff;
-          let released = new Decimal(0); // net cash released to the rep after the set-off
-          for (const hold of due) {
-            const amount = dec(hold.amount_held);
-            const holdSetOff = Decimal.min(remainingSetOff, amount);
-            remainingSetOff = remainingSetOff.minus(holdSetOff);
-            const paidOut = amount.minus(holdSetOff);
-            released = released.plus(paidOut);
-            await tx.holdbackLedger.update({
-              where: { id: hold.id },
-              data: {
-                release_status: 'released',
-                released_in_pay_run_id: run.id,
-                amount_released: money(paidOut),
-                clawback_applied: holdSetOff.isZero() ? null : money(holdSetOff),
-              },
-            });
-          }
-          const netClawback = clawback.minus(setOff); // the remainder deducts from net
 
           // (e/f) Compose net via the seams + bonus.
           const expense = await this.expenseSeam.getApprovedExpenseTotal(repId, period.id);
           const bonus = existingBonuses.get(repId) ?? { amount: new Decimal(0), note: null };
           const amounts = buildLineAmounts(result, {
-            released,
+            released: new Decimal(0),
             expense,
             bonus: bonus.amount,
-            clawback: netClawback,
+            clawback,
           });
           await tx.payRunLine.create({ data: this.lineData(run.id, repId, amounts, bonus.note) });
-          notices.push({ repId, net: amounts.net_payout, released });
+          notices.push({ repId, net: amounts.net_payout });
 
           // (h) Atomically mark the rep's pending clawbacks applied + linked to this run (CLAW-006/008).
           // Read total (above) and mark are the same pending set in one transaction — never double-deducted.
@@ -345,7 +295,7 @@ export class PayRunService {
       after: { pay_period_id: period.id, rep_count: reps.length },
     });
 
-    // Best-effort, post-commit: notify each paid rep (and a holdback-release note where any released). — pay_run_finalized
+    // Best-effort, post-commit: notify each paid rep. — pay_run_finalized
     const repUsers = await this.prisma.rep.findMany({
       where: { id: { in: notices.map((n) => n.repId) } },
       select: { id: true, user_id: true },
@@ -362,16 +312,6 @@ export class PayRunService {
         relatedEntityId: run.id,
         variables: { period_number: periodNo, net_payout: money(n.net) },
       });
-      if (n.released.greaterThan(0)) {
-        await this.emitter.emitMany([userId], {
-          eventType: 'holdback_released',
-          title: 'Holdback released',
-          body: `${money(n.released)} of holdback was released in period ${periodNo}.`,
-          relatedEntityType: 'pay_runs',
-          relatedEntityId: run.id,
-          variables: { amount: money(n.released), period_number: periodNo },
-        });
-      }
     }
     return this.getRun(runId, user);
   }
@@ -411,6 +351,9 @@ export class PayRunService {
       period_start: iso(run.pay_period.start_date),
       period_end: iso(run.pay_period.end_date),
       run_status: run.status,
+      // No holdback since 2026-11-13. An OLD run finalized with a hold keeps its frozen 70% / 30% columns:
+      // has_holdback says whether to show them, and split labels them with the split that run used.
+      has_holdback: lines.some((l) => !l.holdback_30.isZero()),
       split: await this.config.getHoldbackSplit(iso(run.pay_period.end_date)),
       // From the run's STATUS, not from whether lines exist: a run finalized before payroll lines existed
       // (packet 02) has none until `backfillPayrollLines` runs, and must not claim "not finalized".
@@ -446,7 +389,7 @@ export class PayRunService {
   }
 
   /**
-   * ONE REP's pay statement for a run — what was sold, what it paid, their 70%, and the 30% held.
+   * ONE REP's pay statement for a run — what was sold and what it paid (an old run also shows its 70/30).
    *
    * Built from the SAME frozen `payroll_report_lines` as the payroll report, filtered to one rep, so the
    * two reconcile by construction rather than by agreement between two calculations (#2). Nothing is
@@ -488,7 +431,8 @@ export class PayRunService {
       period_end: iso(run.pay_period.end_date),
       rep_code: rep?.rep_code ?? null,
       rep_name: rep?.full_name ?? null,
-      // Labels the statement's "Your x%" / "Held y%" columns with the split actually in force.
+      // Only an OLD run finalized with a hold shows the "Your x%" / "Held y%" columns (2026-11-13).
+      has_holdback: lines.some((l) => !l.holdback_30.isZero()),
       split: await this.config.getHoldbackSplit(iso(run.pay_period.end_date)),
       // Lines are empty until the run finalizes — before that nothing is owed, and a zeroed statement would
       // read as "you earned nothing" rather than "not yet calculated". The flag itself comes from the run's
@@ -725,11 +669,14 @@ export class PayRunService {
     // Always 2 dp ("2019.50", never "2019.5"): Decimal#toString drops trailing zeros, and a payroll import
     // expects fixed cents. Values are stored at 2 dp, so toFixed(2) changes the TEXT only, never the amount.
     const cents = (v: { toFixed(dp: number): string }) => v.toFixed(2);
+    // No holdback (2026-11-13): the commission column is the full amount paid. A released-holdback column is
+    // included only for an OLD run that actually released one, so its net still adds up.
+    const hasRelease = lines.some((l) => !l.holdback_release_30.isZero());
     const rows = lines.map((l) => ({
       rep_code: l.rep.rep_code,
       rep_name: l.rep.full_name,
-      commission_70: cents(l.commission_70),
-      holdback_release_30: cents(l.holdback_release_30),
+      commission: cents(l.commission_70),
+      ...(hasRelease ? { holdback_release: cents(l.holdback_release_30) } : {}),
       expense_total: cents(l.expense_total),
       incentive_total: cents(l.incentive_total),
       bonus_amount: cents(l.bonus_amount),
@@ -769,11 +716,14 @@ export class PayRunService {
     if (!run) {
       throw new NotFoundException('Pay run not found');
     }
+    const lines = await this.getLines(runId, user);
     return {
       ...run,
-      // The split this run was (or will be) computed at — what the screens label "Paid now" / "Held".
+      // No holdback since 2026-11-13. True only for an OLD run whose frozen lines held or released some, so
+      // the screens show those columns where the figures need them and nowhere else.
+      has_holdback: lines.some((l) => nonZero(l.holdback_release_30) || nonZero(l.amount_held)),
       split: await this.config.getHoldbackSplit(iso(run.pay_period.end_date)),
-      lines: await this.getLines(runId, user),
+      lines,
     };
   }
 
@@ -787,128 +737,6 @@ export class PayRunService {
     // Each rep's photo (HR headshot) on the line's rep. 2026-11-12
     const photos = this.avatars ? await this.avatars.resolveReps(lines.map((l) => l.rep_id)) : new Map<string, string | null>();
     return lines.map((l) => ({ ...l, rep: { ...l.rep, photo_url: photos.get(l.rep_id) ?? null } }));
-  }
-
-  async listHoldbackLedger(query: ListHoldbackQuery, user: AuthUser) {
-    const repIds = await this.scopeRepIds(user);
-    const and: Prisma.HoldbackLedgerWhereInput[] = [];
-    if (repIds !== null) and.push({ rep_id: { in: repIds } });
-    if (query.rep_id) and.push({ rep_id: query.rep_id });
-    if (query.status) and.push({ release_status: query.status });
-    return this.prisma.holdbackLedger.findMany({
-      where: and.length ? { AND: and } : {},
-      orderBy: { origin_pay_period_id: 'asc' },
-    });
-  }
-
-  /**
-   * The run's period-level 30% (deferred pay) view — EVERY figure is computed here so the UI does no
-   * arithmetic. DRAFT: the current hold + its release period are a PROJECTION (no ledger rows exist until
-   * finalize) taken from the draft lines' `amount_held` and the same pure release rule finalize will apply.
-   * FINALIZED: read from the frozen `holdback_ledger`. Rep-scoped via the run's (already scoped) lines.
-   * — SRS §9 / §17.1
-   */
-  async getHoldbackSummary(runId: string, user: AuthUser) {
-    const run = await this.prisma.payRun.findUnique({
-      where: { id: runId },
-      include: { pay_period: true },
-    });
-    if (!run) {
-      throw new NotFoundException('Pay run not found');
-    }
-    const period = run.pay_period;
-    const isProjection = run.status === 'draft';
-    const lines = await this.getLines(runId, user); // already rep-scoped
-    const repIds = lines.map((l) => l.rep_id);
-
-    // Every ledger row for this run's reps — the single source for the figures below.
-    const ledger = repIds.length
-      ? await this.prisma.holdbackLedger.findMany({ where: { rep_id: { in: repIds } } })
-      : [];
-    const allPeriods = await this.prisma.payPeriod.findMany();
-    const periodRef = (id: string | null) => {
-      const p = id ? allPeriods.find((x) => x.id === id) : undefined;
-      return p ? { id: p.id, period_number: p.period_number, payday: p.payday } : null;
-    };
-    const sum = (values: Decimal[]): Decimal => values.reduce((s, v) => s.plus(v), new Decimal(0));
-    const opt = (value: { toString(): string } | null): Decimal => (value ? dec(value) : new Decimal(0));
-
-    // (a) Held THIS period. Draft → the lines' projected 30%; finalized → the frozen ledger rows.
-    const originRows = ledger.filter((r) => r.origin_pay_period_id === period.id);
-    const held = isProjection
-      ? sum(lines.map((l) => opt(l.amount_held)))
-      : sum(originRows.map((r) => dec(r.amount_held)));
-
-    // (b) WHEN it releases. Finalized → the frozen FK; draft → the pure rule (unchanged by this read).
-    let releasePeriodId =
-      originRows.find((r) => r.scheduled_release_period_id)?.scheduled_release_period_id ?? null;
-    if (isProjection) {
-      const setting = await this.prisma.holdbackReleaseSetting.findFirst({
-        orderBy: { effective_from: 'desc' },
-      });
-      const rule = setting?.release_rule ?? 'next_cycle_after_30_days';
-      releasePeriodId = resolveScheduledReleasePeriod(period, allPeriods, rule)?.id ?? null;
-    }
-
-    // (c) Prior holds maturing INTO this period (draft → still-scheduled amounts; finalized → released).
-    const maturing = ledger.filter((r) => r.scheduled_release_period_id === period.id);
-    const releasing = isProjection
-      ? sum(maturing.filter((r) => r.release_status === 'scheduled').map((r) => dec(r.amount_held)))
-      : sum(maturing.map((r) => opt(r.amount_released)));
-    const setoff = sum(maturing.map((r) => opt(r.clawback_applied)));
-    const outstanding = sum(
-      ledger.filter((r) => r.release_status !== 'released').map((r) => dec(r.amount_held)),
-    );
-
-    // (d) Aggregate the ledger by ORIGIN period — "what is held, and when does it release".
-    type Group = {
-      held: Decimal;
-      released: Decimal;
-      setoff: Decimal;
-      scheduledId: string | null;
-      statuses: Set<HoldbackReleaseStatus>;
-    };
-    const groups = new Map<string, Group>();
-    for (const row of ledger) {
-      const g: Group = groups.get(row.origin_pay_period_id) ?? {
-        held: new Decimal(0),
-        released: new Decimal(0),
-        setoff: new Decimal(0),
-        scheduledId: null,
-        statuses: new Set<HoldbackReleaseStatus>(),
-      };
-      g.held = g.held.plus(dec(row.amount_held));
-      g.released = g.released.plus(opt(row.amount_released));
-      g.setoff = g.setoff.plus(opt(row.clawback_applied));
-      g.scheduledId = g.scheduledId ?? row.scheduled_release_period_id;
-      g.statuses.add(row.release_status);
-      groups.set(row.origin_pay_period_id, g);
-    }
-    const by_origin = [...groups.entries()]
-      .map(([originId, g]) => ({
-        origin_period: periodRef(originId),
-        amount_held: money(g.held),
-        scheduled_release_period: periodRef(g.scheduledId),
-        // Mixed statuses across reps collapse to the least-advanced one (still owed wins).
-        release_status: g.statuses.has('held')
-          ? ('held' as const)
-          : g.statuses.has('scheduled')
-            ? ('scheduled' as const)
-            : ('released' as const),
-        amount_released: g.released.isZero() ? null : money(g.released),
-        clawback_applied: g.setoff.isZero() ? null : money(g.setoff),
-      }))
-      .sort((a, b) => (a.origin_period?.period_number ?? 0) - (b.origin_period?.period_number ?? 0));
-
-    return {
-      is_projection: isProjection,
-      held_this_period: money(held),
-      held_release_period: periodRef(releasePeriodId),
-      releasing_this_period: money(releasing),
-      clawback_setoff_this_period: money(setoff),
-      outstanding_total: money(outstanding),
-      by_origin,
-    };
   }
 
   // ── internals ─────────────────────────────────────────────────────────────────────────────────
@@ -1061,18 +889,6 @@ export class PayRunService {
         },
       });
     }
-  }
-
-  private async previewReleased(
-    tx: Prisma.TransactionClient,
-    repId: string,
-    periodId: string,
-  ): Promise<Decimal> {
-    const due = await tx.holdbackLedger.findMany({
-      where: { rep_id: repId, scheduled_release_period_id: periodId, release_status: 'scheduled' },
-      select: { amount_held: true },
-    });
-    return due.reduce((sum, h) => sum.plus(dec(h.amount_held)), new Decimal(0));
   }
 
   private lineData(

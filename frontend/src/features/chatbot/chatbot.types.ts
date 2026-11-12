@@ -31,7 +31,6 @@ export type ChatbotQueryBody = components['schemas']['ChatbotQueryDto'];
 export const SUGGESTIONS: string[] = [
   'How many sales do I have this period?',
   'What is my commission this period?',
-  'How much holdback do I have pending release?',
   'Give me my roster summary.',
   'What is the company revenue and net margin?',
 ];
@@ -40,7 +39,6 @@ export const SUGGESTIONS: string[] = [
 export const INTENT_LABELS: Record<ChatTool, string> = {
   my_sales_count: 'My sales',
   my_commission: 'My commission',
-  my_holdback: 'My holdback',
   roster_summary: 'Roster',
   business_summary: 'Business',
   unknown: 'Not understood',

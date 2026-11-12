@@ -9,18 +9,15 @@ import { Banner, Button, Modal, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useFinalizeRun } from '../api/usePayRunMutations';
 import styles from './payrun.module.css';
-import type { SplitLabels } from '../split';
 
 export function FinalizeConfirmModal({
   runId,
   open,
   onClose,
-  labels,
 }: {
   runId: string;
   open: boolean;
   onClose: () => void;
-  labels: SplitLabels;
 }) {
   const { toast } = useToast();
   const onError = useApiErrorToast();
@@ -56,11 +53,7 @@ export function FinalizeConfirmModal({
       <ul className={styles.finalizeList}>
         <li>freeze each rep&rsquo;s commission snapshots (tier, rate and amount, which can’t change afterwards);</li>
         <li>mark this period&rsquo;s sales <strong>Paid</strong>;</li>
-        <li>
-          {labels.holdsNothing
-            ? 'pay 100% now (nothing is held back) and release any prior holds due this period;'
-            : `record the ${labels.heldPct}% holdback and release any prior holds due this period;`}
-        </li>
+        <li>pay each rep&rsquo;s commission in full (nothing is held back);</li>
         <li>apply approved expenses and pending clawbacks;</li>
         <li>compose each rep&rsquo;s net payout.</li>
       </ul>

@@ -221,9 +221,9 @@ export function StaticGallery() {
       <div>
         <p className={styles.label}>Cards, banners &amp; loading</p>
         <div className={styles.grid}>
-          <Card title="Pending holdback">
-            <div className={styles.kpi}>$993.00</div>
-            <p className={styles.kpiLabel}>Releases next cycle</p>
+          <Card title="Commission this period">
+            <div className={styles.kpi}>$3,310.00</div>
+            <p className={styles.kpiLabel}>Paid in full</p>
           </Card>
           <Card title="Add a rep" actions={<IconButton label="Add" icon={<Plus size={16} />} variant="outline" size="sm" />}>
             <Skeleton height="14px" width="80%" />
@@ -236,7 +236,7 @@ export function StaticGallery() {
             Snapshots are locked. Corrections are made through a new clawback.
           </Banner>
           <Banner tone="warning" title="Proposed rule">
-            Holdback release timing is proposed. Confirm with Redwave.
+            Greenfield pricing at period close is proposed. Confirm with Redwave.
           </Banner>
           <TableSkeleton rows={3} columns={4} />
         </div>

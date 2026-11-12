@@ -17,17 +17,6 @@ class NamedCountResponse {
   count!: number;
 }
 
-class HoldbackBreakdownResponse {
-  @ApiProperty({ type: String, example: '3000.00', description: 'Decimal — currently held (status=held).' })
-  held!: string;
-
-  @ApiProperty({ type: String, example: '500.00', description: 'Decimal — scheduled to release (status=scheduled).' })
-  scheduled!: string;
-
-  @ApiProperty({ type: String, example: '993.00', description: 'Decimal — released in this period (30% advance release).' })
-  released_this_period!: string;
-}
-
 class ExpenseBreakdownResponse {
   @ApiProperty({ type: String, example: '420.00', description: 'Decimal — total approved expenses (period).' })
   total!: string;
@@ -93,8 +82,6 @@ export class BusinessDashboardResponse {
   @ApiProperty({ type: String, example: '8000.00' }) rep_payout!: string;
   @ApiProperty({ type: String, example: '4000.00' }) net_margin!: string;
   @ApiProperty({ type: String, example: '33.3', description: 'Decimal % = margin / revenue.' }) net_margin_pct!: string;
-
-  @ApiProperty({ type: () => HoldbackBreakdownResponse }) holdback!: HoldbackBreakdownResponse;
 
   @ApiProperty({ type: String, example: '145.00' }) clawback_total!: string;
   @ApiProperty({ type: String, example: '0.0181', description: 'Decimal ratio = clawback $ / paid commission $.' })
