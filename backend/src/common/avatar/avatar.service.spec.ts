@@ -65,7 +65,7 @@ describe('AvatarService.resolveReps — a rep photo wherever the rep is shown', 
     const storage = { signedUrls: jest.fn(async (paths: string[]) => new Map(paths.map((p) => [p, `https://signed/${p}`]))) };
     const service = new AvatarService(prisma as never, storage as never);
     const urls = await service.resolveReps(['r1', 'r2', 'r3', 'r1']);
-    expect(prisma.repDocument.findMany.mock.calls[0][0].where).toEqual({ rep_id: { in: ['r1', 'r2', 'r3'] }, doc_type: 'headshot' });
+    expect(prisma.repDocument.findMany.mock.calls[0][0].where).toEqual({ rep_id: { in: ['r1', 'r2', 'r3'] }, doc_type: 'headshot', deleted_at: null });
     expect(storage.signedUrls).toHaveBeenCalledTimes(1);
     expect(storage.signedUrls.mock.calls[0][0]).toEqual(['rep-docs/2026/new.jpg']);
     expect(urls.get('r1')).toBe('https://signed/rep-docs/2026/new.jpg');

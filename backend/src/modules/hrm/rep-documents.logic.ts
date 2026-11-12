@@ -56,3 +56,25 @@ export function repDocumentProblem(
   }
   return null;
 }
+
+// ── Recently deleted (2026-11-12) ───────────────────────────────────────────────────────────────
+// A deleted document stays restorable for this many days; then the daily purge removes the stored object and
+// the row for good, to free storage. One constant so the UI's "removed for good on" and the purge agree.
+
+export const DELETED_RETENTION_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** When a document deleted at `deletedAt` is removed for good. */
+export function purgeDueDate(deletedAt: Date): Date {
+  return new Date(deletedAt.getTime() + DELETED_RETENTION_DAYS * DAY_MS);
+}
+
+/** Documents deleted before this instant are due for the purge (and can no longer be restored). */
+export function purgeCutoff(now: Date): Date {
+  return new Date(now.getTime() - DELETED_RETENTION_DAYS * DAY_MS);
+}
+
+/** Still inside the 30-day window, so it can be restored. */
+export function isRestorable(deletedAt: Date, now: Date): boolean {
+  return purgeDueDate(deletedAt).getTime() > now.getTime();
+}

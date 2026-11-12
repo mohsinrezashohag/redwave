@@ -17,7 +17,12 @@ describe('HRM RBAC metadata', () => {
     // Reading an ID's dates and saving them are HR-only, like opening the file. 2026-11-12
     expect(meta(RepsController, 'readDocumentUpload')).toEqual({ moduleKey: 'hrm', action: 'edit' });
     expect(meta(RepsController, 'readStoredDocument')).toEqual({ moduleKey: 'hrm', action: 'edit' });
-    expect(meta(RepsController, 'updateDocumentDates')).toEqual({ moduleKey: 'hrm', action: 'edit' });
+    expect(meta(RepsController, 'updateDocument')).toEqual({ moduleKey: 'hrm', action: 'edit' });
+    expect(meta(RepsController, 'replaceDocument')).toEqual({ moduleKey: 'hrm', action: 'edit' });
+    // Recently deleted (2026-11-12): delete / list the bin / restore need hrm:delete (Admin + Super Admin).
+    expect(meta(RepsController, 'deleteDocument')).toEqual({ moduleKey: 'hrm', action: 'delete' });
+    expect(meta(RepsController, 'listDeletedDocuments')).toEqual({ moduleKey: 'hrm', action: 'delete' });
+    expect(meta(RepsController, 'restoreDocument')).toEqual({ moduleKey: 'hrm', action: 'delete' });
     expect(meta(RepsController, 'listEquipment')).toEqual({ moduleKey: 'hrm', action: 'view' });
     expect(meta(RepsController, 'assignEquipment')).toEqual({ moduleKey: 'hrm', action: 'edit' });
     expect(meta(EquipmentController, 'update')).toEqual({ moduleKey: 'hrm', action: 'edit' });

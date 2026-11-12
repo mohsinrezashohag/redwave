@@ -2,18 +2,28 @@
  * RepDocumentsService — rep documents (contracts, IDs). The file is uploaded to object storage (the row
  * keeps the object PATH); bytes are served only via an hrm:edit-gated /file-url (short-TTL signed URL).
  * Identity docs are sensitive: the file ref is redacted from view-only callers. — SRS HRM-005/008, arch §11
+ *
+ * 2026-11-12: edit (type + dates), replace the file, and DELETE as a 30-day soft delete ("Recently deleted").
+ * Every live read filters `deleted_at: null` (LIVE); a deleted document can't be opened, read or edited until
+ * it is restored. RepDocumentPurgeService removes the object + row once the 30 days are up.
  */
-import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { StorageService, UploadedFile } from '../../common/storage/storage.service';
 import { todayInWinnipeg } from '../../common/timezone';
 import { canSeeSensitive } from './reps.service';
-import { CreateRepDocumentDto, UpdateRepDocumentDatesDto } from './dto/rep-document.dto';
+import { CreateRepDocumentDto, ReplaceRepDocumentDto, UpdateRepDocumentDto } from './dto/rep-document.dto';
 import { DocumentReaderService } from './document-reader.service';
-import { EXPIRING_DOC_TYPES, repDocumentProblem } from './rep-documents.logic';
+import { EXPIRING_DOC_TYPES, isRestorable, purgeDueDate, repDocumentProblem } from './rep-documents.logic';
 import { idDocumentChecks, type IdCheck } from './id-document.logic';
+
+/** Live documents only. A document in Recently deleted is invisible to every normal read. */
+const LIVE = { deleted_at: null } as const;
+
+const toDay = (v: string | null | undefined) => (v ? new Date(`${v}T00:00:00.000Z`) : null);
+const isoDay = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
 export interface DocumentReadResult {
   issued_on: string | null;
@@ -43,7 +53,7 @@ export class RepDocumentsService {
   async list(repId: string, user: AuthUser) {
     await this.assertRepExists(repId);
     const docs = await this.prisma.repDocument.findMany({
-      where: { rep_id: repId },
+      where: { rep_id: repId, ...LIVE },
       orderBy: { uploaded_at: 'desc' },
     });
     const canSee = canSeeSensitive(user);
@@ -59,8 +69,8 @@ export class RepDocumentsService {
         rep_id: repId,
         doc_type: dto.doc_type,
         file_url: stored.path,
-        expires_on: dto.expires_on ? new Date(`${dto.expires_on}T00:00:00.000Z`) : null,
-        issued_on: dto.issued_on ? new Date(`${dto.issued_on}T00:00:00.000Z`) : null,
+        expires_on: toDay(dto.expires_on),
+        issued_on: toDay(dto.issued_on),
       },
     });
     // Do not log file_url (identity docs are sensitive).
@@ -77,7 +87,7 @@ export class RepDocumentsService {
   /** A short-TTL signed URL for a rep document (the controller gates this on hrm:edit). */
   async fileUrl(repId: string, docId: string): Promise<{ url: string; filename: string }> {
     const doc = await this.prisma.repDocument.findFirst({
-      where: { id: docId, rep_id: repId },
+      where: { id: docId, rep_id: repId, ...LIVE },
       select: { doc_type: true, file_url: true },
     });
     if (!doc) {
@@ -92,7 +102,7 @@ export class RepDocumentsService {
 
   // ── Reading dates off an ID (2026-11-12) ─────────────────────────────────────────────────────
   // The reader's output is a SUGGESTION returned to HR; nothing read is stored or logged. Only the dates HR
-  // confirms are saved (create / updateDates). The audit row says a read happened and which fields were
+  // confirms are saved (create / update). The audit row says a read happened and which fields were
   // found — never the values, the name or the image.
 
   /** Read a file that is about to be uploaded (nothing is stored). */
@@ -104,7 +114,7 @@ export class RepDocumentsService {
   /** Read a document already on file (e.g. one uploaded before dates were captured). */
   async readStored(repId: string, docId: string, actorId: string): Promise<DocumentReadResult> {
     const repName = await this.repName(repId);
-    const doc = await this.prisma.repDocument.findFirst({ where: { id: docId, rep_id: repId }, select: { doc_type: true, file_url: true } });
+    const doc = await this.prisma.repDocument.findFirst({ where: { id: docId, rep_id: repId, ...LIVE }, select: { doc_type: true, file_url: true } });
     if (!doc) throw new NotFoundException('Document not found');
     if (!EXPIRING_DOC_TYPES.has(doc.doc_type)) {
       throw new UnprocessableEntityException('Only permits, PR cards, driver’s licences and passports can be read for dates');
@@ -114,31 +124,125 @@ export class RepDocumentsService {
     return this.readAndCheck(repId, docId, doc.doc_type, bytes, mimeFromPath(doc.file_url), repName, actorId);
   }
 
-  /** HR saves confirmed dates on an existing document. `null` clears a date; omitted = unchanged. */
-  async updateDates(repId: string, docId: string, dto: UpdateRepDocumentDatesDto, actorId: string) {
-    const doc = await this.prisma.repDocument.findFirst({ where: { id: docId, rep_id: repId } });
-    if (!doc) throw new NotFoundException('Document not found');
-    const iso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+  /**
+   * Edit a document on file: its type and, for IDs, the HR-confirmed dates. `null` clears a date; omitted =
+   * unchanged; a type without dates clears them. A headshot must stay a JPG/PNG (checked against the stored file).
+   */
+  async update(repId: string, docId: string, dto: UpdateRepDocumentDto, actorId: string) {
+    const doc = await this.liveDoc(repId, docId);
+    const docType = dto.doc_type ?? doc.doc_type;
+    const keepsDates = EXPIRING_DOC_TYPES.has(docType);
     const next = {
-      issued_on: dto.issued_on === undefined ? iso(doc.issued_on) : dto.issued_on,
-      expires_on: dto.expires_on === undefined ? iso(doc.expires_on) : dto.expires_on,
+      doc_type: docType,
+      // Sent → used (and checked); omitted → kept, or cleared when the new type carries no dates.
+      issued_on: dto.issued_on !== undefined ? dto.issued_on : keepsDates ? isoDay(doc.issued_on) : null,
+      expires_on: dto.expires_on !== undefined ? dto.expires_on : keepsDates ? isoDay(doc.expires_on) : null,
     };
-    const problem = repDocumentProblem(doc.doc_type, 'application/pdf', next.expires_on, next.issued_on);
+    const problem = repDocumentProblem(next.doc_type, mimeFromPath(doc.file_url), next.expires_on, next.issued_on);
     if (problem) throw new UnprocessableEntityException(problem);
-    const toDate = (v: string | null) => (v ? new Date(`${v}T00:00:00.000Z`) : null);
     const updated = await this.prisma.repDocument.update({
       where: { id: docId },
-      data: { issued_on: toDate(next.issued_on), expires_on: toDate(next.expires_on) },
+      data: { doc_type: next.doc_type, issued_on: toDay(next.issued_on), expires_on: toDay(next.expires_on) },
     });
     await this.audit.log({
       actorId,
       entityType: 'rep_documents',
       entityId: docId,
       action: 'update',
-      before: { issued_on: iso(doc.issued_on), expires_on: iso(doc.expires_on) },
+      before: { doc_type: doc.doc_type, issued_on: isoDay(doc.issued_on), expires_on: isoDay(doc.expires_on) },
       after: next,
     });
     return updated;
+  }
+
+  /**
+   * Replace the file: the new upload becomes the live document (same type), and the old one moves to Recently
+   * deleted in the same transaction, so a wrong replacement can be undone for 30 days. Omitted dates carry over.
+   */
+  async replaceFile(repId: string, docId: string, dto: ReplaceRepDocumentDto, file: UploadedFile, actorId: string) {
+    const old = await this.liveDoc(repId, docId);
+    const issued = dto.issued_on ?? isoDay(old.issued_on);
+    const expires = dto.expires_on ?? isoDay(old.expires_on);
+    const problem = repDocumentProblem(old.doc_type, file.mimetype, expires, issued);
+    if (problem) throw new UnprocessableEntityException(problem);
+    const stored = await this.storage.upload('rep-docs', file);
+    const now = new Date();
+    const [created] = await this.prisma.$transaction([
+      this.prisma.repDocument.create({
+        data: { rep_id: repId, doc_type: old.doc_type, file_url: stored.path, issued_on: toDay(issued), expires_on: toDay(expires) },
+      }),
+      this.prisma.repDocument.update({ where: { id: old.id }, data: { deleted_at: now, deleted_by: actorId } }),
+    ]);
+    await this.audit.log({
+      actorId,
+      entityType: 'rep_documents',
+      entityId: created.id,
+      action: 'replace',
+      after: { rep_id: repId, doc_type: old.doc_type, replaced: old.id, stored: stored.stored },
+    });
+    return created;
+  }
+
+  /** Move a document to Recently deleted. It stays restorable for 30 days, then the purge removes it for good. */
+  async remove(repId: string, docId: string, actorId: string): Promise<{ success: true; purge_on: string }> {
+    const doc = await this.liveDoc(repId, docId);
+    const now = new Date();
+    await this.prisma.repDocument.update({ where: { id: doc.id }, data: { deleted_at: now, deleted_by: actorId } });
+    // The type only, never the path (identity docs are sensitive).
+    await this.audit.log({
+      actorId,
+      entityType: 'rep_documents',
+      entityId: doc.id,
+      action: 'delete',
+      after: { rep_id: repId, doc_type: doc.doc_type },
+    });
+    return { success: true, purge_on: purgeDueDate(now).toISOString() };
+  }
+
+  /** Recently deleted: what can still be restored, newest first, with who deleted it and when it goes for good. */
+  async listDeleted(repId: string) {
+    await this.assertRepExists(repId);
+    const docs = await this.prisma.repDocument.findMany({
+      where: { rep_id: repId, deleted_at: { not: null } },
+      orderBy: { deleted_at: 'desc' },
+      include: { deleter: { select: { full_name: true } } },
+    });
+    // A deleted file can't be opened, so its storage path is never returned.
+    return docs.map(({ deleter, ...doc }) => ({
+      ...doc,
+      file_url: null,
+      deleted_by_name: deleter?.full_name ?? null,
+      purge_on: purgeDueDate(doc.deleted_at as Date).toISOString(),
+    }));
+  }
+
+  /** Bring a document back from Recently deleted, while the 30 days last. */
+  async restore(repId: string, docId: string, actorId: string, now: Date = new Date()) {
+    const doc = await this.prisma.repDocument.findFirst({
+      where: { id: docId, rep_id: repId, deleted_at: { not: null } },
+    });
+    if (!doc || !doc.deleted_at) throw new NotFoundException('Document not found in Recently deleted');
+    if (!isRestorable(doc.deleted_at, now)) {
+      throw new ConflictException('This document was deleted more than 30 days ago and can no longer be restored');
+    }
+    const restored = await this.prisma.repDocument.update({
+      where: { id: doc.id },
+      data: { deleted_at: null, deleted_by: null },
+    });
+    await this.audit.log({
+      actorId,
+      entityType: 'rep_documents',
+      entityId: doc.id,
+      action: 'restore',
+      after: { rep_id: repId, doc_type: doc.doc_type },
+    });
+    return restored;
+  }
+
+  private async liveDoc(repId: string, docId: string) {
+    const doc = await this.prisma.repDocument.findFirst({ where: { id: docId, rep_id: repId, ...LIVE } });
+    if (!doc) throw new NotFoundException('Document not found');
+    return doc;
   }
 
   private async readAndCheck(

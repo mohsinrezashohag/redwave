@@ -2655,9 +2655,10 @@ paths:
       tags: *a106
   /v1/reps/{id}/documents/{docId}:
     patch:
-      description: Requires hrm:edit. HR-confirmed dates; null clears one, an omitted
-        field is unchanged. Audited.
-      operationId: RepsController_updateDocumentDates_v1
+      description: Requires hrm:edit. Type and, for IDs, HR-confirmed issue/expiry
+        dates; null clears a date, an omitted field is unchanged, a type without
+        dates clears them. A headshot must be a JPG/PNG. Audited.
+      operationId: RepsController_updateDocument_v1
       parameters:
         - name: id
           required: true
@@ -2674,7 +2675,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateRepDocumentDatesDto"
+              $ref: "#/components/schemas/UpdateRepDocumentDto"
       responses:
         "200":
           description: ""
@@ -2689,7 +2690,147 @@ paths:
         "409": *a103
         "422": *a104
       security: *a105
-      summary: Save an ID's issue/expiry dates
+      summary: Edit a rep document's type and dates
+      tags: *a106
+    delete:
+      description: Requires hrm:delete. Restorable for 30 days; after that the daily
+        purge removes the file from storage for good. Audited.
+      operationId: RepsController_deleteDocument_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: docId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemovedRepDocumentResponse"
+        "400": *a99
+        "401": *a100
+        "403": *a101
+        "404": *a102
+        "409": *a103
+        "422": *a104
+      security: *a105
+      summary: Move a rep document to Recently deleted
+      tags: *a106
+  /v1/reps/{id}/documents/{docId}/replace:
+    post:
+      description: Requires hrm:edit. The new file becomes the live document with the
+        same type; the old one moves to Recently deleted (restorable for 30
+        days). Omitted dates carry over.
+      operationId: RepsController_replaceDocument_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: docId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                issued_on:
+                  type: string
+                  example: 2022-06-30
+                expires_on:
+                  type: string
+                  example: 2032-06-30
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepDocumentResponse"
+        "400": *a99
+        "401": *a100
+        "403": *a101
+        "404": *a102
+        "409": *a103
+        "422": *a104
+      security: *a105
+      summary: Replace a rep document's file
+      tags: *a106
+  /v1/reps/{id}/documents/deleted:
+    get:
+      description: Requires hrm:delete. Documents that can still be restored, with who
+        deleted them and when they go for good.
+      operationId: RepsController_listDeletedDocuments_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeletedRepDocumentResponse"
+        "400": *a99
+        "401": *a100
+        "403": *a101
+        "404": *a102
+        "409": *a103
+        "422": *a104
+      security: *a105
+      summary: A rep's recently deleted documents
+      tags: *a106
+  /v1/reps/{id}/documents/{docId}/restore:
+    post:
+      description: Requires hrm:delete. 409 once the 30 days have passed. Audited.
+      operationId: RepsController_restoreDocument_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: docId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepDocumentResponse"
+        "400": *a99
+        "401": *a100
+        "403": *a101
+        "404": *a102
+        "409": *a103
+        "422": *a104
+      security: *a105
+      summary: Restore a recently deleted rep document
       tags: *a106
   /v1/reps/{id}/documents/{docId}/file-url:
     get:
@@ -11132,6 +11273,12 @@ components:
           format: date-time
           nullable: true
           description: When the ID was issued (2026-11-12).
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set while the document is in Recently deleted (always null on the
+            live list).
       required:
         - id
         - rep_id
@@ -11140,6 +11287,7 @@ components:
         - uploaded_at
         - expires_on
         - issued_on
+        - deleted_at
     IdCheckResponse:
       type: object
       properties:
@@ -11184,9 +11332,13 @@ components:
         - expires_on
         - name_on_document
         - checks
-    UpdateRepDocumentDatesDto:
+    UpdateRepDocumentDto:
       type: object
       properties:
+        doc_type:
+          type: string
+          example: passport
+          description: One of the document types; omitted = unchanged.
         issued_on:
           type: string
           nullable: true
@@ -11195,6 +11347,71 @@ components:
           type: string
           nullable: true
           example: 2032-06-30
+    RemovedRepDocumentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        purge_on:
+          type: string
+          format: date-time
+          description: Restorable until then; removed for good after.
+      required:
+        - success
+        - purge_on
+    DeletedRepDocumentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        rep_id:
+          type: string
+        doc_type:
+          type: string
+        file_url:
+          type: string
+          nullable: true
+          description: Storage reference — NULLED unless the caller has hrm:edit.
+        uploaded_at:
+          type: string
+          format: date-time
+        expires_on:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the document stops being valid (permits, PR card, driver's
+            licence, passport).
+        issued_on:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the ID was issued (2026-11-12).
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set while the document is in Recently deleted (always null on the
+            live list).
+        deleted_by_name:
+          type: string
+          nullable: true
+          description: Who deleted it.
+        purge_on:
+          type: string
+          format: date-time
+          description: When the daily purge removes it for good (30 days).
+      required:
+        - id
+        - rep_id
+        - doc_type
+        - file_url
+        - uploaded_at
+        - expires_on
+        - issued_on
+        - deleted_at
+        - deleted_by_name
+        - purge_on
     RepEquipmentResponse:
       type: object
       properties:

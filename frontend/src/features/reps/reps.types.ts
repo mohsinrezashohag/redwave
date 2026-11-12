@@ -24,6 +24,8 @@ export type CreateEquipmentBody = components['schemas']['CreateRepEquipmentDto']
 export type UpdateEquipmentBody = components['schemas']['UpdateRepEquipmentDto'];
 
 export type RepDocument = components['schemas']['RepDocumentResponse'];
+/** A document in Recently deleted: who deleted it and when the purge removes it (2026-11-12). */
+export type DeletedRepDocument = components['schemas']['DeletedRepDocumentResponse'];
 
 /** Server sort allowlist (mirrors reps.service findAll): rep_code/full_name/status/hire_date/created_at. */
 export type RepSortKey = 'rep_code' | 'full_name' | 'status' | 'hire_date' | 'created_at';

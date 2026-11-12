@@ -2766,3 +2766,30 @@ AI's say-so. Honest scope: no software proves a photo of an ID is genuine, so th
 
 **Verified LOCAL:** 1254 backend tests (+`id-document.logic`, +`rep-documents.read`, RBAC) + typecheck +
 lint + build + contract regen; FE build + lint + stylelint + vitest 157. Not seen in a browser.
+
+
+### Rep documents: edit, replace, delete with 30-day recovery, nightly purge (migration `20261112300000`)
+
+**Ask (2026-11-12).** "It's normal to be able to remove or edit these files. A deleted file should be
+recoverable for 30 days, then permanently removed from storage." Decided: rep documents only; Admin + Super
+Admin may delete/restore (seed grants Admin `hrm:delete`).
+
+- **Migration:** `rep_documents.deleted_at` + `deleted_by` (FK users) + index `(rep_id, deleted_at)`.
+- **Soft delete everywhere:** every live read filters `deleted_at: null`, including `AvatarService`, so a
+  deleted headshot falls back to the previous one (or initials). A deleted document can't be opened or edited.
+- **Endpoints:** `PATCH …/documents/:docId` widened to type + dates (`hrm:edit`; a type without dates clears
+  them, a PDF can't become the headshot); `POST …/:docId/replace` (`hrm:edit`, multipart: new live row + old
+  row to the bin in one tx, omitted dates carry over); `DELETE …/:docId`, `GET …/documents/deleted`,
+  `POST …/:docId/restore` (`hrm:delete`; restore 409 after 30 days). Audits carry the type, never the path.
+- **Purge:** `StorageService.remove(paths)` (first object delete in the app) + `RepDocumentPurgeService`:
+  batches of 100 past the cutoff, objects removed FIRST, rows deleted only after (re-checking `deleted_at`); a
+  refused batch keeps its rows and is skipped for the rest of the run. Daily `@Cron` 03:00 Winnipeg + one
+  run a minute after the server starts (main.ts only, never scripts). No audit row for the purge itself
+  (`audit_log.user_id` is required and the job has no actor); counts go to the server log.
+  `npm -w backend run documents:purge` (dry-run default, `PURGE_CONFIRM=yes`).
+- **Frontend:** row actions (kebab) Open · Edit · Replace file · Delete. Edit reuses the dates panel with a
+  Type picker (+ dirty guard); Replace re-reads an ID's dates for HR to confirm; Delete confirms first. A
+  collapsed **Recently deleted** section (hrm:delete) lists who deleted it, when, the purge date and Restore.
+  The toast has no Undo action (the toast API carries none); Restore sits right below instead.
+
+**Operator:** `prisma:deploy` (adds `20261112300000`); `prisma:seed` re-syncs Admin's grants (deploys run it).

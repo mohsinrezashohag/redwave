@@ -6,6 +6,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpStatus,
   Param,
@@ -40,10 +41,17 @@ import { RepDocumentsService } from './rep-documents.service';
 import { RepEquipmentService } from './rep-equipment.service';
 import { BulkAssignManagerDto, CreateRepDto, ListRepsQuery, UpdateRepDto } from './dto/rep.dto';
 import { SuccessResponse } from '../../common/dto/success.response';
-import { CreateRepDocumentDto, ReadRepDocumentDto, UpdateRepDocumentDatesDto } from './dto/rep-document.dto';
+import {
+  CreateRepDocumentDto,
+  ReadRepDocumentDto,
+  ReplaceRepDocumentDto,
+  UpdateRepDocumentDto,
+} from './dto/rep-document.dto';
 import { CreateRepEquipmentDto } from './dto/rep-equipment.dto';
 import {
+  DeletedRepDocumentResponse,
   DocumentReadResponse,
+  RemovedRepDocumentResponse,
   RepDocumentResponse,
   RepEquipmentResponse,
   RepPageResponse,
@@ -53,6 +61,16 @@ import {
 } from './dto/hrm.response';
 
 const MAX_REP_DOC_BYTES = 25 * 1024 * 1024; // 25 MB
+
+/** A PDF or image file is required (rep document upload / read / replace). */
+const repDocFilePipe = () =>
+  new ParseFilePipeBuilder()
+    .addFileTypeValidator({ fileType: /^(application\/pdf|image\/(png|jpe?g|webp))$/ })
+    .build({
+      fileIsRequired: true,
+      errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+      exceptionFactory: () => new UnprocessableEntityException('a PDF or image file is required'),
+    });
 
 @ApiTags('HRM / Reps')
 @ApiBearerAuth()
@@ -187,16 +205,7 @@ export class RepsController {
   createDocument(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateRepDocumentDto,
-    @UploadedFile(
-      new ParseFilePipeBuilder()
-        .addFileTypeValidator({ fileType: /^(application\/pdf|image\/(png|jpe?g|webp))$/ })
-        .build({
-          fileIsRequired: true,
-          errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
-          exceptionFactory: () => new UnprocessableEntityException('a PDF or image file is required'),
-        }),
-    )
-    file: UploadedFileShape,
+    @UploadedFile(repDocFilePipe()) file: UploadedFileShape,
     @CurrentUser('id') actorId: string,
   ) {
     // The kind-specific rules (2026-11-12): a known type, a headshot is JPG/PNG, expiry only where it applies.
@@ -228,16 +237,7 @@ export class RepsController {
   readDocumentUpload(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ReadRepDocumentDto,
-    @UploadedFile(
-      new ParseFilePipeBuilder()
-        .addFileTypeValidator({ fileType: /^(application\/pdf|image\/(png|jpe?g|webp))$/ })
-        .build({
-          fileIsRequired: true,
-          errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
-          exceptionFactory: () => new UnprocessableEntityException('a PDF or image file is required'),
-        }),
-    )
-    file: UploadedFileShape,
+    @UploadedFile(repDocFilePipe()) file: UploadedFileShape,
     @CurrentUser('id') actorId: string,
   ) {
     return this.documents.readUpload(id, dto.doc_type, file, actorId);
@@ -261,17 +261,93 @@ export class RepsController {
   @Patch(':id/documents/:docId')
   @RequirePermission('hrm', 'edit')
   @ApiOperation({
-    summary: "Save an ID's issue/expiry dates",
-    description: 'Requires hrm:edit. HR-confirmed dates; null clears one, an omitted field is unchanged. Audited.',
+    summary: "Edit a rep document's type and dates",
+    description:
+      'Requires hrm:edit. Type and, for IDs, HR-confirmed issue/expiry dates; null clears a date, an omitted field is ' +
+      'unchanged, a type without dates clears them. A headshot must be a JPG/PNG. Audited.',
   })
   @ApiOkResponse({ type: RepDocumentResponse })
-  updateDocumentDates(
+  updateDocument(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('docId', ParseUUIDPipe) docId: string,
-    @Body() dto: UpdateRepDocumentDatesDto,
+    @Body() dto: UpdateRepDocumentDto,
     @CurrentUser('id') actorId: string,
   ) {
-    return this.documents.updateDates(id, docId, dto, actorId);
+    return this.documents.update(id, docId, dto, actorId);
+  }
+
+  @Post(':id/documents/:docId/replace')
+  @RequirePermission('hrm', 'edit')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_REP_DOC_BYTES } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        issued_on: { type: 'string', example: '2022-06-30' },
+        expires_on: { type: 'string', example: '2032-06-30' },
+      },
+    },
+  })
+  @ApiOperation({
+    summary: "Replace a rep document's file",
+    description:
+      'Requires hrm:edit. The new file becomes the live document with the same type; the old one moves to Recently ' +
+      'deleted (restorable for 30 days). Omitted dates carry over.',
+  })
+  @ApiCreatedResponse({ type: RepDocumentResponse })
+  replaceDocument(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+    @Body() dto: ReplaceRepDocumentDto,
+    @UploadedFile(repDocFilePipe()) file: UploadedFileShape,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.documents.replaceFile(id, docId, dto, file, actorId);
+  }
+
+  @Delete(':id/documents/:docId')
+  @RequirePermission('hrm', 'delete')
+  @ApiOperation({
+    summary: 'Move a rep document to Recently deleted',
+    description:
+      'Requires hrm:delete. Restorable for 30 days; after that the daily purge removes the file from storage for ' +
+      'good. Audited.',
+  })
+  @ApiOkResponse({ type: RemovedRepDocumentResponse })
+  deleteDocument(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.documents.remove(id, docId, actorId);
+  }
+
+  @Get(':id/documents/deleted')
+  @RequirePermission('hrm', 'delete')
+  @ApiOperation({
+    summary: "A rep's recently deleted documents",
+    description: 'Requires hrm:delete. Documents that can still be restored, with who deleted them and when they go for good.',
+  })
+  @ApiOkResponse({ type: DeletedRepDocumentResponse, isArray: true })
+  listDeletedDocuments(@Param('id', ParseUUIDPipe) id: string) {
+    return this.documents.listDeleted(id);
+  }
+
+  @Post(':id/documents/:docId/restore')
+  @RequirePermission('hrm', 'delete')
+  @ApiOperation({
+    summary: 'Restore a recently deleted rep document',
+    description: 'Requires hrm:delete. 409 once the 30 days have passed. Audited.',
+  })
+  @ApiCreatedResponse({ type: RepDocumentResponse })
+  restoreDocument(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.documents.restore(id, docId, actorId);
   }
 
   @Get(':id/documents/:docId/file-url')

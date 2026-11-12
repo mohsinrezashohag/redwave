@@ -72,17 +72,18 @@ describe('RepDocumentsService — read + save dates', () => {
 
   it('saves HR-confirmed dates (null clears, omitted keeps) and refuses impossible ones', async () => {
     const { service, prisma, audit } = make();
-    prisma.repDocument.findFirst.mockResolvedValue({ id: 'd1', doc_type: 'passport', issued_on: null, expires_on: new Date('2030-01-01T00:00:00Z') });
-    await service.updateDates('r1', 'd1', { issued_on: '2020-01-01' }, 'hr1');
+    prisma.repDocument.findFirst.mockResolvedValue({ id: 'd1', doc_type: 'passport', file_url: 'rep-docs/2026/p.pdf', issued_on: null, expires_on: new Date('2030-01-01T00:00:00Z') });
+    await service.update('r1', 'd1', { issued_on: '2020-01-01' }, 'hr1');
     expect(prisma.repDocument.update.mock.calls[0][0].data).toEqual({
+      doc_type: 'passport',
       issued_on: new Date('2020-01-01T00:00:00.000Z'),
       expires_on: new Date('2030-01-01T00:00:00.000Z'),
     });
-    expect(audit.log.mock.calls[0][0].after).toEqual({ issued_on: '2020-01-01', expires_on: '2030-01-01' });
+    expect(audit.log.mock.calls[0][0].after).toEqual({ doc_type: 'passport', issued_on: '2020-01-01', expires_on: '2030-01-01' });
 
-    await expect(service.updateDates('r1', 'd1', { issued_on: '2031-01-01' }, 'hr1')).rejects.toThrow(/after the issue date/);
-    prisma.repDocument.findFirst.mockResolvedValue({ id: 'd2', doc_type: 'contract', issued_on: null, expires_on: null });
-    await expect(service.updateDates('r1', 'd2', { expires_on: '2030-01-01' }, 'hr1')).rejects.toThrow(/carry issue and expiry/);
+    await expect(service.update('r1', 'd1', { issued_on: '2031-01-01' }, 'hr1')).rejects.toThrow(/after the issue date/);
+    prisma.repDocument.findFirst.mockResolvedValue({ id: 'd2', doc_type: 'contract', file_url: 'rep-docs/2026/c.pdf', issued_on: null, expires_on: null });
+    await expect(service.update('r1', 'd2', { expires_on: '2030-01-01' }, 'hr1')).rejects.toThrow(/carry issue and expiry/);
   });
 
   it('guesses the stored file type from its name', () => {

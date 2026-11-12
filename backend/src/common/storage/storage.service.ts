@@ -110,6 +110,22 @@ export class StorageService {
     return Buffer.from(await data.arrayBuffer());
   }
 
+  /**
+   * Permanently remove stored objects (the rep-document purge, 2026-11-12). Local refs and blanks are skipped.
+   * Returns true when the objects are gone (or there was nothing real to remove), false when storage refused,
+   * so a caller keeps its rows and tries again next time. Unconfigured storage → nothing to remove → true.
+   */
+  async remove(paths: string[]): Promise<boolean> {
+    const real = [...new Set(paths.filter((p) => p && !p.startsWith('local://')))];
+    if (!this.client || real.length === 0) return true;
+    const { error } = await this.client.storage.from(this.bucket).remove(real);
+    if (error) {
+      this.logger.warn(`Storage remove failed for ${real.length} object(s): ${error.message}`);
+      return false;
+    }
+    return true;
+  }
+
   /** Mint a fresh short-TTL signed URL for a stored PATH; null when unconfigured / a local ref / on error. */
   async signedUrl(path: string, ttlSeconds: number = SIGNED_URL_TTL_SHORT): Promise<string | null> {
     if (!this.client || !path || path.startsWith('local://')) return null;
