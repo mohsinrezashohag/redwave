@@ -1,14 +1,13 @@
 /**
- * PhotoPicker — upload a profile photo (JPG/PNG) instead of pasting a link (client request 2026-11-12).
- * The image is downscaled in the browser (`prepareForUpload`), sent through the unified file pipeline
- * (POST /v1/files, purpose=avatar), and the returned storage PATH goes into the change request; the server
- * re-checks it's this user's own JPG/PNG. Shows a local preview until the request is approved. Tokens only.
+ * PhotoPicker — the user's own profile photo on My Account (2026-11-12). Click the photo (pen on hover) to
+ * pick a JPG/PNG, crop / zoom / rotate it, and it previews in the circle. The edited image is sent through
+ * the unified file pipeline (POST /v1/files, purpose=avatar) and its PATH goes into the change request; the
+ * server re-checks it's this user's own JPG/PNG. Nothing changes live until a reviewer approves. Tokens only.
  */
-import { useEffect, useRef, useState } from 'react';
-import { ImagePlus, Trash2 } from 'lucide-react';
-import { Avatar, Button, useToast } from '../../../components/ui';
+import { useEffect, useState } from 'react';
+import { Crop, Trash2 } from 'lucide-react';
+import { Button, EditableAvatar, PhotoEditorDialog, type PhotoEditResult } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
-import { prepareForUpload } from '../../../lib/files/compressImage';
 import { uploadStoredFile } from '../../../lib/files/uploadStoredFile';
 import styles from './account.module.css';
 
@@ -26,53 +25,45 @@ export function PhotoPicker({
   value: PhotoChange;
   onChange: (next: PhotoChange) => void;
 }) {
-  const input = useRef<HTMLInputElement | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [progress, setProgress] = useState<number | null>(null);
-  const { toast } = useToast();
+  const [picked, setPicked] = useState<(PhotoEditResult & { preview: string }) | null>(null);
+  const [reEditing, setReEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
   const onError = useApiErrorToast();
 
   useEffect(() => () => {
-    if (preview) URL.revokeObjectURL(preview);
-  }, [preview]);
+    if (picked) URL.revokeObjectURL(picked.preview);
+  }, [picked]);
 
-  const shown = value === '' ? null : (preview ?? currentUrl);
+  const shown = value === '' ? null : (picked?.preview ?? currentUrl);
 
-  const pick = async (file: File | undefined) => {
-    if (!file) return;
-    if (!/^image\/(png|jpe?g)$/.test(file.type)) {
-      toast({ title: 'A photo must be a JPG or PNG image', tone: 'warning' });
-      return;
-    }
-    setProgress(0);
+  /** Upload the edited image now (so the request can carry its path); the dialog waits for it. */
+  const apply = async (result: PhotoEditResult) => {
+    setBusy(true);
     try {
-      const ready = await prepareForUpload(file);
-      const stored = await uploadStoredFile({ file: ready, purpose: 'avatar', onProgress: setProgress });
-      setPreview(URL.createObjectURL(ready));
+      const stored = await uploadStoredFile({ file: result.file, purpose: 'avatar' });
+      setPicked({ ...result, preview: URL.createObjectURL(result.file) });
       onChange(stored.path);
     } catch (e) {
       onError(e);
+      throw e;
     } finally {
-      setProgress(null);
-      if (input.current) input.current.value = '';
+      setBusy(false);
     }
   };
 
   return (
     <div className={styles.photoRow}>
-      <Avatar name={name} src={shown} size="lg" />
+      <EditableAvatar name={name} src={shown} onChange={apply} />
       <div className={styles.photoActions}>
+        <span className={styles.help}>
+          {busy ? 'Uploading…' : value !== undefined ? 'Submit for review to apply it.' : 'Click the photo to change it (JPG or PNG).'}
+        </span>
         <div className={styles.photoButtons}>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            leftIcon={<ImagePlus size={14} />}
-            loading={progress !== null}
-            onClick={() => input.current?.click()}
-          >
-            {shown ? 'Change photo' : 'Upload photo'}
-          </Button>
+          {picked && value && (
+            <Button type="button" variant="tertiary" size="sm" leftIcon={<Crop size={14} />} onClick={() => setReEditing(true)}>
+              Edit photo
+            </Button>
+          )}
           {shown && (
             <Button
               type="button"
@@ -80,7 +71,7 @@ export function PhotoPicker({
               size="sm"
               leftIcon={<Trash2 size={14} />}
               onClick={() => {
-                setPreview(null);
+                setPicked(null);
                 onChange(currentUrl ? '' : undefined);
               }}
             >
@@ -88,17 +79,17 @@ export function PhotoPicker({
             </Button>
           )}
         </div>
-        <span className={styles.help}>
-          {progress !== null ? `Uploading… ${progress}%` : value !== undefined ? 'Submit for review to apply it.' : 'JPG or PNG.'}
-        </span>
       </div>
-      <input
-        ref={input}
-        type="file"
-        accept="image/jpeg,image/png"
-        hidden
-        aria-label="Profile photo"
-        onChange={(e) => void pick(e.target.files?.[0])}
+      <PhotoEditorDialog
+        source={reEditing && picked ? picked.source : null}
+        initialCrop={picked?.crop}
+        saving={busy}
+        onCancel={() => setReEditing(false)}
+        onSave={(r) => {
+          void apply(r)
+            .then(() => setReEditing(false))
+            .catch(() => undefined);
+        }}
       />
     </div>
   );

@@ -1,0 +1,43 @@
+.wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+}
+
+/* The pen: a scrim over the whole circle, shown on hover / keyboard focus. */
+.edit {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-full);
+  background-color: var(--scrim);
+  color: var(--on-brand);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.wrap:hover .edit,
+.edit:focus-visible {
+  opacity: 1;
+}
+
+.edit:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* No hover on touch screens: keep a small pen badge visible instead. */
+@media (hover: none) {
+  .edit {
+    inset: auto 0 0 auto;
+    width: 28px;
+    height: 28px;
+    opacity: 1;
+    background-color: var(--accent-600);
+  }
+}

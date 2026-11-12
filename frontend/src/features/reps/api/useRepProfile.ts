@@ -183,3 +183,25 @@ export function useHeadshotUrl(repId: string, docs: RepDocument[] | undefined, s
     staleTime: 45_000, // the signed URL lives ~60 s
   });
 }
+
+/** Upload a new HEADSHOT (the rep's photo) for any rep — hrm:edit. Used by the photo pen and the rep form. */
+export function useUploadHeadshot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ repId, file }: { repId: string; file: File }) => {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('doc_type', 'headshot');
+      return multipartPost<RepDocument>(`/v1/reps/${repId}/documents`, form);
+    },
+    onSuccess: (_d, { repId }) => qc.invalidateQueries({ queryKey: repKeys.documents(repId) }),
+  });
+}
+
+/** The signed URL of a rep's latest headshot (null while loading / none / not allowed). */
+export function useRepHeadshotUrl(repId: string | undefined, { self = false, canOpen }: { self?: boolean; canOpen: boolean }) {
+  const adminDocs = useRepDocuments(repId, canOpen && !self);
+  const ownDocs = useMyDocuments(self);
+  const docs = (self ? ownDocs : adminDocs).data;
+  return useHeadshotUrl(repId ?? '', docs, self, !!repId && (canOpen || self)).data ?? null;
+}
