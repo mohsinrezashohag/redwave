@@ -238,7 +238,7 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
       items.push({ label: 'Edit', icon: <Pencil size={14} />, onSelect: () => editDoc(d) });
       items.push({ label: 'Replace file', icon: <Upload size={14} />, onSelect: () => pickReplacement(d) });
     }
-    if (canRemove) items.push('separator', { label: 'Delete', icon: <Trash2 size={14} />, danger: true, onSelect: () => askDelete(d) });
+    if (canRemove) items.push({ label: 'Delete', icon: <Trash2 size={14} />, danger: true, onSelect: () => askDelete(d) });
     return items;
   };
 
@@ -317,7 +317,7 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
                   <TD className="mono">{displayDate(d.uploaded_at)}</TD>
                   <TD align="right">
                     {menu.length > 0 ? (
-                      <RowActions label={`${docTypeLabel(d.doc_type)} actions`} items={menu} />
+                      <RowActions label={`${docTypeLabel(d.doc_type)} actions`} items={menu} iconOnly />
                     ) : (
                       <span className={styles.muted}>Restricted</span>
                     )}

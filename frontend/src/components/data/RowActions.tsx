@@ -13,6 +13,11 @@
  * Below the desktop breakpoint everything reverts to the kebab: horizontal room is the whole premise, and
  * on tablet/mobile there isn't any. Callers pass the SAME `MenuEntry[]` they already build for
  * `DropdownMenu`, so adopting this is a one-line change and no action list is duplicated.
+ *
+ * `iconOnly` (2026-11-12): the inline actions render as labelled icon buttons (native tooltip + aria-label)
+ * instead of text buttons. Icons are narrow, so up to FOUR fit without driving the column; every action
+ * must then carry an `icon`. Used where a row has a short, familiar set (rep documents: open / edit / replace
+ * / delete).
  */
 import { DropdownMenu, IconButton, Button, type MenuAction, type MenuEntry } from '../ui';
 import { MoreHorizontal } from 'lucide-react';
@@ -33,21 +38,44 @@ export interface RowActionsProps {
    * starts driving the table's layout, which is the thing the kebab exists to prevent.
    */
   maxInline?: number;
+  /** Render the inline actions as icon buttons (each item needs an `icon`); allows up to 4 inline. */
+  iconOnly?: boolean;
 }
 
 const DEFAULT_MAX_INLINE = 2;
+const ICON_MAX_INLINE = 4;
 
-export function RowActions({ items, label, maxInline = DEFAULT_MAX_INLINE }: RowActionsProps) {
+export function RowActions({ items, label, maxInline, iconOnly = false }: RowActionsProps) {
   // Hooks run unconditionally (rules of hooks) — the result only decides which branch renders.
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
 
   const actions = items.filter((item): item is MenuAction => item !== 'separator');
   const hasRoom = !isMobile && !isTablet;
-  const inline = hasRoom && actions.length > 0 && actions.length <= maxInline;
+  const limit = maxInline ?? (iconOnly ? ICON_MAX_INLINE : DEFAULT_MAX_INLINE);
+  const iconsReady = !iconOnly || actions.every((a) => a.icon);
+  const inline = hasRoom && iconsReady && actions.length > 0 && actions.length <= limit;
 
   if (!inline) {
     return <DropdownMenu trigger={<IconButton label={label} icon={<MoreHorizontal size={16} />} size="sm" />} items={items} />;
+  }
+
+  if (iconOnly) {
+    return (
+      <div className={styles.inline}>
+        {actions.map((action) => (
+          <IconButton
+            key={action.label}
+            label={action.label}
+            icon={action.icon}
+            size="sm"
+            disabled={action.disabled}
+            onClick={action.onSelect}
+            className={action.danger ? styles.danger : undefined}
+          />
+        ))}
+      </div>
+    );
   }
 
   return (

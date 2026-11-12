@@ -539,7 +539,7 @@ audit trail) · `SegmentedControl` · `MultiSelect` · `MoneyInput` · `Signatur
   more than that, or any narrower viewport, falls back to the kebab. Deciding from the actual item count
   (not per table) means a menu that grows past the threshold collapses back on its own instead of quietly
   overflowing the column. A table with a genuinely empty actions column may pass `maxInline={3}`; never
-  more — past that the column starts driving the table's layout, which is what the kebab exists to prevent.
+  more — past that the column starts driving the table's layout, which is what the kebab exists to prevent. **`iconOnly`** renders the inline actions as labelled icon buttons (native tooltip) and allows up to **4** inline; every item then needs an `icon` (rep documents use it: Open · Edit · Replace file · Delete).
 - **Status badges are per-domain and not interchangeable.** `StatusPill` is **sale-only**; pay
   runs, periods, clawbacks, documents, expenses and rates each have their own badge component.
 - **z-index ladder:** floating menus (dropdown/select/popover = 1300) sit **above** modal/drawer
