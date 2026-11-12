@@ -36,15 +36,23 @@ const IMAGE_ONLY = /^image\/(png|jpe?g)$/;
  * (PDF / image): a HEADSHOT must be a JPG or PNG photo (it becomes the ID-card picture), and an expiry date
  * only makes sense on a document that actually expires.
  */
-export function repDocumentProblem(docType: string, mimetype: string, expiresOn: string | undefined): string | null {
+export function repDocumentProblem(
+  docType: string,
+  mimetype: string,
+  expiresOn: string | undefined | null,
+  issuedOn?: string | null,
+): string | null {
   if (!(REP_DOC_TYPES as readonly string[]).includes(docType)) {
     return `Unknown document type '${docType}'. Use one of: ${REP_DOC_TYPES.join(', ')}`;
   }
   if (docType === 'headshot' && !IMAGE_ONLY.test(mimetype)) {
     return 'A headshot must be a JPG or PNG photo';
   }
-  if (expiresOn && !EXPIRING_DOC_TYPES.has(docType)) {
-    return 'Only permits, PR cards, driver’s licences and passports carry an expiry date';
+  if ((expiresOn || issuedOn) && !EXPIRING_DOC_TYPES.has(docType)) {
+    return 'Only permits, PR cards, driver’s licences and passports carry issue and expiry dates';
+  }
+  if (issuedOn && expiresOn && issuedOn >= expiresOn) {
+    return 'The expiry date must be after the issue date';
   }
   return null;
 }

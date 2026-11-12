@@ -33,3 +33,15 @@ describe('expiryStatus', () => {
     expect(expiryStatus('2026-12-12T00:00:00.000Z', TODAY)).toEqual({ kind: 'soon', days: 30 });
   });
 });
+
+describe('reading notes and date rules', () => {
+  it('explains each failure in plain words', async () => {
+    const { readFailureNote, datesProblem } = await import('./repDocTypes');
+    expect(readFailureNote({ status: 503 })).toMatch(/isn’t set up/);
+    const e = Object.assign(new Error('This file is too large to read. Enter the dates by hand.'), { status: 422 });
+    expect(readFailureNote(e)).toMatch(/too large/);
+    expect(readFailureNote(new Error('boom'))).toMatch(/Couldn’t read/);
+    expect(datesProblem('2030-01-01', '2029-01-01')).toMatch(/after the issue date/);
+    expect(datesProblem('', '2029-01-01')).toBeNull();
+  });
+});

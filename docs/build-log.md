@@ -2737,3 +2737,32 @@ Not seen in a browser (the local app points at production).
 
 **Verified LOCAL:** FE build + lint + stylelint + vitest 156 (+`Modal` guard, +`pageTitle`). No backend
 change. Not seen in a browser.
+
+### ID documents: read issue/expiry dates automatically, HR confirms (migration `20261112200000`)
+
+**Ask (2026-11-12).** "Can the app read the issue and expiry dates from the uploaded document, and tell if
+it's genuine?" Decided: Google Gemini reads the five ID types; HR always confirms; nothing is saved on the
+AI's say-so. Honest scope: no software proves a photo of an ID is genuine, so the UI shows CHECKS, never
+"verified".
+
+- **Migration:** `rep_documents.issued_on DATE` (+ upload accepts `issued_on`; issue must precede expiry;
+  both only on the expiring types).
+- **`DocumentReaderService`** (`hrm/`): Gemini multimodal with a JSON `responseSchema` (name, issue,
+  expiry, MRZ lines), told to return null rather than guess; every date re-validated and dropped if
+  malformed. 20 s timeout, 15 MB cap. No key → 503; unreadable → 422 — both fall back to typing.
+- **`id-document.logic.ts`** (pure): name match (any order, accent-folded), date sanity (not issued in the
+  future, issued before expiry, not expired), ICAO 9303 MRZ check digits for passports (TD3) and cards (TD1)
+  plus MRZ-vs-printed expiry. Spec'd against the ICAO specimen documents, including a tampered digit.
+- **Endpoints (hrm:edit):** `POST /v1/reps/:id/documents/read` (before upload), `POST …/documents/:docId/read`
+  (a document already on file), `PATCH …/documents/:docId` (save confirmed dates, audited before/after).
+  The read audit row carries only which fields were found — never values, name or image.
+- **Frontend:** choosing an ID file opens "confirm the dates": the read dates pre-fill editable fields with
+  the checks beside them (✓ / ⚠), Save uploads with the confirmed dates. A **Dates** button on each ID row
+  edits the dates and reads the document straight away when it has none (fixes IDs uploaded before this).
+  A new **Issued** column. Reading off or failing → a plain note, and manual entry.
+
+**Operator:** `prisma:deploy` (adds `20261112200000`). Set `GEMINI_API_KEY` on Render with a **paid** key
+(optional `DOC_READER_MODEL`).
+
+**Verified LOCAL:** 1254 backend tests (+`id-document.logic`, +`rep-documents.read`, RBAC) + typecheck +
+lint + build + contract regen; FE build + lint + stylelint + vitest 157. Not seen in a browser.

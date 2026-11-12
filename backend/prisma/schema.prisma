@@ -588,6 +588,8 @@ model RepDocument {
   uploaded_at DateTime @default(now())
   /// Permits, PR card, driver's licence, passport: when it stops being valid (2026-11-12).
   expires_on  DateTime? @db.Date
+  /// When the ID was issued — read by the document reader or typed by HR, confirmed by HR (2026-11-12).
+  issued_on   DateTime? @db.Date
 
   @@map("rep_documents")
 }

@@ -40,9 +40,10 @@ import { RepDocumentsService } from './rep-documents.service';
 import { RepEquipmentService } from './rep-equipment.service';
 import { BulkAssignManagerDto, CreateRepDto, ListRepsQuery, UpdateRepDto } from './dto/rep.dto';
 import { SuccessResponse } from '../../common/dto/success.response';
-import { CreateRepDocumentDto } from './dto/rep-document.dto';
+import { CreateRepDocumentDto, ReadRepDocumentDto, UpdateRepDocumentDatesDto } from './dto/rep-document.dto';
 import { CreateRepEquipmentDto } from './dto/rep-equipment.dto';
 import {
+  DocumentReadResponse,
   RepDocumentResponse,
   RepEquipmentResponse,
   RepPageResponse,
@@ -199,9 +200,78 @@ export class RepsController {
     @CurrentUser('id') actorId: string,
   ) {
     // The kind-specific rules (2026-11-12): a known type, a headshot is JPG/PNG, expiry only where it applies.
-    const problem = repDocumentProblem(dto.doc_type, file.mimetype, dto.expires_on);
+    const problem = repDocumentProblem(dto.doc_type, file.mimetype, dto.expires_on, dto.issued_on);
     if (problem) throw new UnprocessableEntityException(problem);
     return this.documents.create(id, dto, file, actorId);
+  }
+
+  // ── Reading dates off an ID (2026-11-12) — suggestions for HR; nothing read is stored ─────────
+
+  @Post(':id/documents/read')
+  @RequirePermission('hrm', 'edit')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_REP_DOC_BYTES } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' }, doc_type: { type: 'string', enum: [...REP_DOC_TYPES] } },
+    },
+  })
+  @ApiOperation({
+    summary: 'Read the issue/expiry dates off an ID before uploading it',
+    description:
+      'Requires hrm:edit. Permits, PR card, driver’s licence, passport. Returns the dates and name as SUGGESTIONS plus ' +
+      'consistency checks (name, dates, MRZ check digits); nothing is stored. 503 when reading isn’t set up; 422 ' +
+      'when the document can’t be read — the dates are then typed by hand.',
+  })
+  @ApiOkResponse({ type: DocumentReadResponse })
+  readDocumentUpload(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReadRepDocumentDto,
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addFileTypeValidator({ fileType: /^(application\/pdf|image\/(png|jpe?g|webp))$/ })
+        .build({
+          fileIsRequired: true,
+          errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+          exceptionFactory: () => new UnprocessableEntityException('a PDF or image file is required'),
+        }),
+    )
+    file: UploadedFileShape,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.documents.readUpload(id, dto.doc_type, file, actorId);
+  }
+
+  @Post(':id/documents/:docId/read')
+  @RequirePermission('hrm', 'edit')
+  @ApiOperation({
+    summary: 'Read the issue/expiry dates off an ID already on file',
+    description: 'Requires hrm:edit. Same as reading before upload; nothing is stored until HR saves the dates.',
+  })
+  @ApiOkResponse({ type: DocumentReadResponse })
+  readStoredDocument(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.documents.readStored(id, docId, actorId);
+  }
+
+  @Patch(':id/documents/:docId')
+  @RequirePermission('hrm', 'edit')
+  @ApiOperation({
+    summary: "Save an ID's issue/expiry dates",
+    description: 'Requires hrm:edit. HR-confirmed dates; null clears one, an omitted field is unchanged. Audited.',
+  })
+  @ApiOkResponse({ type: RepDocumentResponse })
+  updateDocumentDates(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+    @Body() dto: UpdateRepDocumentDatesDto,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.documents.updateDates(id, docId, dto, actorId);
   }
 
   @Get(':id/documents/:docId/file-url')

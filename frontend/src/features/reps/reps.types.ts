@@ -43,3 +43,7 @@ export interface RepsListParams extends RepsFilters {
   limit: number;
   sort?: string;
 }
+
+/** What the document reader found — suggestions for HR to confirm (2026-11-12). */
+export type DocumentRead = components['schemas']['DocumentReadResponse'];
+export type IdCheck = components['schemas']['IdCheckResponse'];

@@ -43,3 +43,17 @@ export function expiryStatus(expiresOn: string | null | undefined, today: string
   if (days <= EXPIRY_WARNING_DAYS) return { kind: 'soon', days };
   return { kind: 'ok' };
 }
+
+/** What to tell HR when reading a document didn't work (the dates are then typed by hand). */
+export function readFailureNote(err: unknown): string {
+  const status = (err as { status?: number } | null)?.status;
+  if (status === 503) return 'Automatic reading isn’t set up yet. Enter the dates from the document.';
+  if (status === 422 && err instanceof Error && err.message) return err.message;
+  return 'Couldn’t read this document. Enter the dates from the document.';
+}
+
+/** The confirmed dates must make sense before they are saved (the server re-checks). */
+export function datesProblem(issuedOn: string, expiresOn: string): string | null {
+  if (issuedOn && expiresOn && issuedOn >= expiresOn) return 'The expiry date must be after the issue date.';
+  return null;
+}

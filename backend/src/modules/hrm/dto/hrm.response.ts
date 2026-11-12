@@ -171,6 +171,36 @@ export class RepDocumentResponse {
     description: "When the document stops being valid (permits, PR card, driver's licence, passport).",
   })
   expires_on!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'When the ID was issued (2026-11-12).' })
+  issued_on!: string | null;
+}
+
+/** One consistency check on a read ID (never a claim that the document is genuine). */
+export class IdCheckResponse {
+  @ApiProperty({ enum: ['name', 'dates', 'not_expired', 'mrz', 'mrz_expiry'] })
+  key!: 'name' | 'dates' | 'not_expired' | 'mrz' | 'mrz_expiry';
+
+  @ApiProperty()
+  ok!: boolean;
+
+  @ApiProperty({ example: 'The machine-readable strip checks out.' })
+  message!: string;
+}
+
+/** What the document reader found — SUGGESTIONS for HR to confirm; nothing here is stored. */
+export class DocumentReadResponse {
+  @ApiProperty({ type: String, nullable: true, example: '2022-06-30' })
+  issued_on!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '2032-06-30' })
+  expires_on!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'The name printed on the document.' })
+  name_on_document!: string | null;
+
+  @ApiProperty({ type: () => [IdCheckResponse] })
+  checks!: IdCheckResponse[];
 }
 
 export class RepEquipmentResponse {

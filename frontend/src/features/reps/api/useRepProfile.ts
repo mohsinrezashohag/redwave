@@ -11,6 +11,7 @@ import { repsListKeys } from './useReps';
 import type {
   CreateEquipmentBody,
   CreateRepBody,
+  DocumentRead,
   Rep,
   RepDocument,
   RepEquipment,
@@ -96,11 +97,12 @@ export function useRepDocuments(id: string | undefined, enabled = true) {
 export function useUploadRepDocument(repId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ file, docType, expiresOn }: { file: File; docType: string; expiresOn?: string }) => {
+    mutationFn: ({ file, docType, expiresOn, issuedOn }: { file: File; docType: string; expiresOn?: string; issuedOn?: string }) => {
       const form = new FormData();
       form.append('file', file);
       form.append('doc_type', docType);
       if (expiresOn) form.append('expires_on', expiresOn);
+      if (issuedOn) form.append('issued_on', issuedOn);
       return multipartPost<RepDocument>(`/v1/reps/${repId}/documents`, form);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: repKeys.documents(repId) }),
@@ -204,4 +206,36 @@ export function useRepHeadshotUrl(repId: string | undefined, { self = false, can
   const ownDocs = useMyDocuments(self);
   const docs = (self ? ownDocs : adminDocs).data;
   return useHeadshotUrl(repId ?? '', docs, self, !!repId && (canOpen || self)).data ?? null;
+}
+
+/** Read an ID's dates BEFORE uploading it (hrm:edit). Nothing is stored; HR confirms. 2026-11-12 */
+export function useReadDocumentUpload(repId: string) {
+  return useMutation({
+    mutationFn: ({ file, docType }: { file: File; docType: string }) => {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('doc_type', docType);
+      return multipartPost<DocumentRead>(`/v1/reps/${repId}/documents/read`, form);
+    },
+  });
+}
+
+/** Read an ID already on file (hrm:edit). */
+export function useReadStoredDocument(repId: string) {
+  return useMutation({
+    mutationFn: (docId: string) =>
+      unwrap<DocumentRead>(api.POST('/v1/reps/{id}/documents/{docId}/read', { params: { path: { id: repId, docId } } })),
+  });
+}
+
+/** Save HR-confirmed issue/expiry dates on an existing document (hrm:edit, audited). */
+export function useUpdateDocumentDates(repId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ docId, issued_on, expires_on }: { docId: string; issued_on: string | null; expires_on: string | null }) =>
+      unwrap<RepDocument>(
+        api.PATCH('/v1/reps/{id}/documents/{docId}', { params: { path: { id: repId, docId } }, body: { issued_on, expires_on } }),
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: repKeys.documents(repId) }),
+  });
 }

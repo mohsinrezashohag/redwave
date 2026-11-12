@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
 
 /**
  * A rep document is uploaded as multipart (the file) + metadata. The file is stored to object storage
@@ -24,4 +24,39 @@ export class CreateRepDocumentDto {
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'expires_on must be a YYYY-MM-DD date' })
   expires_on?: string;
+
+  @ApiPropertyOptional({
+    example: '2022-06-30',
+    description: "YYYY-MM-DD issue date. Permits, PR card, driver's licence and passport only (2026-11-12).",
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'issued_on must be a YYYY-MM-DD date' })
+  issued_on?: string;
+}
+
+/** What kind of document is being read, so the reader knows what to look for. */
+export class ReadRepDocumentDto {
+  @ApiProperty({ example: 'passport' })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  doc_type!: string;
+}
+
+/**
+ * HR confirms the dates on an existing document (e.g. after "Read dates"). `null` clears a date; an omitted
+ * field is left as it is. — 2026-11-12
+ */
+export class UpdateRepDocumentDatesDto {
+  @ApiPropertyOptional({ type: String, nullable: true, example: '2022-06-30' })
+  @IsOptional()
+  @ValidateIf((_o: unknown, v: unknown) => v !== null)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'issued_on must be a YYYY-MM-DD date' })
+  issued_on?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true, example: '2032-06-30' })
+  @IsOptional()
+  @ValidateIf((_o: unknown, v: unknown) => v !== null)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'expires_on must be a YYYY-MM-DD date' })
+  expires_on?: string | null;
 }

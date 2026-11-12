@@ -6,11 +6,12 @@ import { MyRepProfileController } from './my-rep-profile.controller';
 import { RepsService } from './reps.service';
 import { RepDocumentsService } from './rep-documents.service';
 import { RepEquipmentService } from './rep-equipment.service';
+import { DocumentReaderService } from './document-reader.service';
 
 @Module({
   imports: [StorageModule],
   controllers: [RepsController, EquipmentController, MyRepProfileController],
-  providers: [RepsService, RepDocumentsService, RepEquipmentService],
+  providers: [RepsService, RepDocumentsService, RepEquipmentService, DocumentReaderService],
   exports: [RepsService, RepDocumentsService, RepEquipmentService],
 })
 export class HrmModule {}
