@@ -9,7 +9,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Banner, Button, DatePicker, FormField, Input, Modal, Select, useToast } from '../../../components/ui';
+import { Banner, Button, DatePicker, FormField, Input, Modal, Select, useToast, ModalClose } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useSetPeriodConfig } from '../api/usePeriodConfig';
 import styles from './periodConfig.module.css';
@@ -70,14 +70,17 @@ export function PeriodConfigModal({ open, onClose }: { open: boolean; onClose: (
 
   return (
     <Modal
+      dirty={formState.isDirty}
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title="Set a calendar shape"
       footer={
         <div className={styles.footer}>
-          <Button variant="secondary" type="button" onClick={onClose}>
-            Cancel
-          </Button>
+          <ModalClose asChild>
+            <Button variant="secondary" type="button">
+              Cancel
+            </Button>
+          </ModalClose>
           <Button variant="primary" type="submit" form="period-config-form" loading={save.isPending}>
             Save shape
           </Button>

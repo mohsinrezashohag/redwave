@@ -22,6 +22,7 @@ import { useClients } from '../api/useLookups';
 import { useDeleteReport, useReviewReport, useSubmitReport, useUpdateReport } from '../api/useExpenseMutations';
 import { FolderStatusBadge } from '../components/FolderStatusBadge';
 import { FolderItemRow } from '../components/FolderItemRow';
+import { FolderDecisionDialog, type FolderDecision } from '../components/FolderDecisionDialog';
 import { InlineAddItem } from '../components/InlineAddItem';
 import styles from '../components/expenses.module.css';
 
@@ -49,6 +50,7 @@ export default function FolderDetailPage() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameVal, setRenameVal] = useState('');
   const [confirmDel, setConfirmDel] = useState(false);
+  const [decision, setDecision] = useState<FolderDecision | null>(null);
 
   if (!canView || isForbidden(q.error)) return <AccessDenied message="Viewing expenses requires the expenses view permission." />;
 
@@ -88,13 +90,18 @@ export default function FolderDetailPage() {
                     )}
                     {canReview && folder.status === 'pending' && (
                       <>
-                        <Button variant="primary" loading={review.isPending} onClick={() => run(review.mutateAsync({ id: folder.id, body: { decision: 'approve' } }), 'Folder approved')}>
+                        <Button
+                          variant="primary"
+                          loading={review.isPending}
+                          onClick={() => run(review.mutateAsync({ id: folder.id, body: { decision: 'approve' } }), 'Folder approved')}
+                        >
                           Approve all
                         </Button>
-                        <Button variant="secondary" loading={review.isPending} onClick={() => run(review.mutateAsync({ id: folder.id, body: { decision: 'send_back' } }), 'Folder returned')}>
+                        {/* Sending back / rejecting a whole folder asks first, with an optional note. */}
+                        <Button variant="secondary" disabled={review.isPending} onClick={() => setDecision('send_back')}>
                           Send all back
                         </Button>
-                        <Button variant="secondary" loading={review.isPending} onClick={() => run(review.mutateAsync({ id: folder.id, body: { decision: 'reject' } }), 'Folder rejected')}>
+                        <Button variant="secondary" disabled={review.isPending} onClick={() => setDecision('reject')}>
                           Reject all
                         </Button>
                       </>
@@ -170,6 +177,7 @@ export default function FolderDetailPage() {
                 <Input value={renameVal} onChange={(e) => setRenameVal(e.target.value)} placeholder="Report name" />
               </Modal>
 
+              <FolderDecisionDialog folderId={decision ? folder.id : null} decision={decision} onClose={() => setDecision(null)} />
               <ConfirmDialog
                 open={confirmDel}
                 onOpenChange={(o) => !o && setConfirmDel(false)}

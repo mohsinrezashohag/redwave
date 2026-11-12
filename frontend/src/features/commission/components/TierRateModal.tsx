@@ -13,7 +13,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Badge, Banner, Button, FormField, Modal, MoneyInput, Select, useToast } from '../../../components/ui';
+import { Badge, Banner, Button, FormField, Modal, MoneyInput, Select, useToast, ModalClose } from '../../../components/ui';
 import { PayPeriodSelect } from '../../../components/data/PayPeriodSelect';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
@@ -133,6 +133,7 @@ export function TierRateModal({
 
   return (
     <Modal
+      dirty={formState.isDirty}
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title={isEdit ? 'Edit product rate' : 'Add product rate'}
@@ -246,9 +247,11 @@ export function TierRateModal({
           />
         </div>
         <div className={styles.footer}>
-          <Button variant="secondary" type="button" onClick={onClose}>
-            Cancel
-          </Button>
+          <ModalClose asChild>
+            <Button variant="secondary" type="button">
+              Cancel
+            </Button>
+          </ModalClose>
           <Button variant="primary" type="submit" loading={create.isPending || update.isPending} disabled={tiersOff}>
             {isEdit ? 'Save changes' : 'Add rate'}
           </Button>

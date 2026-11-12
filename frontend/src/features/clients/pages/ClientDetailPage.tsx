@@ -8,7 +8,8 @@ import { useParams } from 'react-router-dom';
 import { Button, Card, PageHeader } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
-import { isForbidden } from '../../../lib/api/apiError';
+import { isForbidden, isNotFound } from '../../../lib/api/apiError';
+import { RecordNotFound } from '../../../components/data/RecordNotFound';
 import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useClient, useClientProducts } from '../api/useClients';
@@ -31,6 +32,9 @@ export default function ClientDetailPage() {
 
   if (!canView || isForbidden(client.error)) {
     return <AccessDenied message="Viewing clients requires the clients view permission." />;
+  }
+  if (isNotFound(client.error)) {
+    return <RecordNotFound what="client" backTo="/admin/clients" backLabel="Back to clients" />;
   }
 
   const productRows = products.data ?? [];

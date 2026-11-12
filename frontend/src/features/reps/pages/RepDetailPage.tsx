@@ -11,6 +11,7 @@ import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
 import { isForbidden, isNotFound } from '../../../lib/api/apiError';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
+import { RecordNotFound } from '../../../components/data/RecordNotFound';
 import { useRep } from '../api/useRepProfile';
 import { RepProfileCard } from '../components/RepProfileCard';
 import { RepEquipmentPanel } from '../components/RepEquipmentPanel';
@@ -30,7 +31,7 @@ export default function RepDetailPage() {
     return <AccessDenied message="Viewing reps requires the HRM view permission." />;
   }
   if (isNotFound(rep.error)) {
-    return <AccessDenied message="This rep doesn’t exist, or was removed." />;
+    return <RecordNotFound what="rep" backTo="/admin/reps" backLabel="Back to reps" />;
   }
 
   const r = rep.data;

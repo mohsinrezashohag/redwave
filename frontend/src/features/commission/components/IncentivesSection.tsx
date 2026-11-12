@@ -5,21 +5,7 @@
  */
 import { Pencil, Square, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import {
-  Badge,
-  Button,
-  Card,
-  ConfirmDialog,
-  Select,
-  Table,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-  useToast,
-  type MenuEntry,
-} from '../../../components/ui';
+import { Badge, Button, Card, ConfirmDialog, Select, Table, TBody, TD, TH, THead, TR, useToast, type MenuEntry, useConfirm } from '../../../components/ui';
 import { RowActions } from '../../../components/data/RowActions';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
@@ -63,6 +49,7 @@ export function IncentivesSection() {
   const clients = useClients(canViewClients);
   const update = useUpdateIncentive();
   const remove = useDeleteIncentive();
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const clientName = (id: string | null) => (id ? clients.data?.find((c) => c.id === id)?.name ?? 'A client' : 'All clients');
   const end = (inc: Incentive) =>
@@ -79,7 +66,18 @@ export function IncentivesSection() {
   const rowMenu = (inc: Incentive): MenuEntry[] => {
     const items: MenuEntry[] = [{ label: 'Edit', icon: <Pencil size={15} />, onSelect: () => setModal({ mode: 'edit', incentive: inc }) }];
     if (inc.status === 'active') {
-      items.push('separator', { label: 'End', icon: <Square size={15} />, danger: true, onSelect: () => end(inc) });
+      items.push('separator', {
+        label: 'End',
+        icon: <Square size={15} />,
+        danger: true,
+        onSelect: () =>
+          confirm({
+            title: 'End this incentive?',
+            description: 'It stops applying to new activations. Bonuses already paid are kept.',
+            confirmLabel: 'End incentive',
+            onConfirm: () => end(inc),
+          }),
+      });
     }
     // Delete is only valid for an incentive never applied to a paid item; the server 422s otherwise.
     items.push({ label: 'Delete', icon: <Trash2 size={15} />, danger: true, onSelect: () => setDeleteInc(inc) });
@@ -88,6 +86,8 @@ export function IncentivesSection() {
 
   const rows = q.data ?? [];
   return (
+    <>
+    {confirmDialog}
     <Card
       title="Incentives"
       actions={
@@ -155,5 +155,6 @@ export function IncentivesSection() {
         onConfirm={onConfirmDelete}
       />
     </Card>
+    </>
   );
 }

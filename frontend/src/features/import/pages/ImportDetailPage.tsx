@@ -11,7 +11,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Download, Lock } from 'lucide-react';
 import { Banner, Button, Card, PageHeader, StatCard, TableError, TableSkeleton, useToast } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
-import { isForbidden, useApiErrorToast } from '../../../lib/api/apiError';
+import { isForbidden, useApiErrorToast, isNotFound } from '../../../lib/api/apiError';
+import { RecordNotFound } from '../../../components/data/RecordNotFound';
 import { displayDate } from '../../../lib/format/date';
 import { money } from '../../../lib/format/money';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
@@ -47,6 +48,9 @@ export default function ImportDetailPage() {
 
   if (!canView || isForbidden(q.error)) {
     return <AccessDenied message="Viewing imports requires the import view permission." />;
+  }
+  if (isNotFound(q.error)) {
+    return <RecordNotFound what="import" backTo="/import" backLabel="Back to imports" />;
   }
   if (q.isLoading) {
     return (

@@ -7,6 +7,8 @@ import { PageHeader, Card } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useAuth } from '../../../auth/useAuth';
 import { useLeaderboard } from '../api/useDashboards';
+import { isForbidden } from '../../../lib/api/apiError';
+import { AccessDenied } from '../components/AccessDenied';
 import { ChartContainer } from '../charts/ChartContainer';
 import { ThemedBarChart } from '../charts/ThemedBarChart';
 import { LeaderboardTable } from '../components/LeaderboardTable';
@@ -16,6 +18,9 @@ export default function LeaderboardPage() {
   const { repId } = useAuth();
   const q = useLeaderboard();
   const rows = q.data?.rankings ?? [];
+  if (isForbidden(q.error)) {
+    return <AccessDenied message="The leaderboard needs the reports view permission." />;
+  }
   const chartData = rows.slice(0, 10).map((r) => ({
     rep: r.rep_name ?? r.rep_code ?? `#${r.rank}`,
     activations: r.activation_count,

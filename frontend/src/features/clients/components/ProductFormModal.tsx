@@ -6,7 +6,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Badge, Button, FormField, Input, Modal, MoneyInput, Select, Switch, useToast } from '../../../components/ui';
+import { Badge, Button, FormField, Input, Modal, MoneyInput, Select, Switch, useToast, ModalClose, useModalDirty } from '../../../components/ui';
 import { PayPeriodSelect } from '../../../components/data/PayPeriodSelect';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useCan } from '../../../auth/useCan';
@@ -59,6 +59,7 @@ function CreateProductForm({ clientId, onClose }: { clientId: string; onClose: (
     resolver: zodResolver(createSchema),
     defaultValues: { name: '', product_type: '', set_rate: false, amount: '', effective_from: '' },
   });
+  useModalDirty(formState.isDirty); // closing with unsaved edits asks first
   const setRate = watch('set_rate');
 
   const onSubmit = (values: CreateValues) =>
@@ -124,9 +125,11 @@ function CreateProductForm({ clientId, onClose }: { clientId: string; onClose: (
       )}
 
       <div className={styles.footer}>
-        <Button variant="secondary" type="button" onClick={onClose}>
-          Cancel
-        </Button>
+        <ModalClose asChild>
+          <Button variant="secondary" type="button">
+            Cancel
+          </Button>
+        </ModalClose>
         <Button variant="primary" type="submit" loading={create.isPending}>
           Add product
         </Button>
@@ -143,6 +146,7 @@ function EditProductForm({ product, onClose }: { product: Product; onClose: () =
     resolver: zodResolver(editSchema),
     defaultValues: { name: product.name },
   });
+  useModalDirty(formState.isDirty); // closing with unsaved edits asks first
 
   const onSubmit = (values: EditValues) =>
     update.mutate(
@@ -161,9 +165,11 @@ function EditProductForm({ product, onClose }: { product: Product; onClose: () =
         </span>
       </FormField>
       <div className={styles.footer}>
-        <Button variant="secondary" type="button" onClick={onClose}>
-          Cancel
-        </Button>
+        <ModalClose asChild>
+          <Button variant="secondary" type="button">
+            Cancel
+          </Button>
+        </ModalClose>
         <Button variant="primary" type="submit" loading={update.isPending}>
           Save changes
         </Button>

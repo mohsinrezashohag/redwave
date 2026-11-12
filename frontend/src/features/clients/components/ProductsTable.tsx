@@ -3,17 +3,7 @@
  * shown but immutable. Deactivation preserves history (never a delete). Tokens only.
  */
 import { Pencil, Power, PowerOff } from 'lucide-react';
-import {
-  Badge,
-  Table,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-  useToast,
-  type MenuEntry,
-} from '../../../components/ui';
+import { Badge, Table, TBody, TD, TH, THead, TR, useToast, type MenuEntry, useConfirm } from '../../../components/ui';
 import { RowActions } from '../../../components/data/RowActions';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { productTypeLabel } from '../../../lib/format/productType';
@@ -26,6 +16,7 @@ export function ProductsTable({ products, onEdit }: { products: Product[]; onEdi
   const onError = useApiErrorToast();
   const update = useUpdateProduct();
 
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const setActive = (p: Product, is_active: boolean) =>
     update.mutate(
       { id: p.id, body: { is_active } },
@@ -36,11 +27,19 @@ export function ProductsTable({ products, onEdit }: { products: Product[]; onEdi
     { label: 'Edit', icon: <Pencil size={15} />, onSelect: () => onEdit(p) },
     'separator',
     p.is_active
-      ? { label: 'Deactivate', icon: <PowerOff size={15} />, danger: true, onSelect: () => setActive(p, false) }
+      ? { label: 'Deactivate', icon: <PowerOff size={15} />, danger: true, onSelect: () =>
+          confirm({
+            title: `Deactivate ${p.name}?`,
+            description: 'It can no longer be sold on new sales. Its history and rates are kept, and you can reactivate it later.',
+            confirmLabel: 'Deactivate',
+            onConfirm: () => setActive(p, false),
+          }) }
       : { label: 'Reactivate', icon: <Power size={15} />, onSelect: () => setActive(p, true) },
   ];
 
   return (
+    <>
+    {confirmDialog}
     <Table density="comfortable">
       <THead>
         <TR>
@@ -67,5 +66,6 @@ export function ProductsTable({ products, onEdit }: { products: Product[]; onEdi
         ))}
       </TBody>
     </Table>
+    </>
   );
 }

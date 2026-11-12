@@ -41,9 +41,10 @@ const METHODS = [
 
 function SignatureThumb({ id }: { id: string }) {
   const q = useSignatureImageUrl(id);
+  const [broken, setBroken] = useState(false); // an expired link shows the note, never a broken image
   if (q.isLoading) return <div className={styles.thumb}><LoadingSpinner size="sm" label="" /></div>;
-  if (q.isError || !q.data) return <div className={styles.thumb}><span className={styles.thumbNa}>image unavailable</span></div>;
-  return <img className={styles.thumbImg} src={q.data.url} alt="Saved signature" />;
+  if (q.isError || !q.data || broken) return <div className={styles.thumb}><span className={styles.thumbNa}>image unavailable</span></div>;
+  return <img className={styles.thumbImg} src={q.data.url} alt="Saved signature" onError={() => setBroken(true)} />;
 }
 
 export function SignaturesTab() {

@@ -7,7 +7,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, FormProvider, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
-import { Banner, Button, FormField, Modal, useToast } from '../../../components/ui';
+import { Banner, Button, FormField, Modal, useToast, ModalClose } from '../../../components/ui';
 import { PayPeriodSelect } from '../../../components/data/PayPeriodSelect';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
@@ -77,7 +77,7 @@ export function TierScheduleModal({
   };
 
   return (
-    <Modal open={open} onOpenChange={(o) => !o && onClose()} title={endBasePrices ? 'Turn tiers on' : 'Add tier schedule'} size="lg">
+    <Modal dirty={formState.isDirty} open={open} onOpenChange={(o) => !o && onClose()} title={endBasePrices ? 'Turn tiers on' : 'Add tier schedule'} size="lg">
       <FormProvider {...methods}>
         <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
           <Banner tone="info" title="Effective-dated">
@@ -127,9 +127,11 @@ export function TierScheduleModal({
           <TierBracketEditor error={bracketError} />
 
           <div className={styles.footer}>
-            <Button variant="secondary" type="button" onClick={onClose}>
-              Cancel
-            </Button>
+            <ModalClose asChild>
+              <Button variant="secondary" type="button">
+                Cancel
+              </Button>
+            </ModalClose>
             <Button variant="primary" type="submit" loading={create.isPending} disabled={bracketError !== null}>
               Add schedule
             </Button>

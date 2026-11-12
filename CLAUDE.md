@@ -505,6 +505,7 @@ pattern.
 - **Lists** use the server-side contract (13.4) via `useServerTable`; **filter state lives in the
   URL search params** so `/sales?status=entered` is a shareable link (sidebar presets are exactly
   that). Reset to page 1 on any filter/sort change.
+- **Basic rules (2026-11-12) — every new screen inherits these; do not bypass them.** A form modal passes `dirty={formState.isDirty}` to `Modal` (or calls `useModalDirty` from a form rendered inside it) and wraps Cancel in `<ModalClose asChild>`, so closing with edits asks first; a modal whose form outlives it resets on open. A full-page form uses `lib/forms/useUnsavedChangesGuard` (call `allowLeave()` before the post-save redirect). A one-click destructive menu action goes through `useConfirm()`. A detail page renders `RecordNotFound` on a 404 (never a Retry). The browser tab title comes from the crumb registry automatically (`routes/crumbTitle.ts`). A session expiry lands on login with a message and returns to the same page.
 - **Detail = a deep-linkable route** (`/sales/:id`), never a drawer. It fetches its own data and
   handles loading/error/not-found through `DataState`.
 - **Breadcrumbs are global and route-driven. A NEW ROUTE MUST DECLARE CRUMB METADATA** in

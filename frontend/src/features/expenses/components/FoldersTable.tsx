@@ -5,7 +5,7 @@
  * approver) so an admin can act on a folder WITHOUT opening it (req #2). The UI computes nothing; the server
  * is the real gate (§5). Tokens only.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Badge, useToast, type MenuEntry, PersonName } from '../../../components/ui';
 import { RowActions } from '../../../components/data/RowActions';
@@ -17,6 +17,7 @@ import { money } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useReps } from '../api/useLookups';
+import { FolderDecisionDialog } from './FolderDecisionDialog';
 import { useExpenseReportsTable, type ReportFilters } from '../api/useExpenseReports';
 import { useReviewReport, useSubmitReport } from '../api/useExpenseMutations';
 import { FolderStatusBadge } from './FolderStatusBadge';
@@ -43,18 +44,20 @@ export function FoldersTable({ filters, canReview }: { filters: ReportFilters; c
   };
 
   const act = (fn: Promise<unknown>, ok: string) => fn.then(() => toast({ title: ok, tone: 'success' })).catch(onError);
+  const [sendBackId, setSendBackId] = useState<string | null>(null);
+  const busy = submit.isPending || review.isPending; // no double-submit from the menu
 
   const rowMenu = (f: ExpenseReport): MenuEntry[] => {
     const entries: MenuEntry[] = [{ label: 'Open', onSelect: () => navigate(`/expenses/reports/${f.id}`) }];
     const isOwner = f.submitted_by === user?.id;
     if (isOwner && (f.status === 'draft' || f.status === 'needs_attention')) {
-      entries.push({ label: 'Submit', onSelect: () => act(submit.mutateAsync(f.id), 'Folder submitted') });
+      entries.push({ label: 'Submit', disabled: busy, onSelect: () => act(submit.mutateAsync(f.id), 'Folder submitted') });
     }
     if (canReview && f.status === 'pending') {
       entries.push(
         'separator',
-        { label: 'Approve all', onSelect: () => act(review.mutateAsync({ id: f.id, body: { decision: 'approve' } }), 'Folder approved') },
-        { label: 'Send all back', onSelect: () => act(review.mutateAsync({ id: f.id, body: { decision: 'send_back' } }), 'Folder returned') },
+        { label: 'Approve all', disabled: busy, onSelect: () => act(review.mutateAsync({ id: f.id, body: { decision: 'approve' } }), 'Folder approved') },
+        { label: 'Send all back', disabled: busy, onSelect: () => setSendBackId(f.id) },
       );
     }
     return entries;
@@ -115,6 +118,8 @@ export function FoldersTable({ filters, canReview }: { filters: ReportFilters; c
   }
 
   return (
+    <>
+    <FolderDecisionDialog folderId={sendBackId} decision={sendBackId ? 'send_back' : null} onClose={() => setSendBackId(null)} />
     <DataTable<ExpenseReport, SortKey>
       columns={columns}
       rows={list.rows}
@@ -135,5 +140,6 @@ export function FoldersTable({ filters, canReview }: { filters: ReportFilters; c
       forbiddenMessage="You don’t have permission to view expenses."
       aria-label="Expense report folders"
     />
+    </>
   );
 }

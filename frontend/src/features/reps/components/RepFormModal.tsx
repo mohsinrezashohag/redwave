@@ -15,19 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { Crop, Undo2 } from 'lucide-react';
-import {
-  Button,
-  DatePicker,
-  EditableAvatar,
-  FormField,
-  Input,
-  Modal,
-  PhotoEditorDialog,
-  PrivateInput,
-  Select,
-  useToast,
-  type PhotoEditResult,
-} from '../../../components/ui';
+import { Button, DatePicker, EditableAvatar, FormField, Input, Modal, PhotoEditorDialog, PrivateInput, Select, useToast, type PhotoEditResult, ModalClose } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
 import { useCan } from '../../../auth/useCan';
@@ -87,10 +75,16 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
   }, [users.data, editing]);
 
   const today = todayIso();
-  const { control, register, handleSubmit, formState } = useForm<RepFormValues>({
+  const formDefaults: RepFormValues = repFormDefaults(editing);
+  const { control, register, handleSubmit, formState, reset } = useForm<RepFormValues>({
     resolver: zodResolver(repFormSchema(mode, today, !!editing?.banking?.account_masked)),
-    values: repFormDefaults(editing),
+    values: formDefaults,
   });
+  // Reopening starts fresh: nothing typed last time is left in the form. 2026-11-12
+  useEffect(() => {
+    if (open) reset(formDefaults);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the dialog (re)opens; defaults are read then
+  }, [open]);
   const errors = formState.errors;
   const status = useWatch({ control, name: 'status' });
 
@@ -144,7 +138,7 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
   );
 
   return (
-    <Modal open={open} onOpenChange={(o) => !o && onClose()} title={editing ? `Edit ${editing.full_name}` : 'Add rep'} size="lg">
+    <Modal dirty={formState.isDirty || !!photo} open={open} onOpenChange={(o) => !o && onClose()} title={editing ? `Edit ${editing.full_name}` : 'Add rep'} size="lg">
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
         <div className={styles.photoRow}>
           <EditableAvatar
@@ -276,9 +270,11 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
         </section>
 
         <div className={styles.footer}>
-          <Button variant="secondary" type="button" onClick={onClose}>
-            Cancel
-          </Button>
+          <ModalClose asChild>
+            <Button variant="secondary" type="button">
+              Cancel
+            </Button>
+          </ModalClose>
           <Button variant="primary" type="submit" loading={create.isPending || update.isPending || uploadPhoto.isPending}>
             {editing ? 'Save changes' : 'Add rep'}
           </Button>

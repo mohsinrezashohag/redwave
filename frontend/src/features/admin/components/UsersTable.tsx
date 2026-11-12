@@ -5,21 +5,7 @@
  */
 import { KeyRound, Link2, LogOut, Mail, Pencil, ShieldOff, UserCheck, UserX } from 'lucide-react';
 import { useState } from 'react';
-import {
-  Avatar,
-  Badge,
-  Banner,
-  Button,
-  Modal,
-  Table,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-  useToast,
-  type MenuEntry,
-} from '../../../components/ui';
+import { Avatar, Badge, Banner, Button, Modal, Table, TBody, TD, TH, THead, TR, useToast, type MenuEntry, useConfirm } from '../../../components/ui';
 import { RowActions } from '../../../components/data/RowActions';
 import { useAuth } from '../../../auth/useAuth';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -38,6 +24,7 @@ export function UsersTable({ users, onEdit }: { users: AdminUser[]; onEdit: (u: 
   const disableMfa = useDisableUserMfa();
   const [confirm, setConfirm] = useState<AdminUser | null>(null);
   const [reset, setReset] = useState<AdminUser | null>(null);
+  const { confirm: askConfirm, dialog: confirmDialog } = useConfirm();
 
   const doForceLogout = (u: AdminUser) =>
     forceLogout.mutate(u.id, {
@@ -82,8 +69,28 @@ export function UsersTable({ users, onEdit }: { users: AdminUser[]; onEdit: (u: 
     const items: MenuEntry[] = [
       { label: 'Edit', icon: <Pencil size={15} />, onSelect: () => onEdit(u) },
       { label: 'Reset password', icon: <KeyRound size={15} />, onSelect: () => setReset(u) },
-      { label: 'Force log out', icon: <LogOut size={15} />, onSelect: () => doForceLogout(u) },
-      { label: 'Disable MFA', icon: <ShieldOff size={15} />, onSelect: () => doDisableMfa(u) },
+      {
+        label: 'Force log out',
+        icon: <LogOut size={15} />,
+        onSelect: () =>
+          askConfirm({
+            title: `Sign ${u.full_name} out of all devices?`,
+            description: 'Every open session ends now. They can sign in again straight away.',
+            confirmLabel: 'Force log out',
+            onConfirm: () => doForceLogout(u),
+          }),
+      },
+      {
+        label: 'Disable MFA',
+        icon: <ShieldOff size={15} />,
+        onSelect: () =>
+          askConfirm({
+            title: `Turn off two-factor sign-in for ${u.full_name}?`,
+            description: 'Their account will be protected by the password only until they set it up again.',
+            confirmLabel: 'Disable MFA',
+            onConfirm: () => doDisableMfa(u),
+          }),
+      },
     ];
     if (u.status === 'active') {
       items.push('separator', {
@@ -105,6 +112,7 @@ export function UsersTable({ users, onEdit }: { users: AdminUser[]; onEdit: (u: 
 
   return (
     <>
+      {confirmDialog}
       <Table density="comfortable">
         <THead>
           <TR>

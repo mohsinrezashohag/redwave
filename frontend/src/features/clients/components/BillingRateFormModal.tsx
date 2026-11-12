@@ -5,10 +5,11 @@
  * (server 422); back-dating is rejected (server 422) — surfaced as toasts. Money is an exact-decimal string
  * (MoneyInput). Tokens only.
  */
+import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
-import { Badge, Banner, Button, FormField, Modal, MoneyInput, MultiSelect, Select, useToast } from '../../../components/ui';
+import { Badge, Banner, Button, FormField, Modal, MoneyInput, MultiSelect, Select, useToast, ModalClose } from '../../../components/ui';
 import { PayPeriodSelect } from '../../../components/data/PayPeriodSelect';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
@@ -82,19 +83,25 @@ export function BillingRateFormModal({
   // The trigger catalogue — only fetched while adding a bundle (edit keeps the scope fixed). — BILL-013
   const productTypes = useProductTypes('active', open && !isEdit);
 
-  const { control, register, handleSubmit, formState } = useForm<FormValues>({
+  const formDefaults: FormValues = rate
+    ? {
+        rate_kind: rate.rate_kind,
+        product_id: rate.product_id ?? undefined,
+        bundle_product_types: rate.bundle_product_types ?? [],
+        amount: rate.amount,
+        effective_from: dateOnly(rate.effective_from),
+        effective_to: dateOnly(rate.effective_to),
+      }
+    : { rate_kind: 'product', product_id: undefined, bundle_product_types: [], amount: '', effective_from: '', effective_to: '' };
+  const { control, register, handleSubmit, formState, reset } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: rate
-      ? {
-          rate_kind: rate.rate_kind,
-          product_id: rate.product_id ?? undefined,
-          bundle_product_types: rate.bundle_product_types ?? [],
-          amount: rate.amount,
-          effective_from: dateOnly(rate.effective_from),
-          effective_to: dateOnly(rate.effective_to),
-        }
-      : { rate_kind: 'product', product_id: undefined, bundle_product_types: [], amount: '', effective_from: '', effective_to: '' },
+    defaultValues: formDefaults,
   });
+  // Reopening starts fresh: nothing typed last time is left in the form. 2026-11-12
+  useEffect(() => {
+    if (open) reset(formDefaults);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the dialog (re)opens; defaults are read then
+  }, [open]);
   const errors = formState.errors;
   const rateKind = useWatch({ control, name: 'rate_kind' });
 
@@ -128,7 +135,7 @@ export function BillingRateFormModal({
   const productName = (id: string | null) => (id ? products.find((p) => p.id === id)?.name ?? id : '—');
 
   return (
-    <Modal open={open} onOpenChange={(o) => !o && onClose()} title={isEdit ? 'Edit billing rate' : 'Add billing rate'}>
+    <Modal dirty={formState.isDirty} open={open} onOpenChange={(o) => !o && onClose()} title={isEdit ? 'Edit billing rate' : 'Add billing rate'}>
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
         <Banner tone="info" title="Effective-dated">
           {isEdit ? (
@@ -224,9 +231,11 @@ export function BillingRateFormModal({
         />
 
         <div className={styles.footer}>
-          <Button variant="secondary" type="button" onClick={onClose}>
-            Cancel
-          </Button>
+          <ModalClose asChild>
+            <Button variant="secondary" type="button">
+              Cancel
+            </Button>
+          </ModalClose>
           <Button variant="primary" type="submit" loading={create.isPending || update.isPending}>
             {isEdit ? 'Save changes' : 'Add rate'}
           </Button>

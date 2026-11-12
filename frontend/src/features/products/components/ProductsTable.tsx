@@ -7,13 +7,7 @@
 import { ExternalLink, Pencil, Power, PowerOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Badge,
-  Button,
-  ConfirmDialog,
-  useToast,
-  type MenuEntry,
-} from '../../../components/ui';
+import { Badge, Button, ConfirmDialog, useToast, type MenuEntry, useConfirm } from '../../../components/ui';
 import { RowActions } from '../../../components/data/RowActions';
 import { DataTable, type DataColumn } from '../../../components/data/DataTable';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -39,6 +33,7 @@ export function ProductsTable({ filters }: { filters: ProductsFilters }) {
   const [modal, setModal] = useState<ProductFormState>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const clientName = (id: string) => clients.data?.find((c) => c.id === id)?.name ?? id;
 
@@ -86,7 +81,13 @@ export function ProductsTable({ filters }: { filters: ProductsFilters }) {
     { label: 'View client', icon: <ExternalLink size={15} />, onSelect: () => navigate(`/admin/clients/${p.client_id}`) },
     'separator',
     p.is_active
-      ? { label: 'Deactivate', icon: <PowerOff size={15} />, danger: true, onSelect: () => setActive(p, false) }
+      ? { label: 'Deactivate', icon: <PowerOff size={15} />, danger: true, onSelect: () =>
+          confirm({
+            title: `Deactivate ${p.name}?`,
+            description: 'It can no longer be sold on new sales. Its history and rates are kept, and you can reactivate it later.',
+            confirmLabel: 'Deactivate',
+            onConfirm: () => setActive(p, false),
+          }) }
       : { label: 'Reactivate', icon: <Power size={15} />, onSelect: () => setActive(p, true) },
   ];
 
@@ -99,6 +100,7 @@ export function ProductsTable({ filters }: { filters: ProductsFilters }) {
 
   return (
     <>
+      {confirmDialog}
       <DataTable<Product, ProductSortKey>
         columns={columns}
         rows={list.rows}

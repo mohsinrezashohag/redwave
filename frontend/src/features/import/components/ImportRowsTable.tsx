@@ -4,7 +4,7 @@
  * sale / Edit data / Ignore) — the UI never matches; it asks the backend to reconcile. Tokens only.
  */
 import { EyeOff, Link2, Pencil } from 'lucide-react';
-import { Table, TBody, TD, TH, THead, TR, type MenuEntry } from '../../../components/ui';
+import { Table, TableEmpty, TBody, TD, TH, THead, TR, type MenuEntry } from '../../../components/ui';
 import { RowActions } from '../../../components/data/RowActions';
 import { RowStatusBadge } from './RowStatusBadge';
 import styles from './import.module.css';
@@ -30,6 +30,10 @@ export function ImportRowsTable({ batch, kind, canEdit, onMatch, onEdit, onIgnor
     if (row.match_status !== 'ignored') items.push('separator', { label: 'Ignore (skip)', icon: <EyeOff size={15} />, onSelect: () => onIgnore(row) });
     return items;
   };
+
+  if (rows.length === 0) {
+    return <TableEmpty message="This file had no data rows to import." />;
+  }
 
   return (
     <Table density="dense">

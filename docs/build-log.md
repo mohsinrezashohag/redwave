@@ -2714,3 +2714,26 @@ Decided: rep photos show everywhere a rep is shown (including the leaderboard); 
 **Verified LOCAL:** 1237 backend tests (+`resolveReps`, audit actor select) + typecheck + lint + build +
 contract regen; FE build + lint + stylelint + vitest 153 (+`Avatar` fallback, +`queryClient` freshness).
 Not seen in a browser (the local app points at production).
+
+### Basics sweep, batch 2: forms, confirmations, navigation, search (no migration, frontend only)
+
+- **Unsaved changes:** `Modal` gained `dirty` (+ `useModalDirty` for a form rendered inside it); closing
+  with edits (Esc, overlay, X, Cancel via `ModalClose`) asks "Discard unsaved changes?". Wired into the 16
+  form modals. Full-page forms (Sale entry, New import) use `useUnsavedChangesGuard` (`useBlocker` +
+  `beforeunload`; `allowLeave()` before the post-save redirect).
+- **Reset on open:** Rep, Client, Billing rate, Holdback split, Km rate and Bonus modals no longer reopen
+  with the last session's input.
+- **Confirmations:** folder Send all back / Reject all (shared `FolderDecisionDialog`, optional note on each
+  item), product Deactivate (both tables), user Force log out / Disable MFA, incentive End — via the new
+  `useConfirm()`. Folder row-menu actions disable while one is running.
+- **Navigation:** tab titles from the crumb registry ("Riley Rivera · Reps · Redwave", record names
+  resolved like the crumb); session expiry shows a message on login and returns to the same page (in-app
+  paths only); `RecordNotFound` on 404 for client, statement, expense document, import, pay run, role, sale
+  and rep; Leaderboard shows AccessDenied on 403; Sale entry is gated on `sales:create` up front;
+  `AccessDenied`'s title no longer says "dashboard" everywhere; an import with no rows says so.
+- **Search:** ↑/↓/Enter/Esc with `aria-activedescendant`, a real error state, rep results open the rep
+  profile, the placeholder no longer promises "customers".
+- **Images:** a saved signature whose link fails shows "image unavailable", never a broken image.
+
+**Verified LOCAL:** FE build + lint + stylelint + vitest 156 (+`Modal` guard, +`pageTitle`). No backend
+change. Not seen in a browser.

@@ -10,7 +10,7 @@
 import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useFieldArray, useForm } from 'react-hook-form';
-import { Banner, Button, FormField, Modal, MoneyInput, Table, TBody, TD, TH, THead, TR, useToast } from '../../../components/ui';
+import { Banner, Button, FormField, Modal, MoneyInput, Table, TBody, TD, TH, THead, TR, useToast, ModalClose } from '../../../components/ui';
 import { PayPeriodSelect } from '../../../components/data/PayPeriodSelect';
 import { DataState } from '../../../components/data/DataState';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -69,7 +69,7 @@ export function BasePricesModal({
     });
 
   return (
-    <Modal open onOpenChange={(o) => !o && onClose()} title={switching ? `Turn tiers off · ${scopeName}` : `Base prices · ${scopeName}`} size="lg">
+    <Modal dirty={formState.isDirty} open onOpenChange={(o) => !o && onClose()} title={switching ? `Turn tiers off · ${scopeName}` : `Base prices · ${scopeName}`} size="lg">
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
         <Banner tone="info" title="How base prices work">
           Every internet sale pays its product&rsquo;s base price, whatever the rep&rsquo;s volume. A product left blank uses the
@@ -160,9 +160,11 @@ export function BasePricesModal({
         )}
 
         <div className={styles.footer}>
-          <Button variant="secondary" type="button" onClick={onClose}>
-            Cancel
-          </Button>
+          <ModalClose asChild>
+            <Button variant="secondary" type="button">
+              Cancel
+            </Button>
+          </ModalClose>
           <Button variant="primary" type="submit" loading={save.isPending}>
             {switching ? 'Turn tiers off' : 'Save prices'}
           </Button>

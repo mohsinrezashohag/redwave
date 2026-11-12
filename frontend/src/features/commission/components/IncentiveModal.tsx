@@ -8,7 +8,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
-import { Button, DatePicker, FormField, Input, Modal, MoneyInput, RadioGroup, Select, useToast } from '../../../components/ui';
+import { Button, DatePicker, FormField, Input, Modal, MoneyInput, RadioGroup, Select, useToast, ModalClose, useModalDirty } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
@@ -68,6 +68,7 @@ function CreateForm({ onClose }: { onClose: () => void }) {
     resolver: zodResolver(createSchema),
     defaultValues: { name: '', target_type: 'per_activation', target_count: '', scope_mode: 'all', scope_client_id: '', scope_product_type: ALL, window_start: todayIso(), window_end: todayIso(), amount: '' },
   });
+  useModalDirty(formState.isDirty); // closing with unsaved edits asks first
   const errors = formState.errors;
   const scopeMode = useWatch({ control, name: 'scope_mode' });
   const targetType = useWatch({ control, name: 'target_type' });
@@ -201,9 +202,11 @@ function CreateForm({ onClose }: { onClose: () => void }) {
       </FormField>
 
       <div className={styles.footer}>
-        <Button variant="secondary" type="button" onClick={onClose}>
-          Cancel
-        </Button>
+        <ModalClose asChild>
+          <Button variant="secondary" type="button">
+            Cancel
+          </Button>
+        </ModalClose>
         <Button variant="primary" type="submit" loading={create.isPending}>
           Create incentive
         </Button>
@@ -227,6 +230,7 @@ function EditForm({ incentive, onClose }: { incentive: Incentive; onClose: () =>
     resolver: zodResolver(editSchema),
     defaultValues: { name: incentive.name, amount: incentive.amount, status: incentive.status },
   });
+  useModalDirty(formState.isDirty); // closing with unsaved edits asks first
 
   const onSubmit = (values: EditValues) =>
     update.mutate(
@@ -259,9 +263,11 @@ function EditForm({ incentive, onClose }: { incentive: Incentive; onClose: () =>
         )}
       />
       <div className={styles.footer}>
-        <Button variant="secondary" type="button" onClick={onClose}>
-          Cancel
-        </Button>
+        <ModalClose asChild>
+          <Button variant="secondary" type="button">
+            Cancel
+          </Button>
+        </ModalClose>
         <Button variant="primary" type="submit" loading={update.isPending}>
           Save changes
         </Button>

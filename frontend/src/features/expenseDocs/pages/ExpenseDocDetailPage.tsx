@@ -10,7 +10,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, FileDown, RefreshCw } from 'lucide-react';
 import { Badge, Button, Card, PageHeader, StatCard, TableError, TableSkeleton, useToast } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
-import { isForbidden, useApiErrorToast } from '../../../lib/api/apiError';
+import { isForbidden, useApiErrorToast, isNotFound } from '../../../lib/api/apiError';
+import { RecordNotFound } from '../../../components/data/RecordNotFound';
 import { money } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
@@ -40,6 +41,9 @@ export default function ExpenseDocDetailPage() {
 
   if (!canView || isForbidden(docQ.error)) {
     return <AccessDenied message="Viewing billing requires the billing view permission." />;
+  }
+  if (isNotFound(docQ.error)) {
+    return <RecordNotFound what="expense document" backTo="/billing/expense-documents" backLabel="Back to expense documents" />;
   }
   if (docQ.isLoading) {
     return (

@@ -18,6 +18,8 @@ export interface AuthContextValue {
   repId: string | null;
   /** When true, policy requires the user to enrol in MFA before using the app (from /me). */
   mfaEnrollmentRequired: boolean;
+  /** The session ended on its own (not a sign-out) — the login page says so. Cleared on the next sign-in. */
+  sessionExpired: boolean;
   /** Password step. Resolves to {kind:'mfa'} when a second factor is required (no session issued yet). */
   login: (email: string, password: string) => Promise<LoginOutcome>;
   /** Second factor — redeem the mfa challenge token + a TOTP/recovery code for a session. */

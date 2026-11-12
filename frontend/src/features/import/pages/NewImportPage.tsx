@@ -18,6 +18,7 @@ import { PreviewPanel } from '../components/PreviewPanel';
 import { KINDS } from '../import.types';
 import styles from '../components/import.module.css';
 import type { ImportKind, ImportPreview } from '../import.types';
+import { useUnsavedChangesGuard } from '../../../lib/forms/useUnsavedChangesGuard';
 
 const NO_MAPPING = '__auto__';
 
@@ -38,6 +39,8 @@ export default function NewImportPage() {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [sheet, setSheet] = useState<string | undefined>();
   const [createMissing, setCreateMissing] = useState(false);
+  // A chosen file not yet staged: leaving asks first. 2026-11-12
+  const leave = useUnsavedChangesGuard(file !== null);
 
   const kindDef = useMemo(() => KINDS.find((k) => k.kind === kind)!, [kind]);
   const clientsQ = useClients('active', canCreate && canViewClients && kindDef.needsClient);
@@ -86,7 +89,13 @@ export default function NewImportPage() {
     const problem = missingInput();
     if (problem) { setError(problem); return; }
     setError(null);
-    stage.mutate(buildInput(), { onSuccess: (batch) => navigate(`/import/${batch.id}`), onError });
+    stage.mutate(buildInput(), {
+      onSuccess: (batch) => {
+        leave.allowLeave();
+        navigate(`/import/${batch.id}`);
+      },
+      onError,
+    });
   };
 
   /** Any change to the inputs invalidates the dry run — never show a preview of a different file. */
@@ -94,6 +103,7 @@ export default function NewImportPage() {
 
   return (
     <div className={styles.page}>
+      {leave.dialog}
       <PageHeader
         title="New import"
         subtitle="Upload a file, then review the mapping → reconcile → commit. The server parses, classifies, and applies; this screen never matches or commits rows itself."

@@ -33,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [repId, setRepId] = useState<string | null>(null);
   const [mfaEnrollmentRequired, setMfaEnrollmentRequired] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const clearLocal = useCallback(() => {
     setUser(null);
@@ -58,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsSuperAdmin(me.is_super_admin);
     setRepId(me.rep_id);
     setMfaEnrollmentRequired(Boolean(me.mfa_enrollment_required));
+    setSessionExpired(false);
     setStatus('authenticated');
     // Apply the user's saved theme locally (it IS the server value — no PATCH back). — §3.5
     if (applyTheme) setPreference(me.user.theme_preference);
@@ -133,7 +135,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Session-expired (in-session refresh failure) + multi-tab logout sync ───────────
   useEffect(() => {
-    onSessionExpired(() => clearLocal());
+    onSessionExpired(() => {
+      setSessionExpired(true); // the login page explains why the user is there
+      clearLocal();
+    });
     const onStorage = (e: StorageEvent) => {
       if (e.key === LOGOUT_PING_KEY) {
         setAccessToken(null);
@@ -202,8 +207,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const reloadMe = useCallback(() => loadMe(), [loadMe]);
 
   const value = useMemo(
-    () => ({ status, user, roles, permissions, isSuperAdmin, repId, mfaEnrollmentRequired, login, verifyMfa, reloadMe, logout, setTheme }),
-    [status, user, roles, permissions, isSuperAdmin, repId, mfaEnrollmentRequired, login, verifyMfa, reloadMe, logout, setTheme],
+    () => ({ status, user, roles, permissions, isSuperAdmin, repId, mfaEnrollmentRequired, sessionExpired, login, verifyMfa, reloadMe, logout, setTheme }),
+    [status, user, roles, permissions, isSuperAdmin, repId, mfaEnrollmentRequired, sessionExpired, login, verifyMfa, reloadMe, logout, setTheme],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
