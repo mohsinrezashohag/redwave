@@ -7,33 +7,61 @@
  * 2026-11-12: the type is picked from a fixed list (banking / headshot / immigration / government ID / …), a
  * headshot must be a JPG or PNG, and permits, PR cards, licences and passports carry ISSUE and EXPIRY dates
  * (expiry flagged "Expired" / "Expires in N days" within 60). For those IDs the dates are READ from the
- * document automatically (when set up) and shown with consistency checks for HR to confirm before saving;
- * "Dates" on a row reads or edits them for a document already on file. The server re-checks every rule.
+ * document automatically (when set up) and shown with consistency checks for HR to confirm before saving.
+ *
+ * Each row: Open · Edit (type + dates) · Replace file (hrm:edit) · Delete (hrm:delete). Delete moves the
+ * document to "Recently deleted", restorable for 30 days; the server's daily purge then removes it for good.
+ * Gating here only hides buttons; the server enforces every permission.
  */
-import { useState } from 'react';
-import { CalendarClock, FileText } from 'lucide-react';
-import { Badge, Button, FileUpload, FormField, Select, Table, TBody, TD, TH, THead, TR, useToast } from '../../../components/ui';
+import { useRef, useState } from 'react';
+import { FileText, Pencil, RotateCcw, Trash2, Upload } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  FileUpload,
+  FormField,
+  Select,
+  Table,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+  useConfirm,
+  useToast,
+  type MenuEntry,
+} from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
+import { RowActions } from '../../../components/data/RowActions';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useCan } from '../../../auth/useCan';
 import { displayDate, todayIso } from '../../../lib/format/date';
 import { acceptFor, docTypeLabel, EXPIRING_DOC_TYPES, expiryStatus, readFailureNote, REP_DOC_TYPES } from '../repDocTypes';
 import {
+  useDeleteRepDocument,
+  useDeletedRepDocuments,
   useMyDocumentUrl,
   useMyDocuments,
   useReadDocumentUpload,
   useReadStoredDocument,
+  useReplaceRepDocument,
   useRepDocumentUrl,
   useRepDocuments,
-  useUpdateDocumentDates,
+  useRestoreRepDocument,
+  useUpdateRepDocument,
   useUploadRepDocument,
 } from '../api/useRepProfile';
-import type { DocumentRead, RepDocument } from '../reps.types';
-import { DocumentDatesReview, type DocumentDates } from './DocumentDatesReview';
+import type { DeletedRepDocument, DocumentRead, RepDocument } from '../reps.types';
+import { DocumentDatesReview, type DocumentEdit } from './DocumentDatesReview';
 import styles from './reps.module.css';
 
-/** What the dates panel is working on: a file about to be uploaded, or a document already on file. */
-type Review = { mode: 'upload'; file: File; docType: string } | { mode: 'stored'; doc: RepDocument };
+/** What the review panel is working on: a new upload, a replacement file, or a document already on file. */
+type Review =
+  | { mode: 'upload'; file: File; docType: string }
+  | { mode: 'replace'; file: File; doc: RepDocument }
+  | { mode: 'edit'; doc: RepDocument };
+
+const isImage = (file: File) => /^image\/(png|jpe?g)$/.test(file.type);
 
 /**
  * `self` = the signed-in rep's own documents (My Account): they may LIST and OPEN their own files (e.g. their
@@ -41,6 +69,7 @@ type Review = { mode: 'upload'; file: File; docType: string } | { mode: 'stored'
  */
 export function RepDocumentsPanel({ repId, self = false }: { repId: string; self?: boolean }) {
   const isHr = useCan('hrm:edit');
+  const canRemove = useCan('hrm:delete') && !self;
   const canEdit = isHr && !self;
   const canOpen = isHr || self;
   // Both sources are wired (rules of hooks); only the one for this view is enabled / used.
@@ -48,18 +77,23 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
   const ownList = useMyDocuments(self);
   const list = self ? ownList : adminList;
   const upload = useUploadRepDocument(repId);
+  const replace = useReplaceRepDocument(repId);
+  const update = useUpdateRepDocument(repId);
+  const remove = useDeleteRepDocument(repId);
   const readUpload = useReadDocumentUpload(repId);
   const readStored = useReadStoredDocument(repId);
-  const saveDates = useUpdateDocumentDates(repId);
   const adminOpen = useRepDocumentUrl(repId);
   const ownOpen = useMyDocumentUrl();
   const open = self ? ownOpen : adminOpen;
   const onError = useApiErrorToast();
   const { toast } = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [docType, setDocType] = useState('');
   const [review, setReview] = useState<Review | null>(null);
   const [read, setRead] = useState<DocumentRead | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const replaceInput = useRef<HTMLInputElement>(null);
+  const [replacing, setReplacing] = useState<RepDocument | null>(null);
   const today = todayIso();
   const rows = list.data ?? [];
   const reading = readUpload.isPending || readStored.isPending;
@@ -76,6 +110,7 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
   };
   const handleRead = { onSuccess: (r: DocumentRead) => setRead(r), onError: (e: unknown) => setNote(readFailureNote(e)) };
 
+  // ── New upload ────────────────────────────────────────────────────────────────────────────────
   const onFiles = (files: File[]) => {
     const file = files[0];
     if (!file) return;
@@ -83,7 +118,7 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
       toast({ title: 'Pick the document type first', tone: 'warning' });
       return;
     }
-    if (docType === 'headshot' && !/^image\/(png|jpe?g)$/.test(file.type)) {
+    if (docType === 'headshot' && !isImage(file)) {
       toast({ title: 'A headshot must be a JPG or PNG photo', tone: 'warning' });
       return;
     }
@@ -93,10 +128,10 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
       readUpload.mutate({ file, docType }, handleRead);
       return;
     }
-    doUpload(file, docType, {});
+    doUpload(file, docType, { issued_on: null, expires_on: null });
   };
 
-  const doUpload = (file: File, type: string, dates: Partial<DocumentDates>) =>
+  const doUpload = (file: File, type: string, dates: Pick<DocumentEdit, 'issued_on' | 'expires_on'>) =>
     upload.mutate(
       { file, docType: type, expiresOn: dates.expires_on ?? undefined, issuedOn: dates.issued_on ?? undefined },
       {
@@ -109,29 +144,80 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
       },
     );
 
-  const onOpenFile = (docId: string) =>
-    open.mutate(docId, {
-      onSuccess: (r) => window.open(r.url, '_blank', 'noopener,noreferrer'),
-      onError,
-    });
-
-  /** "Dates" on a row: open the panel; read the document straight away when it has no dates yet. */
-  const editDates = (doc: RepDocument) => {
-    startReview({ mode: 'stored', doc });
-    if (!doc.issued_on && !doc.expires_on) readStored.mutate(doc.id, handleRead);
+  // ── Replace file ──────────────────────────────────────────────────────────────────────────────
+  const pickReplacement = (doc: RepDocument) => {
+    setReplacing(doc);
+    replaceInput.current?.click();
   };
 
-  const onSaveDates = (dates: DocumentDates) => {
-    if (!review) return;
-    if (review.mode === 'upload') {
-      doUpload(review.file, review.docType, dates);
+  const onReplacementPicked = (file: File | undefined) => {
+    const doc = replacing;
+    setReplacing(null);
+    if (replaceInput.current) replaceInput.current.value = '';
+    if (!file || !doc) return;
+    if (doc.doc_type === 'headshot' && !isImage(file)) {
+      toast({ title: 'A headshot must be a JPG or PNG photo', tone: 'warning' });
       return;
     }
-    saveDates.mutate(
-      { docId: review.doc.id, ...dates },
+    if (EXPIRING_DOC_TYPES.has(doc.doc_type)) {
+      // A new ID file usually means new dates: read them, HR confirms, then the file is swapped.
+      startReview({ mode: 'replace', file, doc });
+      readUpload.mutate({ file, docType: doc.doc_type }, handleRead);
+      return;
+    }
+    doReplace(doc, file, { issued_on: null, expires_on: null });
+  };
+
+  const doReplace = (doc: RepDocument, file: File, dates: Pick<DocumentEdit, 'issued_on' | 'expires_on'>) =>
+    replace.mutate(
+      { docId: doc.id, file, issuedOn: dates.issued_on ?? undefined, expiresOn: dates.expires_on ?? undefined },
       {
         onSuccess: () => {
-          toast({ title: 'Dates saved', description: docTypeLabel(review.doc.doc_type), tone: 'success' });
+          toast({
+            title: 'File replaced',
+            description: `${docTypeLabel(doc.doc_type)}. The old file is in Recently deleted for 30 days.`,
+            tone: 'success',
+          });
+          closeReview();
+        },
+        onError,
+      },
+    );
+
+  // ── Edit / delete ─────────────────────────────────────────────────────────────────────────────
+  /** Edit on a row: open the panel; for an ID with no dates yet, read them straight away. */
+  const editDoc = (doc: RepDocument) => {
+    startReview({ mode: 'edit', doc });
+    if (EXPIRING_DOC_TYPES.has(doc.doc_type) && !doc.issued_on && !doc.expires_on) readStored.mutate(doc.id, handleRead);
+  };
+
+  const askDelete = (doc: RepDocument) =>
+    confirm({
+      title: `Move ${docTypeLabel(doc.doc_type)} to Recently deleted?`,
+      description: 'You can restore it for 30 days. After that it is removed for good.',
+      confirmLabel: 'Delete',
+      onConfirm: () =>
+        remove.mutate(doc.id, {
+          onSuccess: () =>
+            toast({
+              title: 'Moved to Recently deleted',
+              description: `${docTypeLabel(doc.doc_type)} can be restored for 30 days.`,
+              tone: 'success',
+            }),
+          onError,
+        }),
+    });
+
+  const onSave = (edit: DocumentEdit) => {
+    if (!review) return;
+    if (review.mode === 'upload') return doUpload(review.file, review.docType, edit);
+    if (review.mode === 'replace') return doReplace(review.doc, review.file, edit);
+    const doc = review.doc;
+    update.mutate(
+      { docId: doc.id, doc_type: edit.doc_type, issued_on: edit.issued_on, expires_on: edit.expires_on },
+      {
+        onSuccess: () => {
+          toast({ title: 'Document updated', description: docTypeLabel(edit.doc_type), tone: 'success' });
           closeReview();
         },
         onError,
@@ -139,7 +225,31 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
     );
   };
 
-  const reviewDoc = review?.mode === 'stored' ? review.doc : null;
+  const onOpenFile = (docId: string) =>
+    open.mutate(docId, {
+      onSuccess: (r) => window.open(r.url, '_blank', 'noopener,noreferrer'),
+      onError,
+    });
+
+  const rowMenu = (d: RepDocument): MenuEntry[] => {
+    const items: MenuEntry[] = [];
+    if (canOpen) items.push({ label: 'Open', icon: <FileText size={14} />, onSelect: () => onOpenFile(d.id) });
+    if (canEdit) {
+      items.push({ label: 'Edit', icon: <Pencil size={14} />, onSelect: () => editDoc(d) });
+      items.push({ label: 'Replace file', icon: <Upload size={14} />, onSelect: () => pickReplacement(d) });
+    }
+    if (canRemove) items.push('separator', { label: 'Delete', icon: <Trash2 size={14} />, danger: true, onSelect: () => askDelete(d) });
+    return items;
+  };
+
+  const reviewDoc = review && review.mode !== 'upload' ? review.doc : null;
+  const reviewType = review?.mode === 'upload' ? review.docType : (reviewDoc?.doc_type ?? '');
+  const title =
+    review?.mode === 'upload'
+      ? `${docTypeLabel(reviewType)}: confirm the dates`
+      : review?.mode === 'replace'
+        ? `Replace ${docTypeLabel(reviewType)}: confirm the dates`
+        : `Edit ${docTypeLabel(reviewType)}`;
 
   return (
     <>
@@ -166,6 +276,15 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
             hint={docType === 'headshot' ? 'JPG or PNG photo, up to 25 MB' : 'PDF, JPG or PNG, up to 25 MB'}
             onFiles={onFiles}
           />
+          {/* Hidden picker behind "Replace file" on a row. */}
+          <input
+            ref={replaceInput}
+            type="file"
+            hidden
+            accept={replacing ? acceptFor(replacing.doc_type) : undefined}
+            onChange={(e) => onReplacementPicked(e.target.files?.[0])}
+            aria-label="Replacement file"
+          />
         </div>
       )}
       <DataState
@@ -182,60 +301,114 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
               <TH>Issued</TH>
               <TH>Expires</TH>
               <TH>Uploaded</TH>
-              <TH align="right">File</TH>
+              <TH align="right">Actions</TH>
             </TR>
           </THead>
           <TBody>
-            {rows.map((d) => (
-              <TR key={d.id}>
-                <TD>{docTypeLabel(d.doc_type)}</TD>
-                <TD className="mono">{d.issued_on ? displayDate(d.issued_on) : ''}</TD>
-                <TD>
-                  <ExpiryCell expiresOn={d.expires_on} today={today} />
-                </TD>
-                <TD className="mono">{displayDate(d.uploaded_at)}</TD>
-                <TD align="right">
-                  <span className={styles.fileActions}>
-                    {canEdit && EXPIRING_DOC_TYPES.has(d.doc_type) && (
-                      <Button variant="tertiary" size="sm" leftIcon={<CalendarClock size={14} />} onClick={() => editDates(d)}>
-                        Dates
-                      </Button>
-                    )}
-                    {canOpen ? (
-                      <Button
-                        variant="tertiary"
-                        size="sm"
-                        leftIcon={<FileText size={14} />}
-                        onClick={() => onOpenFile(d.id)}
-                        loading={open.isPending && open.variables === d.id}
-                      >
-                        Open
-                      </Button>
+            {rows.map((d) => {
+              const menu = rowMenu(d);
+              return (
+                <TR key={d.id}>
+                  <TD>{docTypeLabel(d.doc_type)}</TD>
+                  <TD className="mono">{d.issued_on ? displayDate(d.issued_on) : ''}</TD>
+                  <TD>
+                    <ExpiryCell expiresOn={d.expires_on} today={today} />
+                  </TD>
+                  <TD className="mono">{displayDate(d.uploaded_at)}</TD>
+                  <TD align="right">
+                    {menu.length > 0 ? (
+                      <RowActions label={`${docTypeLabel(d.doc_type)} actions`} items={menu} />
                     ) : (
                       <span className={styles.muted}>Restricted</span>
                     )}
-                  </span>
-                </TD>
-              </TR>
-            ))}
+                  </TD>
+                </TR>
+              );
+            })}
           </TBody>
         </Table>
       </DataState>
 
+      {canRemove && <RecentlyDeleted repId={repId} />}
+
       <DocumentDatesReview
         open={review !== null}
-        title={review?.mode === 'upload' ? `${docTypeLabel(review.docType)}: confirm the dates` : `${reviewDoc ? docTypeLabel(reviewDoc.doc_type) : ''}: dates`}
-        initial={{ issued_on: reviewDoc?.issued_on ?? null, expires_on: reviewDoc?.expires_on ?? null }}
+        title={title}
+        editType={review?.mode === 'edit'}
+        initial={{
+          doc_type: reviewType,
+          issued_on: review?.mode === 'edit' ? review.doc.issued_on : null,
+          expires_on: review?.mode === 'edit' ? review.doc.expires_on : null,
+        }}
         read={read}
         reading={reading}
         note={note}
-        saving={upload.isPending || saveDates.isPending}
-        saveLabel={review?.mode === 'upload' ? 'Save document' : 'Save dates'}
-        onReadAgain={reviewDoc ? () => readStored.mutate(reviewDoc.id, handleRead) : undefined}
-        onSave={onSaveDates}
+        saving={upload.isPending || replace.isPending || update.isPending}
+        saveLabel={review?.mode === 'upload' ? 'Save document' : review?.mode === 'replace' ? 'Replace file' : 'Save changes'}
+        onReadAgain={review?.mode === 'edit' ? () => readStored.mutate(review.doc.id, handleRead) : undefined}
+        onSave={onSave}
         onCancel={closeReview}
       />
+      {confirmDialog}
     </>
+  );
+}
+
+/**
+ * Recently deleted (hrm:delete): documents that can still be restored, with who deleted them and the day the
+ * purge removes them for good. Collapsed by default; hidden when the bin is empty.
+ */
+function RecentlyDeleted({ repId }: { repId: string }) {
+  const deleted = useDeletedRepDocuments(repId);
+  const restore = useRestoreRepDocument(repId);
+  const onError = useApiErrorToast();
+  const { toast } = useToast();
+  const rows: DeletedRepDocument[] = deleted.data ?? [];
+  if (rows.length === 0) return null;
+
+  const onRestore = (d: DeletedRepDocument) =>
+    restore.mutate(d.id, {
+      onSuccess: () => toast({ title: 'Document restored', description: docTypeLabel(d.doc_type), tone: 'success' }),
+      onError,
+    });
+
+  return (
+    <details className={styles.recentlyDeleted}>
+      <summary className={styles.recentlyDeletedSummary}>Recently deleted ({rows.length})</summary>
+      <p className={styles.muted}>Deleted documents can be restored for 30 days. After that they are removed for good.</p>
+      <Table>
+        <THead>
+          <TR>
+            <TH>Document</TH>
+            <TH>Deleted by</TH>
+            <TH>Deleted on</TH>
+            <TH>Removed for good on</TH>
+            <TH align="right">Actions</TH>
+          </TR>
+        </THead>
+        <TBody>
+          {rows.map((d) => (
+            <TR key={d.id}>
+              <TD>{docTypeLabel(d.doc_type)}</TD>
+              <TD>{d.deleted_by_name ?? '—'}</TD>
+              <TD className="mono">{d.deleted_at ? displayDate(d.deleted_at) : '—'}</TD>
+              <TD className="mono">{displayDate(d.purge_on)}</TD>
+              <TD align="right">
+                <Button
+                  variant="tertiary"
+                  size="sm"
+                  leftIcon={<RotateCcw size={14} />}
+                  onClick={() => onRestore(d)}
+                  loading={restore.isPending && restore.variables === d.id}
+                >
+                  Restore
+                </Button>
+              </TD>
+            </TR>
+          ))}
+        </TBody>
+      </Table>
+    </details>
   );
 }
 

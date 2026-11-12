@@ -22,6 +22,7 @@
     "seed:reset": "ts-node --transpile-only prisma/reset.ts",
     "sa:reset": "ts-node --transpile-only scripts/reset-superadmin.ts",
     "payroll:backfill": "ts-node --transpile-only scripts/backfill-payroll-lines.ts",
+    "documents:purge": "ts-node --transpile-only scripts/purge-deleted-documents.ts",
     "prisma:studio": "prisma studio",
     "contract:export": "ts-node --transpile-only scripts/export-openapi.ts"
   },
@@ -32,6 +33,7 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^6.1.3",
     "@nestjs/swagger": "^11.0.0",
     "@nestjs/terminus": "^11.0.0",
     "@prisma/client": "^6.2.1",

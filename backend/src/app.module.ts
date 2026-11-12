@@ -12,6 +12,7 @@ import { Module } from '@nestjs/common';
 import { AvatarModule } from './common/avatar/avatar.module';
 import { APP_FILTER } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -43,6 +44,8 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Scheduled jobs (2026-11-12): the daily rep-document purge is the first. — HrmModule RepDocumentPurgeService
+    ScheduleModule.forRoot(),
     AvatarModule,
     PrismaModule,
     HealthModule,

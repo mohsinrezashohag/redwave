@@ -57,7 +57,7 @@ const ADMIN_GRANTS: Grant[] = [
   ...g('users', 'view', 'create', 'edit'),
   ...g('roles', 'view'),
   ...g('profile', 'approve'),
-  ...g('hrm', 'view', 'create', 'edit', 'approve', 'export'),
+  ...g('hrm', 'view', 'create', 'edit', 'approve', 'delete', 'export'), // delete = rep documents to Recently deleted (restorable 30 days)
   ...g('clients', 'view', 'create', 'edit', 'export'),
   ...g('commission', 'view', 'edit', 'approve', 'export'),
   ...g('product_types', 'view', 'edit'), // manage the product-type catalogue (own module row)

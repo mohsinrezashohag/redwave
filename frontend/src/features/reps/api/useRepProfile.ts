@@ -11,6 +11,7 @@ import { repsListKeys } from './useReps';
 import type {
   CreateEquipmentBody,
   CreateRepBody,
+  DeletedRepDocument,
   DocumentRead,
   Rep,
   RepDocument,
@@ -25,6 +26,7 @@ export const repKeys = {
   one: (id: string) => ['reps', 'one', id] as const,
   equipment: (id: string) => ['reps', 'one', id, 'equipment'] as const,
   documents: (id: string) => ['reps', 'one', id, 'documents'] as const,
+  deletedDocuments: (id: string) => ['reps', 'one', id, 'documents', 'deleted'] as const,
 };
 
 export function useRep(id: string | undefined) {
@@ -228,14 +230,62 @@ export function useReadStoredDocument(repId: string) {
   });
 }
 
-/** Save HR-confirmed issue/expiry dates on an existing document (hrm:edit, audited). */
-export function useUpdateDocumentDates(repId: string) {
+/**
+ * Edit a document on file: its type and, for IDs, the HR-confirmed dates (hrm:edit, audited). `null` clears a
+ * date; an omitted field is unchanged; a type without dates clears them server-side. 2026-11-12
+ */
+export function useUpdateRepDocument(repId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ docId, issued_on, expires_on }: { docId: string; issued_on: string | null; expires_on: string | null }) =>
-      unwrap<RepDocument>(
-        api.PATCH('/v1/reps/{id}/documents/{docId}', { params: { path: { id: repId, docId } }, body: { issued_on, expires_on } }),
+    mutationFn: ({ docId, ...body }: { docId: string; doc_type?: string; issued_on?: string | null; expires_on?: string | null }) =>
+      unwrap<RepDocument>(api.PATCH('/v1/reps/{id}/documents/{docId}', { params: { path: { id: repId, docId } }, body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: repKeys.documents(repId) }),
+  });
+}
+
+/** Replace a document's file (hrm:edit). The old file moves to Recently deleted, restorable for 30 days. */
+export function useReplaceRepDocument(repId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ docId, file, expiresOn, issuedOn }: { docId: string; file: File; expiresOn?: string; issuedOn?: string }) => {
+      const form = new FormData();
+      form.append('file', file);
+      if (expiresOn) form.append('expires_on', expiresOn);
+      if (issuedOn) form.append('issued_on', issuedOn);
+      return multipartPost<RepDocument>(`/v1/reps/${repId}/documents/${docId}/replace`, form);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: repKeys.documents(repId) }),
+  });
+}
+
+/** Move a document to Recently deleted (hrm:delete). */
+export function useDeleteRepDocument(repId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (docId: string) =>
+      unwrap<{ success: boolean; purge_on: string }>(
+        api.DELETE('/v1/reps/{id}/documents/{docId}', { params: { path: { id: repId, docId } } }),
       ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: repKeys.documents(repId) }),
+  });
+}
+
+/** The rep's Recently deleted documents (hrm:delete). */
+export function useDeletedRepDocuments(repId: string, enabled = true) {
+  return useQuery({
+    queryKey: repKeys.deletedDocuments(repId),
+    queryFn: () =>
+      unwrap<DeletedRepDocument[]>(api.GET('/v1/reps/{id}/documents/deleted', { params: { path: { id: repId } } })),
+    enabled: enabled && !!repId,
+  });
+}
+
+/** Bring a document back from Recently deleted (hrm:delete; 409 after 30 days). */
+export function useRestoreRepDocument(repId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (docId: string) =>
+      unwrap<RepDocument>(api.POST('/v1/reps/{id}/documents/{docId}/restore', { params: { path: { id: repId, docId } } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: repKeys.documents(repId) }),
   });
 }

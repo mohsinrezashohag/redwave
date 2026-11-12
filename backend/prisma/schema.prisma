@@ -329,6 +329,7 @@ model User {
   expense_field_configs_created ExpenseFieldConfig[]       @relation("ExpenseFieldConfigCreatedBy")
   expense_exports_generated     ExpenseExport[]            @relation("ExpenseExportGeneratedBy")
   km_rate_configs_created       KmRateConfig[]             @relation("KmRateConfigCreatedBy")
+  rep_documents_deleted         RepDocument[]              @relation("RepDocumentDeletedBy")
   report_exports_generated      ReportExport[]             @relation("ReportExportGeneratedBy")
   stored_files_uploaded         StoredFile[]               @relation("StoredFileUploadedBy")
   statements_generated          ClientStatement[]          @relation("StatementGeneratedBy")
@@ -590,7 +591,13 @@ model RepDocument {
   expires_on  DateTime? @db.Date
   /// When the ID was issued — read by the document reader or typed by HR, confirmed by HR (2026-11-12).
   issued_on   DateTime? @db.Date
+  /// Moved to "Recently deleted" (2026-11-12). Restorable for 30 days, then the daily purge removes the
+  /// stored object and this row for good. Every read of live documents filters `deleted_at: null`.
+  deleted_at  DateTime?
+  deleted_by  String?   @db.Uuid
+  deleter     User?     @relation("RepDocumentDeletedBy", fields: [deleted_by], references: [id])
 
+  @@index([rep_id, deleted_at])
   @@map("rep_documents")
 }
 

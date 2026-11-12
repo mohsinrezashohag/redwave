@@ -174,6 +174,32 @@ export class RepDocumentResponse {
 
   @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'When the ID was issued (2026-11-12).' })
   issued_on!: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Set while the document is in Recently deleted (always null on the live list).',
+  })
+  deleted_at!: string | null;
+}
+
+/** A document in Recently deleted (GET /v1/reps/{id}/documents/deleted). Its file can't be opened. */
+export class DeletedRepDocumentResponse extends RepDocumentResponse {
+  @ApiProperty({ type: String, nullable: true, description: 'Who deleted it.' })
+  deleted_by_name!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', description: 'When the daily purge removes it for good (30 days).' })
+  purge_on!: string;
+}
+
+/** DELETE /v1/reps/{id}/documents/{docId} — moved to Recently deleted. */
+export class RemovedRepDocumentResponse {
+  @ApiProperty({ example: true })
+  success!: boolean;
+
+  @ApiProperty({ type: String, format: 'date-time', description: 'Restorable until then; removed for good after.' })
+  purge_on!: string;
 }
 
 /** One consistency check on a read ID (never a claim that the document is genuine). */

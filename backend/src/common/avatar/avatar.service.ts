@@ -26,7 +26,7 @@ export class AvatarService {
       where: { user_id: { in: users.map((u) => u.id) } },
       select: {
         user_id: true,
-        rep_documents: { where: { doc_type: 'headshot' }, orderBy: { uploaded_at: 'desc' }, take: 1, select: { file_url: true } },
+        rep_documents: { where: { doc_type: 'headshot', deleted_at: null }, orderBy: { uploaded_at: 'desc' }, take: 1, select: { file_url: true } },
       },
     });
     const repByUser = new Map(reps.map((r) => [r.user_id as string, r.rep_documents[0]?.file_url ?? null]));
@@ -50,7 +50,7 @@ export class AvatarService {
     const out = new Map<string, string | null>();
     if (ids.length === 0) return out;
     const docs = await this.prisma.repDocument.findMany({
-      where: { rep_id: { in: ids }, doc_type: 'headshot' },
+      where: { rep_id: { in: ids }, doc_type: 'headshot', deleted_at: null },
       orderBy: { uploaded_at: 'desc' },
       select: { rep_id: true, file_url: true },
     });
