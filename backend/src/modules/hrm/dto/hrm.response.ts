@@ -119,6 +119,18 @@ export class RepBankingResponse {
 
   @ApiProperty({ type: String, nullable: true, example: '••••4567' })
   account_masked!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'TD Canada Trust', description: 'As entered, else the name for the institution number.' })
+  bank_name!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'Riley Rivera' })
+  account_holder!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '000412345', description: 'Electronic routing number (EFT / direct deposit): 0 + institution + transit.' })
+  routing_electronic!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '12345-004', description: 'Cheque (MICR) routing number: transit-institution.' })
+  routing_cheque!: string | null;
 }
 
 /** POST /v1/reps/{id}/banking/reveal (hrm:edit; every call audited). */
@@ -182,6 +194,15 @@ export class RepDocumentResponse {
     description: 'Set while the document is in Recently deleted (always null on the live list).',
   })
   deleted_at!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'HR-confirmed name on the ID. NULLED unless the caller has hrm:edit.' })
+  name_on_document!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'HR-confirmed date of birth on the ID. NULLED unless hrm:edit.' })
+  date_of_birth!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '••••4567', description: 'Last four of the document number. NULLED unless hrm:edit; the full number is never returned.' })
+  document_number_masked!: string | null;
 }
 
 /** A document in Recently deleted (GET /v1/reps/{id}/documents/deleted). Its file can't be opened. */
@@ -204,8 +225,8 @@ export class RemovedRepDocumentResponse {
 
 /** One consistency check on a read ID (never a claim that the document is genuine). */
 export class IdCheckResponse {
-  @ApiProperty({ enum: ['name', 'dates', 'not_expired', 'mrz', 'mrz_expiry'] })
-  key!: 'name' | 'dates' | 'not_expired' | 'mrz' | 'mrz_expiry';
+  @ApiProperty({ enum: ['name', 'dates', 'not_expired', 'dob', 'mrz', 'mrz_expiry'] })
+  key!: 'name' | 'dates' | 'not_expired' | 'dob' | 'mrz' | 'mrz_expiry';
 
   @ApiProperty()
   ok!: boolean;
@@ -225,8 +246,73 @@ export class DocumentReadResponse {
   @ApiProperty({ type: String, nullable: true, description: 'The name printed on the document.' })
   name_on_document!: string | null;
 
+  @ApiProperty({ type: String, nullable: true, example: '1994-03-21', description: 'Date of birth read off the document or its MRZ.' })
+  date_of_birth!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Document number read off the document or its MRZ, for HR to confirm.' })
+  document_number!: string | null;
+
   @ApiProperty({ type: () => [IdCheckResponse] })
   checks!: IdCheckResponse[];
+}
+
+/** One value in the Data accuracy comparison. `match` null = nothing to compare against. */
+export class AccuracyCellResponse {
+  @ApiProperty({ type: String, nullable: true })
+  value!: string | null;
+
+  @ApiProperty({ type: Boolean, nullable: true, description: 'true = agrees with the profile, false = differs, null = not compared.' })
+  match!: boolean | null;
+}
+
+export class AccuracyProfileResponse {
+  @ApiProperty()
+  name!: string;
+
+  @ApiProperty({ type: String, nullable: true, example: '1994-03-21' })
+  date_of_birth!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  address!: string | null;
+}
+
+/** The HR-confirmed details of the latest live ID of one kind. */
+export class AccuracySourceResponse {
+  @ApiProperty()
+  document_id!: string;
+
+  @ApiProperty({ example: 'passport' })
+  doc_type!: string;
+
+  @ApiProperty({ type: () => AccuracyCellResponse })
+  name!: AccuracyCellResponse;
+
+  @ApiProperty({ type: () => AccuracyCellResponse })
+  date_of_birth!: AccuracyCellResponse;
+
+  @ApiProperty({ type: () => AccuracyCellResponse, description: 'Masked (last four only).' })
+  document_number!: AccuracyCellResponse;
+
+  @ApiProperty({ type: () => AccuracyCellResponse })
+  issued_on!: AccuracyCellResponse;
+
+  @ApiProperty({ type: () => AccuracyCellResponse })
+  expires_on!: AccuracyCellResponse;
+
+  @ApiProperty()
+  expired!: boolean;
+}
+
+/** GET /v1/reps/{id}/data-accuracy (hrm:edit, 2026-11-13). */
+export class DataAccuracyResponse {
+  @ApiProperty({ type: () => AccuracyProfileResponse })
+  profile!: AccuracyProfileResponse;
+
+  @ApiProperty({ type: () => [AccuracySourceResponse] })
+  sources!: AccuracySourceResponse[];
+
+  @ApiProperty({ example: 1, description: 'How many values differ from the profile.' })
+  differences!: number;
 }
 
 export class RepEquipmentResponse {

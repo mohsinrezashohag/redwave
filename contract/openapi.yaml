@@ -2772,6 +2772,34 @@ paths:
       security: *a105
       summary: Replace a rep document's file
       tags: *a106
+  /v1/reps/{id}/data-accuracy:
+    get:
+      description: Requires hrm:edit. The profile name and date of birth beside the
+        HR-confirmed details of the latest live ID of each kind, with
+        server-computed match flags. Document numbers are masked.
+      operationId: RepsController_dataAccuracy_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataAccuracyResponse"
+        "400": *a99
+        "401": *a100
+        "403": *a101
+        "404": *a102
+        "409": *a103
+        "422": *a104
+      security: *a105
+      summary: Compare a rep's profile with their IDs
+      tags: *a106
   /v1/reps/{id}/documents/deleted:
     get:
       description: Requires hrm:delete. Documents that can still be restored, with who
@@ -10353,10 +10381,34 @@ components:
           type: string
           nullable: true
           example: ••••4567
+        bank_name:
+          type: string
+          nullable: true
+          example: TD Canada Trust
+          description: As entered, else the name for the institution number.
+        account_holder:
+          type: string
+          nullable: true
+          example: Riley Rivera
+        routing_electronic:
+          type: string
+          nullable: true
+          example: "000412345"
+          description: "Electronic routing number (EFT / direct deposit): 0 + institution
+            + transit."
+        routing_cheque:
+          type: string
+          nullable: true
+          example: 12345-004
+          description: "Cheque (MICR) routing number: transit-institution."
       required:
         - institution_no
         - transit_no
         - account_masked
+        - bank_name
+        - account_holder
+        - routing_electronic
+        - routing_cheque
     RepResponse:
       type: object
       properties:
@@ -10509,6 +10561,14 @@ components:
           example: "1234567"
           description: Account number (7–12 digits). WRITE-ONLY; blank on edit keeps the
             one on file.
+        bank_name:
+          type: string
+          example: TD Canada Trust
+          description: Bank name. Blank = the name for the institution number, when known.
+        account_holder:
+          type: string
+          example: Riley Rivera
+          description: Name the account is held in, as on the void cheque.
       required:
         - institution_no
         - transit_no
@@ -10753,6 +10813,21 @@ components:
           nullable: true
           description: Set while the document is in Recently deleted (always null on the
             live list).
+        name_on_document:
+          type: string
+          nullable: true
+          description: HR-confirmed name on the ID. NULLED unless the caller has hrm:edit.
+        date_of_birth:
+          type: string
+          format: date-time
+          nullable: true
+          description: HR-confirmed date of birth on the ID. NULLED unless hrm:edit.
+        document_number_masked:
+          type: string
+          nullable: true
+          example: ••••4567
+          description: Last four of the document number. NULLED unless hrm:edit; the full
+            number is never returned.
       required:
         - id
         - rep_id
@@ -10762,6 +10837,9 @@ components:
         - expires_on
         - issued_on
         - deleted_at
+        - name_on_document
+        - date_of_birth
+        - document_number_masked
     IdCheckResponse:
       type: object
       properties:
@@ -10771,6 +10849,7 @@ components:
             - name
             - dates
             - not_expired
+            - dob
             - mrz
             - mrz_expiry
         ok:
@@ -10797,6 +10876,15 @@ components:
           type: string
           nullable: true
           description: The name printed on the document.
+        date_of_birth:
+          type: string
+          nullable: true
+          example: 1994-03-21
+          description: Date of birth read off the document or its MRZ.
+        document_number:
+          type: string
+          nullable: true
+          description: Document number read off the document or its MRZ, for HR to confirm.
         checks:
           type: array
           items:
@@ -10805,6 +10893,8 @@ components:
         - issued_on
         - expires_on
         - name_on_document
+        - date_of_birth
+        - document_number
         - checks
     UpdateRepDocumentDto:
       type: object
@@ -10821,6 +10911,22 @@ components:
           type: string
           nullable: true
           example: 2032-06-30
+        name_on_document:
+          type: string
+          nullable: true
+          example: RILEY RIVERA
+          description: Name as printed on the ID, HR-confirmed (2026-11-13). IDs only.
+        date_of_birth:
+          type: string
+          nullable: true
+          example: 1994-03-21
+          description: Date of birth on the ID, HR-confirmed. IDs only.
+        document_number:
+          type: string
+          nullable: true
+          example: AB1234567
+          description: "Document number. WRITE-ONLY: stored encrypted, only its last four
+            are ever shown. IDs only."
     RemovedRepDocumentResponse:
       type: object
       properties:
@@ -10834,6 +10940,83 @@ components:
       required:
         - success
         - purge_on
+    AccuracyProfileResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        date_of_birth:
+          type: string
+          nullable: true
+          example: 1994-03-21
+        address:
+          type: string
+          nullable: true
+      required:
+        - name
+        - date_of_birth
+        - address
+    AccuracyCellResponse:
+      type: object
+      properties:
+        value:
+          type: string
+          nullable: true
+        match:
+          type: boolean
+          nullable: true
+          description: true = agrees with the profile, false = differs, null = not compared.
+      required:
+        - value
+        - match
+    AccuracySourceResponse:
+      type: object
+      properties:
+        document_id:
+          type: string
+        doc_type:
+          type: string
+          example: passport
+        name:
+          $ref: "#/components/schemas/AccuracyCellResponse"
+        date_of_birth:
+          $ref: "#/components/schemas/AccuracyCellResponse"
+        document_number:
+          description: Masked (last four only).
+          allOf:
+            - $ref: "#/components/schemas/AccuracyCellResponse"
+        issued_on:
+          $ref: "#/components/schemas/AccuracyCellResponse"
+        expires_on:
+          $ref: "#/components/schemas/AccuracyCellResponse"
+        expired:
+          type: boolean
+      required:
+        - document_id
+        - doc_type
+        - name
+        - date_of_birth
+        - document_number
+        - issued_on
+        - expires_on
+        - expired
+    DataAccuracyResponse:
+      type: object
+      properties:
+        profile:
+          $ref: "#/components/schemas/AccuracyProfileResponse"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccuracySourceResponse"
+        differences:
+          type: number
+          example: 1
+          description: How many values differ from the profile.
+      required:
+        - profile
+        - sources
+        - differences
     DeletedRepDocumentResponse:
       type: object
       properties:
@@ -10867,6 +11050,21 @@ components:
           nullable: true
           description: Set while the document is in Recently deleted (always null on the
             live list).
+        name_on_document:
+          type: string
+          nullable: true
+          description: HR-confirmed name on the ID. NULLED unless the caller has hrm:edit.
+        date_of_birth:
+          type: string
+          format: date-time
+          nullable: true
+          description: HR-confirmed date of birth on the ID. NULLED unless hrm:edit.
+        document_number_masked:
+          type: string
+          nullable: true
+          example: ••••4567
+          description: Last four of the document number. NULLED unless hrm:edit; the full
+            number is never returned.
         deleted_by_name:
           type: string
           nullable: true
@@ -10884,6 +11082,9 @@ components:
         - expires_on
         - issued_on
         - deleted_at
+        - name_on_document
+        - date_of_birth
+        - document_number_masked
         - deleted_by_name
         - purge_on
     RepEquipmentResponse:

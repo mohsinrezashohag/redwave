@@ -2904,3 +2904,31 @@ are DROPPED after converting the prices in force.
 **Not done:** the rep-rate IMPORT still takes product type only (no per-product column).
 
 **Operator:** `prisma:deploy` (adds `20261113100000`); `prisma:seed` (bootstrap rates, idempotent).
+
+### Rep banking details, ID holder details and the Data accuracy tab (migration `20261113200000`)
+
+Client follow-up items 2 and 3 (item 4, the sales row icons, shipped with the tier removal above).
+
+- **Banking:** `payment_details` gains `bank_name` (typed, else derived from the 3-digit institution number via
+  `CANADIAN_BANKS` in `rep-profile.logic`; the FE keeps a copy to suggest it while typing) and `account_holder`.
+  The routing number is **derived on read** both ways (electronic `0IIITTTTT`, cheque `TTTTT-III`), never stored.
+  No migration (JSON column). The rep form shows Bank name / Account holder / a read-only Routing no.; the
+  Banking card shows all of them. The account stays encrypted, masked and reveal-audited.
+- **ID holder details** (migration `20261113200000_rep_document_id_details`): `rep_documents` gains
+  `name_on_document`, `date_of_birth`, `document_number_ciphertext` (field-cipher) and `document_number_last4`.
+  The reader prompt + `parseMrz` (TD3/TD1, 2-digit birth year placed by today's year) suggest DOB and number;
+  `withMrzDetails` fills what the print lacked; a new `dob` check compares with the profile. HR confirms them in
+  the document review dialog; they are saved on upload / edit / replace (replace carries the old ones over),
+  **never logged** (the audit row records only `id_details_changed`) and the number is never returned unmasked.
+  Storing a number without `PII_ENCRYPTION_KEY` is a 422. All document responses go through `toDocView`.
+- **Data accuracy tab** (`GET /v1/reps/:id/data-accuracy`, `hrm:edit`; FE tab only with `hrm:edit`): the profile
+  beside the latest live ID of each kind, same rows in every column (name, DOB, document no., issued, expires,
+  address), grey value boxes, differences outlined in the warning tone, a summary banner. Match flags are the
+  server's; a value missing on either side is "not on file", never a difference.
+- **Tests:** MRZ DOB/number + century, `withMrzDetails`, the `dob` check, encryption + redaction + no-logging,
+  the no-key 422, the comparison (latest per kind, live only, missing ≠ mismatch), RBAC; FE routing/bank-name and
+  the column mapping. Verified LOCAL: 1165 backend tests, typecheck, lint, build, contract export; FE tsc, lint,
+  stylelint, 153 vitest, build. **Not seen in a browser** (the local app points at production).
+
+**Operator:** `prisma:deploy` (adds `20261113200000`). `PII_ENCRYPTION_KEY` must be set on Render to store
+document numbers (it already is required for SIN / bank account).

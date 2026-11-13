@@ -66,6 +66,44 @@ export function normalizeAccount(input: string): string | null {
   return /^\d{7,12}$/.test(d) ? d : null;
 }
 
+/**
+ * Canadian financial institutions by their 3-digit number, to pre-fill the bank name (HR can still type any
+ * name). Not exhaustive: an unlisted number simply leaves the name for HR to enter. — 2026-11-13
+ */
+export const CANADIAN_BANKS: Readonly<Record<string, string>> = {
+  '001': 'Bank of Montreal (BMO)',
+  '002': 'Scotiabank',
+  '003': 'RBC Royal Bank',
+  '004': 'TD Canada Trust',
+  '006': 'National Bank of Canada',
+  '010': 'CIBC',
+  '016': 'HSBC Bank Canada',
+  '030': 'Canadian Western Bank',
+  '039': 'Laurentian Bank',
+  '219': 'ATB Financial',
+  '540': 'Manulife Bank',
+  '614': 'Tangerine',
+  '621': 'EQ Bank',
+  '815': 'Desjardins',
+  '828': 'Central 1 Credit Union',
+  '837': 'Meridian Credit Union',
+};
+
+/** The bank name for an institution number, or null when it isn't in the list. */
+export function bankNameFor(institution: string | null | undefined): string | null {
+  return institution ? (CANADIAN_BANKS[institution] ?? null) : null;
+}
+
+/**
+ * The routing number two ways, both derived from the institution + transit (never stored separately):
+ *   - electronic (EFT / direct deposit / payroll files): `0` + institution + transit → "000112345";
+ *   - cheque (MICR line): transit + "-" + institution → "12345-001".
+ */
+export function routingNumbers(institution: string | null | undefined, transit: string | null | undefined): { electronic: string; cheque: string } | null {
+  if (!institution || !transit) return null;
+  return { electronic: `0${institution}${transit}`, cheque: `${transit}-${institution}` };
+}
+
 /** "••••4567" from the stored last four; null when none is on file. */
 export function maskAccount(last4: string | null | undefined): string | null {
   return last4 ? `••••${last4}` : null;

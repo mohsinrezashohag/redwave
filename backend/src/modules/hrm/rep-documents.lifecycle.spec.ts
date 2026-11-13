@@ -64,7 +64,11 @@ describe('RepDocumentsService — edit / replace / delete / restore', () => {
     const { service, prisma } = make();
     prisma.repDocument.findFirst.mockResolvedValue(passport);
     await service.update('r1', 'd1', { doc_type: 'contract' }, 'hr1');
-    expect(prisma.repDocument.update.mock.calls[0][0].data).toEqual({ doc_type: 'contract', issued_on: null, expires_on: null });
+    expect(prisma.repDocument.update.mock.calls[0][0].data).toEqual({
+      doc_type: 'contract', issued_on: null, expires_on: null,
+      // A non-ID keeps no identity details either.
+      name_on_document: null, date_of_birth: null, document_number_ciphertext: null, document_number_last4: null,
+    });
     await expect(service.update('r1', 'd1', { doc_type: 'headshot' }, 'hr1')).rejects.toThrow(/JPG or PNG/);
     await expect(service.update('r1', 'd1', { doc_type: 'contract', expires_on: '2031-01-01' }, 'hr1')).rejects.toThrow(
       /carry issue and expiry/,

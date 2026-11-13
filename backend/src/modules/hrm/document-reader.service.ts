@@ -33,6 +33,7 @@ const INSTRUCTION = [
   'Never guess, estimate or invent a value. Do not compute dates.',
   'issued_on = date of issue. expires_on = date of expiry / valid until.',
   'full_name = the holder’s full name as printed.',
+  'date_of_birth = the holder’s date of birth. document_number = the document / permit / licence number as printed.',
   'mrz_lines = the machine-readable zone lines exactly as printed (with < characters), or an empty list.',
 ].join('\n');
 
@@ -76,6 +77,8 @@ export class DocumentReaderService {
               full_name: { type: Type.STRING, nullable: true },
               issued_on: { type: Type.STRING, nullable: true },
               expires_on: { type: Type.STRING, nullable: true },
+              date_of_birth: { type: Type.STRING, nullable: true },
+              document_number: { type: Type.STRING, nullable: true },
               mrz_lines: { type: Type.ARRAY, items: { type: Type.STRING } },
             },
           },
@@ -108,6 +111,9 @@ export function parseReadJson(text: string): ReadDocument {
     name_on_document: name,
     issued_on: cleanDate(raw.issued_on),
     expires_on: cleanDate(raw.expires_on),
+    date_of_birth: cleanDate(raw.date_of_birth),
+    document_number:
+      typeof raw.document_number === 'string' && raw.document_number.trim() ? raw.document_number.trim().slice(0, 40) : null,
     mrz_lines: mrz && mrz.length > 0 ? mrz : null,
   };
 }

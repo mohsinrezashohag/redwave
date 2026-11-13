@@ -582,6 +582,12 @@ model RepDocument {
   expires_on  DateTime? @db.Date
   /// When the ID was issued — read by the document reader or typed by HR, confirmed by HR (2026-11-12).
   issued_on   DateTime? @db.Date
+  /// HR-confirmed details read off an ID (2026-11-13), for the Data accuracy comparison. The document number
+  /// is encrypted (field-cipher, like the SIN) and only ever shown masked.
+  name_on_document           String?
+  date_of_birth              DateTime? @db.Date
+  document_number_ciphertext String?
+  document_number_last4      String?
   /// Moved to "Recently deleted" (2026-11-12). Restorable for 30 days, then the daily purge removes the
   /// stored object and this row for good. Every read of live documents filters `deleted_at: null`.
   deleted_at  DateTime?

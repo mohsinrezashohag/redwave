@@ -47,6 +47,18 @@ export class RepBankingDto {
   @IsString()
   @MaxLength(20)
   account_no?: string;
+
+  @ApiPropertyOptional({ example: 'TD Canada Trust', description: 'Bank name. Blank = the name for the institution number, when known.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  bank_name?: string;
+
+  @ApiPropertyOptional({ example: 'Riley Rivera', description: 'Name the account is held in, as on the void cheque.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  account_holder?: string;
 }
 
 export class RepProfileFieldsDto {

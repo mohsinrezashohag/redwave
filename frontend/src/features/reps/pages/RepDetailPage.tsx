@@ -1,6 +1,6 @@
 /**
  * RepDetailPage — /admin/reps/:id. One rep's full record (SRS HRM-001/005/006, client request 2026-11-11):
- * Profile (personal · uniform · employment) · Equipment (iPad etc. + deposits) · Documents. Deep-linkable
+ * Profile (personal · uniform · employment) · Equipment (iPad etc. + deposits) · Documents · Data accuracy (HR). Deep-linkable
  * detail route (§13.2), never a drawer. hrm:view to see; Edit is hrm:edit. 403 → AccessDenied, 404 → a
  * graceful not-found. PII is redacted server-side for callers without hrm:edit. Tokens only.
  */
@@ -16,6 +16,7 @@ import { useRep } from '../api/useRepProfile';
 import { RepProfileCard } from '../components/RepProfileCard';
 import { RepEquipmentPanel } from '../components/RepEquipmentPanel';
 import { RepDocumentsPanel } from '../components/RepDocumentsPanel';
+import { RepDataAccuracyPanel } from '../components/RepDataAccuracyPanel';
 import { RepFormModal, type RepFormState } from '../components/RepFormModal';
 import { EditableRepHeadshot } from '../components/RepHeadshot';
 import styles from '../components/reps.module.css';
@@ -65,6 +66,8 @@ export default function RepDetailPage() {
                 { value: 'profile', label: 'Profile', content: <RepProfileCard rep={r} /> },
                 { value: 'equipment', label: 'Equipment', content: <RepEquipmentPanel repId={r.id} /> },
                 { value: 'documents', label: 'Documents', content: <RepDocumentsPanel repId={r.id} /> },
+                // Comparing PII side by side is HR's (hrm:edit); the server enforces it too. 2026-11-13
+                ...(canEdit ? [{ value: 'accuracy', label: 'Data accuracy', content: <RepDataAccuracyPanel repId={r.id} /> }] : []),
               ]}
             />
           </>
