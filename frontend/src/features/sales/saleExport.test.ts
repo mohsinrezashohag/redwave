@@ -3,7 +3,7 @@ import { toSaleExportRow } from './saleExport';
 import type { Sale, SaleItem } from './sales.types';
 
 const BEHAVIOURS = new Map([
-  ['internet', 'tiered'],
+  ['internet', 'internet'],
   ['greenfield_internet', 'greenfield'],
   ['tv', 'standard_addon'],
   ['home_phone', 'standard_addon'],

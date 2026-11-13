@@ -73,15 +73,6 @@ export class MarginGroupResponse {
   sale_count!: number;
 }
 
-/** One bracket of a tiered product's rep rate. */
-export class RepTierRateResponse {
-  @ApiProperty({ type: Number, example: 2 })
-  tier_number!: number;
-
-  @ApiProperty({ type: String, example: '145.00' })
-  amount!: string;
-}
-
 export class RateInForceResponse {
   @ApiProperty({ type: String, nullable: true })
   product_id!: string | null;
@@ -108,18 +99,12 @@ export class RateInForceResponse {
   client_rate_to!: string | null;
 
   @ApiProperty({
-    type: [RepTierRateResponse],
-    description:
-      "Per-product tier overrides. A tiered product's rep rate depends on the period's volume, so every " +
-      'bracket is listed rather than one number that would be right only sometimes.',
-  })
-  rep_tier_rates!: RepTierRateResponse[];
-
-  @ApiProperty({
     type: String,
     nullable: true,
     example: '30.00',
-    description: "The flat rep rate for an add-on — its own product rate, else its product TYPE's.",
+    description:
+      "The rep rate in force: this client's product rate, else the product rate, else this client's type rate, " +
+      'else the type rate (no tiers since 2026-11-13).',
   })
-  rep_flat_rate!: string | null;
+  rep_rate!: string | null;
 }

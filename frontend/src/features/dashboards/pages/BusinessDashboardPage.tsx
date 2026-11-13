@@ -49,7 +49,6 @@ export default function BusinessDashboardPage() {
   if (isForbidden(q.error)) return <AccessDenied message="The business dashboard is Super Admin only." />;
 
   const d = q.data;
-  const tierData = (d?.tier_distribution ?? []).map((t) => ({ tier: `Tier ${t.tier_number}`, reps: t.rep_count }));
   const clientRevData = (d?.client_mix ?? []).map((m) => ({ client: m.client_code, revenue: Number(m.revenue) }));
   const productData = (d?.activations_by_product ?? []).map((p) => ({ product: p.label, count: p.count }));
 
@@ -79,7 +78,7 @@ export default function BusinessDashboardPage() {
             {/* ── Activations ── */}
             <div className={styles.kpiGrid}>
               <StatCard label="Total activations" value={d.total_activations} delta={growthDelta(d.activation_growth)} footnote="Confirmed sale items" />
-              <StatCard label="Internet (tally)" value={d.internet_activations} footnote="Drives the tier tally" />
+              <StatCard label="Internet activations" value={d.internet_activations} footnote="Excluding greenfield" />
               <StatCard label="Greenfield" value={d.greenfield.count} footnote={`${money(d.greenfield.amount)} flat`} />
               <StatCard label="Active reps" value={d.active_rep_count} footnote="Status = active" />
             </div>
@@ -105,11 +104,6 @@ export default function BusinessDashboardPage() {
               <Card title="Activations by product">
                 <ChartContainer height={260}>
                   <ThemedBarChart data={productData} categoryKey="product" valueKey="count" />
-                </ChartContainer>
-              </Card>
-              <Card title="Rep tier distribution">
-                <ChartContainer height={260}>
-                  <ThemedBarChart data={tierData} categoryKey="tier" valueKey="reps" />
                 </ChartContainer>
               </Card>
               <Card title="Revenue by client">

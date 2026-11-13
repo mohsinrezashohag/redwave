@@ -9,10 +9,9 @@
 import { Decimal } from 'decimal.js';
 
 /**
- * The core product-type keys the engine BRANCHES on. `internet` is the only tiered type (#5) and
- * `greenfield_internet` is the only excluded-flat type (#9) — those two are locked. Other product types
- * (tv / home_phone / any SA-added standard add-on) are just keys into `flatRates`; the engine never
- * branches on them, so product types are now open strings everywhere except these two reserved names.
+ * The product-type keys the engine knows by name. Only `greenfield_internet` is special: a greenfield
+ * internet sale is paid the greenfield rate, never the internet product's own rate. Every other type
+ * (internet / tv / home_phone / any SA-added add-on) is just a key into the flat rate maps.
  */
 export enum ProductType {
   internet = 'internet',
@@ -23,26 +22,11 @@ export enum ProductType {
 
 export type IncentiveTargetType = 'per_activation' | 'one_time';
 
-/** One bracket of the effective tier schedule (Schedule C v2). tierNumber: 1 highest .. 4 entry. */
-export interface TierBracket {
-  tierNumber: number;
-  minCount: number; // inclusive lower bound of the gross internet tally
-  maxCount: number | null; // inclusive upper bound; null = no upper bound (36+)
-  ratePerActivation: Decimal;
-}
-
 /**
- * Flat (non-tiered) product rates, keyed by product-type key. Greenfield internet is flat AND excluded
- * from the tally. A map (not a fixed trio) so SA-added types are looked up by key — an activation whose
- * type has no entry throws (the caller surfaces it as a 422 "no flat rate for <type>").
+ * Rep rates keyed by product-type key. A map (not a fixed set) so SA-added types are looked up by key; an
+ * activation with no rate anywhere throws (the caller surfaces it as a 422 naming the product type).
  */
 export type FlatRates = Record<string, Decimal>;
-
-/** The advance/holdback split (default 0.70 / 0.30). — SRS COMM-003 */
-export interface HoldbackSplit {
-  advancePct: Decimal;
-  holdbackPct: Decimal;
-}
 
 /**
  * An effective-dated incentive/spiff, applied in BOTH modes (threshold-relative). — SRS COMM-005
@@ -65,47 +49,32 @@ export interface IncentiveConfig {
 /**
  * The effective configuration, passed IN (the engine never reads a database).
  *
- * `tiers`/`flatRates` are the GLOBAL fallback. The optional per-client maps override them for activations
- * belonging to that client — a per-client RATE lookup only: the internet tally is always cross-client (#5).
- * A client with no entry falls back to the global rows, so a config carrying neither map behaves exactly
- * as before.
+ * Commission is ONE flat rep rate per sale item (client decision 2026-11-13: no tiers, no 70/30; Redwave
+ * applies any tier or split manually outside the system). Most specific wins:
+ *   (client + product) → (product) → (client + type) → (type).
+ * A greenfield internet sale skips the product steps and pays the greenfield type rate.
  */
 export interface EngineConfig {
-  tiers: TierBracket[];
+  /** Global default rate per product type. */
   flatRates: FlatRates;
-  /** clientId → that client's own bracket ladder (own boundaries AND rates). */
-  tiersByClient?: Record<string, TierBracket[]>;
-  /** clientId → that client's own flat rates, keyed by product type. */
+  /** clientId → that client's own rate per product type. */
   flatRatesByClient?: Record<string, FlatRates>;
-  /**
-   * PER-PRODUCT tier rate overrides: productId → tierNumber → rate. The tally and the bracket BOUNDARIES
-   * are untouched — the one cross-client tally still picks the tier (#5); this only answers what that tier
-   * pays for THIS product. A product with no entry falls back to the ladder's own rate.
-   */
-  tierRatesByProduct?: TierRatesByProduct;
-  /** clientId → the same per-product tier map, for a client that pays differently for the same product. */
-  tierRatesByClientProduct?: Record<string, TierRatesByProduct>;
-  /** productId → this product's own flat rate, overriding its product-type rate. */
+  /** productId → this product's own rate, overriding its product-type rate. */
   flatRatesByProduct?: Record<string, Decimal>;
-  /** clientId → productId → rate. The most specific add-on rate there is. */
+  /** clientId → productId → rate. The most specific rate there is. */
   flatRatesByClientProduct?: Record<string, Record<string, Decimal>>;
-  holdback: HoldbackSplit;
   incentives?: IncentiveConfig[];
 }
-
-/** productId → tierNumber → rate for that product in that bracket. */
-export type TierRatesByProduct = Record<string, Record<number, Decimal>>;
 
 /** One activation (sale_item), already filtered to the period by the caller (sale_date governs). */
 export interface ActivationInput {
   id: string; // sale_item id — echoed onto the output for mapping
-  productType: string; // product-type key (only 'internet'/'greenfield_internet' are special)
-  clientId: string; // incentive scope + per-client RATE lookup — NEVER the tally (tally is cross-client, #5)
+  productType: string; // product-type key (only 'greenfield_internet' is special)
+  clientId: string; // incentive scope + per-client rate lookup
   saleDate: string; // 'YYYY-MM-DD' — used for the incentive window only
   /**
-   * The specific product sold, for the per-product RATE lookup — again never the tally. Optional: an
-   * activation without one (or whose product has no rate row) falls back to the product-type rate, which
-   * is exactly how every activation was priced before per-product rates existed.
+   * The specific product sold, for the per-product rate lookup. Optional: an activation without one (or
+   * whose product has no rate row) falls back to the product-type rate.
    */
   productId?: string | null;
 }
@@ -115,32 +84,22 @@ export interface PeriodInput {
   config: EngineConfig;
 }
 
-/** A computed per-item result. The snapshot fields are what Pay Run later freezes onto sale_items. */
+/** A computed per-item result. The snapshot fields are what Pay Run freezes onto sale_items. */
 export interface ComputedItem {
   id: string;
   productType: string;
-  countsTowardTally: boolean; // true only for non-greenfield internet
-  tierAtPayment: number | null; // internet only; null for flat-rated items
-  rateApplied: Decimal; // tier rate (internet) or flat rate (others)
-  commissionBase: Decimal; // rate only, NO incentive — part of the 70/30 base
+  rateApplied: Decimal; // the rep rate for this item
+  commissionBase: Decimal; // rate only, NO incentive
   incentiveId: string | null;
   incentiveAmount: Decimal; // 0 if none
   commissionPaid: Decimal; // base + incentive — the SNAPSHOT value; equals the clawback amount
 }
 
 export interface PeriodResult {
-  internetTally: number; // gross non-greenfield internet count, across ALL clients
-  // Period-level tier/rate. Null when the tally is 0 — and ALSO null when the rep's internet activations
-  // resolved to DIFFERENT clients' schedules (there is no single honest answer). The exact per-item values
-  // are always on `items[].tierAtPayment` / `.rateApplied`, so nothing is lost.
-  tierNumber: number | null;
-  ratePerActivation: Decimal | null;
   items: ComputedItem[];
-  grossCommission: Decimal; // Σ commissionBase — the 70/30 base
-  advanceAmount: Decimal; // 70% of gross (HALF_UP to cents)
-  holdbackAmount: Decimal; // gross − advance (so advance + holdback === gross exactly)
-  incentiveTotal: Decimal; // Σ incentiveAmount — paid in full, NOT subject to the split
-  totalEarned: Decimal; // gross + incentiveTotal (informational)
+  commissionTotal: Decimal; // Σ commissionBase — paid in full
+  incentiveTotal: Decimal; // Σ incentiveAmount — paid in full
+  totalEarned: Decimal; // commission + incentives (informational)
 }
 
 /** The frozen snapshot a clawback reads. — SRS CLAW-001/005 */

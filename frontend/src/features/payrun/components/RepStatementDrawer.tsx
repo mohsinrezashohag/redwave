@@ -1,6 +1,6 @@
 /**
- * RepStatementDrawer — one rep's pay statement for a finalized run: per sale, what it paid, their 70%, and
- * the 30% held. Admin-facing (`payrun:view`); the rep's own copy lives at /my-pay-statements and uses the
+ * RepStatementDrawer — one rep's pay statement for a finalized run: per sale, what it paid the rep (in full;
+ * no tiers or split since 2026-11-13). Admin-facing (`payrun:view`); the rep's own copy lives at /my-pay-statements and uses the
  * self-scoped endpoint that takes no repId at all.
  *
  * The UI computes NOTHING (#1). Every figure — including the totals — is the server's, read from the lines
@@ -10,7 +10,6 @@ import { Drawer, TableError, TableSkeleton, Table, TBody, TD, TH, THead, TR } fr
 import { money } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
 import { useRepStatement } from '../api/usePayRun';
-import { splitLabels } from '../split';
 import styles from './payrun.module.css';
 
 export function RepStatementDrawer({
@@ -24,9 +23,6 @@ export function RepStatementDrawer({
 }) {
   const q = useRepStatement(runId, repId ?? undefined, !!repId);
   const s = q.data;
-  // No holdback since 2026-11-13; an OLD run that held some keeps its frozen 70% / 30% columns.
-  const labels = splitLabels(s?.split);
-  const old = !!s?.has_holdback;
 
   return (
     <Drawer open={!!repId} onOpenChange={(o) => !o && onClose()} title="Pay statement" size="wide">
@@ -44,9 +40,7 @@ export function RepStatementDrawer({
                 <TH>Sale date</TH>
                 <TH>Customer</TH>
                 <TH>Product</TH>
-                <TH align="right">{old ? 'Price' : 'Commission'}</TH>
-                {old && <TH align="right">Your {labels.paidPct}%</TH>}
-                {old && <TH align="right">{labels.held}</TH>}
+                <TH align="right">Commission</TH>
               </TR>
             </THead>
             <TBody>
@@ -56,8 +50,6 @@ export function RepStatementDrawer({
                   <TD>{l.customer_name}</TD>
                   <TD>{l.product_name ?? '—'}</TD>
                   <TD numeric>{money(l.total_100)}</TD>
-                  {old && <TD numeric>{money(l.advance_70)}</TD>}
-                  {old && <TD numeric>{money(l.holdback_30)}</TD>}
                 </TR>
               ))}
               <TR>
@@ -67,16 +59,6 @@ export function RepStatementDrawer({
                 <TD numeric>
                   <strong>{money(s.total_100)}</strong>
                 </TD>
-                {old && (
-                  <TD numeric>
-                    <strong>{money(s.advance_70)}</strong>
-                  </TD>
-                )}
-                {old && (
-                  <TD numeric>
-                    <strong>{money(s.holdback_30)}</strong>
-                  </TD>
-                )}
               </TR>
             </TBody>
           </Table>

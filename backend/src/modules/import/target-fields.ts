@@ -66,20 +66,11 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
     { field: 'effective_to', type: 'date', required: false, label: 'Effective to', aliases: ['effective to', 'end', 'to', 'until'], example: '2026-06-30', dict: 'Optional end date (open-ended if blank).' },
   ],
 
-  // ── Back-dated tier schedules. ONE ROW = ONE WHOLE SCHEDULE (brackets in the `tiers` cell) so the
-  //    reconcile gate accepts or rejects a schedule as a unit and never leaves a partial one. ──
-  'master_migration:commission_tiers': [
-    { field: 'client_code', type: 'code', required: false, label: 'Client code', aliases: ['code', 'client code', 'client'], example: 'VF', dict: 'Client (by code). LEAVE BLANK for the global schedule every client falls back to.' },
-    { field: 'tiers', type: 'text', required: true, label: 'Tiers', aliases: ['tiers', 'tier', 'schedule', 'brackets', 'tier schedule'], example: '0-6:110|7-16:125|17-35:145|36+:160', dict: 'The whole schedule in one cell: min-max:rate separated by |, with min+:rate for the open top bracket. Must cover every tally with no gaps or overlaps. Tier numbers are assigned by rate (highest = Tier 1).' },
-    { field: 'effective_from', type: 'date', required: true, label: 'Effective from', aliases: ['effective', 'effective from', 'start', 'from'], example: '2026-01-01', dict: 'Date the schedule took effect. Back-dating is allowed HERE only (#10).' },
-    { field: 'effective_to', type: 'date', required: false, label: 'Effective to', aliases: ['effective to', 'end', 'to', 'until'], example: '2026-12-31', dict: 'Optional end date (open-ended if blank).' },
-  ],
-
-  // ── Back-dated commission flat rates (what the REP is paid per add-on / greenfield activation). ──
+  // ── Back-dated rep rates (what the REP is paid per activation of a product type). ──
   'master_migration:commission_flat_rates': [
-    { field: 'client_code', type: 'code', required: false, label: 'Client code', aliases: ['code', 'client code', 'client'], example: 'VF', dict: 'Client (by code). LEAVE BLANK for the global flat rate for this product type.' },
-    { field: 'product_type', type: 'code', required: true, label: 'Product type', aliases: ['product type', 'product_type', 'type', 'product'], example: 'tv', dict: 'Product-type catalogue key (tv, home_phone, greenfield_internet, …). It must already exist, because an import never adds a type.' },
-    { field: 'amount', type: 'money', required: true, label: 'Amount', aliases: ['amount', 'rate', 'commission', 'flat rate'], example: '30.00', dict: 'Commission paid to the rep per activation (CAD, exact decimal). This is what the rep is paid, never a client billing rate.' },
+    { field: 'client_code', type: 'code', required: false, label: 'Client code', aliases: ['code', 'client code', 'client'], example: 'VF', dict: 'Client (by code). LEAVE BLANK for the global rate for this product type.' },
+    { field: 'product_type', type: 'code', required: true, label: 'Product type', aliases: ['product type', 'product_type', 'type', 'product'], example: 'tv', dict: 'Product-type catalogue key (internet, greenfield_internet, tv, home_phone, …). It must already exist, because an import never adds a type.' },
+    { field: 'amount', type: 'money', required: true, label: 'Amount', aliases: ['amount', 'rate', 'commission', 'flat rate', 'rep rate'], example: '30.00', dict: 'Commission paid to the rep per activation (CAD, exact decimal). This is what the rep is paid, never a client billing rate.' },
     { field: 'effective_from', type: 'date', required: true, label: 'Effective from', aliases: ['effective', 'effective from', 'start', 'from'], example: '2026-01-01', dict: 'Date the rate took effect. Back-dating is allowed HERE only (#10).' },
     { field: 'effective_to', type: 'date', required: false, label: 'Effective to', aliases: ['effective to', 'end', 'to', 'until'], example: '2026-12-31', dict: 'Optional end date (open-ended if blank).' },
   ],
@@ -109,7 +100,7 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
 
   // ── LIVE sales entry (IMP-013) — real `entered`/`validated` sales that DO reach the engine. ONE ROW =
   //    ONE SALE; `product_types` is a comma-separated list so a bundle (and the mandatory internet base,
-  //    SALE-001a) fits on a single row. Address columns are optional (blank → '—') so a tier/clawback test
+  //    SALE-001a) fits on a single row. Address columns are optional (blank → '—') so a pay-run/clawback test
   //    sheet stays quick to write. No commission is written here — Pay Run freezes snapshots (#2/#5).
   'sales_entry:sales': [
     { field: 'client_code', type: 'code', required: true, label: 'Client code', aliases: ['code', 'client code', 'client', 'partner'], example: 'VF', dict: 'Client code. The client must already exist.' },
@@ -125,7 +116,7 @@ export const TARGET_FIELDS: Record<string, TargetField[]> = {
     { field: 'province_state', type: 'text', required: false, label: 'Province/State', aliases: ['province', 'state', 'province/state', 'region'], example: 'MB', dict: 'Optional. Shows as a dash when left blank.' },
     { field: 'postal_code', type: 'text', required: false, label: 'Postal code', aliases: ['postal', 'postal code', 'zip', 'zip code'], example: 'R3C 1A1', dict: 'Optional. Shows as a dash when left blank.' },
     { field: 'mpu_id', type: 'text', required: false, label: 'MPU ID', aliases: ['mpu', 'mpu id', 'house id', 'unit id'], example: 'MPU-1042', dict: 'Client house/unit identifier (also disambiguates the Sale ID).' },
-    { field: 'is_greenfield', type: 'bool', required: false, label: 'Greenfield', aliases: ['greenfield', 'is greenfield', 'gf'], example: 'false', dict: 'true/false (Yes/Y/1 also accepted). Greenfield internet is flat-rated and EXCLUDED from the tier tally (#9).' },
+    { field: 'is_greenfield', type: 'bool', required: false, label: 'Greenfield', aliases: ['greenfield', 'is greenfield', 'gf'], example: 'false', dict: 'true/false (Yes/Y/1 also accepted). Greenfield internet is paid its own greenfield rate (#9).' },
     { field: 'status', type: 'text', required: false, label: 'Status', aliases: ['status', 'state', 'validated'], example: 'entered', dict: 'entered (default) or validated. "validated" also runs the entered→validated transition at commit.' },
   ],
 

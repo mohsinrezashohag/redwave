@@ -35,23 +35,9 @@ export class ProductCountResponse {
   count!: number;
 }
 
-export class RepTierResponse {
-  @ApiProperty()
-  tier_number!: number;
-
-  @ApiProperty()
-  count!: number;
-
-  @ApiProperty({ type: Number, nullable: true })
-  next_tier_min!: number | null;
-
-  @ApiProperty({ type: Number, nullable: true })
-  to_next!: number | null;
-}
-
 export class RepCommissionResponse {
   @ApiProperty({ type: String, example: '3310.00', description: 'Decimal string. Commission paid, in full (no holdback since 2026-11-13).' })
-  commission_70!: string;
+  commission!: string;
 
   @ApiProperty({ type: String, example: '0.00', description: 'Decimal string.' })
   incentive_total!: string;
@@ -107,9 +93,6 @@ export class RepDashboardResponse {
 
   @ApiProperty()
   internet_activations!: number;
-
-  @ApiProperty({ type: () => RepTierResponse, nullable: true })
-  tier!: RepTierResponse | null;
 
   @ApiProperty({ type: () => RepCommissionResponse })
   commission!: RepCommissionResponse;

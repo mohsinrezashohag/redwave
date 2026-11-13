@@ -129,7 +129,7 @@ function makePrisma() {
     },
     productTypeCatalogue: {
       findMany: jest.fn().mockResolvedValue([
-        { key: 'internet', label: 'Internet', behaviour: 'tiered' },
+        { key: 'internet', label: 'Internet', behaviour: 'internet' },
         { key: 'tv', label: 'TV', behaviour: 'standard_addon' },
       ]),
     },

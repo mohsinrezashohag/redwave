@@ -1,10 +1,10 @@
 /**
  * Pure mapping from a stored sale_item to an engine ActivationInput. — CLAUDE §3 #9, SRS §17.2
  *
- * This is where the greenfield flag becomes the engine's flat-rate signal at period close: a
- * greenfield-confirmed internet activation (an internet product whose counts_toward_tally is false)
- * is presented to the engine as `greenfield_internet`, so the engine flat-rates it at $100 and
- * excludes it from the tally. Everything else passes its product_type through unchanged.
+ * This is where the greenfield flag becomes the engine's rate signal at period close: a greenfield-confirmed
+ * internet activation (an internet product whose counts_toward_tally is false) is presented to the engine as
+ * `greenfield_internet`, so the engine pays it the greenfield rate (never the internet product's own rate).
+ * Everything else passes its product_type through unchanged.
  */
 import { ActivationInput, ProductType as EngineProductType } from '../engine/engine.types';
 
@@ -14,8 +14,7 @@ export interface SaleItemForMapping {
   counts_toward_tally: boolean;
   client_id: string;
   sale_date: string; // 'YYYY-MM-DD'
-  // The specific product sold, for the per-product RATE lookup. Never the tally (#5) — that is still the
-  // one cross-client count over product_type. Nullable, and a null simply falls back to the type rate.
+  // The specific product sold, for the per-product rate lookup. Nullable: a null falls back to the type rate.
   product_id?: string | null;
 }
 
@@ -24,7 +23,7 @@ export function mapToEngineProductType(
   countsTowardTally: boolean,
 ): EngineProductType {
   if (productType === EngineProductType.internet && !countsTowardTally) {
-    return EngineProductType.greenfield_internet; // greenfield internet → flat, excluded
+    return EngineProductType.greenfield_internet; // greenfield internet → the greenfield rate
   }
   return productType as EngineProductType;
 }

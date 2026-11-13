@@ -1,7 +1,7 @@
 /**
- * FlatRateModal — add a future-dated flat rate per product_type (#10 supersession; back-date → 422). The
- * Select offers ONLY greenfield_internet / tv / home_phone — internet is tiered (set it in the tier
- * schedule); the server also 422s internet. Money exact-decimal via MoneyInput. Tokens only.
+ * FlatRateModal — add or edit a future-dated REP RATE (#10 supersession; back-date → 422). Any active product
+ * type (internet, greenfield internet, TV, add-ons), optionally for ONE product of the chosen client. No tiers
+ * since 2026-11-13: each item pays one rate. Money exact-decimal via MoneyInput. Tokens only.
  */
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
@@ -15,11 +15,14 @@ import { useProductTypes } from '../../productTypes/api/useProductTypes';
 import { useCreateFlatRate, useUpdateFlatRate } from '../api/useCommissionMutations';
 import { ClientScopeField } from './ClientScopeField';
 import { scopeLabel } from '../clientScope';
-import { useClients } from '../api/useCommission';
+import { useClients, useProductNames } from '../api/useCommission';
+import { useClientProducts } from '../../clients/api/useClients';
 import { useCan } from '../../../auth/useCan';
 import type { FlatRate } from '../commission.types';
 import styles from './commission.module.css';
 
+/** Select sentinel for "no single product" (Radix Select forbids an empty value). */
+const ALL_PRODUCTS = '__all__';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONEY = /^\d+(\.\d{1,2})?$/;
 const dateOnly = (v: string | null | undefined) => (v ? v.slice(0, 10) : '');
@@ -29,6 +32,7 @@ const schema = z
     scope_mode: z.enum(['all', 'specific']),
     client_id: z.string().optional(),
     product_type: z.string().regex(/^[a-z][a-z0-9_]*$/, 'Choose a product type'),
+    product_id: z.string().optional(),
     amount: z.string().regex(MONEY, 'Enter an amount (max 2 dp)'),
     effective_from: z.string().regex(DATE, 'Date required').refine((d) => d >= todayIso(), 'Must be today or later'),
     effective_to: z.string().optional(),
@@ -57,11 +61,9 @@ export function FlatRateModal({
   const onError = useApiErrorToast();
   const create = useCreateFlatRate();
   const update = useUpdateFlatRate();
-  // Flat rates apply to non-tiered active types only (the server also 422s a tiered type like internet).
+  // Every active product type takes a rep rate (no tiers since 2026-11-13).
   const types = useProductTypes('active');
-  const flatOptions = (types.data ?? [])
-    .filter((t) => t.behaviour !== 'tiered')
-    .map((t) => ({ value: t.key, label: t.label }));
+  const typeOptions = (types.data ?? []).map((t) => ({ value: t.key, label: t.label }));
   const { control, register, handleSubmit, formState, watch } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: rate
@@ -69,6 +71,7 @@ export function FlatRateModal({
           scope_mode: rate.client_id ? 'specific' : 'all',
           client_id: rate.client_id ?? '',
           product_type: rate.product_type,
+          product_id: rate.product_id ?? ALL_PRODUCTS,
           amount: rate.amount,
           effective_from: dateOnly(rate.effective_from),
           effective_to: dateOnly(rate.effective_to),
@@ -77,6 +80,7 @@ export function FlatRateModal({
           scope_mode: defaultClientId ? 'specific' : 'all',
           client_id: defaultClientId ?? '',
           product_type: '',
+          product_id: ALL_PRODUCTS,
           amount: '',
           effective_from: '',
           effective_to: '',
@@ -84,6 +88,17 @@ export function FlatRateModal({
   });
   const errors = formState.errors;
   const scopeMode = watch('scope_mode');
+  const clientId = watch('client_id');
+  const productType = watch('product_type');
+  // One product's own rate: only for a client (a product belongs to one client) and a type with products.
+  const products = useClientProducts(clientId || undefined, !isEdit && scopeMode === 'specific' && !!clientId);
+  const productOptions = [
+    { value: ALL_PRODUCTS, label: 'Every product of this type' },
+    ...(products.data ?? [])
+      .filter((p) => p.product_type === productType && productType !== 'greenfield_internet')
+      .map((p) => ({ value: p.id, label: p.name })),
+  ];
+  const productNames = useProductNames();
   // Edit shows the scope read-only (client_id is immutable, like product_type) — resolved for display only.
   const canViewClients = useCan('clients:view');
   const clients = useClients(canViewClients && isEdit);
@@ -92,7 +107,7 @@ export function FlatRateModal({
     if (isEdit && rate) {
       update.mutate(
         { id: rate.id, body: { amount: values.amount, effective_from: values.effective_from, effective_to: values.effective_to || undefined } },
-        { onSuccess: () => { toast({ title: 'Flat rate updated', tone: 'success' }); onClose(); }, onError },
+        { onSuccess: () => { toast({ title: 'Rep rate updated', tone: 'success' }); onClose(); }, onError },
       );
       return;
     }
@@ -100,21 +115,23 @@ export function FlatRateModal({
       {
         client_id: values.scope_mode === 'specific' ? values.client_id : undefined,
         product_type: values.product_type,
+        product_id:
+          values.scope_mode === 'specific' && values.product_id && values.product_id !== ALL_PRODUCTS ? values.product_id : undefined,
         amount: values.amount,
         effective_from: values.effective_from,
         effective_to: values.effective_to || undefined,
       },
-      { onSuccess: () => { toast({ title: 'Flat rate added', tone: 'success' }); onClose(); }, onError },
+      { onSuccess: () => { toast({ title: 'Rep rate added', tone: 'success' }); onClose(); }, onError },
     );
   };
 
   return (
-    <Modal dirty={formState.isDirty} open={open} onOpenChange={(o) => !o && onClose()} title={isEdit ? 'Edit flat rate' : 'Add flat rate'}>
+    <Modal dirty={formState.isDirty} open={open} onOpenChange={(o) => !o && onClose()} title={isEdit ? 'Edit rep rate' : 'Add rep rate'}>
       <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
         <Banner tone="info" title="Effective-dated">
           {isEdit
-            ? 'Only a pending rate can be edited; the product type and scope are fixed.'
-            : 'A future-dated rate supersedes the pending one for this product type (within its own scope) and ends the current one.'}
+            ? 'Only a pending rate can be edited; the product type, product and scope are fixed.'
+            : 'A future-dated rate supersedes the pending one for the same type or product (within its own scope) and ends the current one.'}
         </Banner>
         {isEdit ? (
           <FormField label="Applies to">
@@ -139,9 +156,14 @@ export function FlatRateModal({
             control={control}
             name="product_type"
             render={({ field }) => (
-              <FormField label="Product type" required error={errors.product_type?.message} help="Internet is tiered. Set it in the tier schedule.">
+              <FormField
+                label="Product type"
+                required
+                error={errors.product_type?.message}
+                help="Greenfield internet sales are paid the Greenfield internet rate."
+              >
                 <Select
-                  options={flatOptions}
+                  options={typeOptions}
                   value={field.value}
                   onValueChange={field.onChange}
                   placeholder={types.isLoading ? 'Loading types…' : 'Select a type'}
@@ -150,7 +172,36 @@ export function FlatRateModal({
             )}
           />
         )}
-        <FormField label="Amount" required error={errors.amount?.message}>
+        {isEdit ? (
+          <FormField label="Product">
+            <span>
+              <Badge tone="neutral">
+                {rate!.product_id ? (productNames.get(rate!.product_id) ?? 'One product') : 'Every product of this type'}
+              </Badge>
+            </span>
+          </FormField>
+        ) : (
+          scopeMode === 'specific' &&
+          !!clientId &&
+          !!productType &&
+          productType !== 'greenfield_internet' && (
+            <Controller
+              control={control}
+              name="product_id"
+              render={({ field }) => (
+                <FormField label="Product" help="Optional: a rate for one of this client's products. It wins over the type rate.">
+                  <Select
+                    options={productOptions}
+                    value={field.value || ALL_PRODUCTS}
+                    onValueChange={field.onChange}
+                    aria-label="Product"
+                  />
+                </FormField>
+              )}
+            />
+          )
+        )}
+        <FormField label="Rep rate" required error={errors.amount?.message} help="Paid to the rep per item, in full.">
           <MoneyInput {...register('amount')} placeholder="0.00" />
         </FormField>
         <div className={styles.dates}>

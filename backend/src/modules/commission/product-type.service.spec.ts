@@ -21,7 +21,7 @@ const future = () => {
 };
 
 describe('ProductTypeService', () => {
-  it('forces behaviour=standard_addon for a new type (never tiered/greenfield)', async () => {
+  it('forces behaviour=standard_addon for a new type (never internet/greenfield)', async () => {
     const { service, tx } = make();
     tx.productTypeCatalogue.create.mockResolvedValue({ key: 'satellite', label: 'Satellite', behaviour: 'standard_addon' });
     await service.create({ key: 'satellite', label: 'Satellite' }, 'actor');

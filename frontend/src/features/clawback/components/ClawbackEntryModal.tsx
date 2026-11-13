@@ -4,7 +4,7 @@
  * rate + incentive off the frozen snapshot) — the UI shows the snapshot components read-only but NEVER sums
  * them (#1/#6). A value only overrides. The reported date is **informational** — no window is computed or
  * enforced (#6). The snapshot is never edited; a clawback is a new record (#2). Per-item — it does not touch
- * the internet activation or re-tier the period (#5).
+ * the internet activation or any other item on the sale.
  */
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
@@ -64,8 +64,8 @@ export function ClawbackEntryModal({ saleItem, saleCode, onClose }: Props) {
     <Modal dirty={formState.isDirty} open={saleItem !== null} onOpenChange={(o) => !o && onClose()} title={saleItem ? `Claw back · ${productTypeLabel(saleItem.product_type)}` : 'Claw back'}>
       {saleItem && (
         <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
-          <Banner tone="info" title="Per-item recovery (the tier is not recalculated)">
-            This recovers <strong>this item only</strong>. It does not touch the internet activation or re-tier the period (#5/#6).
+          <Banner tone="info" title="Per-item recovery">
+            This recovers <strong>this item only</strong>, exactly what it paid. It does not touch the internet activation or any other item on the sale.
           </Banner>
 
           <dl className={styles.snapshot}>

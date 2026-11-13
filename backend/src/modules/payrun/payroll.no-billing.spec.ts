@@ -99,12 +99,10 @@ describe('Payroll #3 — behavioural separation', () => {
           },
         },
       ],
-      new Decimal('0.70'),
     );
 
     // The REP amount, not the client's. A client bill for the same sale would be a different number
     // entirely — that difference is Redwave's margin, and it is computed nowhere near here.
     expect(report.total_100.toFixed(2)).toBe('175.00');
-    expect(report.advance_70.toFixed(2)).toBe('122.50');
   });
 });

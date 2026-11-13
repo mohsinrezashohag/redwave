@@ -16,7 +16,7 @@ export class CreateFlatRateDto {
   @ApiProperty({
     type: String,
     example: 'tv',
-    description: 'Product-type catalogue key. A tiered type (e.g. internet) is rejected (422).',
+    description: 'Product-type catalogue key (internet, greenfield_internet, tv, home_phone or an SA-added type).',
   })
   @IsString()
   @Matches(/^[a-z][a-z0-9_]*$/, { message: 'product_type must be a lowercase snake_case catalogue key' })

@@ -98,7 +98,7 @@ function make(opts: {
     clientBillingRate: { findMany: jest.fn().mockResolvedValue(opts.rates) },
     productTypeCatalogue: {
       findMany: jest.fn().mockResolvedValue([
-        { key: 'internet', label: 'Internet', behaviour: 'tiered' },
+        { key: 'internet', label: 'Internet', behaviour: 'internet' },
         { key: 'greenfield_internet', label: 'Greenfield Internet', behaviour: 'greenfield' },
         { key: 'home_phone', label: 'Home Phone', behaviour: 'standard_addon' },
         { key: 'tv', label: 'TV', behaviour: 'standard_addon' },

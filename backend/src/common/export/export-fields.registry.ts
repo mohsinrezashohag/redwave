@@ -68,16 +68,13 @@ const PAYROLL: ReportDefinition = {
     { key: 'greenfield', label: 'Greenfield', money: true },
     { key: 'spiff', label: 'Spiff', money: true },
     { key: 'other_total', label: 'Other', money: true },
-    { key: 'total_100', label: 'Total 100 %', money: true, required: true },
-    // Old runs only: printed just for a run that held some (no holdback since 2026-11-13), so not required.
-    { key: 'advance_70', label: '0.7', money: true },
-    { key: 'holdback_30', label: '0.3', money: true },
+    { key: 'total_100', label: 'Total', money: true, required: true },
   ],
 };
 
 /**
  * STATEMENT — the CLIENT-BILLING stream. Note what is absent and must stay absent: `rep_paid`,
- * `advance_70`, `holdback_30`, or anything else from the rep-pay stream (#3).
+ * `total_100`, or anything else from the rep-pay stream (#3).
  */
 const STATEMENT: ReportDefinition = {
   label: 'Client statement',
@@ -276,8 +273,6 @@ export function sampleRow(reportType: ReportType): Record<string, string> {
     spiff: '0.00',
     other_total: '0.00',
     total_100: '175.00',
-    advance_70: '122.50',
-    holdback_30: '52.50',
     line_total: '400.00',
     total: '175.00',
     amount: '42.50',

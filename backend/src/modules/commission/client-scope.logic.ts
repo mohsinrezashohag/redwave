@@ -1,15 +1,14 @@
 /**
  * Client-scoped commission config resolution — PURE & deterministic (no I/O, no Prisma, no NestJS).
  *
- * Commission tier schedules and flat rates are effective-dated AND optionally scoped to one client, with
+ * Rep rates are effective-dated AND optionally scoped to one client, with
  * the GLOBAL row (client_id === null) as the fallback. Precedence for one date, generalising the km-rate
  * pattern (`expenses/km-rate.logic.ts#selectKmRate`):
  *   1. the client-specific row in force on the date, else
  *   2. the GLOBAL row in force on the date, else
- *   3. null → the caller decides (422 for a missing tier schedule, "no flat rate" for a sold type).
+ *   3. null → the caller decides ("no rep rate" for a sold type).
  *
- * This is the REP-commission stream only — nothing here reads client_billing_rates (#3). Scoping the RATE
- * by client never scopes the internet TALLY, which stays cross-client (#5).
+ * This is the REP-commission stream only — nothing here reads client_billing_rates (#3).
  * — CLAUDE §3 #3/#5/#10
  */
 import { RateRow, selectEffectiveRate } from '../../common/effective-dating';

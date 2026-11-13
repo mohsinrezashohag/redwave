@@ -50,7 +50,6 @@ export type ImportKind =
   | 'create_products'
   | 'billing_rate'
   | 'km_rate'
-  | 'commission_tier_schedule'
   | 'commission_flat_rate'
   | 'create_reps'
   | 'historical_sales';
@@ -89,7 +88,7 @@ export const KINDS: KindDef[] = [
     needsClient: false, // the client is per-row (client_code)
     needsReconcileTotal: false,
     commitEffect: 'creates each sale (entered, or validated where the row says so), in one transaction',
-    note: 'These are LIVE sales: unlike historical imports they DO count toward the tier tally, pay runs and clawbacks. Import clients, products and reps first. An unknown code is reported as an error and never created.',
+    note: 'These are LIVE sales: unlike historical imports they DO reach pay runs and clawbacks. Import clients, products and reps first. An unknown code is reported as an error and never created.',
   },
   {
     kind: 'create_clients',
@@ -135,17 +134,6 @@ export const KINDS: KindDef[] = [
     note: 'Leave Client code blank for the global default rate. The rep and client_bill streams stay separate and are never combined.',
   },
   {
-    kind: 'commission_tier_schedule',
-    label: 'Historical tier schedules (migration)',
-    description: 'Load back-dated commission tier schedules: one row per schedule, brackets in one cell.',
-    source_type: 'master_migration',
-    import_type: 'commission_tiers',
-    needsClient: false,
-    needsReconcileTotal: false,
-    commitEffect: 'writes each back-dated tier schedule and its brackets, in one transaction',
-    note: 'One row is a WHOLE schedule: brackets go in the Tiers cell as 0-6:110|7-16:125|17-35:145|36+:160. They must cover every tally with no gaps or overlaps, and tier numbers are assigned by rate (highest = Tier 1).',
-  },
-  {
     kind: 'commission_flat_rate',
     label: 'Historical commission flat rates (migration)',
     description: 'Load back-dated flat rates paid to the rep per add-on or greenfield activation.',
@@ -175,7 +163,7 @@ export const KINDS: KindDef[] = [
     needsClient: false,
     needsReconcileTotal: false,
     commitEffect: 'writes each historical sale (status=historical), in one transaction',
-    note: 'Historical sales are REFERENCE-ONLY: they appear in the business dashboard but NEVER pay out, and never count toward commission / tier / leaderboard. Import clients, products, and reps first.',
+    note: 'Historical sales are REFERENCE-ONLY: they appear in the business dashboard but NEVER pay out, and never count toward commission or the leaderboard. Import clients, products, and reps first.',
   },
 ];
 

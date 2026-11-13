@@ -45,8 +45,7 @@ async function main(): Promise<void> {
         console.log(`Run #${r.period_number}: ${r.outcome}`);
         for (const rep of r.reps) {
           console.log(
-            `   ${rep.rep_code.padEnd(12)} ${String(rep.sales).padStart(3)} sales   gross ${rep.gross.padStart(10)}` +
-              `   70% ${rep.advance_70.padStart(10)}   30% ${rep.held_30.padStart(10)}`,
+            `   ${rep.rep_code.padEnd(12)} ${String(rep.sales).padStart(3)} sales   commission ${rep.commission.padStart(10)}`,
           );
         }
       } catch (e) {

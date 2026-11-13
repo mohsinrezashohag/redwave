@@ -16,11 +16,9 @@ export type PayPeriod = components['schemas']['PayPeriodResponse'];
 export type RepLite = components['schemas']['RepLiteResponse'];
 
 /**
- * One per-rep computed line. The server provides the payout components + the net, PLUS the engine's
- * reconciliation facts (`gross_commission`, `tier_at_payment`, `internet_tally`, `rate_per_activation`).
- * No holdback since 2026-11-13: `commission_70` is the commission paid in full and `amount_held` /
- * `holdback_release_30` are zero, except on an OLD run (the run's `has_holdback`).
- * net = commission + released + expense + incentive + bonus − clawback, and CAN be negative (never floored).
+ * One per-rep computed line: the server's payout components + the net. No tiers and no 70/30 since
+ * 2026-11-13: `commission` is the sum of the item rates, paid in full.
+ * net = commission + expense + incentive + bonus − clawback, and CAN be negative (never floored).
  */
 export type PayRunLine = components['schemas']['PayRunLineResponse'];
 
@@ -38,6 +36,6 @@ export type CreatePayRunBody = components['schemas']['CreatePayRunDto'];
 export type SetBonusBody = components['schemas']['SetBonusDto'];
 export type ExportPayRunBody = components['schemas']['ExportPayRunDto'];
 
-/** A rep-facing statement: per sale, what it paid, their 70%, the 30% held. No client rate, ever (#3). */
+/** A rep-facing statement: per sale, what it paid the rep. No client rate, ever (#3). */
 export type RepPayStatement = components['schemas']['RepPayStatementResponse'];
 export type RepPayStatementSummary = components['schemas']['RepPayStatementSummaryResponse'];

@@ -34,9 +34,9 @@ import styles from './SaleForm.module.css';
 import { useUnsavedChangesGuard } from '../../../lib/forms/useUnsavedChangesGuard';
 
 // Internet is the mandatory base of a sale; TV/Home Phone/Protection Plan/Mesh/Speed-attach are add-ons
-// that can't be sold standalone. Base = a catalogue type whose behaviour is tiered or greenfield. The
+// that can't be sold standalone. Base = a catalogue type whose behaviour is internet or greenfield. The
 // server re-enforces this (422, SALE-001a) — this is the convenience gate. — CLAUDE §5
-const BASE_BEHAVIOURS = new Set(['tiered', 'greenfield']);
+const BASE_BEHAVIOURS = new Set(['internet', 'greenfield']);
 
 const SELF = '__self__';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;

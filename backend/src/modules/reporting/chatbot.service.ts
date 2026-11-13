@@ -74,11 +74,11 @@ export class ChatbotService {
     switch (tool) {
       case 'my_sales_count': {
         const d = await this.dashboards.rep(user);
-        return `You have ${d.internet_activations} internet activation(s) this period (Tier ${d.tier?.tier_number ?? '—'}).`;
+        return `You have ${d.internet_activations} internet activation(s) this period.`;
       }
       case 'my_commission': {
         const d = await this.dashboards.rep(user);
-        return `Your commission this period: $${d.commission.commission_70} (net payout $${d.commission.net_payout}).`;
+        return `Your commission this period: $${d.commission.commission} (net payout $${d.commission.net_payout}).`;
       }
       case 'roster_summary': {
         const d = await this.dashboards.manager(user);

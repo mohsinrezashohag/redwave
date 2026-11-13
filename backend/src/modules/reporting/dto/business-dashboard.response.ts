@@ -43,14 +43,6 @@ class ValidationFunnelResponse {
   @ApiProperty({ example: 40 }) paid!: number;
 }
 
-class TierCountResponse {
-  @ApiProperty({ example: 2, description: 'Tier number (1 highest .. 4 entry).' })
-  tier_number!: number;
-
-  @ApiProperty({ example: 5, description: 'Reps whose period tally lands in this tier.' })
-  rep_count!: number;
-}
-
 class ClientMixRowResponse {
   @ApiProperty({ example: 'VF' }) client_code!: string;
   @ApiProperty({ example: 'Valley Fiber' }) client_name!: string;
@@ -99,7 +91,6 @@ export class BusinessDashboardResponse {
   // ── Funnel + reps ──
   @ApiProperty({ type: () => ValidationFunnelResponse }) validation_funnel!: ValidationFunnelResponse;
   @ApiProperty({ example: 8 }) active_rep_count!: number;
-  @ApiProperty({ type: () => [TierCountResponse] }) tier_distribution!: TierCountResponse[];
 
   // ── Client mix + growth ──
   @ApiProperty({ type: () => [ClientMixRowResponse] }) client_mix!: ClientMixRowResponse[];

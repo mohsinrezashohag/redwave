@@ -1,7 +1,7 @@
 /**
  * ClawbackEntryPage — /clawbacks/new. Find a PAID sale → pick the cancelled item → record the recovery.
  * The recovery amount is the SERVER's (blank → server computes from the snapshot, #1/#6); the snapshot is
- * never edited (#2); the reported date is informational (#6); per-item, no re-tier (#5). `clawback:create`
+ * never edited (#2); the reported date is informational (#6); per-item. `clawback:create`
  * to record; `sales:view` to search. 403 → AccessDenied; the server is the real gate (§5).
  */
 import { useMemo, useState } from 'react';

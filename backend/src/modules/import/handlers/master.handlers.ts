@@ -158,7 +158,7 @@ async function resolveProduct(
  * "Internet, TV, Home Phone" in a single Product type cell (see `docs/uat/Sales Upload.xlsx`).
  *
  * MONEY RULE (#1/#3): the row's `billed_amount` is ONE figure for the whole household, so it is recorded
- * exactly ONCE — on the base item (the tiered/greenfield one, else the first) — and every other item's
+ * exactly ONCE — on the base item (the internet/greenfield one, else the first) — and every other item's
  * `historical_billed_amount` stays NULL. It is never divided: splitting would invent an attribution the
  * source file never stated and could not round cleanly ($350 over 3 items). This keeps
  * `Σ historical_billed_amount` equal to the file's own column total, which is exactly what the Business
@@ -192,7 +192,7 @@ export async function applyHistoricalSale(
   // The base item carries the household's billed amount — see the MONEY RULE above.
   const baseIndex = items.findIndex((i) => {
     const behaviour = behaviours.get(i.productType);
-    return behaviour === 'tiered' || behaviour === 'greenfield';
+    return behaviour === 'internet' || behaviour === 'greenfield';
   });
   const billedOn = baseIndex >= 0 ? baseIndex : 0;
 

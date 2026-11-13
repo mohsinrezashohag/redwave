@@ -1,5 +1,5 @@
 /**
- * Client scope for the effective-dated COMMISSION rates (tier schedules + flat rates). A rate row is either
+ * Client scope for the effective-dated REP rates. A rate row is either
  * GLOBAL (`client_id` null — the fallback every client inherits) or scoped to one client. The two are
  * INDEPENDENT effective-dated streams: adding a client rate never supersedes or bounds the global one.
  *
@@ -7,7 +7,6 @@
  * `incentives.scope_client_id` and the km-rate config). Nothing here reads `client_billing_rates`.
  *
  * The engine resolves at runtime: the client's rate if one is in force on the sale date, else the global.
- * The internet TALLY stays cross-client (#5) — per-client means a per-client RATE, never a per-client tally.
  */
 
 /** No filter — list every scope (the default admin view). */

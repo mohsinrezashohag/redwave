@@ -7,7 +7,7 @@
  *     notifications:broadcast). Counts are derived — see the closing console.log.
  *   • 4 built-in roles (is_system) with sensible default grants.
  *   • One Super Admin user (credentials from env; placeholder + loud warning if unset).
- *   • Genesis Schedule C v2 commission config (tiers, flat rates). No holdback since 2026-11-13.
+ *   • Genesis rep rates (one default rate per product type). No tiers and no split since 2026-11-13.
  *   • The 2026 bi-weekly pay periods, expense-category catalogue, notification settings, chatbot config.
  */
 import { PrismaClient, PermissionAction, Prisma } from '@prisma/client';
@@ -18,7 +18,7 @@ import {
   MODULE_KEYS,
   ModuleKey,
 } from '../../src/common/rbac/rbac.constants';
-import { SCHEDULE_C_V2 } from '../../src/modules/commission/schedule-c-v2';
+import { GENESIS_RATES } from '../../src/modules/commission/genesis-rates';
 import { generate2026PayPeriods } from '../../src/modules/payrun/pay-periods.seed-data';
 import { generate2026BillingPeriods } from '../../src/modules/billing/billing-periods.seed-data';
 
@@ -293,10 +293,10 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
     });
   }
 
-  // 5b. Product-type catalogue — the 4 core types with their LOCKED commission behaviour (#5/#9).
+  // 5b. Product-type catalogue — the 4 core types with their LOCKED behaviour (internet base / greenfield).
   // is_system=true → behaviour immutable, non-deletable, non-deactivatable. New SA types are standard_addon.
   const CORE_PRODUCT_TYPES = [
-    { key: 'internet', label: 'Internet', behaviour: 'tiered' as const },
+    { key: 'internet', label: 'Internet', behaviour: 'internet' as const },
     { key: 'greenfield_internet', label: 'Greenfield Internet', behaviour: 'greenfield' as const },
     { key: 'tv', label: 'TV', behaviour: 'standard_addon' as const },
     { key: 'home_phone', label: 'Home Phone', behaviour: 'standard_addon' as const },
@@ -309,34 +309,22 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
     });
   }
 
-  // 6. Genesis Schedule C v2 commission config (back-dated genesis so it is always the current config).
-  const effectiveFrom = genesisDate(SCHEDULE_C_V2.effectiveFrom);
-  // client_id: null pins these guards to the GLOBAL scope — otherwise a per-client row would suppress
-  // re-seeding the global genesis config.
-  let tierConfig = await prisma.commissionTierConfig.findFirst({
-    where: { client_id: null, effective_from: effectiveFrom },
-  });
-  if (!tierConfig) {
-    tierConfig = await prisma.commissionTierConfig.create({
-      data: {
-        effective_from: effectiveFrom,
-        created_by: superAdminUser.id,
-        tiers: { create: SCHEDULE_C_V2.tiers.map((t) => ({ ...t })) },
-      },
+  // 6. Genesis rep rates — a default rate per product type (back-dated so it is always current). Each sale
+  // item pays one flat rate; products and clients can override it in Commission Config. Greenfield internet
+  // has its own rate (#9). No tiers, no split since 2026-11-13.
+  const effectiveFrom = genesisDate(GENESIS_RATES.effectiveFrom);
+  for (const [productType, amount] of Object.entries(GENESIS_RATES.rates)) {
+    // client_id: null + product_id: null pins the guard to the GLOBAL type rate (a client or product rate
+    // must never suppress re-seeding it).
+    const existing = await prisma.commissionFlatRate.findFirst({
+      where: { client_id: null, product_id: null, product_type: productType },
     });
-  }
-  // Greenfield internet is flat $100 and EXCLUDED from the tier tally (#9). Tiers cover internet only.
-  for (const [productType, amount] of Object.entries(SCHEDULE_C_V2.flatRates)) {
-    const existingFlat = await prisma.commissionFlatRate.findFirst({
-      where: { client_id: null, product_type: productType, effective_from: effectiveFrom },
-    });
-    if (!existingFlat) {
+    if (!existing) {
       await prisma.commissionFlatRate.create({
         data: { product_type: productType, amount, effective_from: effectiveFrom, created_by: superAdminUser.id },
       });
     }
   }
-  // No holdback split / release rule: commission is paid in full since 2026-11-13 (NO_HOLDBACK).
 
   // 7. Pay periods — the 2026 bi-weekly schedule (idempotent, by period_number). — PAY-001
   const payPeriods = generate2026PayPeriods();

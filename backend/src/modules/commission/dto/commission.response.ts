@@ -1,64 +1,17 @@
 /**
  * Commission Config response DTOs — the REP-commission stream (SEPARATE from client billing rates, #3).
- * This module only STORES config; the engine determines tiers at runtime (#5). — Batch A #2
+ * This module only STORES config; the engine reads it at runtime. No tiers since 2026-11-13. — Batch A #2
  *
  * MONEY/RATE DISCIPLINE (#1): `rate_per_activation`, flat `amount`, incentive `amount` are decimal
  * STRINGS. `advance_pct`/`holdback_pct` are NON-money Decimal(5,4) — still STRINGS, never numbers. The
  * effective-dated configs carry a server-derived `status` (current|pending|past).
  */
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import { IncentiveStatus, IncentiveTargetType } from '@prisma/client';
 
 /** The status the server derives for an effective-dated row (mirrors the FE `RateStatus`). */
 const RATE_STATUS = ['current', 'pending', 'past'] as const;
 type RateStatus = (typeof RATE_STATUS)[number];
-
-export class TierBracketResponse {
-  @ApiProperty()
-  id!: string;
-
-  @ApiProperty()
-  tier_config_id!: string;
-
-  @ApiProperty({ example: 4, description: '1 = highest .. 4 = entry.' })
-  tier_number!: number;
-
-  @ApiProperty({ example: 0 })
-  min_count!: number;
-
-  @ApiProperty({ type: Number, nullable: true, example: 6, description: 'null = open-ended (36+).' })
-  max_count!: number | null;
-
-  @ApiProperty({ type: String, example: '110.00', description: 'Decimal string — the per-activation rate.' })
-  rate_per_activation!: string;
-}
-
-export class TierConfigResponse {
-  @ApiProperty()
-  id!: string;
-
-  @ApiProperty({
-    type: String,
-    nullable: true,
-    description: "Client this schedule applies to; null = the GLOBAL ladder (fallback for clients without their own).",
-  })
-  client_id!: string | null;
-
-  @ApiProperty({ type: String, format: 'date-time' })
-  effective_from!: string;
-
-  @ApiProperty({ type: String, format: 'date-time', nullable: true })
-  effective_to!: string | null;
-
-  @ApiProperty()
-  created_by!: string;
-
-  @ApiProperty({ enum: RATE_STATUS })
-  status!: RateStatus;
-
-  @ApiProperty({ type: () => [TierBracketResponse] })
-  tiers!: TierBracketResponse[];
-}
 
 export class FlatRateResponse {
   @ApiProperty()
@@ -83,7 +36,7 @@ export class FlatRateResponse {
   })
   product_id!: string | null;
 
-  @ApiProperty({ type: String, example: '100.00', description: 'Decimal string — the flat rate.' })
+  @ApiProperty({ type: String, example: '100.00', description: 'Decimal string — the rep rate.' })
   amount!: string;
 
   @ApiProperty({ type: String, format: 'date-time' })
@@ -132,63 +85,4 @@ export class IncentiveResponse {
 
   @ApiProperty()
   created_by!: string;
-}
-
-
-/** A product summary carried on a tier rate so a list is readable without a second lookup. */
-export class TierRateProductResponse {
-  @ApiProperty({ example: 'Fibre 1gig' })
-  name!: string;
-
-  @ApiProperty({ example: 'internet' })
-  product_type!: string;
-}
-
-/**
- * A PER-PRODUCT tier rate — what one bracket pays for one product. It resolves a RATE only: the internet
- * tally stays one cross-client count and the bracket boundaries stay on the tier schedule (#5).
- */
-export class TierRateResponse {
-  @ApiProperty()
-  id!: string;
-
-  @ApiProperty({
-    type: String,
-    nullable: true,
-    description: "Client this rate applies to; null = the rate for every client for this product.",
-  })
-  client_id!: string | null;
-
-  @ApiProperty()
-  product_id!: string;
-
-  @ApiPropertyOptional({ type: () => TierRateProductResponse })
-  product?: TierRateProductResponse;
-
-  @ApiProperty({ type: Number, example: 2, description: 'Which bracket this rate is for (1 = highest).' })
-  tier_number!: number;
-
-  @ApiProperty({ type: String, example: '145.00', description: 'Decimal string — never a float (#1).' })
-  amount!: string;
-
-  @ApiProperty({ type: String, format: 'date-time' })
-  effective_from!: string;
-
-  @ApiProperty({ type: String, format: 'date-time', nullable: true })
-  effective_to!: string | null;
-
-  @ApiProperty()
-  created_by!: string;
-
-  @ApiProperty({ enum: RATE_STATUS })
-  status!: RateStatus;
-}
-
-/** The result of switching a scope to BASE PRICES: its new one-bracket schedule + each product's price. */
-export class BasePricesResponse {
-  @ApiProperty({ type: () => TierConfigResponse })
-  schedule!: TierConfigResponse;
-
-  @ApiProperty({ type: () => [TierRateResponse] })
-  rates!: TierRateResponse[];
 }

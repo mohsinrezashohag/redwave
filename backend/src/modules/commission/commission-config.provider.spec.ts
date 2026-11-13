@@ -1,154 +1,99 @@
+/**
+ * CommissionConfigProvider → engine, end to end: the stored rep rates (by type / product, global / per
+ * client) become the engine's maps, and the engine pays each item its most specific rate. No tiers, no
+ * split since 2026-11-13.
+ */
 import { CommissionConfigProvider } from './commission-config.provider';
 import { CommissionEngineService } from '../engine/commission-engine.service';
 import { ProductType } from '../engine/engine.types';
-import { SCHEDULE_C_V2 } from './schedule-c-v2';
+import { GENESIS_RATES } from './genesis-rates';
 
-// Genesis effective date for the seeded config (provider must select it for any later date).
 const GENESIS = new Date('2024-01-01T00:00:00.000Z');
+const LATER = new Date('2025-06-01T00:00:00.000Z');
 // Prisma.Decimal-like value (the provider only calls .toString() then new Decimal(...)).
 const dec = (s: string) => ({ toString: () => s });
 
-/** A mocked Prisma returning EXACTLY the Schedule C v2 values the seed writes. */
-function seededPrisma() {
+const typeRate = (product_type: string, amount: string, client_id: string | null = null, from = GENESIS) => ({
+  id: `${client_id ?? 'g'}-${product_type}-${amount}`,
+  client_id,
+  product_type,
+  product_id: null,
+  amount: dec(amount),
+  effective_from: from,
+  effective_to: null,
+});
+
+/** A mocked Prisma returning EXACTLY the genesis rates the seed writes. */
+function seededPrisma(extra: unknown[] = []) {
   return {
-    commissionTierConfig: {
-      findMany: jest.fn().mockResolvedValue([
-        {
-          id: 'tc1',
-          effective_from: GENESIS,
-          effective_to: null,
-          tiers: SCHEDULE_C_V2.tiers.map((t, i) => ({
-            id: `t${i}`,
-            tier_number: t.tier_number,
-            min_count: t.min_count,
-            max_count: t.max_count,
-            rate_per_activation: dec(t.rate_per_activation),
-          })),
-        },
-      ]),
-    },
     commissionFlatRate: {
-      findMany: jest.fn().mockResolvedValue([
-        {
-          id: 'f1',
-          product_type: 'greenfield_internet',
-          amount: dec(SCHEDULE_C_V2.flatRates.greenfield_internet),
-          effective_from: GENESIS,
-          effective_to: null,
-        },
-        {
-          id: 'f2',
-          product_type: 'tv',
-          amount: dec(SCHEDULE_C_V2.flatRates.tv),
-          effective_from: GENESIS,
-          effective_to: null,
-        },
-        {
-          id: 'f3',
-          product_type: 'home_phone',
-          amount: dec(SCHEDULE_C_V2.flatRates.home_phone),
-          effective_from: GENESIS,
-          effective_to: null,
-        },
-      ]),
+      findMany: jest
+        .fn()
+        .mockResolvedValue([...Object.entries(GENESIS_RATES.rates).map(([t, a]) => typeRate(t, a)), ...extra]),
     },
-    // Per-product tier rate OVERRIDES. Empty by default: with none, every payout must be identical to
-    // what it was before per-product rates existed — which is exactly what the fixtures below assert.
-    commissionTierRate: { findMany: jest.fn().mockResolvedValue([]) },
     incentive: { findMany: jest.fn().mockResolvedValue([]) },
   };
 }
 
-describe('CommissionConfigProvider → CommissionEngine (END-TO-END, seeded Schedule C v2)', () => {
+describe('CommissionConfigProvider → CommissionEngine (END-TO-END, genesis rates)', () => {
   const engine = new CommissionEngineService();
   let seq = 0;
-  const mk = (productType: ProductType, clientId = 'VF') => ({
+  const mk = (productType: ProductType, clientId = 'VF', productId: string | null = null) => ({
     id: `i${(seq += 1)}`,
     productType,
     clientId,
     saleDate: '2026-01-10',
+    productId,
   });
-  const many = (pt: ProductType, n: number, clientId?: string) =>
-    Array.from({ length: n }, () => mk(pt, clientId));
+  const many = (pt: ProductType, n: number, clientId?: string) => Array.from({ length: n }, () => mk(pt, clientId));
 
-  it('config → provider → engine reproduces the $3,310 case, paid in full (no holdback since 2026-11-13)', async () => {
-    const provider = new CommissionConfigProvider(seededPrisma() as never);
-    const config = await provider.getEngineConfig('2026-01-10');
-
-    const activations = [
-      ...many(ProductType.internet, 20),
-      ...many(ProductType.tv, 4),
-      ...many(ProductType.home_phone, 3),
-      ...many(ProductType.greenfield_internet, 2),
-    ];
-    const result = engine.computePeriod({ activations, config });
-
-    expect(result.internetTally).toBe(20);
-    expect(result.tierNumber).toBe(2); // $145
-    expect(result.grossCommission.toFixed(2)).toBe('3310.00');
-    // No holdback: the provider always hands the engine a 100% advance, whatever holdback_config holds.
-    expect(result.advanceAmount.toFixed(2)).toBe('3310.00');
-    expect(result.holdbackAmount.toFixed(2)).toBe('0.00');
+  it('20 internet + 4 TV + 3 HP + 2 greenfield → 2610.00, paid in full', async () => {
+    const config = await new CommissionConfigProvider(seededPrisma() as never).getEngineConfig('2026-01-10');
+    const result = engine.computePeriod({
+      activations: [
+        ...many(ProductType.internet, 20),
+        ...many(ProductType.tv, 4),
+        ...many(ProductType.home_phone, 3),
+        ...many(ProductType.greenfield_internet, 2),
+      ],
+      config,
+    });
+    expect(result.commissionTotal.toFixed(2)).toBe('2610.00');
   });
 
-  it('config → provider → engine reproduces cross-client (3 VF + 9 RF → Tier 3 → 1500.00)', async () => {
-    const provider = new CommissionConfigProvider(seededPrisma() as never);
-    const config = await provider.getEngineConfig('2026-01-10');
-
-    const activations = [
-      ...many(ProductType.internet, 3, 'VF'),
-      ...many(ProductType.internet, 9, 'RF'),
-    ];
-    const result = engine.computePeriod({ activations, config });
-
-    expect(result.internetTally).toBe(12);
-    expect(result.tierNumber).toBe(3); // $125
-    expect(result.grossCommission.toFixed(2)).toBe('1500.00');
+  it('a product rate and a client rate are the most specific, and greenfield ignores the product rate', async () => {
+    const config = await new CommissionConfigProvider(
+      seededPrisma([
+        { ...typeRate('internet', '150.00'), id: 'p1', product_id: 'fibre1g' },
+        typeRate('internet', '125.00', 'RF'),
+      ]) as never,
+    ).getEngineConfig('2026-01-10');
+    const r = engine.computePeriod({
+      activations: [
+        mk(ProductType.internet, 'VF', 'fibre1g'),
+        mk(ProductType.internet, 'RF'),
+        mk(ProductType.greenfield_internet, 'VF', 'fibre1g'),
+      ],
+      config,
+    });
+    expect(r.items.map((i) => i.rateApplied.toFixed(2))).toEqual(['150.00', '125.00', '100.00']);
   });
 });
 
-describe('CommissionConfigProvider — per-client scope grouping', () => {
-  const LATER = new Date('2025-06-01T00:00:00.000Z');
-  const bracket = (rate: string) => [
-    { id: 'b', tier_number: 1, min_count: 0, max_count: null, rate_per_activation: dec(rate) },
-  ];
-
-  /** Global genesis schedule + a LATER client-scoped one (the shape that used to break selection). */
-  function scopedPrisma() {
-    const prisma = seededPrisma();
-    prisma.commissionTierConfig.findMany = jest.fn().mockResolvedValue([
-      { id: 'global', client_id: null, effective_from: GENESIS, effective_to: null, tiers: bracket('110.00') },
-      { id: 'vf', client_id: 'VF', effective_from: LATER, effective_to: null, tiers: bracket('200.00') },
-    ]);
-    prisma.commissionFlatRate.findMany = jest.fn().mockResolvedValue([
-      { id: 'g', client_id: null, product_type: 'tv', amount: dec('30.00'), effective_from: GENESIS, effective_to: null },
-      { id: 'v', client_id: 'VF', product_type: 'tv', amount: dec('45.00'), effective_from: LATER, effective_to: null },
-    ]);
-    return prisma;
-  }
-
-  it('a per-client schedule with a LATER effective_from does NOT become the global one', async () => {
-    const config = await new CommissionConfigProvider(scopedPrisma() as never).getEngineConfig('2026-01-10');
-
-    // Selection must group by scope FIRST; ungrouped, VF's newer row would win for everyone.
-    expect(config.tiers[0].ratePerActivation.toFixed(2)).toBe('110.00'); // global untouched
-    expect(config.tiersByClient?.VF?.[0].ratePerActivation.toFixed(2)).toBe('200.00');
-  });
-
-  it('flat rates are keyed by (client, product_type), not collapsed together', async () => {
-    const config = await new CommissionConfigProvider(scopedPrisma() as never).getEngineConfig('2026-01-10');
-
-    expect(config.flatRates.tv.toFixed(2)).toBe('30.00'); // global
+describe('CommissionConfigProvider — scope grouping', () => {
+  it('rates are keyed by (client, product_type): a client’s LATER rate never becomes the global one', async () => {
+    const config = await new CommissionConfigProvider(
+      seededPrisma([typeRate('tv', '45.00', 'VF', LATER)]) as never,
+    ).getEngineConfig('2026-01-10');
+    expect(config.flatRates.tv.toFixed(2)).toBe('30.00'); // global untouched
     expect(config.flatRatesByClient?.VF?.tv.toFixed(2)).toBe('45.00');
   });
 
-  it('still 422s when there is no GLOBAL schedule, even if a client has one', async () => {
-    const prisma = seededPrisma();
-    prisma.commissionTierConfig.findMany = jest
-      .fn()
-      .mockResolvedValue([{ id: 'vf', client_id: 'VF', effective_from: GENESIS, effective_to: null, tiers: bracket('200.00') }]);
-    await expect(
-      new CommissionConfigProvider(prisma as never).getEngineConfig('2026-01-10'),
-    ).rejects.toMatchObject({ status: 422 });
+  it('a product-scoped row never masquerades as its type rate', async () => {
+    const config = await new CommissionConfigProvider(
+      seededPrisma([{ ...typeRate('tv', '60.00'), id: 'ptv', product_id: 'premium-tv' }]) as never,
+    ).getEngineConfig('2026-01-10');
+    expect(config.flatRates.tv.toFixed(2)).toBe('30.00');
+    expect(config.flatRatesByProduct?.['premium-tv'].toFixed(2)).toBe('60.00');
   });
 });

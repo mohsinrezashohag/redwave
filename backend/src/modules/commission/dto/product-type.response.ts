@@ -11,8 +11,8 @@ export class ProductTypeResponse {
   @ApiProperty({ example: 'Internet' })
   label!: string;
 
-  @ApiProperty({ enum: ['tiered', 'greenfield', 'standard_addon'] })
-  behaviour!: 'tiered' | 'greenfield' | 'standard_addon';
+  @ApiProperty({ enum: ['internet', 'greenfield', 'standard_addon'] })
+  behaviour!: 'internet' | 'greenfield' | 'standard_addon';
 
   @ApiProperty({ description: 'A core type — behaviour locked, cannot be deleted/deactivated.' })
   is_system!: boolean;

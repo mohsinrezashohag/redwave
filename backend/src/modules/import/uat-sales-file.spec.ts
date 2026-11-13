@@ -24,7 +24,7 @@ import { evaluateGate } from './reconcile-gate.logic';
 
 /** The seeded catalogue (bootstrap): key + human label + behaviour. */
 const CATALOGUE = [
-  { key: 'internet', label: 'Internet', behaviour: 'tiered' },
+  { key: 'internet', label: 'Internet', behaviour: 'internet' },
   { key: 'tv', label: 'TV', behaviour: 'standard_addon' },
   { key: 'home_phone', label: 'Home Phone', behaviour: 'standard_addon' },
   { key: 'greenfield_internet', label: 'Greenfield Internet', behaviour: 'greenfield' },

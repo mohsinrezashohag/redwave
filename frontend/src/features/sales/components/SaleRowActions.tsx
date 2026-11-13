@@ -2,6 +2,7 @@
  * SaleRowActions — the per-row action menu, gated by useCan + the sale's status (CONVENIENCE only —
  * the server still authorizes every call, CLAUDE §5). View (always), Validate (entered + sales:approve),
  * Delete (entered|validated + sales:delete, with a destructive confirm restating the consequence).
+ * Shown as labelled icon buttons on every row (2026-11-13), before and after validation alike.
  */
 import { CheckCircle2, Eye, Trash2 } from 'lucide-react';
 import { useState } from 'react';
@@ -49,6 +50,7 @@ export function SaleRowActions({ sale }: { sale: Sale }) {
     <>
       <RowActions
         label="Row actions"
+        iconOnly
         items={[
           { label: 'View', icon: <Eye size={15} />, onSelect: () => navigate(`/sales/${sale.id}`) },
           ...(canValidate ? [{ label: 'Validate', icon: <CheckCircle2 size={15} />, onSelect: doValidate }] : []),

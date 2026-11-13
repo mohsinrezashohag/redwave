@@ -29,7 +29,6 @@ export async function wipeTransactional(prisma: PrismaClient): Promise<void> {
     prisma.clientInvoice.deleteMany(),
     prisma.clawback.deleteMany(), // refs sale_item + sale + pay_run
     prisma.saleItem.deleteMany(), // refs sale
-    prisma.holdbackLedger.deleteMany(), // refs pay_run
     prisma.payRunLine.deleteMany(), // refs pay_run
     prisma.sale.deleteMany(), // refs pay_run (pay_run_id)
     prisma.payRun.deleteMany(),

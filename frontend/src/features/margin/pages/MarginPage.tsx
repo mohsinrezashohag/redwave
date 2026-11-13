@@ -3,7 +3,7 @@
  *
  * The spread IS Redwave's earning, and until now it existed nowhere: not a column, not a screen. The
  * business dashboard's `net_margin` is a CASH margin (revenue − net payout, after expenses, bonuses,
- * released holdback and clawbacks), which on an old 70/30 run is not what was earned in the period.
+ * and clawbacks), which is not what was earned on each sale.
  * This is per-sale product margin.
  *
  * Super Admin only — the server is the real gate and a 403 renders AccessDenied (§5). The UI computes

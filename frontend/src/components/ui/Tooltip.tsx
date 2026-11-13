@@ -1,6 +1,6 @@
 /**
  * Tooltip — design-system §6.5/§9. Radix Tooltip styled with tokens; for icon-button labels, truncated
- * text, and definitions (tier, tally). Requires a TooltipProvider near the app root.
+ * text, and definitions. Requires a TooltipProvider near the app root.
  */
 import * as RTooltip from '@radix-ui/react-tooltip';
 import type { ReactNode } from 'react';

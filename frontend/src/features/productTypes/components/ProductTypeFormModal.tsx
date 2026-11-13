@@ -1,6 +1,6 @@
 /**
  * ProductTypeFormModal — add or edit a product type (RHF+zod). A NEW type is always a standard add-on
- * (behaviour is forced server-side — never selectable here), so it can never change tally/greenfield logic
+ * (behaviour is forced server-side — never selectable here), so it can never change internet-base/greenfield logic
  * (#5/#9). Create may carry an INLINE commission flat rate (what we pay the rep) written to the commission
  * stream. Edit changes the label + active flag only; the key + behaviour are immutable and a system (core)
  * type cannot be deactivated. Tokens only.
@@ -79,8 +79,8 @@ function CreateForm({ onClose }: { onClose: () => void }) {
   return (
     <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
       <Banner tone="info" title="Standard add-on">
-        A new type is billable and flat-rated, but does NOT count toward the internet tier tally and is not
-        greenfield. That behaviour is reserved for the core types and can’t be changed.
+        A new type is an add-on: it is billable and paid its own rep rate, but it is not an internet base and
+        not greenfield. Those behaviours are reserved for the core types and can’t be changed.
       </Banner>
       <FormField label="Key" required error={errors.key?.message} help="Immutable identifier, e.g. satellite.">
         <Input {...register('key')} placeholder="satellite" />

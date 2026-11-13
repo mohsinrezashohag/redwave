@@ -5,7 +5,7 @@ describe('mapToEngineProductType (#9 greenfield at close)', () => {
   it('a greenfield-flagged internet activation maps to greenfield_internet (flat, excluded)', () => {
     expect(mapToEngineProductType('internet', false)).toBe(ProductType.greenfield_internet);
   });
-  it('a non-greenfield internet activation stays internet (tiered)', () => {
+  it('a non-greenfield internet activation stays internet', () => {
     expect(mapToEngineProductType('internet', true)).toBe(ProductType.internet);
   });
   it('tv / home_phone / greenfield_internet pass through unchanged', () => {

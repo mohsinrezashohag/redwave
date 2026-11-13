@@ -8,7 +8,7 @@
 
 ## 1. What this is
 
-A custom ERP/HRM platform for **Redwave Marketing Inc.**, a telecom sales agency. Independent field reps ("distributors") sell internet/TV/home-phone for program partners ("clients": Valley Fiber, RF Now, CTI). The system automates the full pipeline: sales capture → validation → tiered commission (paid in full; no holdback since 2026-11-13) → clawbacks → bi-weekly pay run → expenses → client billing → documents/e-signature → reporting.
+A custom ERP/HRM platform for **Redwave Marketing Inc.**, a telecom sales agency. Independent field reps ("distributors") sell internet/TV/home-phone for program partners ("clients": Valley Fiber, RF Now, CTI). The system automates the full pipeline: sales capture → validation → commission (one flat rep rate per item, paid in full; no tiers and no 70/30 since 2026-11-13 — Redwave applies those manually from the exports) → clawbacks → bi-weekly pay run → expenses → client billing → documents/e-signature → reporting.
 
 **This is a financial ledger first and an app second.** Correctness of money is the highest priority. Underpaying a rep is unacceptable.
 
@@ -34,7 +34,7 @@ The client-facing `.docx`/`.drawio` originals may also be kept in `docs/`; the `
 - **Frontend:** **React + TypeScript** (consumes the generated API client).
 - **Database:** **PostgreSQL**. Exact `NUMERIC` for money. JSONB where the model uses it.
 - **ORM:** **Prisma** (PostgreSQL). Money columns use Prisma **`Decimal`** (`@db.Decimal`, backed by Postgres `NUMERIC`) — **never `Float`/`number`** (#1). **Pay-run finalize (#8) and import commit run inside Prisma interactive transactions** (`$transaction`). Prisma owns the migrations (under `backend/prisma/migrations/`); `db/` documents/points to them. Pinned to **Prisma 6** — do not auto-upgrade to v7 (it drops `url` from the datasource block); the VS Code Prisma extension may flag this as an error, which is a false positive for our toolchain.
-- **Schema conventions (data model is built — all 48 entities, `init` migration applied).** Models are **PascalCase + `@@map("snake_table")`**; **columns stay snake_case**, 1:1 with `docs/data-model.md`. Surrogate UUID PKs (`@db.Uuid`), business keys `@unique`, join tables composite `@@id`. **Money `Decimal(12,2)`**; non-money decimals: pct `(5,4)`, `*_km` `(10,2)`, `rate_per_km` `(6,3)`, lat/lng `(9,6)`. **Product types are a CONFIGURABLE catalogue** (`product_type_catalogue`, key PK + `behaviour` enum `tiered|greenfield|standard_addon`), NOT a fixed enum — the SA adds types at runtime (always `standard_addon`; the 4 core types are `is_system`, behaviour locked). `products`/`commission_flat_rates`/`incentives.scope_product_type` are String FKs → `catalogue.key`; `sale_items.product_type` stays a plain string snapshot (no FK, #2). `sale_items` snapshot fields are **nullable until paid** (#2). Polymorphic id columns (`audit_log.entity_id`, `notifications.related_entity_id`, `import_rows.matched_entity_id`) carry **no FK**. No cascade deletes (ledger preserves records).
+- **Schema conventions (data model is built — all 48 entities, `init` migration applied).** Models are **PascalCase + `@@map("snake_table")`**; **columns stay snake_case**, 1:1 with `docs/data-model.md`. Surrogate UUID PKs (`@db.Uuid`), business keys `@unique`, join tables composite `@@id`. **Money `Decimal(12,2)`**; non-money decimals: pct `(5,4)`, `*_km` `(10,2)`, `rate_per_km` `(6,3)`, lat/lng `(9,6)`. **Product types are a CONFIGURABLE catalogue** (`product_type_catalogue`, key PK + `behaviour` enum `internet|greenfield|standard_addon`), NOT a fixed enum — the SA adds types at runtime (always `standard_addon`; the 4 core types are `is_system`, behaviour locked). `products`/`commission_flat_rates`/`incentives.scope_product_type` are String FKs → `catalogue.key`; `sale_items.product_type` stays a plain string snapshot (no FK, #2). `sale_items` snapshot fields are **nullable until paid** (#2). Polymorphic id columns (`audit_log.entity_id`, `notifications.related_entity_id`, `import_rows.matched_entity_id`) carry **no FK**. No cascade deletes (ledger preserves records).
 - **API:** **REST, described by an OpenAPI 3 spec** — the spec is the contract/seam for backend, frontend, and the future mobile app.
 - **Auth:** JWT bearer tokens. **RBAC enforced server-side** on every endpoint.
 - **Files:** S3-compatible object storage; references stored in Postgres.
@@ -153,15 +153,15 @@ Never run `prisma:migrate` against a deployed database — it can reset it. Oper
 These are the rules that, if broken, produce wrong money or a privacy/security breach. Treat them as hard constraints.
 
 1. **Exact-decimal money, never floats.** All monetary values use a decimal type / integer minor units. No `number` float arithmetic on money, ever. *In API DTOs money is a validated decimal **string** (never a JS `number`), stored as Prisma `Decimal` and serialized back as a string.*
-2. **Sale-item snapshots are immutable.** When a `sale_item` is paid, its `tier_at_payment`, `rate_applied`, `commission_paid`, and `incentive_amount` are frozen. Never update a snapshot. Corrections happen via a **new** clawback/adjustment record.
+2. **Sale-item snapshots are immutable.** When a `sale_item` is paid, its `rate_applied`, `commission_paid`, and `incentive_amount` are frozen. Never update a snapshot. Corrections happen via a **new** clawback/adjustment record.
 3. **The two rate streams never mix.** `client_billing_rates` (what we charge the client) and the `commission_*` tables (what we pay the rep) are separate, with no code path that joins or combines them. (This was the prior system's core defect.)
 4. **No in-system clawback date math.** The system does **not** compute or enforce 30/60-day windows. A clawback is entered manually when the client reports a cancellation, at any time. Recover the exact amount from the snapshot.
-5. **Gross tally, never re-tier.** The commission tier is computed from the **gross** internet activation count for the period and applied to every internet activation in it. A cancellation **never** recalculates a period's tier. (Cancellations are flat clawbacks — see #6.) **The tally is CROSS-CLIENT and stays client-blind.** Commission tier schedules and flat rates can each be **scoped to one client** (a `client_id`-null row is the GLOBAL fallback), but that scopes only the **rate lookup** — never the tally. The engine counts every internet activation across all clients into ONE number, then looks the bracket up on each activation's own client schedule (falling back to global). A per-client tally would be the "per-client tallies are wrong" defect in §6.
-6. **Clawback is a flat deduction.** A clawback subtracts the exact amount originally paid (incl. any incentive) from the rep's pay-run total, in full (there is no holdback to set it off against since 2026-11-13). Per `sale_item`, so one product can be clawed back without touching others on the same sale. *Built (`modules/clawback/`): entry targets a **PAID** `sale_item` (frozen `commission_paid` ≠ null, else 422); the amount is the engine's `computeClawbackAmount` from the snapshot (rate + incentive) — the snapshot is **never edited** (#2), the period is **never re-tiered** (#5), there is **no date math** (#6), and only the target item + its sale flip to `clawed_back` (one clawback per item). It is `pending` until a pay run deducts it, then `applied` + linked. The `CLAWBACK_TOTAL_PROVIDER` seam is rebound to `ClawbackPayrunProvider`; finalize calls `markApplied(...)` in its transaction so the deduction is recorded exactly once.*
+5. **One flat rep rate per item; NO tiers and NO 70/30 split (client decision 2026-11-13).** Each sale item pays ONE rate, most specific wins: **(client + product) → (product) → (client + product type) → (product type)**; a `client_id`-null row is the GLOBAL fallback. A missing rate is a 422 naming the type — a rep is never silently paid $0. The rep is paid **in full**. Redwave applies any tier or split **manually, outside the system**, from the exports; never reintroduce a tally, bracket, holdback or split in code.
+6. **Clawback is a flat deduction.** A clawback subtracts the exact amount originally paid (incl. any incentive) from the rep's pay-run total, in full. Per `sale_item`, so one product can be clawed back without touching others on the same sale. *Built (`modules/clawback/`): entry targets a **PAID** `sale_item` (frozen `commission_paid` ≠ null, else 422); the amount is the engine's `computeClawbackAmount` from the snapshot (rate + incentive) — the snapshot is **never edited** (#2), there is **no date math** (#6), and only the target item + its sale flip to `clawed_back` (one clawback per item). It is `pending` until a pay run deducts it, then `applied` + linked. The `CLAWBACK_TOTAL_PROVIDER` seam is rebound to `ClawbackPayrunProvider`; finalize calls `markApplied(...)` in its transaction so the deduction is recorded exactly once.*
 7. **`sale_date` governs the pay period.** Not validation date, not activation date. `activation_date` is stored for reference only and **drives no logic**. *Built (Sales): `sales` has **no `pay_period_id` FK**, so the period is **derived** from `sale_date` via the pure `modules/sales/pay-period.logic.ts#resolvePayPeriod` (period whose `[start,end]` contains `sale_date`). Validation never touches `sale_date`. Pre-loading `pay_periods` is Pay Run's job — derived period is null until then.*
-8. **Pay-run finalize is atomic and idempotent.** One DB transaction; an `Idempotency-Key` so a retry never double-pays or double-releases a holdback. Finalize is what freezes the snapshots (#2). *Built (`modules/payrun/pay-run.service.ts`): the whole finalize runs in **one `prisma.$transaction`** (a mid-step throw rolls back entirely). `pay_runs` has **no idempotency-key column**, so idempotency is **state-based** — re-finalizing a non-draft run is a no-op, plus freeze-once guards (sales become `paid`; one `holdback_ledger` row per rep+origin). Finalize freezes `sale_item` snapshots, transitions sales Validated→in_pay_run→paid, applies bonuses, composes net. It records no hold and releases none (no holdback since 2026-11-13).*
-9. **Greenfield is excluded from the tally** and flat-rated; the tally is computed from each sale's **confirmed state at period close**.
-10. **Configuration is effective-dated, read at runtime — never hard-coded.** Tiers, rates, holdback %, incentives, products, billing rates. A change is a new effective-dated row; it never rewrites a closed period. *The supersession pattern is a **shared pure module** `common/effective-dating.ts` (`planSupersession`/`selectEffectiveRate`/`deriveStatus`): a new future row **supersedes** the scope's pending row (deleted) and **bounds** the current row's `effective_to` to the day before; **back-dating is rejected (422)**; selection picks the row in force on a date. Used by Clients billing rates (scope = client+product+rate_kind) and Commission Config (tier schedule = global; flat rates = per product_type; holdback split = global). The holdback-**release** setting is sticky (latest wins), not supersession-dated.*
+8. **Pay-run finalize is atomic and idempotent.** One DB transaction; an `Idempotency-Key` so a retry never double-pays. Finalize is what freezes the snapshots (#2). *Built (`modules/payrun/pay-run.service.ts`): the whole finalize runs in **one `prisma.$transaction`** (a mid-step throw rolls back entirely). `pay_runs` has **no idempotency-key column**, so idempotency is **state-based** — re-finalizing a non-draft run is a no-op, plus freeze-once guards (sales become `paid`). Finalize freezes `sale_item` snapshots, transitions sales Validated→in_pay_run→paid, applies bonuses, composes net.*
+9. **Greenfield internet pays the greenfield rate**, never the internet product's own rate (the engine skips the product lookup for it). The greenfield signal is `sale_items.counts_toward_tally = false` on an internet item, set from the sale's **confirmed state** at entry and validation; nothing tiers on that flag any more.
+10. **Configuration is effective-dated, read at runtime — never hard-coded.** Rep rates, incentives, products, billing rates. A change is a new effective-dated row; it never rewrites a closed period. *The supersession pattern is a **shared pure module** `common/effective-dating.ts` (`planSupersession`/`selectEffectiveRate`/`deriveStatus`): a new future row **supersedes** the scope's pending row (deleted) and **bounds** the current row's `effective_to` to the day before; **back-dating is rejected (422)**; selection picks the row in force on a date. Used by Clients billing rates (scope = client+product+rate_kind) and the rep rates (scope = client+product_type+product).*
 11. **Rep codes are never reused** — including codes of terminated reps. Enforce uniqueness at the DB level. *Built in `modules/hrm/reps.service.ts`: a **case-insensitive service pre-check** across **all** reps (any status) rejects reuse with `409`, with the DB `@unique` as a backstop. Termination is a **soft status change** (never a delete), so a terminated rep's row persists and its code stays reserved. rep_code is immutable after creation.*
 12. **Captured FX rates and their converted CAD amounts are frozen — never re-converted** (Meeting 3; treat like immutable snapshots #2). Foreign-capable records store the fieldset `{original_amount, original_currency, fx_rate, fx_rate_date, amount_cad}`. The rate/`amount_cad` are captured **once** at a single defined event and never recomputed: **client-bill FX freezes at document ISSUE** (statement/invoice/client-expense-doc — never on preview; a correction re-issues a new numbered doc with a fresh rate), **rep-expense FX freezes at APPROVAL**. Reconciliation and all roll-ups read the stored `amount_cad`; the original amount + currency + rate + date are retained for audit. `fx_rate` is high-precision (`Decimal(18,8)`); `amount_cad` is rounded 2 dp **half-up** (the house rule). The allowed currency set is config-driven (`currencies`, USD/CAD + extensible), never hard-coded. **Rep pay is CAD-only** — `commission_*`, `pay_run_lines`, `holdback_ledger`, and `clawbacks` carry no FX fields; a foreign rep expense reaches the pay run already converted as its frozen `amount_cad`. FX source is env-gated (Bank of Canada Valet API) with approver manual override + graceful no-key fallback — the confirmed rate is what's frozen. (§8.3/BILL-011/EXP-014 · `docs/*`.)
 
@@ -196,10 +196,10 @@ the last 8 were split out or added as the system grew.
 | `roles/` | role CRUD + the permission matrix (built-in roles are `is_system`) |
 | `hrm/` | reps, rep documents, equipment |
 | `clients/` | clients, products, client billing rates, custom fields |
-| `commission/` | tier/flat/holdback config, incentives, product-type catalogue |
+| `commission/` | rep rates (per product type / product, per client), incentives, product-type catalogue |
 | `engine/` | the Commission Engine — **PURE, isolated, no deps** (see §6) |
 | `sales/` | sales, sale_items, validation, the composite Sale ID |
-| `payrun/` | pay periods, runs, lines, holdback ledger, ADP export |
+| `payrun/` | pay periods, runs, lines, payroll report, ADP export |
 | `clawback/` | cancellation recoveries against frozen snapshots |
 | `expenses/` | expense reports (folders), items, km logs, field configs, km rates |
 | `billing/` | statements, invoices, client expense documents, billing periods, exports |
@@ -215,8 +215,8 @@ the last 8 were split out or added as the system grew.
 One module = one NestJS module owning its tables and endpoints. A module calls another's **defined interface**, never reaches into its internals.
 
 **Seeding & clean-wipe (`backend/prisma/`).** Two operator scripts share one bootstrap:
-- `seed/bootstrap.ts` — the **genesis catalogue** the system needs day-one (RBAC 15 modules/90 perms, 4 built-in roles, Super Admin, Schedule C v2 commission config, 2026 pay periods, expense/notification/chatbot configs). Idempotent upserts; **an existing Super Admin password is never overwritten**.
-- `seed/demo.ts` — a rich, **idempotent** demo (re-running wipes + regenerates transactional data — never duplicates) anchored to the **run-time current pay period** so the leaderboard/dashboards are live whenever it runs: 3 clients (VF/RF/CTI) + own products + billing rates, a manager + 8 reps (`RW-D-*`), sales across three cycles spread by `sale_date`, a **finalized** prior cycle (70/30 + holdback), clawbacks, a statement, expenses (incl. a KM log), notifications, a pending signature. It drives the **real services** so every invariant holds (#8/#2/#5/#6/#3).
+- `seed/bootstrap.ts` — the **genesis catalogue** the system needs day-one (RBAC 15 modules/90 perms, 4 built-in roles, Super Admin, the genesis rep rates per product type, 2026 pay periods, expense/notification/chatbot configs). Idempotent upserts; **an existing Super Admin password is never overwritten**.
+- `seed/demo.ts` — a rich, **idempotent** demo (re-running wipes + regenerates transactional data — never duplicates) anchored to the **run-time current pay period** so the leaderboard/dashboards are live whenever it runs: 3 clients (VF/RF/CTI) + own products + billing rates, a manager + 8 reps (`RW-D-*`), sales across three cycles spread by `sale_date`, a **finalized** prior cycle (paid in full), clawbacks, a statement, expenses (incl. a KM log), notifications, a pending signature. It drives the **real services** so every invariant holds (#8/#2/#5/#6/#3).
 - `seed/wipe.ts` — FK-safe child→parent delete of **transactional tables only** (schema has no cascades; the DB RESTRICTs hard deletes). `seed.ts` (entry, `npm run prisma:seed`) = Nest context → bootstrap **(always)** → demo **only when `SEED_DEMO=yes`**. **Production deploys run `prisma:seed`, so they seed the idempotent BOOTSTRAP ONLY — never the demo** (the demo wipes + regenerates transactional data, so it must never run on a deploy once real data exists; opt in locally with `SEED_DEMO=yes`). `reset.ts` (`npm run seed:reset`, unchanged) = the **handover clean-wipe**: guarded by `RESET_CONFIRM=yes`, it wipes transactional data and re-seeds the bootstrap, **keeping the master catalogue** (login, roles, clients, products, reps, commission config, pay periods, chatbot config). Demo logins use `DEMO_PASSWORD` in `seed/demo.ts` (rotate via the UI).
 - `scripts/reset-superadmin.ts` (`npm run sa:reset`) — a **guarded, LOCAL-RUN-ONLY** Super Admin recovery (for a locked-out / unknown-password SA, since bootstrap never overwrites the password). Guarded by `RESET_SA_CONFIRM=yes`; re-hashes `SEED_SUPERADMIN_PASSWORD` for `SEED_SUPERADMIN_EMAIL` (case-insensitive; refuses a non-SA) with the canonical `common/crypto/password-hash`, clears lockout, revokes that user's sessions, and **deactivates any leftover extra Super Admins** (`KEEP_EXTRA_SA=yes` to keep). Never prints the password/hash. Testable core in `common/ops/superadmin-reset.ts`.
 
@@ -243,62 +243,34 @@ One module = one NestJS module owning its tables and endpoints. A module calls a
 - **Global error envelope (built — `common/filters/all-exceptions.filter.ts`, Batch A #1).** One `APP_FILTER` (`@Catch()`, registered in `app.module.ts` like the global guards) normalizes **every** error to the contract envelope **`{ error: { code, message, details } }`** (arch §5.1), statuses preserved. Three classes: **`HttpException`** → `CODE_BY_STATUS[status]` (400→`BAD_REQUEST`, 401→`UNAUTHORIZED`, 403→`FORBIDDEN`, 404→`NOT_FOUND`, 409→`CONFLICT`, 422→`UNPROCESSABLE_ENTITY`), message from the response (array joined → `details.messages`), structured payloads (billing's **`unpriced`**, the import gate) preserved into `details`; **`DomainError`** (the **framework-free** marker `common/errors/domain-error.ts` — extends `Error`, **no `@nestjs/common` import**, carries `code`/`message`/`details?`) → **422**; **anything else** (bare `Error`, Prisma, the engine's internal-invariant throws) → **masked 500** generic message + `details.correlationId` (`randomUUID()`) + a server-side `Logger.error` (no internal leak, arch §11). **Map a client-fault domain error at the service boundary**, never inside pure/mirrored logic: e.g. `tier-schedule.service` wraps the pure `validateTierBrackets` bare-`Error` in `DomainError('TIER_SCHEDULE_INVALID', …)`; the engine throws are **left bare → stay 500** (real server faults, NOT 422). Contract: `ErrorEnvelopeDto` is registered via `extraModels` (in `main.ts` + `scripts/export-openapi.ts`) so the envelope is documented in `components.schemas` (per-endpoint `@ApiResponse` wiring still deferred — responses are `never`-typed). FE companion: `frontend/src/lib/query/unwrap.ts` reads `body.error.message`/`body.error.details`. **Reuse `DomainError` for any new client-fault domain rule** instead of returning a bare `Error` (→ 500) or coupling pure logic to Nest.
 - **Sensitive-PII gating (built, HRM):** sensitive fields are **redacted in the query/response server-side**, gated on a permission — e.g. rep `payment_details` and document `file_url`s require **`hrm:edit`** (a plain `hrm:view` caller gets them nulled), computed from `user.permissions.has(permissionKey(...))`. Sensitive values are also kept **out of audit payloads**. Reuse this redaction pattern for other PII. **Rep-profile field ownership (confirmed 2026-11-11):** a rep may **request** name, phone, contact email, address and jacket/t-shirt size (`profile_change_requests`, approved by their reviewer, applied to the REP record with name+phone mirrored to the user); **rep code, partner code, status, hire/termination date, field manager, DOB, SIN, equipment and documents are HR-only** — the request DTO cannot even carry them (spec-locked). A rep reads their own profile via the token-scoped `/v1/account/rep-profile*` (no id param): SIN **masked, no self-reveal**; own documents openable, not uploadable. **Every rep response goes through `toRepView` (`hrm/reps.service.ts`)** — a new private rep column must be added to its `PII_FIELDS` list, and a value that must be read back (like the SIN) is encrypted with `common/crypto/field-cipher`, never stored in clear. **Banking (2026-11-12)** lives in `payment_details` with the account encrypted the same way; responses expose only the derived `banking` (account masked, HR reveal audited, the rep sees their own masked) and the ciphertext is stripped from every response — write banking only through the DTO's `banking` object, never a raw `payment_details` write. **ID dates are read, never trusted (2026-11-12):** for permits, PR cards, licences and passports, `DocumentReaderService` (Gemini, env-gated on `GEMINI_API_KEY`, optional `DOC_READER_MODEL`) returns issue/expiry dates + consistency checks (`id-document.logic.ts`: name match, date sanity, ICAO 9303 MRZ check digits) as SUGGESTIONS; nothing read is stored or logged, only the dates HR confirms are saved (upload or `PATCH …/documents/:docId`), and the UI never calls a document "verified". **Deleting a rep document is a 30-day soft delete (2026-11-12):** `rep_documents.deleted_at` puts it in "Recently deleted" (`hrm:delete`, Admin + SA; edit/replace stay `hrm:edit`); **every live read filters `deleted_at: null`** (list, file-url, read, edit, the rep's own view and the headshot in `AvatarService`), so a new query over `rep_documents` must too. Restore works until `purgeDueDate` (`rep-documents.logic.ts`, one 30-day constant); **Replace file** = new live row + the old one to the bin in one tx. `RepDocumentPurgeService` (daily 03:00 Winnipeg + once a minute after boot; `npm -w backend run documents:purge`, dry-run default, `PURGE_CONFIRM=yes` writes) removes the OBJECT first and the row only after; a refused object keeps its row for the next run. **A rep's photo shows wherever the rep is shown** (reps list/detail, leaderboard, manager roster, sales, pay-run lines, search): rep-shaped responses carry `photo_url` from `AvatarService.resolveReps` (latest headshot, one batch sign); `Avatar` falls back to initials when a link fails. **Profile photos (2026-11-12) are uploaded, never linked:** a rep's photo is their latest HR headshot; anyone else uploads via `POST /v1/files` purpose `avatar` (JPG/PNG, claimed on the change request). `avatar_url` in every user response is a signed DISPLAY URL from `AvatarService` (`common/avatar/`) — never return the stored path, and never accept a link.
 - **Sale lifecycle + Sale ID (built, Sales):** the **§16 state machine** is the authoritative pure model in `modules/sales/sale-status.logic.ts` (`assertTransition` → 409 on any invalid move); Sales owns create→entered, validate (entered→validated), delete (entered|validated→**soft** `status=deleted`); in_pay_run/paid/clawed_back are triggered by Pay Run/Clawback. The composite **Sale ID** is pure (`sale-id.logic.ts`: `sale_date[-mpu]-client`, duplicate → `-1/-2`, never blocked). Sales **produces activations only** — `sale_items` snapshot fields stay **NULL** until Pay Run (#5/#2). Reads/mutations are **scoped via `ScopeService`** in the query (rep=own/manager=roster/admin=all).
-- **Pay Run composes, never reimplements (built, `modules/payrun/`):** finalize gathers a rep's validated sales → `mapToEngineProductType` (greenfield internet → `greenfield_internet` flat $100 at close, #9) → **`CommissionConfigProvider.getEngineConfig`** → **`CommissionEngineService`** — it never re-derives tiers/commission (#5). Engine result (decimal.js) → Prisma `Decimal` via `.toFixed(2)` at the write boundary. Net = commission (in full) + expenses + incentives + bonus − clawbacks. **No holdback (client decision 2026-11-13):** `CommissionConfigProvider` hands the engine `NO_HOLDBACK` (100% advance) in code, never from `holdback_config`, so re-entering a split can't bring it back; finalize writes no `holdback_ledger` row and releases none, and the full clawback deducts from net. Holds still waiting then were marked `settled_offline` by migration (never paid by the system). Old runs keep their frozen 70/30 figures: run / payroll-report / statement responses carry `has_holdback`, and the UI, workbook and ADP export show the held/released columns ONLY when it is true. The holdback config, release rule, ledger and summary endpoints, the opening-holdback import and the holdback dashboard figures are gone; the tables stay for history. **Expenses & Clawbacks are injected seams** (`EXPENSE_TOTAL_PROVIDER`/`CLAWBACK_TOTAL_PROVIDER`, default zero) — those modules re-bind the token later without touching Pay Run.
+- **Pay Run composes, never reimplements (built, `modules/payrun/`):** finalize gathers a rep's validated sales → `mapToEngineProductType` (greenfield internet → `greenfield_internet`, #9) → **`CommissionConfigProvider.getEngineConfig`** (the rep rates + incentives) → **`CommissionEngineService`** — it never re-derives commission. Engine result (decimal.js) → Prisma `Decimal` via `.toFixed(2)` at the write boundary. Net = commission (in full) + expenses + incentives + bonus − clawbacks. **No tiers, no holdback, no split (2026-11-13):** `pay_run_lines.commission` is the sum of the item rates; the full clawback deducts from net. The tier tables, holdback tables and every 70/30 / tier column were dropped by migration `20261113100000` after converting the prices then in force into rep rates; old demo runs were rewritten to the paid-in-full model. **Expenses & Clawbacks are injected seams** (`EXPENSE_TOTAL_PROVIDER`/`CLAWBACK_TOTAL_PROVIDER`, default zero) — those modules re-bind the token later without touching Pay Run.
 
 ---
 
 ## 6. The Commission Engine (isolated — get this right)
 
-The most important piece. Build it **first, in isolation, against tests, before anything depends on it.**
+The most important piece. **Pure, deterministic, config-driven**, tested by direct instantiation.
 
-- **Pure & deterministic:** given a rep's activations for a period + the effective config, it returns tier, per-item amounts, and totals. No side effects. Same inputs → same outputs.
-- **Config-driven:** reads tiers/flat-rates/incentives by effective date. Nothing hard-coded.
-- Implements invariants #5, #6, #9.
-
-### Mandatory test fixtures (must pass before use)
-- **$3,310 case:** 20 internet → Tier 2 ($145) = $2,900; +4 TV ($30)=$120; +3 HP ($30)=$90; +2 greenfield ($100)=$200 → gross **$3,310**; 70% = $2,317.00, 30% = $993.00.
-- **Cross-client aggregation:** 3 VF internet + 9 RF internet → tally **12 → Tier 3** → all 12 at **$125**. (Per-client tallies are wrong.)
-- **Tier boundary:** 16 internet → Tier 3 ($125); 17 internet → Tier 2 ($145).
-- **Per-product clawback:** a household's TV cancels → **−$30 flat**; the internet activation is untouched; the period is **not** re-tiered. (If a $20 incentive was on the TV, clawback = $50.)
-
-### Client directive 2026-11-11 / 2026-11-13 — 100% pay, no holdback, no tiers
-Redwave: *"No more 70-30, calculate 100%. No tier system"*, then (2026-11-13) *"remove the 70/30 as a whole;
-we will do those items offline for payroll"*. **The holdback is now removed in CODE** (`NO_HOLDBACK`, see §5
-Pay Run): nothing is held, nothing is released, and there is no holdback configuration left to change. **Tiers
-off is still CONFIGURATION** (a single-bracket `[0, ∞)` schedule per scope with per-product tier-1 prices,
-§14 rule 12). **The engine is unchanged** and still supports tiers and a split (the §6 fixtures stay green); it
-is simply always handed 100%. Every pay screen labels a split only for an OLD run (`has_holdback`), via
-`features/payrun/split.ts` — **never hard-code "70%/30%"**.
-
-### Tier schedule (Schedule C v2)
-| Tier | Gross internet tally | Rate/activation |
-|---|---|---|
-| 4 (entry) | 0–6 | $110 |
-| 3 | 7–16 | $125 |
-| 2 | 17–35 | $145 |
-| 1 (highest) | 36+ | $160 |
-
-Flat: Greenfield internet **$100** (excluded from tally), TV **$30**, Home Phone **$30**. (Flat rates are a **keyed map** `Record<key, Decimal>` in the engine, not a fixed trio — an SA-added `standard_addon` type is priced by its own effective-dated flat rate; the tally stays `=== 'internet'` and greenfield mapping is unchanged, so #5/#9 are provably preserved.)
-
-### Implementation (built — `backend/src/modules/engine/`)
-- **Pure & isolated:** `CommissionEngineService` has no constructor deps and imports **only**
-  `decimal.js` + `@nestjs/common` (the `@Injectable`/`@Module` DI markers) — **no `@prisma/client`,
-  no DB, no HTTP, no other module**. Tested by direct instantiation. All 4 mandatory fixtures + 7
-  edge groups pass (`commission-engine.service.spec.ts`).
-- **Money = `decimal.js`** (not `@prisma/client`'s re-export), so the engine is Prisma-free. The
-  future Pay Run converts `Prisma.Decimal` ↔ `Decimal` at its boundary (same lib underneath).
-- **Incentives are SEPARATE from the 70/30 split:** gross (the split base) = **tier+flat only**;
-  incentives are reported as `incentiveTotal` and paid in full (matches `pay_run_lines.incentive_total`).
-  Per-item `commissionPaid = base + incentive` is the snapshot the clawback reads.
-- **Split rounding (durable):** `advance = roundHalfUp(gross × advancePct)`, `holdback = gross −
-  advance` — derived so the two always sum to gross exactly (no lost cent). HALF_UP, applied only at
-  the split; passed per-call (no global decimal.js config mutation).
-- **Both incentive modes applied** (threshold-relative, period-level pass): `per_activation` (bonus beyond `target_count`; null/0 = all) + `one_time` (one bonus at `target_count`, frozen onto the crossing activation).
-- **Config provider (built — `modules/commission/commission-config.provider.ts`) closes the loop:**
-  `getEngineConfig(date)` reads the effective-dated config and returns the typed `EngineConfig` the
-  engine expects. **This is the Prisma.Decimal → decimal.js boundary** (keeps the engine pure).
-  Proven end-to-end (seeded Schedule C v2 → provider → engine → **$3,310** / 2317.00 / 993.00, and
-  cross-client 3 VF + 9 RF → Tier 3 → 1500). The engine — not the config module — determines tiers (#5).
+- **No tiers and no 70/30 (client decision 2026-11-13).** Redwave: *"No more 70-30, calculate 100%. No tier
+  system"*, then *"remove the 70/30 and tier stuff as a whole; we will do those items offline"*. Every sale
+  item pays ONE flat rep rate (§3 #5) and the rep is paid in full. Tiers and splits are Redwave's manual,
+  outside-the-system work from the exports — **never reintroduce them in code**.
+- **Inputs:** a rep's activations for the period (product type, client, product, sale date) + the effective
+  config (`EngineConfig`: `flatRates` / `flatRatesByClient` / `flatRatesByProduct` / `flatRatesByClientProduct`
+  + incentives), built by `CommissionConfigProvider.getEngineConfig` (the Prisma.Decimal → decimal.js boundary).
+- **Outputs:** per item `rateApplied` / `commissionBase` / `incentiveAmount` / `commissionPaid` (= rate +
+  incentive, the snapshot a clawback recovers), plus `commissionTotal` / `incentiveTotal` / `totalEarned`.
+- **Greenfield** (`greenfield_internet`) skips the product lookup and pays the greenfield rate (#9).
+- **Incentives** stay separate from the rate and are paid in full; both modes are applied, threshold-relative:
+  `per_activation` (bonus beyond `target_count`; null/0 = all) and `one_time` (one bonus at `target_count`,
+  frozen onto the crossing activation).
+- **Isolation:** imports only `decimal.js` + `@nestjs/common`; no Prisma, DB, HTTP or sibling module; no
+  constructor deps; no clock. `engine.purity.spec.ts` enforces it (§14 rule 10).
+- **Genesis rates** (`commission/genesis-rates.ts`, seeded): internet **$110**, greenfield internet **$100**,
+  TV **$30**, Home Phone **$30**. Products and clients override them in Commission Config → Rep rates.
+- **Fixtures** (`commission-engine.service.spec.ts`): 20 internet + 4 TV + 3 HP + 2 greenfield → **$2,610**;
+  volume never changes a rate; most-specific rate wins; greenfield ignores the product rate; a missing rate
+  throws; per-product clawback (TV −$30, with a $20 incentive −$50); both incentive modes.
 
 ---
 
@@ -325,7 +297,7 @@ If a design decision isn't covered by the design system, **stop and ask** rather
 - **Plan first.** Use Plan Mode to explore and produce a reviewed plan per module before writing code. Don't free-code a whole module unprompted.
 - **Build order:** (1) Auth & RBAC → (2) Commission Engine against its fixtures → (3) Sales, Commission Config, Clients/Products, HRM → (4) Pay Run, Clawback, Expenses → (5) Billing, Documents, Import, Reporting. Frontend builds against the OpenAPI contract in parallel throughout.
 - **Contract-first.** The OpenAPI spec changes **deliberately** and is reviewed; it is not a side effect of a code change. Regenerate the typed client when it changes.
-- **Tests for money paths are mandatory**, not optional — Commission Engine, pay run, clawback, holdback release. Use the §6 fixtures.
+- **Tests for money paths are mandatory**, not optional — Commission Engine, pay run, clawback. Use the §6 fixtures.
 - **Migrations are versioned and ordered**; never hand-edit production schema.
 - **Parallel-run** the pay run against the manual Excel process for 1–2 cycles before cutover.
 
@@ -336,8 +308,8 @@ If a design decision isn't covered by the design system, **stop and ask** rather
 Every business rule in code cites its source so future developers can trace it:
 
 ```ts
-// Gross tally; cancellations never re-tier the period. — BRD §4.1 / SRS COMM, SALE
-// Clawback is a flat deduction from the pay-run total; no 70/30 sequencing. — SRS CLAW-006
+// One flat rep rate per item; greenfield pays the greenfield rate. — CLAUDE §3 #5/#9
+// Clawback is a flat deduction from the pay-run total. — SRS CLAW-006
 ```
 
 Each module file starts with a short header: its responsibility, its inputs/outputs, and the entities it owns. Prefer clear names over clever code in financial paths.
@@ -346,14 +318,13 @@ Each module file starts with a short header: its responsibility, its inputs/outp
 
 ## 10. Common mistakes to avoid (this project specifically)
 
-- ❌ Re-tiering a period when a sale cancels. → It's a **flat clawback**; tier is fixed at close. (#5, #6)
+- ❌ Reintroducing tiers, a tally or a 70/30 split in code. → One flat rate per item, paid in full; Redwave does tiers/splits manually. (#5)
 - ❌ Joining client billing rates with commission rates "to be efficient." → **Never.** (#3)
 - ❌ Building 30/60-day clawback window logic. → The system does **no** date math; clawbacks are entered manually. (#4)
 - ❌ Using `sale_date` vs `validation_date` vs `activation_date` interchangeably. → **`sale_date` governs.** Activation date is reference-only. (#7)
 - ❌ Floating-point money. → Exact decimal only. (#1)
 - ❌ Mutating a paid `sale_item` to "fix" it. → Snapshots are immutable; create a new record. (#2)
-- ❌ Counting internet tally per-client. → Tally aggregates across **all** clients for the rep. (§6)
-- ❌ Counting greenfield toward the tier tally. → Greenfield is excluded and flat-rated. (#9)
+- ❌ Paying greenfield the internet product's rate. → Greenfield pays the greenfield rate. (#9)
 - ❌ Enforcing access by hiding UI controls. → RBAC is **server-side**, scoped in the query. (§5)
 - ❌ Shipping generic default-palette UI. → Use the defined design system; ask if uncovered. (§7)
 - ❌ Writing a profile edit straight to the user record. → HR-field edits go through `profile_change_requests` review; only the theme preference applies instantly. (SRS §4.4)
@@ -374,7 +345,7 @@ This file is the project's **persistent memory**. Claude Code loads it at the st
   sentence or two. This file grew to 1,800 lines once by recording both; don't do it again.
 - Keep it **lean**: record the rule, not the discussion. Point to `docs/*.md` for detail rather than pasting it in.
 - A **stale** CLAUDE.md is worse than none — it misleads. If something here is no longer true, fix it immediately.
-- When the three flagged items in **SRS §17** (holdback release timing, greenfield-at-close, current-cycle cancellation) are confirmed by Redwave, record the confirmed rule here and remove the "proposed" caveat.
+- When the three flagged items in **SRS §17** (greenfield-at-close, current-cycle cancellation) are confirmed by Redwave, record the confirmed rule here and remove the "proposed" caveat.
 
 ---
 
@@ -766,7 +737,7 @@ surrounding code.
 
 6. **A historical sale row is one HOUSEHOLD, and its billed amount is recorded once.**
    `master_migration:sales` takes `product_types` (possibly several) → one sale with N `sale_items`. The
-   row's `billed_amount` goes on the **base item only** (catalogue behaviour `tiered`/`greenfield`, else
+   row's `billed_amount` goes on the **base item only** (catalogue behaviour `internet`/`greenfield`, else
    the first); the rest are NULL. It is **never divided** — splitting invents an attribution the source
    never stated and cannot round cleanly. This keeps `Σ historical_billed_amount` equal to the source
    file's own total, which is exactly what the Business dashboard sums (#1/#3).
@@ -774,8 +745,7 @@ surrounding code.
 7. **An import may create referenced master data only on the MIGRATION target, only by opt-in.**
    `create_missing` (persisted on the batch, because remap and a reconcile edit re-classify) turns a
    missing client / rep / product into a created placeholder on `master_migration + sales`. It is **422 on
-   every other target** — above all live sales, where an invented rep or product would reach the tier tally
-   and the pay run (#5). Three lines never move: an unresolvable **product TYPE** is still an error (the
+   every other target** — above all live sales, where an invented rep or product would reach the pay run (#5). Three lines never move: an unresolvable **product TYPE** is still an error (the
    catalogue is SA-governed config, #10); a created product gets **no billing rate** (#3) and no money
    field; and the **preview lists exactly what will be created** before anything is staged.
 
@@ -813,14 +783,4 @@ surrounding code.
    (finalize and the backfill use `120_000`) — Prisma's 5 s default rolled back the first production
    backfill run.
 
-12. **"Tiers off" is BASE PRICES, stored on the existing model** (client request 2026-11-11). A scope (Global or one
-   client) is in base-price mode when its current schedule is ONE bracket `[0, ∞)` (tier 1); each internet
-   product's own price is a tier-1 `commission_tier_rates` row, else the bracket rate is the default. There is no
-   flag column — the mode is derived (`features/commission/tierMode.ts`), and a client without its own schedule
-   follows Global. Write it only through `POST /v1/commission/base-prices` (one transaction: schedule + prices,
-   ending old tier-1 prices of products left on the default). **Global takes a default price only** — a global
-   per-product price would override every client's ladder. Switching tiers back ON sends
-   `end_product_base_prices: true` so a tier-1 product price can't keep overriding the new ladder's tier 1.
-   **While a scope's tiers are off, its tier settings are LOCKED in the UI** (`useScopeTierMode`): Per-product rates is
-   read-only for it and the Add rate form refuses that client — prices have ONE editor (Tier schedule → Edit prices).
-   "All scopes" shows no switch (scopes can differ).
+12. **Rep rates have ONE editor** — Commission Config → Rep rates (`/v1/commission/flat-rates`): a rate per product type or per product, global or per client, effective-dated (#10). The tier schedule, per-product tier rates and base-prices endpoints are gone (2026-11-13).

@@ -1,7 +1,7 @@
 /**
  * RateStatusBadge — the SHARED effective-dating status pill (current/pending/past). Domain-agnostic: it
  * renders the server-derived `status` for ANY effective-dated config row (client billing rates, commission
- * tiers/flats/holdback). Colour always pairs with text (via Badge). Tokens only. — CLAUDE #10
+ * rep rates, billing rates). Colour always pairs with text (via Badge). Tokens only. — CLAUDE #10
  */
 import { Badge, type BadgeTone } from './Badge';
 

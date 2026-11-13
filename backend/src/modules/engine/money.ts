@@ -14,7 +14,3 @@ export const ZERO = new Decimal(0);
 
 /** Sum a list of Decimals (empty → 0). */
 export const sum = (values: Decimal[]): Decimal => values.reduce((acc, v) => acc.plus(v), ZERO);
-
-/** Round to 2 decimal places, half-up — the cent-rounding rule used at the 70/30 split. */
-export const roundMoneyHalfUp = (value: Decimal): Decimal =>
-  value.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);

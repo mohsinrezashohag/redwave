@@ -42,7 +42,7 @@ import { summariseLines } from './statement-summary.logic';
 const TV_KEY = 'tv';
 const HOME_PHONE_KEY = 'home_phone';
 /** A product type that counts as "Internet" for the presence flag + the Product column. */
-const INTERNET_BEHAVIOURS = new Set(['tiered', 'greenfield']);
+const INTERNET_BEHAVIOURS = new Set(['internet', 'greenfield']);
 
 const ZERO = new Decimal(0);
 const dateIso = (d: Date): string => d.toISOString().slice(0, 10);
@@ -257,7 +257,7 @@ export class StatementService {
     const hpAddonRates = kindScope('hp_addon');
     const spiffRates = kindScope('spiff');
 
-    // Which product types are "Internet" (behaviour tiered/greenfield) — read from the catalogue so an
+    // Which product types are "Internet" (behaviour internet/greenfield) — read from the catalogue so an
     // SA-added type behaves correctly without a code change.
     const catalogue = await this.prisma.productTypeCatalogue.findMany({
       select: { key: true, label: true, behaviour: true },
