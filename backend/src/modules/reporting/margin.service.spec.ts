@@ -242,11 +242,12 @@ describe('Margin — roll-ups', () => {
 });
 
 describe('Margin — rates in force', () => {
-  it('reports EVERY tier bracket for a tiered product, not one number', async () => {
+  it('reports the one rep rate the engine would pay: client+product → product → client+type → type', async () => {
     const { service, prisma } = make();
     prisma.clientBillingRate.findMany.mockResolvedValue([
       {
         product_id: 'p1',
+        client_id: 'c-vf',
         amount: dec('350.00'),
         effective_from: d('2026-01-01'),
         effective_to: null,
@@ -254,18 +255,17 @@ describe('Margin — rates in force', () => {
         product: { name: 'Fibre 1gig', product_type: 'internet' },
       },
     ]);
-    prisma.commissionTierRate.findMany.mockResolvedValue([
-      { product_id: 'p1', tier_number: 2, amount: dec('145.00') },
-      { product_id: 'p1', tier_number: 4, amount: dec('110.00') },
+    prisma.commissionFlatRate.findMany.mockResolvedValue([
+      { client_id: null, product_id: null, product_type: 'internet', amount: dec('110.00') },
+      { client_id: null, product_id: 'p1', product_type: 'internet', amount: dec('140.00') },
+      { client_id: 'c-vf', product_id: 'p1', product_type: 'internet', amount: dec('150.00') },
     ]);
-
     const [row] = await service.ratesInForce(sa, '2026-09-07');
     expect(row.client_rate).toBe('350.00');
-    // Sorted, and complete — a rep's internet rate depends on the period's volume.
-    expect(row.rep_tier_rates.map((t) => t.tier_number)).toEqual([2, 4]);
+    expect(row.rep_rate).toBe('150.00');
   });
 
-  it("falls back to a product TYPE's flat rate when the product has none of its own", async () => {
+  it("falls back to a product TYPE's rate when the product has none of its own", async () => {
     const { service, prisma } = make();
     prisma.clientBillingRate.findMany.mockResolvedValue([
       {
@@ -278,11 +278,11 @@ describe('Margin — rates in force', () => {
       },
     ]);
     prisma.commissionFlatRate.findMany.mockResolvedValue([
-      { product_id: null, product_type: 'tv', amount: dec('30.00') },
+      { client_id: null, product_id: null, product_type: 'tv', amount: dec('30.00') },
     ]);
 
     const [row] = await service.ratesInForce(sa, '2026-09-07');
-    expect(row.rep_flat_rate).toBe('30.00');
+    expect(row.rep_rate).toBe('30.00');
   });
 
   it('403s a non-Super-Admin', async () => {

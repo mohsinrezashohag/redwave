@@ -1,6 +1,6 @@
 /**
- * MyPayStatementsPage — a rep's OWN pay statements. Answers the question Siam framed directly: "70% for
- * this sale, the price was $88, 70% of it, the other 30% held" — per sale, not a period summary.
+ * MyPayStatementsPage — a rep's OWN pay statements: what each sale paid them, per sale, not a period
+ * summary (paid in full; no tiers or split since 2026-11-13).
  *
  * Every call is to the SELF-SCOPED endpoint, which takes no repId: the rep is resolved from the token, so
  * this screen cannot request anyone else's statement even if asked to. It shows no client rate, no margin
@@ -16,7 +16,6 @@ import { money } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useMyPayStatement, useMyPayStatements } from '../api/usePayRun';
-import { splitLabels } from '../split';
 import styles from '../components/payrun.module.css';
 
 export default function MyPayStatementsPage() {
@@ -30,11 +29,6 @@ export default function MyPayStatementsPage() {
   const runs = list.data ?? [];
   const selected = runId ?? runs[0]?.pay_run_id;
   const s = statement.data;
-  // Each period is labelled with the split it was paid at (100% since 2026-11-11; 70/30 before).
-  // No holdback since 2026-11-13; an OLD run that held some keeps its frozen 70% / 30% columns.
-  const labels = splitLabels(s?.split);
-  const old = !!s?.has_holdback;
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
       <PageHeader title="My pay statements" subtitle="What each sale paid you, period by period." />
@@ -98,9 +92,7 @@ export default function MyPayStatementsPage() {
                   <TH>Sale date</TH>
                   <TH>Customer</TH>
                   <TH>Product</TH>
-                  <TH align="right">{old ? 'Price' : 'Commission'}</TH>
-                  {old && <TH align="right">Your {labels.paidPct}%</TH>}
-                  {old && <TH align="right">{labels.held}</TH>}
+                  <TH align="right">Commission</TH>
                 </TR>
               </THead>
               <TBody>
@@ -110,8 +102,6 @@ export default function MyPayStatementsPage() {
                     <TD>{l.customer_name}</TD>
                     <TD>{l.product_name ?? '—'}</TD>
                     <TD numeric>{money(l.total_100)}</TD>
-                    {old && <TD numeric>{money(l.advance_70)}</TD>}
-                    {old && <TD numeric>{money(l.holdback_30)}</TD>}
                   </TR>
                 ))}
                 <TR>
@@ -121,16 +111,6 @@ export default function MyPayStatementsPage() {
                   <TD numeric>
                     <strong>{money(s.total_100)}</strong>
                   </TD>
-                  {old && (
-                    <TD numeric>
-                      <strong>{money(s.advance_70)}</strong>
-                    </TD>
-                  )}
-                  {old && (
-                    <TD numeric>
-                      <strong>{money(s.holdback_30)}</strong>
-                    </TD>
-                  )}
                 </TR>
               </TBody>
             </Table>

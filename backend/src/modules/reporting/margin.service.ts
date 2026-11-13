@@ -230,8 +230,7 @@ export class MarginService {
    * charging and what are we paying for this product right now", which is the question the per-sale view
    * cannot answer for a product that has not sold yet.
    *
-   * The rep side reports the tier LADDER rate and any per-product override, because a rep's internet rate
-   * depends on the period's volume — there is no single number, and pretending otherwise would misinform.
+   * The rep side is the one rate the engine would pay for that product and client (no tiers since 2026-11-13).
    */
   async ratesInForce(user: AuthUser, on: string, clientId?: string) {
     await this.assertSuperAdmin(user);
@@ -243,6 +242,7 @@ export class MarginService {
       where: { ...inForce, rate_kind: 'product', ...(clientId ? { client_id: clientId } : {}) },
       select: {
         product_id: true,
+        client_id: true,
         amount: true,
         effective_from: true,
         effective_to: true,
@@ -251,24 +251,13 @@ export class MarginService {
       },
     });
 
-    // ── Stream B: rep rates. Per-product tier overrides and per-product/type flat rates — read separately.
-    const tierRates = await this.prisma.commissionTierRate.findMany({
+    // ── Stream B: rep rates — read separately, resolved most-specific-first exactly as the engine does.
+    const repRates = await this.prisma.commissionFlatRate.findMany({
       where: inForce,
-      select: { product_id: true, tier_number: true, amount: true },
+      select: { client_id: true, product_id: true, product_type: true, amount: true },
     });
-    const flatRates = await this.prisma.commissionFlatRate.findMany({
-      where: inForce,
-      select: { product_id: true, product_type: true, amount: true },
-    });
-
-    const tiersByProduct = new Map<string, { tier_number: number; amount: string }[]>();
-    for (const t of tierRates) {
-      const list = tiersByProduct.get(t.product_id) ?? [];
-      list.push({ tier_number: t.tier_number, amount: dec(t.amount).toFixed(2) });
-      tiersByProduct.set(t.product_id, list);
-    }
-    const flatByProduct = new Map(flatRates.filter((f) => f.product_id).map((f) => [f.product_id!, dec(f.amount).toFixed(2)]));
-    const flatByType = new Map(flatRates.filter((f) => !f.product_id).map((f) => [f.product_type, dec(f.amount).toFixed(2)]));
+    const key = (client: string | null, what: string) => `${client ?? '*'}|${what}`;
+    const repRate = new Map(repRates.map((r) => [key(r.client_id, r.product_id ?? `type:${r.product_type}`), dec(r.amount).toFixed(2)]));
 
     return clientRates.map((c) => ({
       product_id: c.product_id,
@@ -279,12 +268,11 @@ export class MarginService {
       client_rate: dec(c.amount).toFixed(2),
       client_rate_from: c.effective_from.toISOString().slice(0, 10),
       client_rate_to: c.effective_to ? c.effective_to.toISOString().slice(0, 10) : null,
-      // A tiered product has no single rep rate — it depends on the period's volume, so every bracket is
-      // reported rather than one number that would be right only sometimes.
-      rep_tier_rates: c.product_id ? (tiersByProduct.get(c.product_id) ?? []).sort((a, b) => a.tier_number - b.tier_number) : [],
-      rep_flat_rate:
-        (c.product_id ? flatByProduct.get(c.product_id) : undefined) ??
-        (c.product?.product_type ? flatByType.get(c.product.product_type) : undefined) ??
+      rep_rate:
+        (c.product_id ? repRate.get(key(c.client_id, c.product_id)) ?? repRate.get(key(null, c.product_id)) : undefined) ??
+        (c.product?.product_type
+          ? repRate.get(key(c.client_id, `type:${c.product.product_type}`)) ?? repRate.get(key(null, `type:${c.product.product_type}`))
+          : undefined) ??
         null,
     }));
   }

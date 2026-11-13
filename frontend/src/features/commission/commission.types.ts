@@ -9,35 +9,15 @@ import type { components } from '../../api/generated/schema';
 
 // Enums derived from the contract.
 export type ProductType = components['schemas']['FlatRateResponse']['product_type'];
-/** Flat rates exclude internet (it's tiered) — a UI/form constraint, narrower than the response enum. */
-export type FlatProductType = 'greenfield_internet' | 'tv' | 'home_phone';
 export type IncentiveTargetType = components['schemas']['IncentiveResponse']['target_type'];
 export type IncentiveStatus = components['schemas']['IncentiveResponse']['status'];
 
 // ── Effective-dated config + incentives (response shapes) ──────────────────────────
-export type TierBracket = components['schemas']['TierBracketResponse'];
-export type TierConfig = components['schemas']['TierConfigResponse'];
 export type FlatRate = components['schemas']['FlatRateResponse'];
 export type Incentive = components['schemas']['IncentiveResponse'];
 
 // ── Request bodies ───────────────────────────────────────────────────────────────
-// The max_count swagger quirk is fixed (Batch A #2), so the generated tier DTO is now usable directly.
-export type CreateTierScheduleBody = components['schemas']['CreateTierScheduleDto'];
-export type UpdateTierScheduleBody = components['schemas']['UpdateTierScheduleDto'];
 export type CreateFlatRateBody = components['schemas']['CreateFlatRateDto'];
 export type UpdateFlatRateBody = components['schemas']['UpdateFlatRateDto'];
 export type CreateIncentiveBody = components['schemas']['CreateIncentiveDto'];
 export type UpdateIncentiveBody = components['schemas']['UpdateIncentiveDto'];
-
-/**
- * A PER-PRODUCT tier rate — what one bracket pays for one product. It resolves a RATE only: the internet
- * tally stays one cross-client count and the bracket boundaries stay on the tier schedule (#5). A product
- * with no row here is paid the schedule's own rate.
- */
-export type TierRate = components['schemas']['TierRateResponse'];
-export type CreateTierRateBody = components['schemas']['CreateTierRateDto'];
-export type UpdateTierRateBody = components['schemas']['UpdateTierRateDto'];
-
-/** "Tiers off" for a scope: one [0,∞) bracket at the default + each product's own price (2026-11-11). */
-export type SetBasePricesBody = components['schemas']['SetBasePricesDto'];
-export type BasePricesResult = components['schemas']['BasePricesResponse'];

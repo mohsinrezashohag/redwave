@@ -1,9 +1,8 @@
 /**
  * Pay Run response DTOs — the documented shapes the Pay Run controllers return. — Batch A #2
  *
- * MONEY DISCIPLINE (#1): every Decimal is a decimal STRING. PayRunLine carries the 7 money components +
- * net, PLUS the engine's reconciliation facts (gross, the 30% held, tier, tally, rate) so the 70/30 split
- * is provable without any UI arithmetic — all server-computed; the UI computes nothing. The nested
+ * MONEY DISCIPLINE (#1): every Decimal is a decimal STRING. PayRunLine carries the money components + net,
+ * all server-computed; the UI computes nothing. No tiers and no 70/30 since 2026-11-13. The nested
  * `pay_period` here is the FULL 6-field shape (≠ the sales-nested 4-field `SalePayPeriodResponse`); the
  * nested `rep` is a 3-field lite.
  */
@@ -58,11 +57,8 @@ export class PayRunLineResponse {
   @ApiProperty({ type: () => RepLiteResponse })
   rep!: RepLiteResponse;
 
-  @ApiProperty({ type: String, example: '2317.00', description: 'Decimal string. 70% advance (engine).' })
-  commission_70!: string;
-
-  @ApiProperty({ type: String, example: '993.00', description: 'Decimal string. 30% released from prior periods.' })
-  holdback_release_30!: string;
+  @ApiProperty({ type: String, example: '2610.00', description: 'Decimal string. Commission (Σ item rates), paid in full.' })
+  commission!: string;
 
   @ApiProperty({ type: String, example: '0.00', description: 'Decimal string. Approved expenses.' })
   expense_total!: string;
@@ -79,36 +75,9 @@ export class PayRunLineResponse {
   @ApiProperty({ type: String, example: '0.00', description: 'Decimal string. Flat clawback deductions.' })
   clawback_total!: string;
 
-  @ApiProperty({ type: String, example: '2317.00', description: 'Decimal string. Net = 70 + 30 + exp + inc + bonus − clawback (may be negative).' })
+  @ApiProperty({ type: String, example: '2317.00', description: 'Decimal string. Net = commission + expenses + incentives + bonus − clawback (may be negative).' })
   net_payout!: string;
 
-  // ── Reconciliation facts (engine pass-through; null on pre-migration rows) ────────────────────────
-  @ApiProperty({
-    type: String,
-    nullable: true,
-    example: '3310.00',
-    description:
-      'Decimal string. The 70/30 BASE (Σ commission base; EXCLUDES incentives, which are paid in full). ' +
-      'Always gross_commission = commission_70 + amount_held.',
-  })
-  gross_commission!: string | null;
-
-  @ApiProperty({
-    type: String,
-    nullable: true,
-    example: '993.00',
-    description: "Decimal string. THIS period's 30% held back (recorded on the holdback ledger at finalize).",
-  })
-  amount_held!: string | null;
-
-  @ApiProperty({ type: Number, nullable: true, example: 2, description: 'Tier the internet activations were paid at; null when the tally is 0.' })
-  tier_at_payment!: number | null;
-
-  @ApiProperty({ type: Number, nullable: true, example: 20, description: 'Gross non-greenfield internet count across ALL clients that drove the tier (#5/#9).' })
-  internet_tally!: number | null;
-
-  @ApiProperty({ type: String, nullable: true, example: '145.00', description: 'Decimal string. Tier rate applied per internet activation; null when there is no tier.' })
-  rate_per_activation!: string | null;
 }
 
 export class PayRunSummaryResponse {
@@ -135,29 +104,7 @@ export class PayRunSummaryResponse {
 }
 
 /** A pay-run header + its scoped per-rep lines — the get/draft/finalize shape. */
-/**
- * The advance / holdback split that was in force for a run's period (exact decimal strings, #1). For LABELS
- * on an OLD run only (has_holdback = true); there is no holdback since 2026-11-13.
- */
-export class PayRunSplitResponse {
-  @ApiProperty({ type: String, example: '1.0000' })
-  advance_pct!: string;
-
-  @ApiProperty({ type: String, example: '0.0000' })
-  holdback_pct!: string;
-}
-
 export class PayRunResponse extends PayRunSummaryResponse {
-  @ApiProperty({
-    description:
-      'True only for an OLD run finalized with a 70/30 hold (its frozen held / released figures are non-zero). ' +
-      'There is no holdback since 2026-11-13, so new runs are always false and show no holdback columns.',
-  })
-  has_holdback!: boolean;
-
-  @ApiProperty({ type: () => PayRunSplitResponse, nullable: true, description: 'Split in force for this period.' })
-  split!: PayRunSplitResponse | null;
-
   @ApiProperty({ type: () => [PayRunLineResponse] })
   lines!: PayRunLineResponse[];
 }
@@ -177,8 +124,8 @@ export class ExportResultResponse {
 }
 
 /**
- * ONE ROW of Redwave's payroll workbook — one SALE, with the rep amount each component earned and the
- * 70/30 split. Every money field is the FROZEN snapshot as a decimal STRING (#1/#2); nothing is recomputed
+ * ONE ROW of Redwave's payroll workbook — one SALE, with the rep amount each component earned and their
+ * total (paid in full). Every money field is the FROZEN snapshot as a decimal STRING (#1/#2); nothing is recomputed
  * at read time, and no client billing rate is reachable from here (#3).
  */
 export class PayrollReportLineResponse {
@@ -223,7 +170,7 @@ export class PayrollReportLineResponse {
   @ApiProperty()
   has_home_phone!: boolean;
 
-  @ApiProperty({ description: 'Flat-rated and excluded from the tier tally (#9) — its own column.' })
+  @ApiProperty({ description: 'Greenfield internet, paid its own rate (#9) — its own column.' })
   is_greenfield!: boolean;
 
   @ApiProperty({ type: String, example: '125.00' })
@@ -246,28 +193,12 @@ export class PayrollReportLineResponse {
 
   @ApiProperty({ type: String, example: '185.00', description: 'The exact sum of the components above.' })
   total_100!: string;
-
-  @ApiProperty({ type: String, example: '129.50' })
-  advance_70!: string;
-
-  @ApiProperty({ type: String, example: '55.50' })
-  holdback_30!: string;
 }
 
 /** The payroll report for one pay run — the workbook's rows plus its row-1 SUBTOTAL strip. */
 export class PayrollReportResponse {
-  @ApiProperty({
-    description:
-      'True only for an OLD run finalized with a 70/30 hold (its frozen held / released figures are non-zero). ' +
-      'There is no holdback since 2026-11-13, so new runs are always false and show no holdback columns.',
-  })
-  has_holdback!: boolean;
-
   @ApiProperty()
   pay_run_id!: string;
-
-  @ApiProperty({ type: () => PayRunSplitResponse, nullable: true, description: 'Split in force for this period.' })
-  split!: PayRunSplitResponse | null;
 
   @ApiProperty({ type: Number, example: 6 })
   period_number!: number;
@@ -293,12 +224,6 @@ export class PayrollReportResponse {
 
   @ApiProperty({ type: String, description: 'Row-1 strip: Σ Total 100 %.' })
   total_100!: string;
-
-  @ApiProperty({ type: String, description: 'Row-1 strip: Σ 0.7.' })
-  advance_70!: string;
-
-  @ApiProperty({ type: String, description: 'Row-1 strip: Σ 0.3.' })
-  holdback_30!: string;
 }
 
 /**
@@ -356,30 +281,14 @@ export class RepPayStatementLineResponse {
   @ApiProperty({ type: String, example: '0.00' })
   other_total!: string;
 
-  @ApiProperty({ type: String, example: '185.00', description: 'The price this sale earned, at 100%.' })
+  @ApiProperty({ type: String, example: '185.00', description: 'What this sale earned the rep.' })
   total_100!: string;
-
-  @ApiProperty({ type: String, example: '129.50', description: 'Paid now — the 70% advance.' })
-  advance_70!: string;
-
-  @ApiProperty({ type: String, example: '55.50', description: 'Held — released on the holdback schedule.' })
-  holdback_30!: string;
 }
 
-/** One rep's statement for one pay run: per sale, what it paid, their 70%, and the 30% held. */
+/** One rep's statement for one pay run: per sale, what it paid the rep. */
 export class RepPayStatementResponse {
-  @ApiProperty({
-    description:
-      'True only for an OLD run finalized with a 70/30 hold (its frozen held / released figures are non-zero). ' +
-      'There is no holdback since 2026-11-13, so new runs are always false and show no holdback columns.',
-  })
-  has_holdback!: boolean;
-
   @ApiProperty()
   pay_run_id!: string;
-
-  @ApiProperty({ type: () => PayRunSplitResponse, nullable: true, description: 'Split in force for this period.' })
-  split!: PayRunSplitResponse | null;
 
   @ApiProperty({ type: Number, example: 6 })
   period_number!: number;
@@ -404,12 +313,6 @@ export class RepPayStatementResponse {
 
   @ApiProperty({ type: String })
   total_100!: string;
-
-  @ApiProperty({ type: String })
-  advance_70!: string;
-
-  @ApiProperty({ type: String })
-  holdback_30!: string;
 }
 
 /** A statement the caller can open — the list a logged-in rep sees. */

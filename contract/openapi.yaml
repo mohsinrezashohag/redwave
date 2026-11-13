@@ -2772,6 +2772,34 @@ paths:
       security: *a105
       summary: Replace a rep document's file
       tags: *a106
+  /v1/reps/{id}/data-accuracy:
+    get:
+      description: Requires hrm:edit. The profile name and date of birth beside the
+        HR-confirmed details of the latest live ID of each kind, with
+        server-computed match flags. Document numbers are masked.
+      operationId: RepsController_dataAccuracy_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataAccuracyResponse"
+        "400": *a99
+        "401": *a100
+        "403": *a101
+        "404": *a102
+        "409": *a103
+        "422": *a104
+      security: *a105
+      summary: Compare a rep's profile with their IDs
+      tags: *a106
   /v1/reps/{id}/documents/deleted:
     get:
       description: Requires hrm:delete. Documents that can still be restored, with who
@@ -3113,16 +3141,29 @@ paths:
       security: *a113
       summary: Open one of my documents
       tags: *a114
-  /v1/commission/tiers:
+  /v1/commission/flat-rates:
     get:
-      description: Requires commission:view.
-      operationId: CommissionController_listTiers_v1
+      description: "Requires commission:view. A rate is per product type (product_id
+        null) or for one product, globally (client_id null) or for one client.
+        Most specific wins: client+product → product → client+type → type."
+      operationId: CommissionController_listFlatRates_v1
       parameters:
+        - name: status
+          required: false
+          in: query
+          schema:
+            default: all
+            type: string
+            enum:
+              - past
+              - current
+              - pending
+              - all
         - name: client_id
           required: false
           in: query
-          description: "Scope filter: a client id for that client's own schedule, the
-            literal 'global' for the global fallback, or omit for every scope."
+          description: "Scope filter: a client id, the literal 'global' for the global
+            fallback, or omit for every scope."
           schema:
             example: global
             type: string
@@ -3134,7 +3175,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/TierConfigResponse"
+                  $ref: "#/components/schemas/FlatRateResponse"
         "400": &a115
           description: Bad Request — validation failed
           content:
@@ -3173,167 +3214,13 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelopeDto"
       security: &a121
         - bearer: []
-      summary: Tier schedules (current + pending)
+      summary: Rep rates (current + pending)
       tags: &a122
         - Commission Config
     post:
-      description: Requires commission:edit. Supersedes the pending schedule;
-        back-dating → 422.
-      operationId: CommissionController_createTiers_v1
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateTierScheduleDto"
-      responses:
-        "201":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TierConfigResponse"
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Create a new effective-dated tier schedule
-      tags: *a122
-  /v1/commission/base-prices:
-    post:
-      description: "Requires commission:edit. In ONE transaction: the scope’s schedule
-        becomes a single [0,∞) tier-1 bracket at default_rate, and each listed
-        internet product gets its own tier-1 price; products left out use the
-        default. Global takes a default only. Effective-dated like every rate
-        (#10): back-dating → 422."
-      operationId: CommissionController_setBasePrices_v1
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SetBasePricesDto"
-      responses:
-        "201":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BasePricesResponse"
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Switch a scope to base prices (tiers off)
-      tags: *a122
-  /v1/commission/tiers/{id}:
-    patch:
-      description: Requires commission:edit. Only a pending schedule can be edited;
-        current/past → 422 (supersede).
-      operationId: CommissionController_updateTiers_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateTierScheduleDto"
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TierConfigResponse"
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Edit a PENDING tier schedule
-      tags: *a122
-    delete:
-      description: Requires commission:edit. Only a pending schedule can be deleted;
-        current/past → 422.
-      operationId: CommissionController_removeTiers_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      responses:
-        "204":
-          description: ""
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Delete a PENDING tier schedule
-      tags: *a122
-  /v1/commission/flat-rates:
-    get:
-      description: Requires commission:view.
-      operationId: CommissionController_listFlatRates_v1
-      parameters:
-        - name: status
-          required: false
-          in: query
-          schema:
-            default: all
-            type: string
-            enum:
-              - past
-              - current
-              - pending
-              - all
-        - name: client_id
-          required: false
-          in: query
-          description: "Scope filter: a client id, the literal 'global' for the global
-            fallback, or omit for every scope."
-          schema:
-            example: global
-            type: string
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/FlatRateResponse"
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Flat rates per product type (current + pending)
-      tags: *a122
-    post:
-      description: Requires commission:edit. greenfield_internet / tv / home_phone
-        only (internet is tiered).
+      description: Requires commission:edit. Any product type (internet,
+        greenfield_internet, add-ons), optionally for one product. Back-dating
+        is rejected (422) — a closed period is never rewritten (#10).
       operationId: CommissionController_createFlatRate_v1
       parameters: []
       requestBody:
@@ -3356,7 +3243,7 @@ paths:
         "409": *a119
         "422": *a120
       security: *a121
-      summary: Set an effective-dated flat rate
+      summary: Set an effective-dated rep rate
       tags: *a122
   /v1/commission/flat-rates/{id}:
     patch:
@@ -3389,7 +3276,7 @@ paths:
         "409": *a119
         "422": *a120
       security: *a121
-      summary: Edit a PENDING flat rate
+      summary: Edit a PENDING rep rate
       tags: *a122
     delete:
       description: Requires commission:edit. Only a pending rate can be deleted;
@@ -3411,138 +3298,7 @@ paths:
         "409": *a119
         "422": *a120
       security: *a121
-      summary: Delete a PENDING flat rate
-      tags: *a122
-  /v1/commission/tier-rates:
-    get:
-      description: Requires commission:view. Scope = (client, product, tier); a
-        missing row falls back to the schedule rate.
-      operationId: CommissionController_listTierRates_v1
-      parameters:
-        - name: status
-          required: false
-          in: query
-          schema:
-            default: all
-            type: string
-            enum:
-              - past
-              - current
-              - pending
-              - all
-        - name: client_id
-          required: false
-          in: query
-          description: "Scope filter: a client id, the literal 'global', or omit for every
-            scope."
-          schema:
-            type: string
-        - name: product_id
-          required: false
-          in: query
-          description: Only rates for this product.
-          schema:
-            type: string
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/TierRateResponse"
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Per-product tier rates (current + pending)
-      tags: *a122
-    post:
-      description: Requires commission:edit. TIERED products only (an add-on uses a
-        flat rate). The tier must exist in the schedule. Back-dating is rejected
-        (422) — a closed period is never rewritten (#10).
-      operationId: CommissionController_createTierRate_v1
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateTierRateDto"
-      responses:
-        "201":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TierRateResponse"
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Set an effective-dated per-product tier rate
-      tags: *a122
-  /v1/commission/tier-rates/{id}:
-    patch:
-      description: Requires commission:edit. Only a pending rate can be edited;
-        current/past → 422 (supersede).
-      operationId: CommissionController_updateTierRate_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateTierRateDto"
-      responses:
-        "200":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TierRateResponse"
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Edit a PENDING per-product tier rate
-      tags: *a122
-    delete:
-      description: Requires commission:edit. Only a pending rate can be deleted;
-        current/past → 422.
-      operationId: CommissionController_removeTierRate_v1
-      parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: string
-      responses:
-        "204":
-          description: ""
-        "400": *a115
-        "401": *a116
-        "403": *a117
-        "404": *a118
-        "409": *a119
-        "422": *a120
-      security: *a121
-      summary: Delete a PENDING per-product tier rate
+      summary: Delete a PENDING rep rate
       tags: *a122
   /v1/incentives:
     get:
@@ -3758,7 +3514,7 @@ paths:
         - Commission Config
     post:
       description: Requires product_types:edit. behaviour is forced standard_addon — a
-        new type can never be tiered/greenfield (#5/#9). May carry an inline
+        new type can never be internet/greenfield (#5/#9). May carry an inline
         commission flat rate (written to the commission stream).
       operationId: ProductTypesController_create_v1
       parameters: []
@@ -8116,8 +7872,7 @@ paths:
     get:
       description: Super Admin only. Answers what we charge and what we pay for a
         product TODAY, which the per-sale view cannot for a product that has not
-        sold. A tiered product reports every bracket, because its rep rate
-        depends on the period volume — there is no single number.
+        sold.
       operationId: MarginController_ratesInForce_v1
       parameters:
         - name: on
@@ -10626,10 +10381,34 @@ components:
           type: string
           nullable: true
           example: ••••4567
+        bank_name:
+          type: string
+          nullable: true
+          example: TD Canada Trust
+          description: As entered, else the name for the institution number.
+        account_holder:
+          type: string
+          nullable: true
+          example: Riley Rivera
+        routing_electronic:
+          type: string
+          nullable: true
+          example: "000412345"
+          description: "Electronic routing number (EFT / direct deposit): 0 + institution
+            + transit."
+        routing_cheque:
+          type: string
+          nullable: true
+          example: 12345-004
+          description: "Cheque (MICR) routing number: transit-institution."
       required:
         - institution_no
         - transit_no
         - account_masked
+        - bank_name
+        - account_holder
+        - routing_electronic
+        - routing_cheque
     RepResponse:
       type: object
       properties:
@@ -10782,6 +10561,14 @@ components:
           example: "1234567"
           description: Account number (7–12 digits). WRITE-ONLY; blank on edit keeps the
             one on file.
+        bank_name:
+          type: string
+          example: TD Canada Trust
+          description: Bank name. Blank = the name for the institution number, when known.
+        account_holder:
+          type: string
+          example: Riley Rivera
+          description: Name the account is held in, as on the void cheque.
       required:
         - institution_no
         - transit_no
@@ -11026,6 +10813,21 @@ components:
           nullable: true
           description: Set while the document is in Recently deleted (always null on the
             live list).
+        name_on_document:
+          type: string
+          nullable: true
+          description: HR-confirmed name on the ID. NULLED unless the caller has hrm:edit.
+        date_of_birth:
+          type: string
+          format: date-time
+          nullable: true
+          description: HR-confirmed date of birth on the ID. NULLED unless hrm:edit.
+        document_number_masked:
+          type: string
+          nullable: true
+          example: ••••4567
+          description: Last four of the document number. NULLED unless hrm:edit; the full
+            number is never returned.
       required:
         - id
         - rep_id
@@ -11035,6 +10837,9 @@ components:
         - expires_on
         - issued_on
         - deleted_at
+        - name_on_document
+        - date_of_birth
+        - document_number_masked
     IdCheckResponse:
       type: object
       properties:
@@ -11044,6 +10849,7 @@ components:
             - name
             - dates
             - not_expired
+            - dob
             - mrz
             - mrz_expiry
         ok:
@@ -11070,6 +10876,15 @@ components:
           type: string
           nullable: true
           description: The name printed on the document.
+        date_of_birth:
+          type: string
+          nullable: true
+          example: 1994-03-21
+          description: Date of birth read off the document or its MRZ.
+        document_number:
+          type: string
+          nullable: true
+          description: Document number read off the document or its MRZ, for HR to confirm.
         checks:
           type: array
           items:
@@ -11078,6 +10893,8 @@ components:
         - issued_on
         - expires_on
         - name_on_document
+        - date_of_birth
+        - document_number
         - checks
     UpdateRepDocumentDto:
       type: object
@@ -11094,6 +10911,22 @@ components:
           type: string
           nullable: true
           example: 2032-06-30
+        name_on_document:
+          type: string
+          nullable: true
+          example: RILEY RIVERA
+          description: Name as printed on the ID, HR-confirmed (2026-11-13). IDs only.
+        date_of_birth:
+          type: string
+          nullable: true
+          example: 1994-03-21
+          description: Date of birth on the ID, HR-confirmed. IDs only.
+        document_number:
+          type: string
+          nullable: true
+          example: AB1234567
+          description: "Document number. WRITE-ONLY: stored encrypted, only its last four
+            are ever shown. IDs only."
     RemovedRepDocumentResponse:
       type: object
       properties:
@@ -11107,6 +10940,83 @@ components:
       required:
         - success
         - purge_on
+    AccuracyProfileResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        date_of_birth:
+          type: string
+          nullable: true
+          example: 1994-03-21
+        address:
+          type: string
+          nullable: true
+      required:
+        - name
+        - date_of_birth
+        - address
+    AccuracyCellResponse:
+      type: object
+      properties:
+        value:
+          type: string
+          nullable: true
+        match:
+          type: boolean
+          nullable: true
+          description: true = agrees with the profile, false = differs, null = not compared.
+      required:
+        - value
+        - match
+    AccuracySourceResponse:
+      type: object
+      properties:
+        document_id:
+          type: string
+        doc_type:
+          type: string
+          example: passport
+        name:
+          $ref: "#/components/schemas/AccuracyCellResponse"
+        date_of_birth:
+          $ref: "#/components/schemas/AccuracyCellResponse"
+        document_number:
+          description: Masked (last four only).
+          allOf:
+            - $ref: "#/components/schemas/AccuracyCellResponse"
+        issued_on:
+          $ref: "#/components/schemas/AccuracyCellResponse"
+        expires_on:
+          $ref: "#/components/schemas/AccuracyCellResponse"
+        expired:
+          type: boolean
+      required:
+        - document_id
+        - doc_type
+        - name
+        - date_of_birth
+        - document_number
+        - issued_on
+        - expires_on
+        - expired
+    DataAccuracyResponse:
+      type: object
+      properties:
+        profile:
+          $ref: "#/components/schemas/AccuracyProfileResponse"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccuracySourceResponse"
+        differences:
+          type: number
+          example: 1
+          description: How many values differ from the profile.
+      required:
+        - profile
+        - sources
+        - differences
     DeletedRepDocumentResponse:
       type: object
       properties:
@@ -11140,6 +11050,21 @@ components:
           nullable: true
           description: Set while the document is in Recently deleted (always null on the
             live list).
+        name_on_document:
+          type: string
+          nullable: true
+          description: HR-confirmed name on the ID. NULLED unless the caller has hrm:edit.
+        date_of_birth:
+          type: string
+          format: date-time
+          nullable: true
+          description: HR-confirmed date of birth on the ID. NULLED unless hrm:edit.
+        document_number_masked:
+          type: string
+          nullable: true
+          example: ••••4567
+          description: Last four of the document number. NULLED unless hrm:edit; the full
+            number is never returned.
         deleted_by_name:
           type: string
           nullable: true
@@ -11157,6 +11082,9 @@ components:
         - expires_on
         - issued_on
         - deleted_at
+        - name_on_document
+        - date_of_birth
+        - document_number_masked
         - deleted_by_name
         - purge_on
     RepEquipmentResponse:
@@ -11360,252 +11288,6 @@ components:
         - sin_masked
         - banking
         - field_manager_name
-    TierBracketResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        tier_config_id:
-          type: string
-        tier_number:
-          type: number
-          example: 4
-          description: 1 = highest .. 4 = entry.
-        min_count:
-          type: number
-          example: 0
-        max_count:
-          type: number
-          nullable: true
-          example: 6
-          description: null = open-ended (36+).
-        rate_per_activation:
-          type: string
-          example: "110.00"
-          description: Decimal string — the per-activation rate.
-      required:
-        - id
-        - tier_config_id
-        - tier_number
-        - min_count
-        - max_count
-        - rate_per_activation
-    TierConfigResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        client_id:
-          type: string
-          nullable: true
-          description: Client this schedule applies to; null = the GLOBAL ladder (fallback
-            for clients without their own).
-        effective_from:
-          type: string
-          format: date-time
-        effective_to:
-          type: string
-          format: date-time
-          nullable: true
-        created_by:
-          type: string
-        status:
-          type: string
-          enum: &a374
-            - current
-            - pending
-            - past
-        tiers:
-          type: array
-          items:
-            $ref: "#/components/schemas/TierBracketResponse"
-      required:
-        - id
-        - client_id
-        - effective_from
-        - effective_to
-        - created_by
-        - status
-        - tiers
-    TierBracketDto:
-      type: object
-      properties:
-        tier_number:
-          type: number
-          example: 4
-          description: 1 = highest .. 4 = entry.
-        min_count:
-          type: number
-          example: 0
-          description: Inclusive lower bound of the gross internet tally.
-        max_count:
-          type: number
-          nullable: true
-          example: 6
-          description: Inclusive upper bound; null = open-ended (36+).
-        rate_per_activation:
-          type: string
-          example: "110.00"
-          description: Exact decimal STRING — never a float.
-      required:
-        - tier_number
-        - min_count
-        - rate_per_activation
-    CreateTierScheduleDto:
-      type: object
-      properties:
-        client_id:
-          type: string
-          description: Client this schedule applies to. OMIT for the GLOBAL ladder — the
-            fallback used by any client without its own. The internet tally
-            stays cross-client either way (#5); this scopes the RATE only.
-        effective_from:
-          type: string
-          example: 2026-07-01
-          description: YYYY-MM-DD; must be today or future.
-        effective_to:
-          type: string
-          example: 2026-12-31
-          description: YYYY-MM-DD; null = open-ended.
-        tiers:
-          description: The full tier schedule (contiguous, one open top bracket).
-          type: array
-          items:
-            $ref: "#/components/schemas/TierBracketDto"
-        end_product_base_prices:
-          type: boolean
-          description: "Switching BACK to tiers from base prices: also end this scope's
-            tier-1 per-product base prices from effective_from, so a product
-            base price cannot keep overriding the new ladder’s tier 1."
-      required:
-        - effective_from
-        - tiers
-    BasePriceDto:
-      type: object
-      properties:
-        product_id:
-          type: string
-          description: A TIERED (internet) product of the scope's client.
-        amount:
-          type: string
-          example: "160.00"
-          description: Base price per activation — decimal string (#1).
-      required:
-        - product_id
-        - amount
-    SetBasePricesDto:
-      type: object
-      properties:
-        client_id:
-          type: string
-          description: The client whose prices these are. OMIT for the GLOBAL default
-            (followed by every client without its own setting). Global accepts a
-            default price only — per-product prices are set per client.
-        effective_from:
-          type: string
-          example: 2026-11-22
-          description: YYYY-MM-DD; today or later (#10).
-        effective_to:
-          type: string
-          example: 2027-03-31
-        default_rate:
-          type: string
-          example: "145.00"
-          description: The price for any internet product in this scope WITHOUT its own
-            price below.
-        prices:
-          description: Per-product prices (client scope only). Omitted products use the
-            default.
-          type: array
-          items:
-            $ref: "#/components/schemas/BasePriceDto"
-      required:
-        - effective_from
-        - default_rate
-        - prices
-    TierRateProductResponse:
-      type: object
-      properties:
-        name:
-          type: string
-          example: Fibre 1gig
-        product_type:
-          type: string
-          example: internet
-      required:
-        - name
-        - product_type
-    TierRateResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        client_id:
-          type: string
-          nullable: true
-          description: Client this rate applies to; null = the rate for every client for
-            this product.
-        product_id:
-          type: string
-        product:
-          $ref: "#/components/schemas/TierRateProductResponse"
-        tier_number:
-          type: number
-          example: 2
-          description: Which bracket this rate is for (1 = highest).
-        amount:
-          type: string
-          example: "145.00"
-          description: Decimal string — never a float (#1).
-        effective_from:
-          type: string
-          format: date-time
-        effective_to:
-          type: string
-          format: date-time
-          nullable: true
-        created_by:
-          type: string
-        status:
-          type: string
-          enum: *a374
-      required:
-        - id
-        - client_id
-        - product_id
-        - tier_number
-        - amount
-        - effective_from
-        - effective_to
-        - created_by
-        - status
-    BasePricesResponse:
-      type: object
-      properties:
-        schedule:
-          $ref: "#/components/schemas/TierConfigResponse"
-        rates:
-          type: array
-          items:
-            $ref: "#/components/schemas/TierRateResponse"
-      required:
-        - schedule
-        - rates
-    UpdateTierScheduleDto:
-      type: object
-      properties:
-        effective_from:
-          type: string
-          example: 2026-07-01
-          description: YYYY-MM-DD; must be today or future.
-        effective_to:
-          type: string
-          example: 2026-12-31
-        tiers:
-          description: Full replacement bracket set when provided.
-          type: array
-          items:
-            $ref: "#/components/schemas/TierBracketDto"
     FlatRateResponse:
       type: object
       properties:
@@ -11628,7 +11310,7 @@ components:
         amount:
           type: string
           example: "100.00"
-          description: Decimal string — the flat rate.
+          description: Decimal string — the rep rate.
         effective_from:
           type: string
           format: date-time
@@ -11640,7 +11322,10 @@ components:
           type: string
         status:
           type: string
-          enum: *a374
+          enum:
+            - current
+            - pending
+            - past
       required:
         - id
         - client_id
@@ -11661,8 +11346,8 @@ components:
         product_type:
           type: string
           example: tv
-          description: Product-type catalogue key. A tiered type (e.g. internet) is
-            rejected (422).
+          description: Product-type catalogue key (internet, greenfield_internet, tv,
+            home_phone or an SA-added type).
         product_id:
           type: string
           description: ONE product this rate applies to. OMIT for the rate that covers the
@@ -11700,51 +11385,6 @@ components:
           type: string
           example: 2026-12-31
           description: YYYY-MM-DD; null/omit = open-ended.
-    CreateTierRateDto:
-      type: object
-      properties:
-        client_id:
-          type: string
-          description: Client this rate applies to. OMIT for the rate that applies to
-            every client for this product (the per-product fallback). A client's
-            rate wins over it.
-        product_id:
-          type: string
-          description: The product this rate prices. Must be a TIERED product type.
-        tier_number:
-          type: number
-          example: 2
-          description: Which bracket this rate is for — matches the tier schedule (1 =
-            highest).
-        amount:
-          type: string
-          example: "145.00"
-          description: Exact decimal STRING — never a float.
-        effective_from:
-          type: string
-          example: 2026-07-01
-          description: YYYY-MM-DD; must be today or future.
-        effective_to:
-          type: string
-          example: 2026-12-31
-      required:
-        - product_id
-        - tier_number
-        - amount
-        - effective_from
-    UpdateTierRateDto:
-      type: object
-      properties:
-        amount:
-          type: string
-          example: "150.00"
-        effective_from:
-          type: string
-          example: 2026-07-01
-        effective_to:
-          type: string
-          example: 2026-12-31
-          description: null/omit = open-ended.
     IncentiveResponse:
       type: object
       properties:
@@ -11871,7 +11511,7 @@ components:
         behaviour:
           type: string
           enum:
-            - tiered
+            - internet
             - greenfield
             - standard_addon
         is_system:
@@ -12293,7 +11933,7 @@ components:
       properties:
         format:
           type: string
-          enum: &a375
+          enum: &a374
             - csv
             - excel
             - pdf
@@ -12322,7 +11962,7 @@ components:
           type: boolean
         format:
           type: string
-          enum: *a375
+          enum: *a374
       required:
         - id
         - generated_at
@@ -12359,7 +11999,7 @@ components:
           example: Super Admin
         format:
           type: string
-          enum: *a375
+          enum: *a374
         filename:
           type: string
         row_count:
@@ -12627,9 +12267,9 @@ components:
             empty string; the UI falls back to the category label.
         field_values:
           type: object
-          additionalProperties: &a376
+          additionalProperties: &a375
             type: string
-          example: &a377
+          example: &a376
             vendor: Tim Hortons
             city: Winnipeg
           description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
@@ -13046,8 +12686,8 @@ components:
             empty string; the UI falls back to the category label.
         field_values:
           type: object
-          additionalProperties: *a376
-          example: *a377
+          additionalProperties: *a375
+          example: *a376
           description: "Per-type CAPTURE fields as a { key: value } object, keyed by the
             category schema (EXP-002a). METADATA ONLY — never summed into the
             amount (#1). Unknown keys are dropped server-side."
@@ -13630,7 +13270,7 @@ components:
           format: date-time
         status:
           type: string
-          enum: &a378
+          enum: &a377
             - draft
             - finalized
             - exported
@@ -13655,18 +13295,6 @@ components:
           description: The pay period to run (must be pre-loaded).
       required:
         - pay_period_id
-    PayRunSplitResponse:
-      type: object
-      properties:
-        advance_pct:
-          type: string
-          example: "1.0000"
-        holdback_pct:
-          type: string
-          example: "0.0000"
-      required:
-        - advance_pct
-        - holdback_pct
     RepLiteResponse:
       type: object
       properties:
@@ -13695,14 +13323,10 @@ components:
           type: string
         rep:
           $ref: "#/components/schemas/RepLiteResponse"
-        commission_70:
+        commission:
           type: string
-          example: "2317.00"
-          description: Decimal string. 70% advance (engine).
-        holdback_release_30:
-          type: string
-          example: "993.00"
-          description: Decimal string. 30% released from prior periods.
+          example: "2610.00"
+          description: Decimal string. Commission (Σ item rates), paid in full.
         expense_total:
           type: string
           example: "0.00"
@@ -13725,56 +13349,20 @@ components:
         net_payout:
           type: string
           example: "2317.00"
-          description: Decimal string. Net = 70 + 30 + exp + inc + bonus − clawback (may
-            be negative).
-        gross_commission:
-          type: string
-          nullable: true
-          example: "3310.00"
-          description: Decimal string. The 70/30 BASE (Σ commission base; EXCLUDES
-            incentives, which are paid in full). Always gross_commission =
-            commission_70 + amount_held.
-        amount_held:
-          type: string
-          nullable: true
-          example: "993.00"
-          description: Decimal string. THIS period's 30% held back (recorded on the
-            holdback ledger at finalize).
-        tier_at_payment:
-          type: number
-          nullable: true
-          example: 2
-          description: Tier the internet activations were paid at; null when the tally is 0.
-        internet_tally:
-          type: number
-          nullable: true
-          example: 20
-          description: Gross non-greenfield internet count across ALL clients that drove
-            the tier (#5/#9).
-        rate_per_activation:
-          type: string
-          nullable: true
-          example: "145.00"
-          description: Decimal string. Tier rate applied per internet activation; null
-            when there is no tier.
+          description: Decimal string. Net = commission + expenses + incentives + bonus −
+            clawback (may be negative).
       required:
         - id
         - pay_run_id
         - rep_id
         - rep
-        - commission_70
-        - holdback_release_30
+        - commission
         - expense_total
         - incentive_total
         - bonus_amount
         - bonus_note
         - clawback_total
         - net_payout
-        - gross_commission
-        - amount_held
-        - tier_at_payment
-        - internet_tally
-        - rate_per_activation
     PayRunResponse:
       type: object
       properties:
@@ -13789,24 +13377,12 @@ components:
           format: date-time
         status:
           type: string
-          enum: *a378
+          enum: *a377
         executed_by:
           type: string
         created_at:
           type: string
           format: date-time
-        has_holdback:
-          type: boolean
-          description: True only for an OLD run finalized with a 70/30 hold (its frozen
-            held / released figures are non-zero). There is no holdback since
-            2026-11-13, so new runs are always false and show no holdback
-            columns.
-        split:
-          nullable: true
-          description: Split in force for this period.
-          type: object
-          allOf:
-            - $ref: "#/components/schemas/PayRunSplitResponse"
         lines:
           type: array
           items:
@@ -13819,8 +13395,6 @@ components:
         - status
         - executed_by
         - created_at
-        - has_holdback
-        - split
         - lines
     SetBonusDto:
       type: object
@@ -13882,7 +13456,7 @@ components:
           type: boolean
         is_greenfield:
           type: boolean
-          description: Flat-rated and excluded from the tier tally (#9) — its own column.
+          description: Greenfield internet, paid its own rate (#9) — its own column.
         internet_rate:
           type: string
           example: "125.00"
@@ -13907,12 +13481,6 @@ components:
           type: string
           example: "185.00"
           description: The exact sum of the components above.
-        advance_70:
-          type: string
-          example: "129.50"
-        holdback_30:
-          type: string
-          example: "55.50"
       required:
         - sale_id
         - sale_date
@@ -13934,25 +13502,11 @@ components:
         - spiff
         - other_total
         - total_100
-        - advance_70
-        - holdback_30
     PayrollReportResponse:
       type: object
       properties:
-        has_holdback:
-          type: boolean
-          description: True only for an OLD run finalized with a 70/30 hold (its frozen
-            held / released figures are non-zero). There is no holdback since
-            2026-11-13, so new runs are always false and show no holdback
-            columns.
         pay_run_id:
           type: string
-        split:
-          nullable: true
-          description: Split in force for this period.
-          type: object
-          allOf:
-            - $ref: "#/components/schemas/PayRunSplitResponse"
         period_number:
           type: number
           example: 6
@@ -13977,16 +13531,8 @@ components:
         total_100:
           type: string
           description: "Row-1 strip: Σ Total 100 %."
-        advance_70:
-          type: string
-          description: "Row-1 strip: Σ 0.7."
-        holdback_30:
-          type: string
-          description: "Row-1 strip: Σ 0.3."
       required:
-        - has_holdback
         - pay_run_id
-        - split
         - period_number
         - period_start
         - period_end
@@ -13994,8 +13540,6 @@ components:
         - is_finalized
         - lines
         - total_100
-        - advance_70
-        - holdback_30
     RepPayStatementLineResponse:
       type: object
       properties:
@@ -14049,15 +13593,7 @@ components:
         total_100:
           type: string
           example: "185.00"
-          description: The price this sale earned, at 100%.
-        advance_70:
-          type: string
-          example: "129.50"
-          description: Paid now — the 70% advance.
-        holdback_30:
-          type: string
-          example: "55.50"
-          description: Held — released on the holdback schedule.
+          description: What this sale earned the rep.
       required:
         - sale_id
         - sale_date
@@ -14076,25 +13612,11 @@ components:
         - spiff
         - other_total
         - total_100
-        - advance_70
-        - holdback_30
     RepPayStatementResponse:
       type: object
       properties:
-        has_holdback:
-          type: boolean
-          description: True only for an OLD run finalized with a 70/30 hold (its frozen
-            held / released figures are non-zero). There is no holdback since
-            2026-11-13, so new runs are always false and show no holdback
-            columns.
         pay_run_id:
           type: string
-        split:
-          nullable: true
-          description: Split in force for this period.
-          type: object
-          allOf:
-            - $ref: "#/components/schemas/PayRunSplitResponse"
         period_number:
           type: number
           example: 6
@@ -14120,14 +13642,8 @@ components:
             $ref: "#/components/schemas/RepPayStatementLineResponse"
         total_100:
           type: string
-        advance_70:
-          type: string
-        holdback_30:
-          type: string
       required:
-        - has_holdback
         - pay_run_id
-        - split
         - period_number
         - period_start
         - period_end
@@ -14136,8 +13652,6 @@ components:
         - is_finalized
         - lines
         - total_100
-        - advance_70
-        - holdback_30
     ExportPayRunDto:
       type: object
       properties:
@@ -15605,14 +15119,14 @@ components:
           type: string
         source_type:
           type: string
-          enum: &a379
+          enum: &a378
             - client_report
             - master_migration
             - balance_migration
             - sales_entry
         import_type:
           type: string
-          enum: &a380
+          enum: &a379
             - reps
             - clients
             - products
@@ -15632,7 +15146,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: &a381
+          enum: &a380
             - staged
             - committed
             - failed
@@ -15653,13 +15167,13 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: &a382
+          additionalProperties: &a381
             type: number
           nullable: true
           description: Counts by classification (matched/unmatched/...).
         applied_mapping:
           type: object
-          additionalProperties: &a383
+          additionalProperties: &a382
             type: string
           nullable: true
           description: "The `{ systemField: sourceColumn }` mapping actually applied to
@@ -15878,10 +15392,10 @@ components:
           type: string
         source_type:
           type: string
-          enum: *a379
+          enum: *a378
         import_type:
           type: string
-          enum: *a380
+          enum: *a379
         client_id:
           type: string
           nullable: true
@@ -15890,7 +15404,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: *a381
+          enum: *a380
         total_rows:
           type: number
           example: 3
@@ -15907,12 +15421,12 @@ components:
           description: Decimal string — operator-provided source total.
         error_summary:
           type: object
-          additionalProperties: *a382
+          additionalProperties: *a381
           nullable: true
           description: Counts by classification (matched/unmatched/...).
         applied_mapping:
           type: object
-          additionalProperties: *a383
+          additionalProperties: *a382
           nullable: true
           description: "The `{ systemField: sourceColumn }` mapping actually applied to
             this batch."
@@ -16085,28 +15599,10 @@ components:
       required:
         - product_type
         - count
-    RepTierResponse:
-      type: object
-      properties:
-        tier_number:
-          type: number
-        count:
-          type: number
-        next_tier_min:
-          type: number
-          nullable: true
-        to_next:
-          type: number
-          nullable: true
-      required:
-        - tier_number
-        - count
-        - next_tier_min
-        - to_next
     RepCommissionResponse:
       type: object
       properties:
-        commission_70:
+        commission:
           type: string
           example: "3310.00"
           description: Decimal string. Commission paid, in full (no holdback since
@@ -16120,7 +15616,7 @@ components:
           example: "2317.00"
           description: Decimal string.
       required:
-        - commission_70
+        - commission
         - incentive_total
         - net_payout
     RepTargetResponse:
@@ -16214,11 +15710,6 @@ components:
             $ref: "#/components/schemas/ProductCountResponse"
         internet_activations:
           type: number
-        tier:
-          nullable: true
-          type: object
-          allOf:
-            - $ref: "#/components/schemas/RepTierResponse"
         commission:
           $ref: "#/components/schemas/RepCommissionResponse"
         target:
@@ -16235,7 +15726,6 @@ components:
         - period
         - counts_by_product
         - internet_activations
-        - tier
         - commission
         - target
         - recent_sales
@@ -16406,20 +15896,6 @@ components:
         - validated
         - in_pay_run
         - paid
-    TierCountResponse:
-      type: object
-      properties:
-        tier_number:
-          type: number
-          example: 2
-          description: Tier number (1 highest .. 4 entry).
-        rep_count:
-          type: number
-          example: 5
-          description: Reps whose period tally lands in this tier.
-      required:
-        - tier_number
-        - rep_count
     ClientMixRowResponse:
       type: object
       properties:
@@ -16540,10 +16016,6 @@ components:
         active_rep_count:
           type: number
           example: 8
-        tier_distribution:
-          type: array
-          items:
-            $ref: "#/components/schemas/TierCountResponse"
         client_mix:
           type: array
           items:
@@ -16568,7 +16040,6 @@ components:
         - activations_by_client
         - validation_funnel
         - active_rep_count
-        - tier_distribution
         - client_mix
         - revenue_growth
         - activation_growth
@@ -16636,22 +16107,6 @@ components:
         - period_number
         - client_code
         - amount
-    TrendTierResponse:
-      type: object
-      properties:
-        period_number:
-          type: number
-          example: 3
-        tier_number:
-          type: number
-          example: 2
-        rep_count:
-          type: number
-          example: 5
-      required:
-        - period_number
-        - tier_number
-        - rep_count
     BusinessTrendsResponse:
       type: object
       properties:
@@ -16667,15 +16122,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TrendClientRevenueResponse"
-        tier_distribution:
-          type: array
-          items:
-            $ref: "#/components/schemas/TrendTierResponse"
       required:
         - periods
         - by_product
         - by_client_revenue
-        - tier_distribution
     AdminDashboardResponse:
       type: object
       properties:
@@ -16787,18 +16237,6 @@ components:
         - margin
         - margin_pct
         - sale_count
-    RepTierRateResponse:
-      type: object
-      properties:
-        tier_number:
-          type: number
-          example: 2
-        amount:
-          type: string
-          example: "145.00"
-      required:
-        - tier_number
-        - amount
     RateInForceResponse:
       type: object
       properties:
@@ -16829,19 +16267,13 @@ components:
         client_rate_to:
           type: string
           nullable: true
-        rep_tier_rates:
-          description: Per-product tier overrides. A tiered product's rep rate depends on
-            the period's volume, so every bracket is listed rather than one
-            number that would be right only sometimes.
-          type: array
-          items:
-            $ref: "#/components/schemas/RepTierRateResponse"
-        rep_flat_rate:
+        rep_rate:
           type: string
           nullable: true
           example: "30.00"
-          description: The flat rep rate for an add-on — its own product rate, else its
-            product TYPE's.
+          description: "The rep rate in force: this client's product rate, else the
+            product rate, else this client's type rate, else the type rate (no
+            tiers since 2026-11-13)."
       required:
         - product_id
         - product_name
@@ -16851,8 +16283,7 @@ components:
         - client_rate
         - client_rate_from
         - client_rate_to
-        - rep_tier_rates
-        - rep_flat_rate
+        - rep_rate
     ExportFieldResponse:
       type: object
       properties:
@@ -17072,14 +16503,14 @@ components:
           type: string
         report_type:
           type: string
-          enum: &a384
+          enum: &a383
             - business_summary
             - leaderboard
             - payrun_summary
             - expense_summary
         format:
           type: string
-          enum: &a385
+          enum: &a384
             - csv
             - excel
             - pdf
@@ -17105,11 +16536,11 @@ components:
       properties:
         report_type:
           type: string
-          enum: *a384
+          enum: *a383
           description: Which report was generated.
         format:
           type: string
-          enum: *a385
+          enum: *a384
         filename:
           type: string
           maxLength: 200

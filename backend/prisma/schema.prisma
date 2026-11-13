@@ -17,7 +17,7 @@
 //   • Non-money decimals use targeted precision: pct (5,4), *_km (10,2), rate_per_km (6,3),
 //     lat/lng (9,6).
 //   • Effective-dated config rows carry effective_from / effective_to (CLAUDE.md §3 #10).
-//   • sale_items snapshot fields (tier_at_payment, rate_applied, commission_paid,
+//   • sale_items snapshot fields (rate_applied, commission_paid,
 //     incentive_amount) are written ONCE at payment and immutable thereafter (§3 #2);
 //     they are nullable until paid.
 //   • The two rate streams (client_billing_rates vs commission_*) never join (§3 #3).
@@ -83,12 +83,13 @@ enum Market {
   US
 }
 
-// Commission BEHAVIOUR classification for a product type (read by the engine seam, not the engine
-// itself). LOCKED for the 4 core types; new SA types are always standard_addon. — §3 #5/#9, §6
+// BEHAVIOUR classification for a product type. LOCKED for the 4 core types; new SA types are always
+// standard_addon. Commission is one flat rep rate per item for every behaviour (no tiers since 2026-11-13);
+// the behaviour only marks the internet BASE a sale needs (SALE-001a) and greenfield's own rate. — §6
 enum ProductTypeBehaviour {
-  tiered // counts toward the internet tier tally (internet only) — #5
-  greenfield // flat-rated, excluded from the tally (greenfield_internet) — #9
-  standard_addon // billable, flat-rated, NOT tiered, NOT greenfield (tv / home_phone / new types)
+  internet // the internet base product (internet)
+  greenfield // greenfield internet: also an internet base, paid the greenfield rate — #9
+  standard_addon // add-ons (tv / home_phone / SA-added types)
 }
 
 enum RateKind {
@@ -117,7 +118,7 @@ enum SaleStatus {
   clawed_back
   deleted
   historical // migrated/already-paid sale — reference-only; never enters the pay pipeline (excluded from
-  // commission/tier/leaderboard/holdback/clawback), shown only in business aggregations. Set ONLY at import.
+  // commission/leaderboard/clawback), shown only in business aggregations. Set ONLY at import.
 }
 
 enum SaleItemStatus {
@@ -136,14 +137,6 @@ enum PayRunStatus {
   draft
   finalized
   exported
-}
-
-enum HoldbackReleaseStatus {
-  held
-  scheduled
-  released
-  /// No holdback since 2026-11-13: a hold still waiting then was never paid by the system (handled offline).
-  settled_offline
 }
 
 enum ClawbackStatus {
@@ -315,12 +308,9 @@ model User {
   rep_login                     Rep?                       @relation("RepLogin")
   reps_managed                  Rep[]                      @relation("RepFieldManager")
   billing_rates_created         ClientBillingRate[]        @relation("BillingRateCreatedBy")
-  tier_configs_created          CommissionTierConfig[]     @relation("TierConfigCreatedBy")
   flat_rates_created            CommissionFlatRate[]       @relation("FlatRateCreatedBy")
-  tier_rates_created            CommissionTierRate[]       @relation("TierRateCreatedBy")
   period_configs_created        PeriodConfig[]             @relation("PeriodConfigCreatedBy")
   export_layouts_created        ExportLayout[]             @relation("ExportLayoutCreatedBy")
-  holdback_release_set          HoldbackReleaseSetting[]   @relation("HoldbackReleaseSetBy")
   incentives_created            Incentive[]                @relation("IncentiveCreatedBy")
   sales_validated               Sale[]                     @relation("SaleValidatedBy")
   pay_runs_executed             PayRun[]                   @relation("PayRunExecutedBy")
@@ -573,7 +563,6 @@ model Rep {
   rep_equipment   RepEquipment[]
   sales           Sale[]
   pay_run_lines   PayRunLine[]
-  holdback_ledger HoldbackLedger[]
   clawbacks       Clawback[]
   expense_reports ExpenseReport[]
   expense_items   ExpenseItem[]
@@ -593,6 +582,12 @@ model RepDocument {
   expires_on  DateTime? @db.Date
   /// When the ID was issued — read by the document reader or typed by HR, confirmed by HR (2026-11-12).
   issued_on   DateTime? @db.Date
+  /// HR-confirmed details read off an ID (2026-11-13), for the Data accuracy comparison. The document number
+  /// is encrypted (field-cipher, like the SIN) and only ever shown masked.
+  name_on_document           String?
+  date_of_birth              DateTime? @db.Date
+  document_number_ciphertext String?
+  document_number_last4      String?
   /// Moved to "Recently deleted" (2026-11-12). Restorable for 30 days, then the daily purge removes the
   /// stored object and this row for good. Every read of live documents filters `deleted_at: null`.
   deleted_at  DateTime?
@@ -661,9 +656,7 @@ model Client {
   km_rate_configs         KmRateConfig[]
   // Per-client REP-commission scope (null rows on those tables are the global fallback). A scope FK only —
   // no path from here to client_billing_rates; the two rate streams stay separate (#3).
-  commission_tier_configs CommissionTierConfig[]
   commission_flat_rates   CommissionFlatRate[]
-  commission_tier_rates   CommissionTierRate[]
   export_layouts          ExportLayout[]
   client_statements       ClientStatement[]
   client_invoices         ClientInvoice[]
@@ -724,7 +717,6 @@ model Product {
   sale_items           SaleItem[]
   // REP-PAY rates for this product. A separate stream from client_billing_rates above — the two are
   // never joined in any code path (#3); they merely hang off the same product.
-  commission_tier_rates CommissionTierRate[]
   commission_flat_rates CommissionFlatRate[]
 
   @@index([client_id, is_active]) // nested per-client product list
@@ -758,39 +750,10 @@ model ClientBillingRate {
 // MODULE 4 — Commission Config (REP commission stream; separate from billing rates)
 // ════════════════════════════════════════════════════════════════════════════════
 
-model CommissionTierConfig {
-  id             String    @id @default(uuid()) @db.Uuid
-  // null = the GLOBAL schedule (the fallback for any client without its own). Scoping the REP-commission
-  // stream by client is NOT a #3 violation — nothing here reads client_billing_rates (cf. incentives
-  // .scope_client_id). The internet TALLY stays cross-client (#5); only the RATE is resolved per client.
-  client_id      String?   @db.Uuid
-  client         Client?   @relation(fields: [client_id], references: [id])
-  effective_from DateTime  @db.Date
-  effective_to   DateTime? @db.Date
-  created_by     String    @db.Uuid
-  creator        User      @relation("TierConfigCreatedBy", fields: [created_by], references: [id])
-
-  tiers CommissionTier[]
-
-  @@index([client_id, effective_from]) // scope selection (mirrors km_rate_config)
-  @@map("commission_tier_configs")
-}
-
-model CommissionTier {
-  id                  String               @id @default(uuid()) @db.Uuid
-  tier_config_id      String               @db.Uuid
-  tier_config         CommissionTierConfig @relation(fields: [tier_config_id], references: [id])
-  tier_number         Int
-  min_count           Int
-  max_count           Int? // null for the open 36+ bracket
-  rate_per_activation Decimal              @db.Decimal(12, 2)
-
-  @@map("commission_tiers")
-}
-
 model CommissionFlatRate {
   id               String               @id @default(uuid()) @db.Uuid
-  // null = the GLOBAL flat rate for this product type (fallback). See CommissionTierConfig.client_id.
+  // null = the GLOBAL rate for this product type (fallback). Scoping the REP stream by client is not a #3
+  // violation: nothing here reads client_billing_rates.
   client_id        String?              @db.Uuid
   client           Client?              @relation(fields: [client_id], references: [id])
   product_type     String // FK → product_type_catalogue.key
@@ -810,33 +773,6 @@ model CommissionFlatRate {
   @@map("commission_flat_rates")
 }
 
-// PER-PRODUCT REP TIER RATE — an OVERRIDE of the tier ladder's own `rate_per_activation` for one product.
-//
-// The volume TALLY and the bracket BOUNDARIES are unchanged and still live on commission_tier_configs /
-// commission_tiers: all internet activations count into ONE cross-client number, which picks the tier (#5).
-// This table only answers "given that tier, what does THIS product pay?" — the same shape as the existing
-// per-client scoping, which resolves the rate and never the tally.
-//
-// A missing row is not an error: the ladder's own rate_per_activation is the fallback, so a product with no
-// override pays exactly what it paid before this table existed.
-model CommissionTierRate {
-  id             String    @id @default(uuid()) @db.Uuid
-  // null = applies to every client (the per-product fallback). Set = this client only, which wins.
-  client_id      String?   @db.Uuid
-  client         Client?   @relation(fields: [client_id], references: [id])
-  product_id     String    @db.Uuid
-  product        Product   @relation(fields: [product_id], references: [id])
-  // Which bracket this rate is for — matches commission_tiers.tier_number (1 = highest).
-  tier_number    Int
-  amount         Decimal   @db.Decimal(12, 2)
-  effective_from DateTime  @db.Date
-  effective_to   DateTime? @db.Date
-  created_by     String    @db.Uuid
-  creator        User      @relation("TierRateCreatedBy", fields: [created_by], references: [id])
-
-  @@index([product_id, client_id, tier_number, effective_from]) // scope selection
-  @@map("commission_tier_rates")
-}
 
 
 // PAYROLL REPORT LINE — the frozen wide line behind Redwave's own payroll workbook, one row per SALE.
@@ -875,12 +811,12 @@ model PayrollReportLine {
   has_internet   Boolean @default(false)
   has_tv         Boolean @default(false)
   has_home_phone Boolean @default(false)
-  // Greenfield is an ADDITION to Redwave's sheet (confirmed in Meeting 4). Flat-rated and excluded from
-  // the tier tally (#9), so it is reported as its own column rather than folded into internet.
+  // Greenfield is an ADDITION to Redwave's sheet (confirmed in Meeting 4). Paid its own rate (#9), so it
+  // is reported as its own column rather than folded into internet.
   is_greenfield  Boolean @default(false)
 
-  // Per-component REP amounts, each read from the frozen snapshot. total_100 is their exact sum (#1), and
-  // advance_70 / holdback_30 are the split as the engine computed it — never re-derived at render time.
+  // Per-component REP amounts, each read from the frozen snapshot. total_100 (labelled "Total") is their
+  // exact sum (#1); the rep is paid it in full (no split since 2026-11-13).
   internet_rate Decimal? @db.Decimal(12, 2)
   tv_rate       Decimal? @db.Decimal(12, 2)
   hp_rate       Decimal? @db.Decimal(12, 2)
@@ -888,8 +824,6 @@ model PayrollReportLine {
   spiff         Decimal? @db.Decimal(12, 2) // the frozen incentive on this sale (ADDITION to their sheet)
   other_total   Decimal? @db.Decimal(12, 2) // Σ remaining priced items, so nothing is silently dropped
   total_100     Decimal  @db.Decimal(12, 2)
-  advance_70    Decimal  @db.Decimal(12, 2)
-  holdback_30   Decimal  @db.Decimal(12, 2)
 
   @@index([pay_run_id, sort_order])
   @@map("payroll_report_lines")
@@ -966,26 +900,6 @@ model ExportLayout {
   @@map("export_layouts")
 }
 
-model HoldbackConfig {
-  id             String    @id @default(uuid()) @db.Uuid
-  advance_pct    Decimal   @db.Decimal(5, 4)
-  holdback_pct   Decimal   @db.Decimal(5, 4)
-  effective_from DateTime  @db.Date
-  effective_to   DateTime? @db.Date
-
-  @@map("holdback_config")
-}
-
-model HoldbackReleaseSetting {
-  id             String   @id @default(uuid()) @db.Uuid
-  release_rule   String
-  set_by         String   @db.Uuid
-  setter         User     @relation("HoldbackReleaseSetBy", fields: [set_by], references: [id])
-  effective_from DateTime // timestamp; sticky until changed
-
-  @@map("holdback_release_settings")
-}
-
 model Incentive {
   id                     String                @id @default(uuid()) @db.Uuid
   name                   String
@@ -1056,8 +970,10 @@ model Sale {
   @@map("sales")
 }
 
-// SALE ITEM — carries the IMMUTABLE pay snapshot. tier_at_payment / rate_applied /
-// commission_paid / incentive_amount are frozen at payment and never updated. — §3 #2
+// SALE ITEM — carries the IMMUTABLE pay snapshot. rate_applied / commission_paid / incentive_amount are
+// frozen at payment and never updated. — §3 #2
+// counts_toward_tally = an internet activation that is NOT greenfield (the greenfield signal + the
+// leaderboard count); nothing tiers on it any more.
 model SaleItem {
   id                       String         @id @default(uuid()) @db.Uuid
   sale_id                  String         @db.Uuid
@@ -1066,7 +982,6 @@ model SaleItem {
   product                  Product        @relation(fields: [product_id], references: [id])
   product_type             String // frozen snapshot (no FK — #2 immutable)
   counts_toward_tally      Boolean
-  tier_at_payment          Int? // SNAPSHOT (internet only; null until paid)
   rate_applied             Decimal?       @db.Decimal(12, 2) // SNAPSHOT
   commission_paid          Decimal?       @db.Decimal(12, 2) // SNAPSHOT
   incentive_id             String?        @db.Uuid
@@ -1082,7 +997,7 @@ model SaleItem {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// MODULE 6 — Pay Run & Holdback
+// MODULE 6 — Pay Run
 // ════════════════════════════════════════════════════════════════════════════════
 
 model PayPeriod {
@@ -1094,8 +1009,6 @@ model PayPeriod {
   status        PayPeriodStatus
 
   pay_runs            PayRun[]
-  holdback_origin     HoldbackLedger[]        @relation("HoldbackOrigin")
-  holdback_scheduled  HoldbackLedger[]        @relation("HoldbackScheduledRelease")
   expense_items       ExpenseItem[]
   expense_exports     ExpenseExport[]
   client_statements   ClientStatement[]
@@ -1135,7 +1048,6 @@ model PayRun {
   pay_run_lines        PayRunLine[]
   payroll_report_lines PayrollReportLine[]
   sales             Sale[]
-  holdback_released HoldbackLedger[] @relation("HoldbackReleasedIn")
   clawbacks         Clawback[]
 
   @@map("pay_runs")
@@ -1147,8 +1059,8 @@ model PayRunLine {
   pay_run             PayRun  @relation(fields: [pay_run_id], references: [id])
   rep_id              String  @db.Uuid
   rep                 Rep     @relation(fields: [rep_id], references: [id])
-  commission_70       Decimal @db.Decimal(12, 2)
-  holdback_release_30 Decimal @db.Decimal(12, 2)
+  // The rep's commission for the period, paid in full (no holdback since 2026-11-13).
+  commission          Decimal @db.Decimal(12, 2)
   expense_total       Decimal @db.Decimal(12, 2)
   incentive_total     Decimal @db.Decimal(12, 2)
   bonus_amount        Decimal @db.Decimal(12, 2)
@@ -1156,39 +1068,7 @@ model PayRunLine {
   clawback_total      Decimal @db.Decimal(12, 2)
   net_payout          Decimal @db.Decimal(12, 2)
 
-  // Reconciliation facts, copied verbatim off the engine's PeriodResult at draft/finalize (NEVER recomputed
-  // — #1/#5). They make the 70/30 split provable on screen: gross = commission_70 + amount_held, and
-  // tier/tally/rate explain how gross was reached. Nullable: pre-migration rows have none, and the engine
-  // returns a null tier/rate when the internet tally is 0.
-  gross_commission    Decimal? @db.Decimal(12, 2) // the 70/30 base (Σ commissionBase; excludes incentives)
-  amount_held         Decimal? @db.Decimal(12, 2) // THIS period's 30% (→ holdback_ledger.amount_held at finalize)
-  tier_at_payment     Int? // tier the period's internet activations were paid at
-  internet_tally      Int? // gross non-greenfield internet count that drove the tier (#5/#9)
-  rate_per_activation Decimal? @db.Decimal(12, 2) // tier rate applied per internet activation
-
   @@map("pay_run_lines")
-}
-
-model HoldbackLedger {
-  id                          String                @id @default(uuid()) @db.Uuid
-  rep_id                      String                @db.Uuid
-  rep                         Rep                   @relation(fields: [rep_id], references: [id])
-  origin_pay_period_id        String                @db.Uuid
-  origin_pay_period           PayPeriod             @relation("HoldbackOrigin", fields: [origin_pay_period_id], references: [id])
-  amount_held                 Decimal               @db.Decimal(12, 2)
-  scheduled_release_period_id String?               @db.Uuid
-  scheduled_release_period    PayPeriod?            @relation("HoldbackScheduledRelease", fields: [scheduled_release_period_id], references: [id])
-  release_status              HoldbackReleaseStatus
-  released_in_pay_run_id      String?               @db.Uuid
-  released_in_pay_run         PayRun?               @relation("HoldbackReleasedIn", fields: [released_in_pay_run_id], references: [id])
-  amount_released             Decimal?              @db.Decimal(12, 2)
-  clawback_applied            Decimal?              @db.Decimal(12, 2)
-
-  @@index([rep_id, release_status])
-  // Period-scoped lookups for the pay-run holdback summary (what was held in a period / what matures into it).
-  @@index([origin_pay_period_id])
-  @@index([scheduled_release_period_id])
-  @@map("holdback_ledger")
 }
 
 // ════════════════════════════════════════════════════════════════════════════════

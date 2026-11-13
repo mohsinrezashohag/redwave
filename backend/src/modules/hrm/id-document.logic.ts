@@ -9,7 +9,7 @@
  */
 
 export interface IdCheck {
-  key: 'name' | 'dates' | 'not_expired' | 'mrz' | 'mrz_expiry';
+  key: 'name' | 'dates' | 'not_expired' | 'dob' | 'mrz' | 'mrz_expiry';
   ok: boolean;
   message: string;
 }
@@ -49,15 +49,39 @@ function mrzExpiry(yymmdd: string): string | null {
   return isIsoDate(iso) ? iso : null;
 }
 
+/**
+ * MRZ 'YYMMDD' birth date → 'YYYY-MM-DD'. A birth year can't be in the future, so a 2-digit year above this
+ * year's is the 1900s. Null when not a real date.
+ */
+function mrzBirth(yymmdd: string, todayYear: number): string | null {
+  if (!/^\d{6}$/.test(yymmdd)) return null;
+  const yy = Number(yymmdd.slice(0, 2));
+  const century = 2000 + yy > todayYear ? '19' : '20';
+  const iso = `${century}${yymmdd.slice(0, 2)}-${yymmdd.slice(2, 4)}-${yymmdd.slice(4, 6)}`;
+  return isIsoDate(iso) ? iso : null;
+}
+
+/** The document number as printed in the MRZ, without the '<' filler. Null when blank. */
+function mrzDocNumber(field: string): string | null {
+  const n = field.replace(/</g, '').trim();
+  return n.length > 0 ? n : null;
+}
+
 export interface MrzResult {
   format: 'TD3' | 'TD1';
   /** Every check digit (document number, birth date, expiry, composite) adds up. */
   valid: boolean;
   expires_on: string | null;
+  date_of_birth: string | null;
+  document_number: string | null;
 }
 
-/** Read a passport (TD3) or card (TD1) MRZ. Null when the lines aren't a recognisable MRZ. */
-export function parseMrz(lines: string[] | null | undefined): MrzResult | null {
+/**
+ * Read a passport (TD3) or card (TD1) MRZ. Null when the lines aren't a recognisable MRZ. `today` ('YYYY-MM-DD')
+ * places a 2-digit birth year in the right century.
+ */
+export function parseMrz(lines: string[] | null | undefined, today = '2026-01-01'): MrzResult | null {
+  const todayYear = Number(today.slice(0, 4));
   const clean = (lines ?? []).map((l) => l.toUpperCase().replace(/\s+/g, '')).filter((l) => l.length > 0);
   if (clean.length === 2 && clean.every((l) => l.length === 44)) {
     const l2 = clean[1];
@@ -66,7 +90,13 @@ export function parseMrz(lines: string[] | null | undefined): MrzResult | null {
       digitOk(l2.slice(13, 19), l2[19]) &&
       digitOk(l2.slice(21, 27), l2[27]) &&
       digitOk(l2.slice(0, 10) + l2.slice(13, 20) + l2.slice(21, 43), l2[43]);
-    return { format: 'TD3', valid, expires_on: mrzExpiry(l2.slice(21, 27)) };
+    return {
+      format: 'TD3',
+      valid,
+      expires_on: mrzExpiry(l2.slice(21, 27)),
+      date_of_birth: mrzBirth(l2.slice(13, 19), todayYear),
+      document_number: mrzDocNumber(l2.slice(0, 9)),
+    };
   }
   if (clean.length === 3 && clean.every((l) => l.length === 30)) {
     const [l1, l2] = clean;
@@ -75,7 +105,13 @@ export function parseMrz(lines: string[] | null | undefined): MrzResult | null {
       digitOk(l2.slice(0, 6), l2[6]) &&
       digitOk(l2.slice(8, 14), l2[14]) &&
       digitOk(l1.slice(5, 30) + l2.slice(0, 7) + l2.slice(8, 15) + l2.slice(18, 29), l2[29]);
-    return { format: 'TD1', valid, expires_on: mrzExpiry(l2.slice(8, 14)) };
+    return {
+      format: 'TD1',
+      valid,
+      expires_on: mrzExpiry(l2.slice(8, 14)),
+      date_of_birth: mrzBirth(l2.slice(0, 6), todayYear),
+      document_number: mrzDocNumber(l1.slice(5, 14)),
+    };
   }
   return null;
 }
@@ -107,11 +143,29 @@ export interface ReadDocument {
   name_on_document: string | null;
   issued_on: string | null;
   expires_on: string | null;
+  /** Read off the document (2026-11-13), else taken from the MRZ when that is present. */
+  date_of_birth?: string | null;
+  document_number?: string | null;
   mrz_lines: string[] | null;
 }
 
+/** Fill the birth date / document number from the MRZ when the printed text gave none. */
+export function withMrzDetails(read: ReadDocument, today: string): ReadDocument {
+  const mrz = parseMrz(read.mrz_lines, today);
+  return {
+    ...read,
+    date_of_birth: read.date_of_birth ?? mrz?.date_of_birth ?? null,
+    document_number: read.document_number ?? mrz?.document_number ?? null,
+  };
+}
+
 /** The checks HR sees beside the dates. `today` is 'YYYY-MM-DD' (Winnipeg). */
-export function idDocumentChecks(read: ReadDocument, repName: string, today: string): IdCheck[] {
+export function idDocumentChecks(
+  read: ReadDocument,
+  repName: string,
+  today: string,
+  repDateOfBirth: string | null = null,
+): IdCheck[] {
   const checks: IdCheck[] = [];
 
   if (read.name_on_document) {
@@ -141,7 +195,18 @@ export function idDocumentChecks(read: ReadDocument, repName: string, today: str
     checks.push({ key: 'not_expired', ok, message: ok ? 'The document hasn’t expired.' : 'The document has expired.' });
   }
 
-  const mrz = parseMrz(read.mrz_lines);
+  if (read.date_of_birth && repDateOfBirth) {
+    const ok = read.date_of_birth === repDateOfBirth;
+    checks.push({
+      key: 'dob',
+      ok,
+      message: ok
+        ? 'The date of birth matches this rep’s profile.'
+        : `The date of birth on the document (${read.date_of_birth}) differs from the profile (${repDateOfBirth}).`,
+    });
+  }
+
+  const mrz = parseMrz(read.mrz_lines, today);
   if (mrz) {
     checks.push({
       key: 'mrz',

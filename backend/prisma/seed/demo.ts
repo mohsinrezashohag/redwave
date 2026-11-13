@@ -5,7 +5,7 @@
  *
  * Invariant-critical steps run through the REAL services (a synthetic Super-Admin AuthUser), so the demo
  * honours every rule instead of hand-rolling writes: pay-run finalize is atomic + idempotent and freezes
- * the immutable snapshots (#8/#2); clawback is a flat snapshot deduction with no re-tiering (#5/#6); the
+ * the immutable snapshots (#8/#2); clawback is a flat snapshot deduction (#6); the
  * statement prices ONLY from client_billing_rates (#3). Money is exact Decimal (#1). sale_date governs the
  * pay period (#7); the demo is anchored to the run-time CURRENT period so the leaderboard/dashboards are
  * live whenever it runs. Billing rates and commission rates stay in SEPARATE tables (#3 / BRD §8.2).
@@ -230,7 +230,7 @@ export async function seedDemo(
   const curMid = addDaysIso(cur.start_date, 2);
   const curStart = iso(cur.start_date); // a boundary sale (first day of the current Winnipeg period)
 
-  // prev2 — the cycle we FINALIZE. Rep2 reaches Tier 2 via a CROSS-CLIENT internet tally (10 VF + 8 RF = 18).
+  // prev2 — the cycle we FINALIZE. Rep2 sells for two clients (10 VF + 8 RF internet), each at its rate.
   await bulk('RW-D-0002', 'VF', p2Mid, 'internet', 10);
   await bulk('RW-D-0002', 'RF', p2Mid, 'internet', 8);
   await createSale({ repCode: 'RW-D-0002', clientCode: 'VF', saleDate: p2Mid, customer: 'S2-bundle', items: ['internet', 'tv'], validated: true });
@@ -246,7 +246,7 @@ export async function seedDemo(
   await createSale({ repCode: 'RW-D-0002', clientCode: 'VF', saleDate: p1Mid, customer: 'S2-tvA', items: ['tv'], validated: true });
   await createSale({ repCode: 'RW-D-0002', clientCode: 'VF', saleDate: p1Mid, customer: 'S2-tvB', items: ['tv'], validated: true });
 
-  // cur — the live cycle (drives the leaderboard + dashboards). Rep1 = 12 VF + 9 RF internet = 21 → Tier 2.
+  // cur — the live cycle (drives the leaderboard + dashboards). Rep1 = 12 VF + 9 RF internet = 21.
   await bulk('RW-D-0001', 'VF', curMid, 'internet', 12);
   await bulk('RW-D-0001', 'RF', curMid, 'internet', 9);
   await createSale({ repCode: 'RW-D-0001', clientCode: 'VF', saleDate: curMid, customer: 'S1-tv', items: ['tv'], validated: true });
@@ -260,7 +260,7 @@ export async function seedDemo(
   const draft = await payRuns.createDraft({ pay_period_id: prev2.id }, sa);
   await payRuns.finalize(draft.id, sa);
 
-  // ── 1–2 clawbacks against PAID items from that run (flat snapshot deduction; no re-tiering #5/#6). ──
+  // ── 1–2 clawbacks against PAID items from that run (flat snapshot deduction #6). ──
   const paidTv = await prisma.saleItem.findFirst({
     where: { product_type: 'tv', commission_paid: { not: null }, item_status: 'active', sale: { rep_id: repByCode['RW-D-0004'].id } },
   });

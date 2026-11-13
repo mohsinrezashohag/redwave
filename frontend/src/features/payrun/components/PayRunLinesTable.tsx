@@ -3,8 +3,7 @@
  * Money is right-aligned tabular-mono (TD numeric); the net uses NetPayoutCell (negative shown clearly).
  * A row's "details" opens the per-rep breakdown drawer. The footer totals are a DISPLAY sum (sumMoney —
  * integer cents, no float #1), never a recomputation. The UI computes no money (#1/#5).
- * No holdback since 2026-11-13: "Commission" is paid in full; the Released column shows only on an OLD run
- * that released a hold (hasHoldback), so its net still adds up.
+ * No tiers and no 70/30 since 2026-11-13: "Commission" is paid in full. Row actions are labelled icons.
  */
 import { FileText, Gift, Search } from 'lucide-react';
 import { PersonName, Table, TBody, TD, TH, THead, TR, type MenuEntry } from '../../../components/ui';
@@ -13,7 +12,6 @@ import { money, sumMoney } from '../../../lib/format/money';
 import { NetPayoutCell } from './NetPayoutCell';
 import styles from './payrun.module.css';
 import type { PayRunLine } from '../payrun.types';
-import type { SplitLabels } from '../split';
 
 interface Props {
   lines: PayRunLine[];
@@ -22,20 +20,16 @@ interface Props {
   /** Issue this rep's own pay statement. Absent on a draft run — nothing is frozen yet. */
   onStatement?: (line: PayRunLine) => void;
   canBonus: boolean;
-  /** An OLD run that held or released some: show its split label and the Released column. */
-  hasHoldback: boolean;
-  /** That old run's split labels (e.g. "70% advance"). */
-  labels: SplitLabels;
 }
 
-export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBonus, hasHoldback, labels }: Props) {
+export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBonus }: Props) {
   const total = (pick: (l: PayRunLine) => string) => sumMoney(lines.map(pick));
   const rowMenu = (l: PayRunLine): MenuEntry[] => {
     const items: MenuEntry[] = [{ label: 'View breakdown', icon: <Search size={15} />, onSelect: () => onSelect(l) }];
     if (onStatement) {
       items.push({ label: 'Pay statement', icon: <FileText size={15} />, onSelect: () => onStatement(l) });
     }
-    if (canBonus) items.push('separator', { label: 'Set bonus', icon: <Gift size={15} />, onSelect: () => onBonus(l) });
+    if (canBonus) items.push({ label: 'Set bonus', icon: <Gift size={15} />, onSelect: () => onBonus(l) });
     return items;
   };
   return (
@@ -43,8 +37,7 @@ export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBon
       <THead>
         <TR>
           <TH>Rep</TH>
-          <TH align="right">{hasHoldback ? labels.paid : 'Commission'}</TH>
-          {hasHoldback && <TH align="right">Released</TH>}
+          <TH align="right">Commission</TH>
           <TH align="right">Incentives</TH>
           <TH align="right">Expenses</TH>
           <TH align="right">Bonus</TH>
@@ -59,8 +52,7 @@ export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBon
             <TD>
               <PersonName name={l.rep.full_name} photoUrl={l.rep.photo_url} detail={<span className="mono">{l.rep.rep_code}</span>} />
             </TD>
-            <TD numeric>{money(l.commission_70)}</TD>
-            {hasHoldback && <TD numeric>{money(l.holdback_release_30)}</TD>}
+            <TD numeric>{money(l.commission)}</TD>
             <TD numeric>{money(l.incentive_total)}</TD>
             <TD numeric>{money(l.expense_total)}</TD>
             <TD numeric>{money(l.bonus_amount)}</TD>
@@ -69,7 +61,7 @@ export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBon
               <NetPayoutCell value={l.net_payout} />
             </TD>
             <TD align="right">
-              <RowActions label={`Actions for ${l.rep.rep_code}`} items={rowMenu(l)} />
+              <RowActions label={`Actions for ${l.rep.rep_code}`} items={rowMenu(l)} iconOnly />
             </TD>
           </TR>
         ))}
@@ -78,8 +70,7 @@ export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBon
             <TD>
               <strong>Total · {lines.length} reps</strong>
             </TD>
-            <TD numeric>{money(total((l) => l.commission_70))}</TD>
-            {hasHoldback && <TD numeric>{money(total((l) => l.holdback_release_30))}</TD>}
+            <TD numeric>{money(total((l) => l.commission))}</TD>
             <TD numeric>{money(total((l) => l.incentive_total))}</TD>
             <TD numeric>{money(total((l) => l.expense_total))}</TD>
             <TD numeric>{money(total((l) => l.bonus_amount))}</TD>

@@ -17,6 +17,7 @@ import {
 import { decryptField, encryptField, loadFieldKey } from '../../common/crypto/field-cipher';
 import { todayInWinnipeg } from '../../common/timezone';
 import {
+  bankNameFor,
   formatSin,
   maskAccount,
   maskSin,
@@ -25,6 +26,7 @@ import {
   normalizePostal,
   normalizeSin,
   normalizeTransit,
+  routingNumbers,
 } from './rep-profile.logic';
 import { Prisma, Rep, RepStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -118,6 +120,10 @@ export function toRepView(rep: Rep, canSee: boolean) {
             institution_no: pd.institution_no,
             transit_no: pd.transit_no ?? null,
             account_masked: maskAccount(pd.account_last4),
+            bank_name: pd.bank_name ?? bankNameFor(pd.institution_no),
+            account_holder: pd.account_holder ?? null,
+            routing_electronic: routingNumbers(pd.institution_no, pd.transit_no)?.electronic ?? null,
+            routing_cheque: routingNumbers(pd.institution_no, pd.transit_no)?.cheque ?? null,
           }
         : null,
   };
@@ -136,6 +142,8 @@ interface PaymentDetails {
   transit_no?: string;
   account_last4?: string;
   account_ciphertext?: string;
+  bank_name?: string;
+  account_holder?: string;
   [key: string]: unknown;
 }
 
@@ -143,7 +151,7 @@ function asPaymentDetails(value: Prisma.JsonValue | null): PaymentDetails | null
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as PaymentDetails) : null;
 }
 
-const BANKING_KEYS = ['institution_no', 'transit_no', 'account_last4', 'account_ciphertext'] as const;
+const BANKING_KEYS = ['institution_no', 'transit_no', 'account_last4', 'account_ciphertext', 'bank_name', 'account_holder'] as const;
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -429,7 +437,15 @@ export class RepsService {
       } else {
         throw new UnprocessableEntityException('Enter the account number');
       }
-      banking = { institution_no: institution, transit_no: transit, ...account };
+      const bankName = dto.banking.bank_name?.trim() || bankNameFor(institution);
+      const holder = dto.banking.account_holder?.trim();
+      banking = {
+        institution_no: institution,
+        transit_no: transit,
+        ...account,
+        ...(bankName ? { bank_name: bankName } : {}),
+        ...(holder ? { account_holder: holder } : {}),
+      };
     }
     const merged = { ...other, ...banking };
     return Object.keys(merged).length > 0 ? (merged as Prisma.InputJsonValue) : Prisma.DbNull;

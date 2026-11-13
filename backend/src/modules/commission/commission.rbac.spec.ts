@@ -6,18 +6,6 @@ const meta = (ctor: any, method: string) => Reflect.getMetadata(RBAC_KEY, ctor.p
 
 describe('Commission Config RBAC metadata', () => {
   it('every endpoint declares the expected (commission, action) so the global guard enforces it', () => {
-    expect(meta(CommissionController, 'listTiers')).toEqual({
-      moduleKey: 'commission',
-      action: 'view',
-    });
-    expect(meta(CommissionController, 'createTiers')).toEqual({
-      moduleKey: 'commission',
-      action: 'edit',
-    });
-    expect(meta(CommissionController, 'setBasePrices')).toEqual({
-      moduleKey: 'commission',
-      action: 'edit',
-    });
     expect(meta(CommissionController, 'listFlatRates')).toEqual({
       moduleKey: 'commission',
       action: 'view',

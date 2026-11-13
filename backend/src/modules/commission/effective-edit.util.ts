@@ -1,6 +1,5 @@
 /**
- * Shared helpers for EDIT/DELETE of effective-dated commission config (tier schedules, flat rates, holdback
- * splits). Only PENDING rows may be edited or deleted; a current/past row is immutable (supersede instead).
+ * Shared helpers for EDIT/DELETE of effective-dated commission config (rep rates). Only PENDING rows may be edited or deleted; a current/past row is immutable (supersede instead).
  * — CLAUDE §3 #10
  */
 import { UnprocessableEntityException } from '@nestjs/common';

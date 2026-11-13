@@ -20,7 +20,7 @@ import type { Sale, SaleItem } from './sales.types';
 const TV_KEY = 'tv';
 const HOME_PHONE_KEY = 'home_phone';
 /** Catalogue behaviours that count as "Internet" — mirrors `statement.service.ts`. */
-const INTERNET_BEHAVIOURS = new Set(['tiered', 'greenfield']);
+const INTERNET_BEHAVIOURS = new Set(['internet', 'greenfield']);
 
 export interface SaleExportRow {
   /** The internet speed product on the sale ('' when it has no internet component). */

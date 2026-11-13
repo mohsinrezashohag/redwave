@@ -21,7 +21,7 @@ export function PaidItemsPanel({ sale, onClawback }: { sale: Sale; onClawback: (
   return (
     <div>
       <h3 className={styles.sectionTitle}>Items on {sale.sale_code}</h3>
-      <p className={styles.note}>A clawback targets one item. It does not affect the internet activation or recalculate the period’s tier.</p>
+      <p className={styles.note}>A clawback targets one item. It does not affect the internet activation or any other item.</p>
       <div className={styles.items}>
         {sale.sale_items.map((item) => {
           const clawable = isClawable(item);
@@ -36,11 +36,6 @@ export function PaidItemsPanel({ sale, onClawback }: { sale: Sale; onClawback: (
                   <span>
                     Incentive <strong>{money(item.incentive_amount)}</strong>
                   </span>
-                  {item.tier_at_payment !== null && (
-                    <span>
-                      Tier <strong>{item.tier_at_payment}</strong>
-                    </span>
-                  )}
                 </span>
               </div>
               {clawable ? (

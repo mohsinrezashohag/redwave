@@ -136,7 +136,7 @@ export default function ReportExportsPage() {
         }
         const detail = await unwrap<PayRun>(api.GET('/v1/pay-runs/{id}', { params: { path: { id: run.id } } }));
         rows = detail.lines;
-        columns = payrunColumns(detail.has_holdback);
+        columns = payrunColumns;
         title = `${def.label}, period ${detail.pay_period.period_number} (${detail.status})`;
       } else {
         rows = await fetchAllExpenseItems({ from: from || undefined, to: to || undefined });

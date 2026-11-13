@@ -9,7 +9,6 @@ export type DashPeriod = components['schemas']['DashPeriodResponse'];
 
 // ── Rep dashboard ──────────────────────────────────────────────────────────────────
 export type ProductCount = components['schemas']['ProductCountResponse'];
-export type RepTier = components['schemas']['RepTierResponse'];
 export type RepCommission = components['schemas']['RepCommissionResponse'];
 export type RepClawback = components['schemas']['RepClawbackResponse'];
 export type RepDashboard = components['schemas']['RepDashboardResponse'];

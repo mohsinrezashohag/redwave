@@ -1,5 +1,5 @@
 /**
- * ClientScopeField — the scope picker shared by the tier-schedule and flat-rate modals: "All clients" (the
+ * ClientScopeField — the scope picker for the rep-rate modal: "All clients" (the
  * global fallback row, `client_id` omitted) or one specific client. Mirrors IncentiveModal's scope_mode
  * radio + client Select. `/v1/clients` is a REFERENCE read the backend re-validates — not a rate-stream
  * join (#3). Without `clients:view` only the global scope is offered.
@@ -17,7 +17,7 @@ export interface ClientScopeFieldProps<T extends FieldValues> {
   clientName: Path<T>;
   mode: 'all' | 'specific';
   error?: string;
-  /** What this scope means for the rate being added (tier schedule vs flat rate). */
+  /** What this scope means for the rate being added. */
   help: string;
 }
 
@@ -69,8 +69,7 @@ export function ClientScopeField<T extends FieldValues>({
           />
           <Banner tone="info" title="Scoped to one client">
             This client&rsquo;s sales are paid at these rates instead of the global ones. It is a separate
-            effective-dated set of rates and never replaces or ends the global ones. The internet tally that
-            picks the tier still counts <strong>every client together</strong>.
+            effective-dated set of rates and never replaces or ends the global ones.
           </Banner>
         </>
       )}

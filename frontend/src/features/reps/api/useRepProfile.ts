@@ -8,6 +8,7 @@ import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
 import { multipartPost } from '../../../lib/api/multipartUpload';
 import { repsListKeys } from './useReps';
+import type { DataAccuracy } from '../dataAccuracy';
 import type {
   CreateEquipmentBody,
   CreateRepBody,
@@ -27,7 +28,32 @@ export const repKeys = {
   equipment: (id: string) => ['reps', 'one', id, 'equipment'] as const,
   documents: (id: string) => ['reps', 'one', id, 'documents'] as const,
   deletedDocuments: (id: string) => ['reps', 'one', id, 'documents', 'deleted'] as const,
+  dataAccuracy: (id: string) => ['reps', 'one', id, 'data-accuracy'] as const,
 };
+
+/** The profile vs. ID comparison (2026-11-13, hrm:edit). */
+export function useRepDataAccuracy(id: string) {
+  return useQuery({
+    queryKey: repKeys.dataAccuracy(id),
+    queryFn: () => unwrap<DataAccuracy>(api.GET('/v1/reps/{id}/data-accuracy', { params: { path: { id } } })),
+  });
+}
+
+/**
+ * HR-confirmed ID details (2026-11-13). `document_number` is write-only: omitted = keep the one on file.
+ * On a multipart upload / replace only the filled-in values are sent (a blank part can't mean "clear" there).
+ */
+export interface IdDetailsBody {
+  name_on_document?: string | null;
+  date_of_birth?: string | null;
+  document_number?: string;
+}
+
+function appendIdDetails(form: FormData, d: IdDetailsBody | undefined) {
+  if (d?.name_on_document) form.append('name_on_document', d.name_on_document);
+  if (d?.date_of_birth) form.append('date_of_birth', d.date_of_birth);
+  if (d?.document_number) form.append('document_number', d.document_number);
+}
 
 export function useRep(id: string | undefined) {
   return useQuery({
@@ -99,12 +125,25 @@ export function useRepDocuments(id: string | undefined, enabled = true) {
 export function useUploadRepDocument(repId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ file, docType, expiresOn, issuedOn }: { file: File; docType: string; expiresOn?: string; issuedOn?: string }) => {
+    mutationFn: ({
+      file,
+      docType,
+      expiresOn,
+      issuedOn,
+      details,
+    }: {
+      file: File;
+      docType: string;
+      expiresOn?: string;
+      issuedOn?: string;
+      details?: IdDetailsBody;
+    }) => {
       const form = new FormData();
       form.append('file', file);
       form.append('doc_type', docType);
       if (expiresOn) form.append('expires_on', expiresOn);
       if (issuedOn) form.append('issued_on', issuedOn);
+      appendIdDetails(form, details);
       return multipartPost<RepDocument>(`/v1/reps/${repId}/documents`, form);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: repKeys.documents(repId) }),
@@ -237,7 +276,10 @@ export function useReadStoredDocument(repId: string) {
 export function useUpdateRepDocument(repId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ docId, ...body }: { docId: string; doc_type?: string; issued_on?: string | null; expires_on?: string | null }) =>
+    mutationFn: ({
+      docId,
+      ...body
+    }: { docId: string; doc_type?: string; issued_on?: string | null; expires_on?: string | null } & IdDetailsBody) =>
       unwrap<RepDocument>(api.PATCH('/v1/reps/{id}/documents/{docId}', { params: { path: { id: repId, docId } }, body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: repKeys.documents(repId) }),
   });
@@ -247,11 +289,24 @@ export function useUpdateRepDocument(repId: string) {
 export function useReplaceRepDocument(repId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ docId, file, expiresOn, issuedOn }: { docId: string; file: File; expiresOn?: string; issuedOn?: string }) => {
+    mutationFn: ({
+      docId,
+      file,
+      expiresOn,
+      issuedOn,
+      details,
+    }: {
+      docId: string;
+      file: File;
+      expiresOn?: string;
+      issuedOn?: string;
+      details?: IdDetailsBody;
+    }) => {
       const form = new FormData();
       form.append('file', file);
       if (expiresOn) form.append('expires_on', expiresOn);
       if (issuedOn) form.append('issued_on', issuedOn);
+      appendIdDetails(form, details);
       return multipartPost<RepDocument>(`/v1/reps/${repId}/documents/${docId}/replace`, form);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: repKeys.documents(repId) }),

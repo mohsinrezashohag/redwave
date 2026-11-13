@@ -22,7 +22,6 @@
  */
 import { Injectable } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
-import { Decimal } from 'decimal.js';
 import {
   EXPORT_REGISTRY,
   LayoutColumn,
@@ -49,8 +48,6 @@ export interface PayrollLineForExport {
   spiff: string;
   other_total: string;
   total_100: string;
-  advance_70: string;
-  holdback_30: string;
 }
 
 export interface PayrollReportForExport {
@@ -65,21 +62,9 @@ export interface PayrollReportForExport {
   period_end: string; // 'YYYY-MM-DD'
   run_status: string;
   generated_at: string;
-  /** The advance / holdback split in force for the run's period — heads the two split columns. */
-  split?: { advance_pct: string; holdback_pct: string } | null;
-  /**
-   * There is no holdback since 2026-11-13: the two split columns are printed ONLY for an old run that held
-   * some (true). Omitted / false → the sheet ends at the total.
-   */
-  has_holdback?: boolean;
   lines: PayrollLineForExport[];
   total_100: string;
-  advance_70: string;
-  holdback_30: string;
 }
-
-/** The 70% / 30% columns: shown only for an old run that held some (no holdback since 2026-11-13). */
-const SPLIT_FIELDS = new Set(['advance_70', 'holdback_30']);
 
 const HEADER_ROW = 2;
 const FIRST_DATA_ROW = 3;
@@ -106,20 +91,9 @@ export class PayrollExcelRenderer {
     const registry = new Map(EXPORT_REGISTRY.payroll.fields.map((f) => [f.key, f]));
     const columns = (r.layout ?? defaultLayout('payroll')).filter(
       // `other_total` is dropped when it carries no money, exactly as before — an empty column adds noise.
-      (c) => (c.field !== 'other_total' || showOther) && (r.has_holdback || !SPLIT_FIELDS.has(c.field)),
+      (c) => c.field !== 'other_total' || showOther,
     );
-    // The split columns are headed by the split itself ("0.7" / "0.3", as in Redwave's file). Print the
-    // run's REAL split instead of the default label — at 100/0 (Redwave, 2026-11-11) a "0.7" header over a
-    // column that is 100% of the line would be wrong. A header an admin renamed is left exactly as they set it.
-    const splitHeader: Record<string, string | undefined> = {
-      advance_70: r.split ? new Decimal(r.split.advance_pct).toString() : undefined,
-      holdback_30: r.split ? new Decimal(r.split.holdback_pct).toString() : undefined,
-    };
-    const headers = columns.map((c) => {
-      const label = c.header ?? registry.get(c.field)?.label ?? c.field;
-      const isDefault = label === registry.get(c.field)?.label;
-      return isDefault && splitHeader[c.field] ? (splitHeader[c.field] as string) : label;
-    });
+    const headers = columns.map((c) => c.header ?? registry.get(c.field)?.label ?? c.field);
     ws.columns = columns.map((c) => ({ width: registry.get(c.field)?.money ? 14 : c.field === 'address' ? 40 : 16 }));
 
     // The money block is contiguous by construction (validated), so its bounds are its first and last index.

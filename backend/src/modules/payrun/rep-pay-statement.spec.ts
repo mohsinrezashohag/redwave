@@ -39,8 +39,6 @@ const LINE = {
   spiff: dec('0'),
   other_total: dec('0'),
   total_100: dec('175'),
-  advance_70: dec('122.50'),
-  holdback_30: dec('52.50'),
   sort_order: 0,
 };
 
@@ -146,8 +144,8 @@ describe('Rep pay statement — what a rep may NOT see (#3)', () => {
     // someone also adds it to this list, which is a deliberate act rather than an accident.
     expect(keys.sort()).toEqual(
       [
-        'address', 'advance_70', 'channel', 'customer_name', 'greenfield', 'has_home_phone',
-        'has_internet', 'has_tv', 'holdback_30', 'hp_rate', 'internet_rate', 'is_greenfield',
+        'address', 'channel', 'customer_name', 'greenfield', 'has_home_phone',
+        'has_internet', 'has_tv', 'hp_rate', 'internet_rate', 'is_greenfield',
         'other_total', 'product_name', 'sale_date', 'sale_id', 'spiff', 'total_100', 'tv_rate',
       ].sort(),
     );
@@ -166,14 +164,10 @@ describe('Rep pay statement — what a rep may NOT see (#3)', () => {
 
 describe('Rep pay statement — reconciles with the payroll report', () => {
   it('totals equal the sum of the rep\'s own frozen lines, never recomputed', async () => {
-    const second = { ...LINE, sale_id: 'sale-b', total_100: dec('110'), advance_70: dec('77'), holdback_30: dec('33') };
+    const second = { ...LINE, sale_id: 'sale-b', total_100: dec('110') };
     const { service } = make({ lines: [LINE, second], saleIds: ['sale-a', 'sale-b'] });
     const statement = await service.myPayStatement('run-1', user('rep-A'));
     expect(statement.total_100).toBe('285.00'); // 175 + 110
-    expect(statement.advance_70).toBe('199.50'); // 122.50 + 77
-    expect(statement.holdback_30).toBe('85.50'); // 52.50 + 33
-    // The split still adds up exactly — the same frozen numbers the payroll report prints.
-    expect(Number(statement.advance_70) + Number(statement.holdback_30)).toBeCloseTo(Number(statement.total_100), 2);
   });
 
   it('the admin path returns the same statement for the same rep', async () => {

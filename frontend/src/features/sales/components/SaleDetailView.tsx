@@ -1,7 +1,7 @@
 /**
  * SaleDetailView — the deep-linkable detail pattern (route `/sales/:id`, not a drawer). Shows the
  * composite Sale ID, lifecycle status, customer + address, derived pay period (null → "Not assigned"),
- * and the line items (product type + counts_toward_tally). The permitted actions are gated by `useCan`
+ * and the line items (product type + whether it is greenfield). The permitted actions are gated by `useCan`
  * AND the §16 lifecycle status — convenience only; the server is the real gate (CLAUDE §5). — SALE-004
  */
 import { useState } from 'react';
@@ -158,7 +158,7 @@ export function SaleDetailView({ id }: { id: string }) {
                       <span className={styles.muted}> · {productTypeLabel(item.product_type)}</span>
                     </span>
                     <span className={styles.muted}>
-                      {item.counts_toward_tally ? 'Counts toward tally' : 'Excluded from tally'}
+                      {item.product_type === 'internet' ? (item.counts_toward_tally ? 'Internet' : 'Greenfield') : 'Add-on'}
                     </span>
                   </li>
                 ))}

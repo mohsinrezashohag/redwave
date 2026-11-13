@@ -54,7 +54,16 @@ import {
   useUploadRepDocument,
 } from '../api/useRepProfile';
 import type { DeletedRepDocument, DocumentRead, RepDocument } from '../reps.types';
-import { DocumentDatesReview, type DocumentEdit } from './DocumentDatesReview';
+import { DocumentDatesReview, type DocumentDates, type DocumentEdit } from './DocumentDatesReview';
+
+const NO_DETAILS: DocumentDates = { issued_on: null, expires_on: null, name_on_document: null, date_of_birth: null };
+
+/** The identity details as the API takes them (the number only when typed: omitted = keep). */
+const idDetails = (d: DocumentDates) => ({
+  name_on_document: d.name_on_document,
+  date_of_birth: d.date_of_birth,
+  ...(d.document_number ? { document_number: d.document_number } : {}),
+});
 import styles from './reps.module.css';
 
 /** What the review panel is working on: a new upload, a replacement file, or a document already on file. */
@@ -130,12 +139,12 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
       readUpload.mutate({ file, docType }, handleRead);
       return;
     }
-    doUpload(file, docType, { issued_on: null, expires_on: null });
+    doUpload(file, docType, NO_DETAILS);
   };
 
-  const doUpload = (file: File, type: string, dates: Pick<DocumentEdit, 'issued_on' | 'expires_on'>) =>
+  const doUpload = (file: File, type: string, dates: DocumentDates) =>
     upload.mutate(
-      { file, docType: type, expiresOn: dates.expires_on ?? undefined, issuedOn: dates.issued_on ?? undefined },
+      { file, docType: type, expiresOn: dates.expires_on ?? undefined, issuedOn: dates.issued_on ?? undefined, details: idDetails(dates) },
       {
         onSuccess: () => {
           toast({ title: 'Document uploaded', description: docTypeLabel(type), tone: 'success' });
@@ -167,12 +176,12 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
       readUpload.mutate({ file, docType: doc.doc_type }, handleRead);
       return;
     }
-    doReplace(doc, file, { issued_on: null, expires_on: null });
+    doReplace(doc, file, NO_DETAILS);
   };
 
-  const doReplace = (doc: RepDocument, file: File, dates: Pick<DocumentEdit, 'issued_on' | 'expires_on'>) =>
+  const doReplace = (doc: RepDocument, file: File, dates: DocumentDates) =>
     replace.mutate(
-      { docId: doc.id, file, issuedOn: dates.issued_on ?? undefined, expiresOn: dates.expires_on ?? undefined },
+      { docId: doc.id, file, issuedOn: dates.issued_on ?? undefined, expiresOn: dates.expires_on ?? undefined, details: idDetails(dates) },
       {
         onSuccess: () => {
           toast({
@@ -216,7 +225,7 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
     if (review.mode === 'replace') return doReplace(review.doc, review.file, edit);
     const doc = review.doc;
     update.mutate(
-      { docId: doc.id, doc_type: edit.doc_type, issued_on: edit.issued_on, expires_on: edit.expires_on },
+      { docId: doc.id, doc_type: edit.doc_type, issued_on: edit.issued_on, expires_on: edit.expires_on, ...idDetails(edit) },
       {
         onSuccess: () => {
           toast({ title: 'Document updated', description: docTypeLabel(edit.doc_type), tone: 'success' });
@@ -337,6 +346,10 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
           doc_type: reviewType,
           issued_on: review?.mode === 'edit' ? review.doc.issued_on : null,
           expires_on: review?.mode === 'edit' ? review.doc.expires_on : null,
+          // A replacement keeps the details on file unless HR types new ones, so it starts from them too.
+          name_on_document: review && review.mode !== 'upload' ? review.doc.name_on_document : null,
+          date_of_birth: review && review.mode !== 'upload' ? review.doc.date_of_birth : null,
+          document_number_masked: review && review.mode !== 'upload' ? review.doc.document_number_masked : null,
         }}
         read={read}
         reading={reading}

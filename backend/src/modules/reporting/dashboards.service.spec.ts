@@ -27,7 +27,6 @@ function make(scopeLevel: 'all' | 'roster' | 'self' = 'self', repIds: string[] =
     client: { findMany: jest.fn().mockResolvedValue([]) },
     productTypeCatalogue: { findMany: jest.fn().mockResolvedValue([]) },
     expenseItem: { groupBy: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(1) },
-    commissionTierConfig: { findMany: jest.fn().mockResolvedValue([{ effective_from: D('2000-01-01'), effective_to: null, tiers: [{ tier_number: 4, min_count: 0, max_count: 6 }] }]) },
     sale: { count: jest.fn().mockResolvedValue(2), groupBy: jest.fn().mockResolvedValue([]), findMany: jest.fn().mockResolvedValue([]) },
     salesTarget: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
     expenseReport: { count: jest.fn().mockResolvedValue(1) }, // legacy table retained for history
@@ -106,7 +105,7 @@ describe('DashboardsService.business (Super Admin only — RPT-003)', () => {
   it('a Super Admin gets company-wide figures (net margin = revenue − payout) + the rich KPI shape', async () => {
     const { service, prisma } = make('all');
     prisma.clientStatement.aggregate.mockResolvedValue({ _sum: { amount_cad: '1000.00' } }); // CAD-consolidated (#12)
-    prisma.payRunLine.aggregate.mockResolvedValue({ _sum: { net_payout: '600.00', commission_70: '500.00' } });
+    prisma.payRunLine.aggregate.mockResolvedValue({ _sum: { net_payout: '600.00', commission: '500.00' } });
     prisma.clawback.aggregate.mockResolvedValue({ _sum: { amount: '50.00' } });
     const result = await service.business(user({ isSuperAdmin: true }), {});
     expect(result.revenue).toBe('1000.00');
@@ -118,7 +117,7 @@ describe('DashboardsService.business (Super Admin only — RPT-003)', () => {
     expect(result.clawback_rate).toBe('0.1000'); // 50 / 500 (paid commission), exact-decimal ratio
     expect(result.expense).toEqual({ total: '0.00', km: '0.00', other: '0.00' });
     expect(result.validation_funnel).toEqual({ entered: 0, validated: 0, in_pay_run: 0, paid: 0 });
-    expect(Array.isArray(result.tier_distribution)).toBe(true);
+    expect(result).not.toHaveProperty('tier_distribution'); // no tiers since 2026-11-13
   });
 
   it('business revenue reads amount_cad (CAD-consolidated) — a USD statement contributes its CAD equivalent (#12)', async () => {
@@ -146,7 +145,7 @@ describe('DashboardsService.business (Super Admin only — RPT-003)', () => {
     const result = await service.business(user({ isSuperAdmin: true }), {});
     expect(result.revenue).toBe('1280.00'); // 1000 statements + 250 + 30 historical billed (#3 billing stream)
     expect(result.total_activations).toBe(2); // historical counted in the business activation volume
-    expect(result.internet_activations).toBe(0); // but NOT in the internet tally (commission/tier concept)
+    expect(result.internet_activations).toBe(0); // but NOT in the internet activation count
     expect(result.greenfield).toEqual({ count: 0, amount: '0.00' }); // never greenfield
     expect(result.activations_by_product).toEqual(
       expect.arrayContaining([{ key: 'internet', label: 'internet', count: 1 }, { key: 'tv', label: 'tv', count: 1 }]),
@@ -168,7 +167,7 @@ describe('DashboardsService.businessTrends (Super Admin only)', () => {
       expect.objectContaining({ period_number: 1, revenue: '0.00', payout: '0.00', net_margin: '0.00', activations: 0 }),
     );
     expect(result.by_product).toEqual([]);
-    expect(Array.isArray(result.tier_distribution)).toBe(true);
+    expect(result).not.toHaveProperty('tier_distribution');
   });
 });
 

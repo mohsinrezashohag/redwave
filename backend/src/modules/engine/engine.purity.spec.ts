@@ -2,15 +2,14 @@
  * Engine PURITY guard — the Commission Engine is pure and isolated: given activations + config it returns
  * the same result every time, with NO database, HTTP, clock, or cross-module coupling. Purity was
  * convention-only (documented in README.md but never asserted), which is fragile for the most
- * invariant-critical code in the repo — especially now that per-client rates tempt a "just look the client
- * up" shortcut. Proven two ways: (a) structural source scan, (b) determinism + no-constructor-deps.
- * — CLAUDE §3 #1/#5, §6
+ * money-critical code in the repo. Proven two ways: (a) structural source scan, (b) determinism + no-constructor-deps.
+ * — CLAUDE §3 #1, §6
  */
 import * as fs from 'fs';
 import * as path from 'path';
 import { Decimal } from 'decimal.js';
 import { CommissionEngineService } from './commission-engine.service';
-import { ActivationInput, EngineConfig, ProductType, TierBracket } from './engine.types';
+import { ActivationInput, EngineConfig, ProductType } from './engine.types';
 
 // ── (a) Structural: nothing in the engine folder may reach outside itself ─────────────────────────
 describe('Engine purity — structural isolation', () => {
@@ -47,18 +46,13 @@ describe('Engine purity — structural isolation', () => {
 // ── (b) Behavioural: no constructor deps, and identical inputs give identical outputs ─────────────
 describe('Engine purity — determinism', () => {
   const d = (s: string) => new Decimal(s);
-  const TIERS: TierBracket[] = [
-    { tierNumber: 2, minCount: 0, maxCount: 9, ratePerActivation: d('110') },
-    { tierNumber: 1, minCount: 10, maxCount: null, ratePerActivation: d('145') },
-  ];
   const config: EngineConfig = {
-    tiers: TIERS,
-    flatRates: { tv: d('30'), greenfield_internet: d('100') },
-    tiersByClient: { RF: [{ tierNumber: 1, minCount: 0, maxCount: null, ratePerActivation: d('150') }] },
-    holdback: { advancePct: d('0.70'), holdbackPct: d('0.30') },
+    flatRates: { internet: d('110'), tv: d('30'), greenfield_internet: d('100') },
+    flatRatesByClient: { RF: { internet: d('150') } },
+    flatRatesByProduct: { fibre1g: d('140') },
   };
   const activations: ActivationInput[] = [
-    { id: 'a', productType: ProductType.internet, clientId: 'VF', saleDate: '2026-01-10' },
+    { id: 'a', productType: ProductType.internet, clientId: 'VF', saleDate: '2026-01-10', productId: 'fibre1g' },
     { id: 'b', productType: ProductType.internet, clientId: 'RF', saleDate: '2026-01-10' },
     { id: 'c', productType: ProductType.tv, clientId: 'RF', saleDate: '2026-01-10' },
   ];
@@ -71,27 +65,20 @@ describe('Engine purity — determinism', () => {
   it('same inputs → identical outputs, across separate instances', () => {
     const a = new CommissionEngineService().computePeriod({ activations, config });
     const b = new CommissionEngineService().computePeriod({ activations, config });
-    expect(a.grossCommission.toFixed(2)).toBe(b.grossCommission.toFixed(2));
-    expect(a.advanceAmount.toFixed(2)).toBe(b.advanceAmount.toFixed(2));
-    expect(a.items.map((i) => i.rateApplied.toFixed(2))).toEqual(
-      b.items.map((i) => i.rateApplied.toFixed(2)),
-    );
+    expect(a.commissionTotal.toFixed(2)).toBe(b.commissionTotal.toFixed(2));
+    expect(a.items.map((i) => i.rateApplied.toFixed(2))).toEqual(b.items.map((i) => i.rateApplied.toFixed(2)));
   });
 
-  it('does not mutate the config it is given (per-client maps included)', () => {
-    const snapshot = JSON.stringify({
-      tiers: config.tiers.map((t) => t.ratePerActivation.toFixed(2)),
-      byClient: config.tiersByClient?.RF?.map((t) => t.ratePerActivation.toFixed(2)),
-      flats: Object.entries(config.flatRates).map(([k, v]) => [k, v.toFixed(2)]),
-    });
-    new CommissionEngineService().computePeriod({ activations, config });
-    expect(
+  it('does not mutate the config it is given (per-client and per-product maps included)', () => {
+    const snap = () =>
       JSON.stringify({
-        tiers: config.tiers.map((t) => t.ratePerActivation.toFixed(2)),
-        byClient: config.tiersByClient?.RF?.map((t) => t.ratePerActivation.toFixed(2)),
         flats: Object.entries(config.flatRates).map(([k, v]) => [k, v.toFixed(2)]),
-      }),
-    ).toBe(snapshot);
+        byClient: config.flatRatesByClient?.RF?.internet.toFixed(2),
+        byProduct: config.flatRatesByProduct?.fibre1g.toFixed(2),
+      });
+    const before = snap();
+    new CommissionEngineService().computePeriod({ activations, config });
+    expect(snap()).toBe(before);
   });
 
   it('does not mutate the activation list', () => {

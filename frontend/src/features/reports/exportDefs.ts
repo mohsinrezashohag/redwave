@@ -75,19 +75,11 @@ export const leaderboardColumns: ExportColumn<LeaderboardRow>[] = [
 ];
 
 // ── Pay-run summary (line components + net, as the server computed them) ────────────
-// No holdback since 2026-11-13: "Commission" is paid in full. An OLD run that released a hold (the run's
-// has_holdback) keeps a "Holdback released" column so its net still adds up.
-export function payrunColumns(hasHoldback = false): ExportColumn<PayRunLine>[] {
-  return [
-    { header: 'Rep code', value: (l) => l.rep.rep_code },
-    { header: 'Rep', value: (l) => l.rep.full_name },
-    { header: 'Commission', value: (l) => money(l.commission_70) },
-    ...(hasHoldback ? [{ header: 'Holdback released', value: (l: PayRunLine) => money(l.holdback_release_30) }] : []),
-    ...PAYRUN_TAIL,
-  ];
-}
-
-const PAYRUN_TAIL: ExportColumn<PayRunLine>[] = [
+// "Commission" is paid in full (no tiers, no 70/30 since 2026-11-13).
+export const payrunColumns: ExportColumn<PayRunLine>[] = [
+  { header: 'Rep code', value: (l) => l.rep.rep_code },
+  { header: 'Rep', value: (l) => l.rep.full_name },
+  { header: 'Commission', value: (l) => money(l.commission) },
   { header: 'Expenses', value: (l) => money(l.expense_total) },
   { header: 'Incentives', value: (l) => money(l.incentive_total) },
   { header: 'Bonus', value: (l) => money(l.bonus_amount) },
@@ -128,7 +120,7 @@ export function businessSummaryRows(d: BusinessDashboard): MetricRow[] {
     { metric: 'Expenses total', value: money(d.expense.total) },
     { metric: 'Expenses: KM', value: money(d.expense.km) },
     { metric: 'Total activations', value: String(d.total_activations) },
-    { metric: 'Internet activations (tally)', value: String(d.internet_activations) },
+    { metric: 'Internet activations', value: String(d.internet_activations) },
     { metric: 'Greenfield activations', value: String(d.greenfield.count) },
     { metric: 'Greenfield amount', value: money(d.greenfield.amount) },
     { metric: 'Active reps', value: String(d.active_rep_count) },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidSin, NONE, repFormDefaults, repFormSchema, toCreateBody, toUpdateBody, type RepFormValues } from './repForm';
+import { bankNameFor, isValidSin, NONE, repFormDefaults, repFormSchema, routingNumbers, toCreateBody, toUpdateBody, type RepFormValues } from './repForm';
 
 const TODAY = '2026-11-11';
 const base = (over: Partial<RepFormValues> = {}): RepFormValues => ({
@@ -95,5 +95,20 @@ describe('banking (2026-11-12)', () => {
     });
     expect(toUpdateBody(base(), true)).toMatchObject({ banking: null });
     expect(toUpdateBody(base(), false)).not.toHaveProperty('banking');
+  });
+});
+
+describe('bank name + routing (2026-11-13)', () => {
+  it('suggests the bank for a known institution and derives both routing forms', () => {
+    expect(bankNameFor('004')).toBe('TD Canada Trust');
+    expect(bankNameFor('999')).toBeNull();
+    expect(routingNumbers('004', '12-345')).toEqual({ electronic: '000412345', cheque: '12345-004' });
+    expect(routingNumbers('04', '12345')).toBeNull();
+  });
+
+  it('sends the bank name and holder only when typed', () => {
+    const body = toUpdateBody(base({ bank_institution: '004', bank_transit: '12345', bank_name: ' TD ', bank_account_holder: 'Riley' }), true);
+    expect(body).toMatchObject({ banking: { institution_no: '004', transit_no: '12345', bank_name: 'TD', account_holder: 'Riley' } });
+    expect((toUpdateBody(base({ bank_institution: '004', bank_transit: '12345' }), true) as { banking: object }).banking).not.toHaveProperty('bank_name');
   });
 });

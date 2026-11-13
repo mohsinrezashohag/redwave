@@ -90,7 +90,7 @@ describe('SalesService.create', () => {
     prisma.rep.findUnique.mockResolvedValue({ status: 'active' });
     prisma.client.findUnique.mockResolvedValue({ id: 'c1', is_active: true, client_code: 'VF' });
     prisma.product.findMany.mockResolvedValue([
-      { id: 'p1', product_type: 'internet', is_active: true, product_type_ref: { behaviour: 'tiered' } },
+      { id: 'p1', product_type: 'internet', is_active: true, product_type_ref: { behaviour: 'internet' } },
     ]);
     prisma.sale.create.mockResolvedValue({ id: 's1', sale_code: 'x', sale_items: [] });
 
@@ -121,7 +121,7 @@ describe('SalesService.create', () => {
     const { service, prisma } = make(SELF);
     prisma.rep.findUnique.mockResolvedValue({ status: 'active' });
     prisma.client.findUnique.mockResolvedValue({ id: 'c1', is_active: true, client_code: 'VF' });
-    // Only a TV add-on (standard_addon) — no tiered/greenfield internet base.
+    // Only a TV add-on (standard_addon) — no internet/greenfield base.
     prisma.product.findMany.mockResolvedValue([
       { id: 'p1', product_type: 'tv', is_active: true, product_type_ref: { behaviour: 'standard_addon' } },
     ]);
@@ -137,7 +137,7 @@ describe('SalesService.create', () => {
     prisma.rep.findUnique.mockResolvedValue({ status: 'active' });
     prisma.client.findUnique.mockResolvedValue({ id: 'c1', is_active: true, client_code: 'VF' });
     prisma.product.findMany.mockResolvedValue([
-      { id: 'p1', product_type: 'internet', is_active: true, product_type_ref: { behaviour: 'tiered' } },
+      { id: 'p1', product_type: 'internet', is_active: true, product_type_ref: { behaviour: 'internet' } },
       { id: 'p2', product_type: 'tv', is_active: true, product_type_ref: { behaviour: 'standard_addon' } },
     ]);
     prisma.sale.create.mockResolvedValue({ id: 's1', sale_code: 'x', sale_items: [] });
@@ -160,12 +160,12 @@ describe('SalesService.createWithinTx (composable inside the Import commit — I
   const dataArg = (tx: ReturnType<typeof make>['tx']): Data =>
     (tx.sale.create.mock.calls[0][0] as { data: Data }).data;
 
-  const arrange = (behaviour: 'tiered' | 'standard_addon' = 'tiered') => {
+  const arrange = (behaviour: 'internet' | 'standard_addon' = 'internet') => {
     const h = make(ALL);
     h.tx.rep.findUnique.mockResolvedValue({ status: 'active' });
     h.tx.client.findUnique.mockResolvedValue({ id: 'c1', is_active: true, client_code: 'VF' });
     h.tx.product.findMany.mockResolvedValue([
-      { id: 'p1', product_type: behaviour === 'tiered' ? 'internet' : 'tv', is_active: true, product_type_ref: { behaviour } },
+      { id: 'p1', product_type: behaviour === 'internet' ? 'internet' : 'tv', is_active: true, product_type_ref: { behaviour } },
     ]);
     h.tx.sale.create.mockResolvedValue({ id: 's1', sale_code: 'x', sale_items: [] });
     return h;

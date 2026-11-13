@@ -22,6 +22,8 @@ describe('HRM RBAC metadata', () => {
     // Recently deleted (2026-11-12): delete / list the bin / restore need hrm:delete (Admin + Super Admin).
     expect(meta(RepsController, 'deleteDocument')).toEqual({ moduleKey: 'hrm', action: 'delete' });
     expect(meta(RepsController, 'listDeletedDocuments')).toEqual({ moduleKey: 'hrm', action: 'delete' });
+    // Data accuracy (2026-11-13) compares PII side by side: HR (hrm:edit) only.
+    expect(meta(RepsController, 'dataAccuracy')).toEqual({ moduleKey: 'hrm', action: 'edit' });
     expect(meta(RepsController, 'restoreDocument')).toEqual({ moduleKey: 'hrm', action: 'delete' });
     expect(meta(RepsController, 'listEquipment')).toEqual({ moduleKey: 'hrm', action: 'view' });
     expect(meta(RepsController, 'assignEquipment')).toEqual({ moduleKey: 'hrm', action: 'edit' });

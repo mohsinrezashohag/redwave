@@ -5,7 +5,6 @@ import { UploadedFile } from '../../common/storage/storage.service';
 // The REAL selectors the runtime uses, so the config-migration tests prove a round trip (write → read
 // back for a past date) rather than only that a row was written.
 import { selectKmRate } from '../expenses/km-rate.logic';
-import { selectEffectiveRate } from '../../common/effective-dating';
 
 const user: AuthUser = {
   id: 'admin-1',
@@ -26,7 +25,6 @@ function make(parseRows: Record<string, unknown>[] = [], headers: string[] = [])
     importBatch: { update: jest.fn() },
     clientBillingRate: { create: jest.fn().mockResolvedValue({ id: 'rate-1' }) },
     kmRateConfig: { create: jest.fn().mockResolvedValue({ id: 'km-1' }) },
-    commissionTierConfig: { create: jest.fn().mockResolvedValue({ id: 'tier-cfg-1' }) },
     commissionFlatRate: { create: jest.fn().mockResolvedValue({ id: 'flat-1' }) },
     productTypeCatalogue: { findUnique: jest.fn().mockResolvedValue({ key: 'tv' }) },
     holdbackLedger: { create: jest.fn().mockResolvedValue({ id: 'hl-1' }) },
@@ -47,7 +45,7 @@ function make(parseRows: Record<string, unknown>[] = [], headers: string[] = [])
     product: { findMany: jest.fn().mockResolvedValue([]) },
     productTypeCatalogue: {
       findMany: jest.fn().mockResolvedValue([
-        { key: 'internet', label: 'Internet', behaviour: 'tiered' },
+        { key: 'internet', label: 'Internet', behaviour: 'internet' },
         { key: 'tv', label: 'TV', behaviour: 'standard_addon' },
         { key: 'home_phone', label: 'Home Phone', behaviour: 'standard_addon' },
       ]),
@@ -317,7 +315,7 @@ describe('ImportService.commit — migration handlers', () => {
     expect(items.map((i) => i.product_type)).toEqual(['internet', 'tv', 'home_phone']);
     expect(items.every((i) => i.counts_toward_tally === false)).toBe(true); // (#5/#9)
 
-    // The base (tiered) item carries the whole amount; the add-ons carry none.
+    // The base (internet) item carries the whole amount; the add-ons carry none.
     expect(items[0].historical_billed_amount).toBe('450.00');
     expect(items[1].historical_billed_amount).toBeNull();
     expect(items[2].historical_billed_amount).toBeNull();
@@ -421,7 +419,7 @@ describe('ImportService.reconcile / remap', () => {
   });
 });
 
-// ── Back-dated REP-stream config migration (km rates · tier schedules · commission flat rates) ────────
+// ── Back-dated REP-stream config migration (km rates · rep rates) ────────
 // The live services reject a past `effective_from` (422) to protect closed periods (#10). These targets
 // are the audited way to load history, mirroring the existing billing-rate handler. The guard itself is
 // asserted still-intact in km-rate.service.spec.ts and tier-schedule.service.spec.ts.
@@ -472,31 +470,6 @@ describe('ImportService — back-dated config migration (#10)', () => {
     expect(tx.kmRateConfig.create).toHaveBeenCalledTimes(1);
   });
 
-  it('writes a BACK-DATED tier schedule as ONE row = config + every bracket', async () => {
-    const { service, prisma, tx } = make();
-    prisma.importBatch.findUnique.mockResolvedValue(
-      stagedConfig('commission_tiers', { tiers: '0-6:110|7-16:125|17-35:145|36+:160', effective_from: PAST, client_code: null }),
-    );
-    await service.commit('b1', user);
-    const data = (tx.commissionTierConfig.create.mock.calls[0][0] as {
-      data: { client_id: string | null; effective_from: Date; tiers: { create: { tier_number: number; min_count: number; max_count: number | null; rate_per_activation: string }[] } };
-    }).data;
-    expect(data.client_id).toBeNull(); // the GLOBAL schedule
-    expect(data.effective_from.toISOString().slice(0, 10)).toBe(PAST);
-    // Created together, so a schedule is never half-written.
-    expect(data.tiers.create).toHaveLength(4);
-    expect(data.tiers.create.map((t) => t.rate_per_activation)).toEqual(['110', '125', '145', '160']);
-    // Tier 1 is the top earner (Schedule C v2), assigned by rate — the operator never supplies numbers.
-    expect(data.tiers.create.find((t) => t.rate_per_activation === '160')!.tier_number).toBe(1);
-    expect(data.tiers.create.find((t) => t.max_count === null)!.min_count).toBe(36);
-
-    // ROUND TRIP — the imported schedule must be the one IN FORCE for a historical sale_date, which is
-    // what makes it reach the engine. Same pure selector the commission config provider uses.
-    const written = { id: 'tier-cfg-1', client_id: data.client_id, effective_from: data.effective_from, effective_to: null };
-    expect(selectEffectiveRate([written], new Date('2021-01-01T00:00:00Z'))).toBe(written);
-    expect(selectEffectiveRate([written], new Date('2019-01-01T00:00:00Z'))).toBeNull();
-  });
-
   it('writes a BACK-DATED commission flat rate against an existing catalogue type', async () => {
     const { service, prisma, tx } = make();
     prisma.importBatch.findUnique.mockResolvedValue(
@@ -519,14 +492,11 @@ describe('ImportService — back-dated config migration (#10)', () => {
     expect(tx.commissionFlatRate.create).not.toHaveBeenCalled();
   });
 
-  it('classifies a malformed tier cell as an ERROR at stage, so the gate blocks it before any write', async () => {
-    const { service, prisma } = make([{ Tiers: '0-6:110|8+:125', 'Effective from': '2020-03-15' }], ['Tiers', 'Effective from']);
-    await service.stage(file, { source_type: 'master_migration', import_type: 'commission_tiers' } as never, user);
-    const data = (prisma.importBatch.create.mock.calls[0][0] as {
-      data: { import_rows: { create: { match_status: string; issue: string | null }[] } };
-    }).data;
-    expect(data.import_rows.create[0].match_status).toBe('error'); // a gap between 6 and 8
-    expect(data.import_rows.create[0].issue).toMatch(/contiguous|gap|bracket/i);
+  it('a tier-schedule import is no longer supported (no tiers since 2026-11-13)', async () => {
+    const { service } = make([{ Tiers: '0-6:110', 'Effective from': '2020-03-15' }], ['Tiers', 'Effective from']);
+    await expect(
+      service.stage(file, { source_type: 'master_migration', import_type: 'commission_tiers' } as never, user),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
 
   it('rejects create_missing on a config target — it is a historical-sales-only affordance', async () => {

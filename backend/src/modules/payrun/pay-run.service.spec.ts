@@ -16,18 +16,13 @@ const user: AuthUser = {
   repId: null,
 };
 
-// A crafted engine result for one rep with a single internet activation, paid in full (no holdback since
-// 2026-11-13: the config provider always hands the engine a 100% advance).
+// A crafted engine result for one rep with a single internet activation at a flat $110 (no tiers, no split
+// since 2026-11-13).
 const ENGINE_RESULT = {
-  internetTally: 1,
-  tierNumber: 4,
-  ratePerActivation: new Decimal('110'),
   items: [
     {
       id: 'item-1',
       productType: 'internet',
-      countsTowardTally: true,
-      tierAtPayment: 4,
       rateApplied: new Decimal('110'),
       commissionBase: new Decimal('110'),
       incentiveId: null,
@@ -35,16 +30,14 @@ const ENGINE_RESULT = {
       commissionPaid: new Decimal('110'),
     },
   ],
-  grossCommission: new Decimal('110'),
-  advanceAmount: new Decimal('110'),
-  holdbackAmount: new Decimal('0'),
+  commissionTotal: new Decimal('110'),
   incentiveTotal: new Decimal('0'),
   totalEarned: new Decimal('110'),
 };
 
-const decLike = (s: string) => ({ toString: () => s });
+const decLike = (v: string) => ({ toString: () => v });
 
-function make(opts: { runStatus?: string; dueHolds?: unknown[]; bonuses?: unknown[]; clawbackTotal?: string; scopeRepIds?: string[] } = {}) {
+function make(opts: { runStatus?: string; bonuses?: unknown[]; clawbackTotal?: string; scopeRepIds?: string[] } = {}) {
   const runStatus = opts.runStatus ?? 'draft';
   const period = {
     id: 'P1',
@@ -69,13 +62,6 @@ function make(opts: { runStatus?: string; dueHolds?: unknown[]; bonuses?: unknow
     saleItem: { update: jest.fn() },
     // The payroll-report line frozen alongside the snapshots (same tx, same engine result).
     payrollReportLine: { deleteMany: jest.fn(), create: jest.fn() },
-    // A hold still waiting from the 70/30 era. Finalize must never read or touch the ledger any more.
-    holdbackLedger: {
-      findFirst: jest.fn().mockResolvedValue(null),
-      create: jest.fn(),
-      findMany: jest.fn().mockResolvedValue(opts.dueHolds ?? []),
-      update: jest.fn(),
-    },
     payRun: { update: jest.fn() },
     payPeriod: { update: jest.fn() },
   };
@@ -107,10 +93,9 @@ function make(opts: { runStatus?: string; dueHolds?: unknown[]; bonuses?: unknow
       .fn()
       .mockResolvedValue(opts.scopeRepIds ? { level: 'roster', repIds: opts.scopeRepIds } : { level: 'all' }),
   };
-  // The engine is mocked; the provider always gives a 100% advance (NO_HOLDBACK).
+  // The engine is mocked, so the config it is handed is never read here.
   const config = {
-    getEngineConfig: jest.fn().mockResolvedValue({ holdback: { advancePct: new Decimal('1') } }),
-    getHoldbackSplit: jest.fn().mockResolvedValue({ advance_pct: '0.7000', holdback_pct: '0.3000' }),
+    getEngineConfig: jest.fn().mockResolvedValue({ flatRates: {} }),
   };
   const engine = { computePeriod: jest.fn().mockReturnValue(ENGINE_RESULT) };
   const emitter = { emit: jest.fn(), emitMany: jest.fn(), emitRole: jest.fn() };
@@ -133,8 +118,8 @@ function make(opts: { runStatus?: string; dueHolds?: unknown[]; bonuses?: unknow
 const lineArg = (tx: ReturnType<typeof make>['tx']) =>
   (tx.payRunLine.create.mock.calls[0][0] as { data: Record<string, string> }).data;
 
-describe('PayRunService.finalize — no holdback (client decision 2026-11-13)', () => {
-  it('FREEZES snapshots, transitions sales to Paid, pays in full and writes NO holdback row (atomic)', async () => {
+describe('PayRunService.finalize — paid in full (no tiers, no 70/30 since 2026-11-13)', () => {
+  it('FREEZES snapshots, transitions sales to Paid and pays the commission in full (atomic)', async () => {
     const { service, tx } = make();
     await service.finalize('run-1', user);
 
@@ -142,7 +127,7 @@ describe('PayRunService.finalize — no holdback (client decision 2026-11-13)', 
     expect(tx.saleItem.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'item-1' },
-        data: expect.objectContaining({ tier_at_payment: 4, rate_applied: '110.00', commission_paid: '110.00' }),
+        data: expect.objectContaining({ rate_applied: '110.00', commission_paid: '110.00' }),
       }),
     );
     // §16: validated → in_pay_run → paid
@@ -150,11 +135,7 @@ describe('PayRunService.finalize — no holdback (client decision 2026-11-13)', 
       expect.objectContaining({ data: expect.objectContaining({ status: 'in_pay_run' }) }),
     );
     expect(tx.sale.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { status: 'paid' } }));
-    // Nothing is held: the ledger is never written.
-    expect(tx.holdbackLedger.create).not.toHaveBeenCalled();
-    expect(lineArg(tx).commission_70).toBe('110.00');
-    expect(lineArg(tx).amount_held).toBe('0.00');
-    expect(lineArg(tx).holdback_release_30).toBe('0.00');
+    expect(lineArg(tx).commission).toBe('110.00');
     expect(lineArg(tx).net_payout).toBe('110.00');
     expect(tx.payRun.update).toHaveBeenCalledWith(expect.objectContaining({ data: { status: 'finalized' } }));
     expect(tx.payPeriod.update).toHaveBeenCalledWith(expect.objectContaining({ data: { status: 'paid' } }));
@@ -173,15 +154,6 @@ describe('PayRunService.finalize — no holdback (client decision 2026-11-13)', 
     expect(tx.payRun.update).not.toHaveBeenCalled(); // rolled back; never finalized
   });
 
-  it('NEVER releases an old hold still waiting: it is settled offline, not paid by the system', async () => {
-    const { service, tx } = make({ dueHolds: [{ id: 'h0', amount_held: decLike('33.00') }] });
-    await service.finalize('run-1', user);
-    expect(tx.holdbackLedger.findMany).not.toHaveBeenCalled();
-    expect(tx.holdbackLedger.update).not.toHaveBeenCalled();
-    expect(lineArg(tx).holdback_release_30).toBe('0.00');
-    expect(lineArg(tx).net_payout).toBe('110.00'); // nothing added from the old hold
-  });
-
   it('applies a bonus; expense/clawback seams resolve to 0', async () => {
     const { service, tx } = make({
       bonuses: [{ rep_id: 'rep-1', bonus_amount: decLike('50.00'), bonus_note: 'spiff' }],
@@ -193,24 +165,21 @@ describe('PayRunService.finalize — no holdback (client decision 2026-11-13)', 
     expect(lineArg(tx).net_payout).toBe('160.00'); // 110 + 50 bonus
   });
 
-  it('a clawback deducts IN FULL from net (flat, no set-off against any hold) and is marked applied once', async () => {
-    const { service, tx, clawbackSeam } = make({ dueHolds: [{ id: 'h0', amount_held: decLike('33.00') }], clawbackTotal: '20.00' });
+  it('a clawback deducts IN FULL from net (flat) and is marked applied once', async () => {
+    const { service, tx, clawbackSeam } = make({ clawbackTotal: '20.00' });
     await service.finalize('run-1', user);
-    expect(tx.holdbackLedger.update).not.toHaveBeenCalled();
     expect(lineArg(tx).clawback_total).toBe('20.00');
     expect(lineArg(tx).net_payout).toBe('90.00'); // 110 − 20
     expect((clawbackSeam as { markApplied: jest.Mock }).markApplied).toHaveBeenCalledTimes(1);
   });
 
-  it('the DRAFT preview shows the same net finalize will pay (no projected release)', async () => {
-    const draft = make({ dueHolds: [{ id: 'h0', amount_held: decLike('33.00') }], clawbackTotal: '20.00' });
+  it('the DRAFT preview shows the same net finalize will pay', async () => {
+    const draft = make({ clawbackTotal: '20.00' });
     await (draft.service as unknown as { computeDraftLines: (r: string, p: unknown, u: AuthUser) => Promise<void> })
       .computeDraftLines('run-1', draft.period, user);
-    const fin = make({ dueHolds: [{ id: 'h0', amount_held: decLike('33.00') }], clawbackTotal: '20.00' });
+    const fin = make({ clawbackTotal: '20.00' });
     await fin.service.finalize('run-1', user);
     expect(lineArg(draft.tx).net_payout).toBe(lineArg(fin.tx).net_payout);
-    expect(lineArg(draft.tx).holdback_release_30).toBe('0.00');
-    expect(draft.tx.holdbackLedger.findMany).not.toHaveBeenCalled();
   });
 });
 
@@ -219,8 +188,7 @@ describe('PayRunService.setBonus', () => {
     const { service, prisma } = make();
     prisma.payRunLine.findFirst.mockResolvedValue({
       id: 'line-1',
-      commission_70: decLike('77.00'),
-      holdback_release_30: decLike('0.00'),
+      commission: decLike('77.00'),
       expense_total: decLike('0.00'),
       incentive_total: decLike('0.00'),
       clawback_total: decLike('0.00'),
@@ -263,8 +231,7 @@ describe('PayRunService.exportRun — RBAC scope (PII; a manager exports only th
     prisma.payRunLine.findMany.mockResolvedValue([
       {
         rep: { rep_code: 'RW-D-0002', full_name: 'Sam Stone' },
-        commission_70: P('2019.50'),
-        holdback_release_30: P('0'),
+        commission: P('2019.50'),
         expense_total: P('0.00'),
         incentive_total: P('0'),
         bonus_amount: P('0'),
@@ -285,43 +252,12 @@ describe('PayRunService.exportRun — RBAC scope (PII; a manager exports only th
     prisma.payRunLine.findMany.mockResolvedValue([
       {
         rep: { rep_code: 'RW-D-0004', full_name: 'Lee, "JJ" Jordan' },
-        commission_70: P('721'), holdback_release_30: z, expense_total: z, incentive_total: z,
+        commission: P('721'), expense_total: z, incentive_total: z,
         bonus_amount: z, clawback_total: z, net_payout: P('721'),
       },
     ]);
     const res = await service.exportRun('run-1', { format: 'csv' }, user);
     expect(res.content.split('\n')[1]).toBe('RW-D-0004,"Lee, ""JJ"" Jordan",721.00,0.00,0.00,0.00,0.00,721.00');
   });
-
-  it('an OLD run that released a hold keeps a holdback_release column so its net still adds up', async () => {
-    const { service, prisma } = make({ runStatus: 'finalized' });
-    prisma.payRun.findUnique.mockResolvedValue(finalizedRun);
-    const P = (v: string) => new Prisma.Decimal(v);
-    const z = P('0');
-    prisma.payRunLine.findMany.mockResolvedValue([
-      {
-        rep: { rep_code: 'RW-D-0001', full_name: 'Ana' },
-        commission_70: P('77'), holdback_release_30: P('33'), expense_total: z, incentive_total: z,
-        bonus_amount: z, clawback_total: z, net_payout: P('110'),
-      },
-    ]);
-    const res = await service.exportRun('run-1', { format: 'csv' }, user);
-    expect(res.content.split('\n')[0]).toContain('holdback_release');
-    expect(res.content.split('\n')[1]).toBe('RW-D-0001,Ana,77.00,33.00,0.00,0.00,0.00,0.00,110.00');
-  });
 });
 
-describe('PayRunService — the line carries the engine reconciliation facts', () => {
-  it('persists gross, tier, tally and rate; nothing is held so the commission is the gross', async () => {
-    const { service, tx } = make();
-    await service.finalize('run-1', user);
-    const line = lineArg(tx) as unknown as Record<string, unknown>;
-
-    expect(line.gross_commission).toBe('110.00');
-    expect(line.amount_held).toBe('0.00');
-    expect(line.tier_at_payment).toBe(4);
-    expect(line.internet_tally).toBe(1);
-    expect(line.rate_per_activation).toBe('110.00');
-    expect(line.commission_70).toBe(line.gross_commission);
-  });
-});

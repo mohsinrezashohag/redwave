@@ -1,6 +1,7 @@
 /**
- * FlatRateService — effective-dated flat (non-tiered) product rates: greenfield internet, TV, home
- * phone. internet is tiered (rejected here). Scope = (client_id, product_type, product_id) — client_id
+ * FlatRateService — effective-dated REP RATES: one flat rate per sale item, for any product type (internet,
+ * greenfield internet, TV, home phone, SA-added add-ons). No tiers since 2026-11-13: Redwave applies any
+ * tier or split manually, outside the system. Scope = (client_id, product_type, product_id) — client_id
  * null is the GLOBAL rate and product_id null is the whole-TYPE rate, each the fallback for anything
  * without its own; reuses shared supersession.
  *
@@ -163,9 +164,8 @@ export class FlatRateService {
   }
 
   /**
-   * A flat rate may only target a NON-tiered, active catalogue type. A tiered type (internet) is rejected
-   * — it's priced by the tier schedule, never a flat rate (#5). Reads behaviour from the catalogue, so new
-   * standard-add-on types are flat-ratable automatically.
+   * A rate may target any ACTIVE catalogue type (internet, greenfield, add-ons). Reads the catalogue, so a
+   * new standard-add-on type is ratable automatically.
    */
   private async assertFlatRatable(key: string): Promise<void> {
     const type = await this.prisma.productTypeCatalogue.findUnique({
@@ -174,11 +174,6 @@ export class FlatRateService {
     });
     if (!type || !type.is_active) {
       throw new UnprocessableEntityException(`Unknown or inactive product type '${key}'`);
-    }
-    if (type.behaviour === 'tiered') {
-      throw new UnprocessableEntityException(
-        `'${key}' is tiered; flat rates apply to non-tiered (greenfield / add-on) types only`,
-      );
     }
   }
 

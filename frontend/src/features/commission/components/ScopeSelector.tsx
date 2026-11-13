@@ -27,8 +27,7 @@ export function ScopeSelector({ value, onChange }: { value: ScopeValue; onChange
       </label>
       <Select id="commission-scope" options={options} value={value} onValueChange={(v) => onChange(v as ScopeValue)} />
       <p className={styles.note}>
-        A client&rsquo;s rates override the global ones for that client&rsquo;s sales. The internet tally that
-        picks the tier still counts <strong>every client together</strong>.
+        A client&rsquo;s rates override the global ones for that client&rsquo;s sales.
       </p>
     </div>
   );

@@ -1,4 +1,4 @@
-import { cleanDate, idDocumentChecks, isIsoDate, mrzCheckDigit, namesMatch, parseMrz } from './id-document.logic';
+import { cleanDate, idDocumentChecks, isIsoDate, mrzCheckDigit, namesMatch, parseMrz, withMrzDetails } from './id-document.logic';
 
 // ICAO 9303 specimen passport (Anna Maria Eriksson, Utopia) — the standard published example.
 const TD3 = ['P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<', 'L898902C36UTO7408122F1204159ZE184226B<<<<<10'];
@@ -13,8 +13,25 @@ describe('MRZ check digits (ICAO 9303)', () => {
   });
 
   it('accepts the specimen passport and card, and reads the expiry', () => {
-    expect(parseMrz(TD3)).toEqual({ format: 'TD3', valid: true, expires_on: '2012-04-15' });
-    expect(parseMrz(TD1)).toEqual({ format: 'TD1', valid: true, expires_on: '2012-04-15' });
+    expect(parseMrz(TD3)).toEqual({
+      format: 'TD3', valid: true, expires_on: '2012-04-15', date_of_birth: '1974-08-12', document_number: 'L898902C3',
+    });
+    expect(parseMrz(TD1)).toMatchObject({ format: 'TD1', valid: true, expires_on: '2012-04-15', date_of_birth: '1974-08-12' });
+  });
+
+  it('places a 2-digit birth year in the right century and fills details the print lacked (2026-11-13)', () => {
+    expect(parseMrz(TD3, '2026-11-13')?.date_of_birth).toBe('1974-08-12');
+    const read = { name_on_document: null, issued_on: null, expires_on: null, mrz_lines: TD3 };
+    expect(withMrzDetails(read, '2026-11-13')).toMatchObject({ date_of_birth: '1974-08-12', document_number: 'L898902C3' });
+    // What the reader printed wins over the strip.
+    expect(withMrzDetails({ ...read, document_number: 'X1' }, '2026-11-13').document_number).toBe('X1');
+  });
+
+  it('checks the date of birth against the profile only when both are known', () => {
+    const read = { name_on_document: null, issued_on: null, expires_on: null, date_of_birth: '1990-01-02', mrz_lines: null };
+    expect(idDocumentChecks(read, 'Riley Rivera', '2026-11-13', '1990-01-02').find((c) => c.key === 'dob')?.ok).toBe(true);
+    expect(idDocumentChecks(read, 'Riley Rivera', '2026-11-13', '1991-01-02').find((c) => c.key === 'dob')?.ok).toBe(false);
+    expect(idDocumentChecks(read, 'Riley Rivera', '2026-11-13', null).some((c) => c.key === 'dob')).toBe(false);
   });
 
   it('flags a tampered strip (one digit of the expiry changed)', () => {

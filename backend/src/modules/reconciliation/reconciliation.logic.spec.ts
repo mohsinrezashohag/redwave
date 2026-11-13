@@ -33,8 +33,7 @@ describe('tieOutPayRunLine — pay-run tie-out (SRS §9)', () => {
   const line = (over: Partial<Record<string, string>> = {}) => ({
     rep_id: 'rep-1',
     rep_code: 'RW-D-001',
-    commission_70: '2317.00',
-    holdback_release_30: '0.00',
+    commission: '2317.00',
     expense_total: '0.00',
     incentive_total: '0.00',
     bonus_amount: '0.00',
@@ -43,9 +42,9 @@ describe('tieOutPayRunLine — pay-run tie-out (SRS §9)', () => {
     ...over,
   });
 
-  it('ties out when net = advance + released + expense + incentive + bonus − clawback', () => {
-    const r = tieOutPayRunLine(line({ holdback_release_30: '993.00', clawback_total: '100.00', net_payout: '3210.00' }));
-    expect(r.recomputed_net).toBe('3210.00'); // 2317 + 993 − 100
+  it('ties out when net = commission + expense + incentive + bonus − clawback', () => {
+    const r = tieOutPayRunLine(line({ expense_total: '45.00', clawback_total: '100.00', net_payout: '2262.00' }));
+    expect(r.recomputed_net).toBe('2262.00'); // 2317 + 45 − 100
     expect(r.ok).toBe(true);
   });
 

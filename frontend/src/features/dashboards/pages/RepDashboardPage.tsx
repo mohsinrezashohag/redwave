@@ -1,6 +1,6 @@
 /**
  * RepDashboardPage — the rep's own-data view (design-system §10.1: calm, motivational, own-data only).
- * KPI tiles (this period's activations + pay composition), tier progress, an activations-by-product chart,
+ * KPI tiles (this period's activations + pay composition), an activations-by-product chart,
  * the rep's leaderboard standing (counts only), and recent clawbacks. All data is server-scoped to the
  * caller's rep; a 403 (e.g. a user with no linked rep) renders AccessDenied. — SRS §14
  */
@@ -13,7 +13,6 @@ import { money } from '../../../lib/format/money';
 import { useLeaderboard, useRepDashboard } from '../api/useDashboards';
 import { ChartContainer } from '../charts/ChartContainer';
 import { ThemedBarChart } from '../charts/ThemedBarChart';
-import { TierProgressBar } from '../components/TierProgressBar';
 import { RecentClawbacks } from '../components/RecentClawbacks';
 import { LeaderboardTable } from '../components/LeaderboardTable';
 import { AccessDenied } from '../components/AccessDenied';
@@ -44,8 +43,8 @@ export default function RepDashboardPage() {
         {d && (
           <>
             <div className={styles.kpiGrid}>
-              <StatCard label="Internet activations" value={d.internet_activations} footnote="Counts toward your tier" />
-              <StatCard label="Estimated commission" value={money(d.commission.commission_70)} footnote="This period, paid in full" />
+              <StatCard label="Internet activations" value={d.internet_activations} footnote="This period, excluding greenfield" />
+              <StatCard label="Estimated commission" value={money(d.commission.commission)} footnote="This period, paid in full" />
               <StatCard label="Net payout (period)" value={money(d.commission.net_payout)} footnote="After expenses, bonuses and clawbacks" />
               <StatCard
                 label="Target progress"
@@ -64,12 +63,6 @@ export default function RepDashboardPage() {
                   <p className="mono">No activations yet this period.</p>
                 )}
               </Card>
-              {/* Hidden when there is no tier ladder ("tiers off", 2026-11-11): every product pays its own base price. */}
-              {d.tier && (
-                <Card title="Tier progress">
-                  <TierProgressBar tier={d.tier} />
-                </Card>
-              )}
             </div>
 
             <Card title="Recent sales">

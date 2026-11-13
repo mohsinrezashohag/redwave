@@ -14,10 +14,8 @@ import { AuditService } from '../../common/audit/audit.service';
 import { ScopeService } from '../../common/scope/scope.service';
 import { AuthUser } from '../../common/rbac/auth-user.type';
 import { BUILTIN_ROLES } from '../../common/rbac/rbac.constants';
-import { selectEffectiveRate } from '../../common/effective-dating';
 import { winnipegDateOnly } from '../../common/timezone';
 import { currentPeriod } from './period.logic';
-import { countToTier, TierBracket } from './tier-progress.logic';
 import { DashboardQuery } from './dto/dashboard-query.dto';
 import { BusinessTrendsQuery } from './dto/business-trends.dto';
 
@@ -59,7 +57,7 @@ export class DashboardsService {
 
     const commission = await this.prisma.payRunLine.aggregate({
       where: { rep_id: repId, ...(period ? { pay_run: { pay_period_id: period.id } } : {}) },
-      _sum: { commission_70: true, net_payout: true, incentive_total: true },
+      _sum: { commission: true, net_payout: true, incentive_total: true },
     });
     const recentClawbacks = await this.prisma.clawback.findMany({
       where: { rep_id: repId },
@@ -83,11 +81,10 @@ export class DashboardsService {
       period: period ? { id: period.id, period_number: period.period_number } : null,
       counts_by_product: byProduct.map((g) => ({ product_type: g.product_type, count: g._count._all })),
       internet_activations: internetTally,
-      tier: countToTier(await this.effectiveTierBrackets(), internetTally),
-      // Money — READ from frozen/computed pay-run lines (never recomputed). #1/#5. No holdback (2026-11-13):
-      // `commission_70` is the commission paid, in full.
+      // Money — READ from frozen/computed pay-run lines (never recomputed). #1. Paid in full (no tiers, no
+      // split since 2026-11-13).
       commission: {
-        commission_70: money(commission._sum.commission_70),
+        commission: money(commission._sum.commission),
         incentive_total: money(commission._sum.incentive_total),
         net_payout: money(commission._sum.net_payout),
       },
@@ -205,7 +202,7 @@ export class DashboardsService {
       this.prisma.clientStatement.aggregate({ where: stmtIn(period), _sum: { amount_cad: true } }),
       this.prisma.payRunLine.aggregate({
         where: period ? { pay_run: { pay_period_id: period.id } } : {},
-        _sum: { net_payout: true, commission_70: true },
+        _sum: { net_payout: true, commission: true },
       }),
       this.prisma.clawback.aggregate({
         where: period ? { applied_in_pay_run: { pay_period_id: period.id } } : {},
@@ -219,7 +216,7 @@ export class DashboardsService {
     ]);
     const stmtRev = dec(revAgg._sum.amount_cad); // confirmed client-statement revenue, CONSOLIDATED in CAD
     const payout = dec(payAgg._sum.net_payout);
-    const commission70 = dec(payAgg._sum.commission_70);
+    const commissionPaid = dec(payAgg._sum.commission);
     const expenseTotal = expenseGroups.reduce((a, g) => a.plus(dec(g._sum.amount_cad)), new Decimal(0));
     const expenseKm = expenseGroups.filter((g) => g.category === 'km').reduce((a, g) => a.plus(dec(g._sum.amount_cad)), new Decimal(0));
 
@@ -230,7 +227,6 @@ export class DashboardsService {
     });
     const byProduct = new Map<string, number>();
     const byClient = new Map<string, number>();
-    const perRepTally = new Map<string, number>();
     let internet = 0;
     let greenfieldCount = 0;
     let greenfieldAmt = new Decimal(0);
@@ -239,15 +235,14 @@ export class DashboardsService {
       byClient.set(it.sale.client_id, (byClient.get(it.sale.client_id) ?? 0) + 1);
       if (it.product_type === 'internet' && it.counts_toward_tally) {
         internet += 1;
-        perRepTally.set(it.sale.rep_id, (perRepTally.get(it.sale.rep_id) ?? 0) + 1);
       } else if (it.product_type === 'internet' && !it.counts_toward_tally) {
         greenfieldCount += 1;
-        greenfieldAmt = greenfieldAmt.plus(dec(it.commission_paid)); // frozen flat $100 (read, not recomputed)
+        greenfieldAmt = greenfieldAmt.plus(dec(it.commission_paid)); // the frozen greenfield rate (read, not recomputed)
       }
     }
 
     // ── Historical (migrated) sales blend INTO the business view ONLY: product/client activation volume +
-    // a billing-stream reference revenue. They NEVER touch tally / greenfield / tier / payout (#2/#3/#5). ──
+    // a billing-stream reference revenue. They NEVER touch internet counts / greenfield / payout (#2/#3). ──
     const histItems = await this.prisma.saleItem.findMany({
       where: { sale: { status: 'historical', ...saleDateIn(period) } },
       select: { product_type: true, historical_billed_amount: true, sale: { select: { client_id: true } } },
@@ -264,21 +259,13 @@ export class DashboardsService {
     const rev = stmtRev.plus(histRevenue); // business revenue = confirmed statements + historical billed (billing stream, #3)
     const margin = rev.minus(payout);
 
-    // ── Tier distribution over ALL active reps (0-activation reps land in the entry tier). ──
-    const [activeReps, brackets, clients, catalogue, revByClientRows, funnelGroups] = await Promise.all([
-      this.prisma.rep.findMany({ where: { status: 'active' }, select: { id: true } }),
-      this.effectiveTierBrackets(),
+    const [activeRepCount, clients, catalogue, revByClientRows, funnelGroups] = await Promise.all([
+      this.prisma.rep.count({ where: { status: 'active' } }),
       this.prisma.client.findMany({ select: { id: true, client_code: true, name: true } }),
       this.prisma.productTypeCatalogue.findMany({ select: { key: true, label: true } }),
       this.prisma.clientStatement.groupBy({ by: ['client_id'], where: stmtIn(period), _sum: { amount_cad: true } }), // CAD-consolidated
       this.prisma.sale.groupBy({ by: ['status'], where: { ...saleDateIn(period) }, _count: { _all: true } }),
     ]);
-    const tierCounts = new Map<number, number>();
-    for (const r of activeReps) {
-      const t = countToTier(brackets, perRepTally.get(r.id) ?? 0);
-      if (t) tierCounts.set(t.tier_number, (tierCounts.get(t.tier_number) ?? 0) + 1);
-    }
-
     // ── Client mix + labels ──
     const clientById = new Map(clients.map((c) => [c.id, c]));
     const typeLabel = new Map(catalogue.map((t) => [t.key, t.label]));
@@ -327,7 +314,7 @@ export class DashboardsService {
       net_margin: margin.toFixed(2),
       net_margin_pct: rev.isZero() ? '0.0' : margin.div(rev).times(100).toFixed(1),
       clawback_total: money(clawAgg._sum.amount),
-      clawback_rate: commission70.isZero() ? '0.0000' : dec(clawAgg._sum.amount).div(commission70).toFixed(4),
+      clawback_rate: commissionPaid.isZero() ? '0.0000' : dec(clawAgg._sum.amount).div(commissionPaid).toFixed(4),
       expense: { total: expenseTotal.toFixed(2), km: expenseKm.toFixed(2), other: expenseTotal.minus(expenseKm).toFixed(2) },
       total_activations: items.length + histItems.length, // confirmed + historical (business view)
       internet_activations: internet,
@@ -344,8 +331,7 @@ export class DashboardsService {
         in_pay_run: funnelOf('in_pay_run'),
         paid: funnelOf('paid'),
       },
-      active_rep_count: activeReps.length,
-      tier_distribution: [...tierCounts.entries()].map(([tier_number, rep_count]) => ({ tier_number, rep_count })).sort((a, b) => a.tier_number - b.tier_number),
+      active_rep_count: activeRepCount,
       client_mix: clientMix,
       revenue_growth: { current: rev.toFixed(2), previous: revPrev.toFixed(2), pct: growthPct(rev, revPrev) },
       activation_growth: { current: internet, previous: actPrev, pct: growthPct(internet, actPrev) },
@@ -366,7 +352,7 @@ export class DashboardsService {
     });
     const periods = [...recent].sort((a, b) => a.period_number - b.period_number); // display ascending
     if (periods.length === 0) {
-      return { periods: [], by_product: [], by_client_revenue: [], tier_distribution: [] };
+      return { periods: [], by_product: [], by_client_revenue: [] };
     }
     const periodIds = periods.map((p) => p.id);
     const minStart = periods[0].start_date;
@@ -374,7 +360,7 @@ export class DashboardsService {
     const periodOf = (d: Date) =>
       periods.find((p) => p.start_date.getTime() <= d.getTime() && p.end_date.getTime() >= d.getTime()) ?? null;
 
-    const [statements, lines, claws, clients, brackets, activeReps, items, histItems] = await Promise.all([
+    const [statements, lines, claws, clients, items, histItems] = await Promise.all([
       // CAD-consolidated. A bill covers a WEEK, so it is attributed to the pay period containing its Monday;
       // statements issued before weekly billing still carry pay_period_id and are matched directly.
       this.prisma.clientStatement.findMany({
@@ -389,8 +375,6 @@ export class DashboardsService {
       this.prisma.payRunLine.findMany({ where: { pay_run: { pay_period_id: { in: periodIds } } }, select: { net_payout: true, pay_run: { select: { pay_period_id: true } } } }),
       this.prisma.clawback.findMany({ where: { applied_in_pay_run: { pay_period_id: { in: periodIds } } }, select: { amount: true, applied_in_pay_run: { select: { pay_period_id: true } } } }),
       this.prisma.client.findMany({ select: { id: true, client_code: true } }),
-      this.effectiveTierBrackets(),
-      this.prisma.rep.findMany({ where: { status: 'active' }, select: { id: true } }),
       this.prisma.saleItem.findMany({
         where: { sale: { status: { in: CONFIRMED }, sale_date: { gte: minStart, lte: maxEnd } } },
         select: { product_type: true, counts_toward_tally: true, sale: { select: { sale_date: true, rep_id: true } } },
@@ -407,7 +391,6 @@ export class DashboardsService {
     const clientCode = new Map(clients.map((c) => [c.id, c.client_code]));
     const revByPeriodClient = new Map<string, Map<string, Decimal>>();
     const productByPeriod = new Map<string, Map<string, number>>();
-    const tallyByPeriodRep = new Map<string, Map<string, number>>();
 
     for (const s of statements) {
       const periodId = s.pay_period_id ?? (s.billing_period ? periodOf(s.billing_period.start_date)?.id : null);
@@ -437,12 +420,9 @@ export class DashboardsService {
       productByPeriod.set(p.id, pm);
       if (it.product_type === 'internet' && it.counts_toward_tally) {
         acc.internet += 1;
-        const tm = tallyByPeriodRep.get(p.id) ?? new Map<string, number>();
-        tm.set(it.sale.rep_id, (tm.get(it.sale.rep_id) ?? 0) + 1);
-        tallyByPeriodRep.set(p.id, tm);
       }
     }
-    // Historical blend: revenue + activation volume + product/client mix; never internet tally/tier.
+    // Historical blend: revenue + activation volume + product/client mix; never the internet count.
     for (const it of histItems) {
       const p = periodOf(it.sale.sale_date);
       if (!p) continue;
@@ -478,15 +458,6 @@ export class DashboardsService {
       by_client_revenue: periods.flatMap((p) =>
         [...(revByPeriodClient.get(p.id) ?? new Map<string, Decimal>()).entries()].map(([client_code, amt]) => ({ period_number: p.period_number, client_code, amount: amt.toFixed(2) })),
       ),
-      tier_distribution: periods.flatMap((p) => {
-        const tm = tallyByPeriodRep.get(p.id) ?? new Map<string, number>();
-        const counts = new Map<number, number>();
-        for (const r of activeReps) {
-          const t = countToTier(brackets, tm.get(r.id) ?? 0);
-          if (t) counts.set(t.tier_number, (counts.get(t.tier_number) ?? 0) + 1);
-        }
-        return [...counts.entries()].map(([tier_number, rep_count]) => ({ period_number: p.period_number, tier_number, rep_count }));
-      }),
     };
   }
 
@@ -519,25 +490,6 @@ export class DashboardsService {
       select: { id: true, period_number: true, start_date: true, end_date: true },
     });
     return currentPeriod(periods, winnipegDateOnly()); // "today" in Winnipeg — CLAUDE §11
-  }
-
-  /**
-   * The GLOBAL bracket ladder, for tier PROGRESS display only. Schedules can be per-client, but a rep's
-   * progress spans clients, so there is no single per-client answer — this reads the global ladder
-   * explicitly (never a mixed-scope list, which would let one client's newer schedule pose as everyone's).
-   * Pay is unaffected: the engine resolves each activation's rate from its own client's schedule.
-   */
-  private async effectiveTierBrackets(): Promise<TierBracket[]> {
-    const headers = await this.prisma.commissionTierConfig.findMany({
-      where: { client_id: null },
-      include: { tiers: true },
-    });
-    const header = selectEffectiveRate(headers, winnipegDateOnly());
-    return (header?.tiers ?? []).map((t) => ({
-      tier_number: t.tier_number,
-      min_count: t.min_count,
-      max_count: t.max_count,
-    }));
   }
 
   private async deny(user: AuthUser, reason: string): Promise<never> {

@@ -112,7 +112,7 @@ export function Interactive() {
         Show toast
       </Button>
 
-      <Tooltip content="Gross internet tally → tier rate">
+      <Tooltip content="Each item pays its own rep rate">
         <IconButton label="Help" icon={<Search size={18} />} variant="outline" />
       </Tooltip>
 

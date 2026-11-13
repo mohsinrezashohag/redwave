@@ -32,7 +32,6 @@ import {
   classifyBillingRateRow,
   classifyClientRow,
   classifyCommissionFlatRateRow,
-  classifyCommissionTierRow,
   classifyHistoricalSaleRow,
   classifyKmRateRow,
   classifyLiveSaleRow,
@@ -59,8 +58,7 @@ import { applyBulkValidation } from './handlers/bulk-validation.handler';
 import { applyLiveSale } from './handlers/live-sales.handler';
 import { applyBillingRate } from './handlers/billing-rate.handler';
 import { applyKmRate } from './handlers/km-rate.handler';
-import { applyCommissionFlatRate, applyCommissionTierSchedule } from './handlers/commission-config.handler';
-import { parseTierSpec } from './tier-spec.logic';
+import { applyCommissionFlatRate } from './handlers/commission-config.handler';
 import { applyClient, applyHistoricalSale, applyProduct, applyRep } from './handlers/master.handlers';
 import { CreateImportDto } from './dto/create-import.dto';
 import { ReconcileAction, ReconcileDto } from './dto/reconcile.dto';
@@ -77,7 +75,6 @@ type Kind =
   | 'create_reps'
   // Back-dated REP-stream config migration (the counterparts of `billing_rate`, #10).
   | 'km_rate'
-  | 'commission_tier_schedule'
   | 'commission_flat_rate';
 
 const str = (row: RawRow, key: string): string | null => {
@@ -161,7 +158,7 @@ function pairingKind(source: ImportSourceType, type: ImportType): Kind | null {
   // balance_migration + holdback is gone: there is no holdback since 2026-11-13 (holds are handled offline).
   // Back-dated config migration — one pair per row SHAPE (TARGET_FIELDS holds one field list per pair).
   if (source === 'master_migration' && type === 'km_rates') return 'km_rate';
-  if (source === 'master_migration' && type === 'commission_tiers') return 'commission_tier_schedule';
+  // master_migration + commission_tiers is gone: there are no tiers since 2026-11-13.
   if (source === 'master_migration' && type === 'commission_flat_rates') return 'commission_flat_rate';
   return null;
 }
@@ -195,7 +192,7 @@ export class ImportService {
       throw new UnprocessableEntityException('client_id is required for a client_report import');
     }
     // Auto-creating referenced master data is a MIGRATION affordance for reference-only history. On live
-    // sales an invented rep or product would flow straight into the tier tally and the pay run (#5), so it
+    // sales an invented rep or product would flow straight into the pay run, so it
     // is refused outright rather than quietly ignored.
     if (dto.create_missing && kind !== 'historical_sales') {
       throw new UnprocessableEntityException(
@@ -520,8 +517,6 @@ export class ImportService {
         return applyBillingRate(tx, mapped, user.id);
       case 'km_rate':
         return applyKmRate(tx, mapped, user.id);
-      case 'commission_tier_schedule':
-        return applyCommissionTierSchedule(tx, mapped, user.id);
       case 'commission_flat_rate':
         return applyCommissionFlatRate(tx, mapped, user.id);
       case 'create_clients':
@@ -607,8 +602,6 @@ export class ImportService {
         return this.classifyBillingRates(mappedRows);
       case 'km_rate':
         return this.classifyKmRates(mappedRows);
-      case 'commission_tier_schedule':
-        return this.classifyCommissionTiers(mappedRows);
       case 'commission_flat_rate':
         return this.classifyCommissionFlatRates(mappedRows);
       case 'create_clients':
@@ -756,16 +749,6 @@ export class ImportService {
     });
   }
 
-  private async classifyCommissionTiers(mappedRows: RawRow[]): Promise<Classification[]> {
-    const byCode = await this.clientsByCode(uniqCodes(mappedRows, 'client_code'));
-    return mappedRows.map((r) => {
-      const code = str(r, 'client_code');
-      // parseTierSpec is injected so the classifier stays pure — and it is the SAME parse the handler
-      // runs, so a schedule the gate accepted can never fail to write.
-      return classifyCommissionTierRow(r, { clientExists: !code || byCode.has(up(code)), parseTiers: parseTierSpec });
-    });
-  }
-
   private async classifyCommissionFlatRates(mappedRows: RawRow[]): Promise<Classification[]> {
     const byCode = await this.clientsByCode(uniqCodes(mappedRows, 'client_code'));
     const types = new Set(
@@ -892,7 +875,7 @@ export class ImportService {
         })
       : [];
     const prodKey = new Set(products.map((p) => `${p.client_id}|${p.product_type}`));
-    // product_type → catalogue behaviour; `tiered`/`greenfield` are the internet base (#5/#9).
+    // product_type → catalogue behaviour; `internet`/`greenfield` are the internet base.
     const behaviours = new Map(
       (await this.prisma.productTypeCatalogue.findMany({ select: { key: true, behaviour: true } })).map(
         (t) => [t.key, t.behaviour],
@@ -912,7 +895,7 @@ export class ImportService {
         missingProductTypes: cid ? types.filter((t) => !prodKey.has(`${cid}|${t}`)) : types,
         hasInternetBase: types.some((t) => {
           const behaviour = behaviours.get(t);
-          return behaviour === 'tiered' || behaviour === 'greenfield';
+          return behaviour === 'internet' || behaviour === 'greenfield';
         }),
       });
     });
@@ -961,7 +944,7 @@ export class ImportService {
 }
 
 interface CommitContext {
-  /** product-type key → catalogue behaviour (`tiered` / `greenfield` / `standard_addon`). */
+  /** product-type key → catalogue behaviour (`internet` / `greenfield` / `standard_addon`). */
   behaviours: Map<string, string>;
   /** The batch was staged with `create_missing` — referenced master data may be created at commit. */
   createMissing: boolean;

@@ -48,8 +48,7 @@ export interface PayRunLineTieOut {
 export function tieOutPayRunLine(line: {
   rep_id: string;
   rep_code: string | null;
-  commission_70: Decimal.Value;
-  holdback_release_30: Decimal.Value;
+  commission: Decimal.Value;
   expense_total: Decimal.Value;
   incentive_total: Decimal.Value;
   bonus_amount: Decimal.Value;
@@ -57,8 +56,7 @@ export function tieOutPayRunLine(line: {
   net_payout: Decimal.Value;
 }): PayRunLineTieOut {
   const recomputed = computeNet({
-    advance: new Decimal(line.commission_70),
-    released: new Decimal(line.holdback_release_30),
+    commission: new Decimal(line.commission),
     expense: new Decimal(line.expense_total),
     incentive: new Decimal(line.incentive_total),
     bonus: new Decimal(line.bonus_amount),

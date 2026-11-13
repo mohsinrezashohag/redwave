@@ -1,34 +1,18 @@
+/**
+ * Commission Engine — the acceptance fixtures. No tiers and no 70/30 since 2026-11-13: every item pays ONE
+ * flat rep rate (most specific wins), greenfield pays the greenfield rate, incentives are separate and paid
+ * in full, and a clawback recovers exactly rate + incentive from the snapshot. — CLAUDE §6
+ */
 import { Decimal } from 'decimal.js';
 import { CommissionEngineService } from './commission-engine.service';
 import { d } from './money';
-import {
-  ActivationInput,
-  EngineConfig,
-  FlatRates,
-  HoldbackSplit,
-  IncentiveConfig,
-  ProductType,
-  TierBracket,
-} from './engine.types';
+import { ActivationInput, EngineConfig, FlatRates, IncentiveConfig, ProductType } from './engine.types';
 
 const { internet, greenfield_internet, tv, home_phone } = ProductType;
 
-// ── Standard config fixture (Schedule C v2 — CLAUDE §6 / SRS §7.2) ──────────────────────────
-const TIERS: TierBracket[] = [
-  { tierNumber: 4, minCount: 0, maxCount: 6, ratePerActivation: d('110') },
-  { tierNumber: 3, minCount: 7, maxCount: 16, ratePerActivation: d('125') },
-  { tierNumber: 2, minCount: 17, maxCount: 35, ratePerActivation: d('145') },
-  { tierNumber: 1, minCount: 36, maxCount: null, ratePerActivation: d('160') },
-];
-const FLAT: FlatRates = { greenfield_internet: d('100'), tv: d('30'), home_phone: d('30') };
-const SPLIT: HoldbackSplit = { advancePct: d('0.70'), holdbackPct: d('0.30') };
-
-const baseConfig = (overrides: Partial<EngineConfig> = {}): EngineConfig => ({
-  tiers: TIERS,
-  flatRates: FLAT,
-  holdback: SPLIT,
-  ...overrides,
-});
+// ── Standard config fixture: default rate per product type (the genesis defaults) ─────────────────
+const FLAT: FlatRates = { internet: d('110'), greenfield_internet: d('100'), tv: d('30'), home_phone: d('30') };
+const baseConfig = (overrides: Partial<EngineConfig> = {}): EngineConfig => ({ flatRates: FLAT, ...overrides });
 
 // ── Activation builders ─────────────────────────────────────────────────────────────────────
 let seq = 0;
@@ -36,234 +20,97 @@ const mk = (
   productType: ProductType,
   clientId = 'VF',
   saleDate = '2026-01-10',
-): ActivationInput => ({ id: `item-${(seq += 1)}`, productType, clientId, saleDate });
-const mkMany = (productType: ProductType, n: number, clientId?: string, saleDate?: string) =>
-  Array.from({ length: n }, () => mk(productType, clientId, saleDate));
+  productId: string | null = null,
+): ActivationInput => ({ id: `item-${(seq += 1)}`, productType, clientId, saleDate, productId });
+const mkMany = (productType: ProductType, n: number, clientId?: string, productId: string | null = null) =>
+  Array.from({ length: n }, () => mk(productType, clientId, '2026-01-10', productId));
 
-/** Assert a Decimal equals an expected cents string (e.g. '3310.00'). */
+/** Assert a Decimal equals an expected cents string (e.g. '2410.00'). */
 const money = (value: Decimal) => value.toFixed(2);
 
-describe('CommissionEngineService', () => {
+describe('CommissionEngineService — flat rep rates (no tiers, no split)', () => {
   const engine = new CommissionEngineService();
 
-  // ─────────────────────────── MANDATORY FIXTURES (the acceptance bar) ───────────────────────
-
-  it('FIXTURE 1 — $3,310 case: 20 internet + 4 TV + 3 HP + 2 greenfield', () => {
-    const activations = [
-      ...mkMany(internet, 20),
-      ...mkMany(tv, 4),
-      ...mkMany(home_phone, 3),
-      ...mkMany(greenfield_internet, 2),
-    ];
-    const r = engine.computePeriod({ activations, config: baseConfig() });
-
-    expect(r.internetTally).toBe(20);
-    expect(r.tierNumber).toBe(2);
-    expect(money(r.ratePerActivation as Decimal)).toBe('145.00');
-    expect(money(r.grossCommission)).toBe('3310.00'); // 2900 + 120 + 90 + 200
-    expect(money(r.advanceAmount)).toBe('2317.00'); // 70%
-    expect(money(r.holdbackAmount)).toBe('993.00'); // 30%
-    expect(money(r.advanceAmount.plus(r.holdbackAmount))).toBe('3310.00'); // no lost cent
-    expect(money(r.incentiveTotal)).toBe('0.00');
-
-    const internetItems = r.items.filter((i) => i.productType === internet);
-    expect(internetItems).toHaveLength(20);
-    expect(
-      internetItems.every(
-        (i) => money(i.rateApplied) === '145.00' && i.tierAtPayment === 2 && i.countsTowardTally,
-      ),
-    ).toBe(true);
-
-    const greenfieldItems = r.items.filter((i) => i.productType === greenfield_internet);
-    expect(
-      greenfieldItems.every(
-        (i) =>
-          !i.countsTowardTally && i.tierAtPayment === null && money(i.rateApplied) === '100.00',
-      ),
-    ).toBe(true);
-  });
-
-  it('FIXTURE 2 — cross-client aggregation: 3 VF + 9 RF internet → tally 12 → Tier 3, all at $125', () => {
-    const activations = [...mkMany(internet, 3, 'VF'), ...mkMany(internet, 9, 'RF')];
-    const r = engine.computePeriod({ activations, config: baseConfig() });
-
-    expect(r.internetTally).toBe(12); // aggregated across BOTH clients (per-client would be wrong)
-    expect(r.tierNumber).toBe(3);
-    expect(r.items).toHaveLength(12);
-    expect(r.items.every((i) => money(i.rateApplied) === '125.00')).toBe(true);
-    expect(money(r.grossCommission)).toBe('1500.00');
-  });
-
-  // ── Per-client schedules: ONE cross-client tally, a PER-CLIENT rate lookup (#5 preserved) ──────
-  describe('per-client tier schedules', () => {
-    // RF pays more per activation AND brackets differently: 12 falls in RF's 10-24 bracket (tier 2).
-    const RF_TIERS: TierBracket[] = [
-      { tierNumber: 3, minCount: 0, maxCount: 9, ratePerActivation: d('120') },
-      { tierNumber: 2, minCount: 10, maxCount: 24, ratePerActivation: d('150') },
-      { tierNumber: 1, minCount: 25, maxCount: null, ratePerActivation: d('170') },
-    ];
-
-    it('the TALLY stays cross-client while each item is paid at ITS OWN client’s rate', () => {
-      const activations = [...mkMany(internet, 3, 'VF'), ...mkMany(internet, 9, 'RF')];
-      const r = engine.computePeriod({
-        activations,
-        config: baseConfig({ tiersByClient: { RF: RF_TIERS } }),
-      });
-
-      // The one number that must never be split per client. — CLAUDE #5
-      expect(r.internetTally).toBe(12);
-
-      const vf = r.items.filter((i) => activations.find((a) => a.id === i.id)!.clientId === 'VF');
-      const rf = r.items.filter((i) => activations.find((a) => a.id === i.id)!.clientId === 'RF');
-      // VF has no schedule of its own → the GLOBAL ladder: tally 12 → Tier 3 @ $125.
-      expect(vf.every((i) => money(i.rateApplied) === '125.00' && i.tierAtPayment === 3)).toBe(true);
-      // RF's own ladder, against the SAME tally of 12 → its 10-24 bracket @ $150.
-      expect(rf.every((i) => money(i.rateApplied) === '150.00' && i.tierAtPayment === 2)).toBe(true);
-      expect(money(r.grossCommission)).toBe('1725.00'); // 3×125 + 9×150
-      // Mixed schedules → no single honest period-level tier/rate; per-item values carry the truth.
-      expect(r.tierNumber).toBeNull();
-      expect(r.ratePerActivation).toBeNull();
-    });
-
-    it('a client with no schedule of its own falls back to the GLOBAL ladder', () => {
-      const activations = mkMany(internet, 12, 'VF');
-      const r = engine.computePeriod({
-        activations,
-        config: baseConfig({ tiersByClient: { RF: RF_TIERS } }), // nothing for VF
-      });
-      expect(r.tierNumber).toBe(3); // uniform → reported
-      expect(money(r.ratePerActivation as Decimal)).toBe('125.00');
-      expect(r.items.every((i) => money(i.rateApplied) === '125.00')).toBe(true);
-    });
-
-    it('all activations on ONE client’s schedule still report a uniform tier/rate', () => {
-      const activations = mkMany(internet, 12, 'RF');
-      const r = engine.computePeriod({
-        activations,
-        config: baseConfig({ tiersByClient: { RF: RF_TIERS } }),
-      });
-      expect(r.internetTally).toBe(12);
-      expect(r.tierNumber).toBe(2);
-      expect(money(r.ratePerActivation as Decimal)).toBe('150.00');
-      expect(money(r.grossCommission)).toBe('1800.00'); // 12 × 150
-    });
-
-    it('per-client FLAT rates resolve per item, falling back to global', () => {
-      const activations = [mk(internet, 'VF'), mk(tv, 'VF'), mk(tv, 'RF'), mk(home_phone, 'RF')];
-      const r = engine.computePeriod({
-        activations,
-        config: baseConfig({ flatRatesByClient: { RF: { tv: d('45') } } }), // RF's TV only
-      });
-      const rate = (i: number) => money(r.items[i].rateApplied);
-      expect(rate(1)).toBe('30.00'); // VF TV → global
-      expect(rate(2)).toBe('45.00'); // RF TV → RF's own
-      expect(rate(3)).toBe('30.00'); // RF home phone → global (no RF entry)
-    });
-
-    it('#5 REGRESSION: the tally ignores clientId entirely, however many schedules are in play', () => {
-      // 4 clients, each with its own ladder — the tally is still the plain cross-client count.
-      const activations = [
-        ...mkMany(internet, 5, 'A'),
-        ...mkMany(internet, 4, 'B'),
-        ...mkMany(internet, 3, 'C'),
-        ...mkMany(internet, 8, 'D'),
-      ];
-      const r = engine.computePeriod({
-        activations,
-        config: baseConfig({ tiersByClient: { A: RF_TIERS, B: RF_TIERS, C: RF_TIERS, D: RF_TIERS } }),
-      });
-      expect(r.internetTally).toBe(20); // NOT 5/4/3/8 — one shared tally
-      // 20 lands in RF_TIERS' 10-24 bracket for every client.
-      expect(r.items.every((i) => i.tierAtPayment === 2)).toBe(true);
-    });
-  });
-
-  it('FIXTURE 3 — tier boundary: 16 internet → Tier 3 ($125); 17 internet → Tier 2 ($145)', () => {
-    const r16 = engine.computePeriod({ activations: mkMany(internet, 16), config: baseConfig() });
-    expect(r16.tierNumber).toBe(3);
-    expect(money(r16.ratePerActivation as Decimal)).toBe('125.00');
-    expect(money(r16.grossCommission)).toBe('2000.00'); // 16 × 125
-
-    const r17 = engine.computePeriod({ activations: mkMany(internet, 17), config: baseConfig() });
-    expect(r17.tierNumber).toBe(2);
-    expect(money(r17.ratePerActivation as Decimal)).toBe('145.00');
-    expect(money(r17.grossCommission)).toBe('2465.00'); // 17 × 145
-  });
-
-  it('FIXTURE 4 — per-product clawback: TV → $30; TV + $20 incentive → $50; internet untouched, no re-tier', () => {
-    expect(money(engine.computeClawbackAmount({ rateApplied: d('30') }))).toBe('30.00');
-    expect(
-      money(engine.computeClawbackAmount({ rateApplied: d('30'), incentiveAmount: d('20') })),
-    ).toBe('50.00');
-
-    // A household: 1 internet (Tier 4) + 1 TV. Clawing back the TV is independent of the internet.
-    const r = engine.computePeriod({ activations: [mk(internet), mk(tv)], config: baseConfig() });
-    const tvItem = r.items.find((i) => i.productType === tv);
-    const internetItem = r.items.find((i) => i.productType === internet);
-    expect(
-      money(
-        engine.computeClawbackAmount({
-          rateApplied: tvItem!.rateApplied,
-          incentiveAmount: tvItem!.incentiveAmount,
-        }),
-      ),
-    ).toBe('30.00');
-    // Internet activation untouched; the period is not re-tiered (engine is stateless).
-    expect(internetItem!.tierAtPayment).toBe(4);
-    expect(money(internetItem!.commissionPaid)).toBe('110.00');
-    expect(r.internetTally).toBe(1);
-  });
-
-  // ─────────────────────────── EDGE / BOUNDARY CASES ─────────────────────────────────────────
-
-  it('EDGE — zero activations: tally 0, tier null, all totals 0', () => {
-    const r = engine.computePeriod({ activations: [], config: baseConfig() });
-    expect(r.internetTally).toBe(0);
-    expect(r.tierNumber).toBeNull();
-    expect(r.ratePerActivation).toBeNull();
-    expect(r.items).toEqual([]);
-    expect(money(r.grossCommission)).toBe('0.00');
-    expect(money(r.advanceAmount)).toBe('0.00');
-    expect(money(r.holdbackAmount)).toBe('0.00');
-    expect(money(r.incentiveTotal)).toBe('0.00');
-  });
-
-  it('EDGE — only greenfield: excluded from tally, flat-rated, tier null', () => {
+  it('FIXTURE 1 — 20 internet + 4 TV + 3 HP + 2 greenfield, paid in full at the type rates', () => {
     const r = engine.computePeriod({
-      activations: mkMany(greenfield_internet, 3),
+      activations: [...mkMany(internet, 20), ...mkMany(tv, 4), ...mkMany(home_phone, 3), ...mkMany(greenfield_internet, 2)],
       config: baseConfig(),
     });
-    expect(r.internetTally).toBe(0);
-    expect(r.tierNumber).toBeNull();
-    expect(money(r.grossCommission)).toBe('300.00'); // 3 × 100
-    expect(money(r.advanceAmount)).toBe('210.00');
-    expect(money(r.holdbackAmount)).toBe('90.00');
-    expect(
-      r.items.every(
-        (i) =>
-          !i.countsTowardTally && money(i.rateApplied) === '100.00' && i.tierAtPayment === null,
-      ),
-    ).toBe(true);
+    // 20 × 110 + 4 × 30 + 3 × 30 + 2 × 100 = 2200 + 120 + 90 + 200
+    expect(money(r.commissionTotal)).toBe('2610.00');
+    expect(money(r.incentiveTotal)).toBe('0.00');
+    expect(money(r.totalEarned)).toBe('2610.00');
+    expect(r.items).toHaveLength(29);
   });
 
-  it('EDGE — tier edges 6/7/35/36', () => {
-    const cases: Array<[number, number, string]> = [
-      [6, 4, '110.00'],
-      [7, 3, '125.00'],
-      [35, 2, '145.00'],
-      [36, 1, '160.00'],
-    ];
-    for (const [count, tier, rate] of cases) {
-      const r = engine.computePeriod({
-        activations: mkMany(internet, count),
-        config: baseConfig(),
-      });
-      expect(r.tierNumber).toBe(tier);
-      expect(money(r.ratePerActivation as Decimal)).toBe(rate);
-    }
+  it('FIXTURE 2 — volume never changes the rate: 1 internet and 40 internet pay the same per unit', () => {
+    const one = engine.computePeriod({ activations: mkMany(internet, 1), config: baseConfig() });
+    const forty = engine.computePeriod({ activations: mkMany(internet, 40), config: baseConfig() });
+    expect(money(one.items[0].rateApplied)).toBe('110.00');
+    expect(forty.items.every((i) => money(i.rateApplied) === '110.00')).toBe(true);
+    expect(money(forty.commissionTotal)).toBe('4400.00');
   });
 
-  it('EDGE — per_activation incentive: applied to scope, kept OUT of the 70/30 base', () => {
+  it('FIXTURE 3 — most specific rate wins: client+product → product → client+type → type', () => {
+    const config = baseConfig({
+      flatRatesByClient: { RF: { internet: d('120') } },
+      flatRatesByProduct: { fibre1g: d('150') },
+      flatRatesByClientProduct: { RF: { fibre1g: d('175') } },
+    });
+    const r = engine.computePeriod({
+      activations: [
+        mk(internet, 'VF', '2026-01-10', null), // type → 110
+        mk(internet, 'RF', '2026-01-10', null), // client+type → 120
+        mk(internet, 'VF', '2026-01-10', 'fibre1g'), // product → 150
+        mk(internet, 'RF', '2026-01-10', 'fibre1g'), // client+product → 175
+        mk(internet, 'RF', '2026-01-10', 'fibre500'), // no product rate → client+type 120
+      ],
+      config,
+    });
+    expect(r.items.map((i) => money(i.rateApplied))).toEqual(['110.00', '120.00', '150.00', '175.00', '120.00']);
+  });
+
+  it('FIXTURE 4 — greenfield pays the GREENFIELD rate, never the internet product’s own rate (#9)', () => {
+    const config = baseConfig({
+      flatRatesByProduct: { fibre1g: d('150') },
+      flatRatesByClientProduct: { RF: { fibre1g: d('175') } },
+      flatRatesByClient: { RF: { greenfield_internet: d('90') } },
+    });
+    const r = engine.computePeriod({
+      activations: [mk(greenfield_internet, 'VF', '2026-01-10', 'fibre1g'), mk(greenfield_internet, 'RF', '2026-01-10', 'fibre1g')],
+      config,
+    });
+    expect(r.items.map((i) => money(i.rateApplied))).toEqual(['100.00', '90.00']); // global, then RF's own
+  });
+
+  it('FIXTURE 5 — per-product clawback: TV → $30; TV + $20 incentive → $50; other items untouched', () => {
+    expect(money(engine.computeClawbackAmount({ rateApplied: d('30') }))).toBe('30.00');
+    expect(money(engine.computeClawbackAmount({ rateApplied: d('30'), incentiveAmount: d('20') }))).toBe('50.00');
+    expect(money(engine.computeClawbackAmount({ rateApplied: d('30'), incentiveAmount: null }))).toBe('30.00');
+  });
+
+  it('a product type with no rate at any level THROWS — a rep is never silently paid $0', () => {
+    expect(() =>
+      engine.computePeriod({ activations: [mk('wireless' as ProductType)], config: baseConfig() }),
+    ).toThrow(/No rep rate for product type wireless/);
+  });
+
+  it('an SA-added add-on type is priced by its own key', () => {
+    const r = engine.computePeriod({
+      activations: [mk('mesh' as ProductType)],
+      config: baseConfig({ flatRates: { ...FLAT, mesh: d('15') } }),
+    });
+    expect(money(r.commissionTotal)).toBe('15.00');
+  });
+
+  it('EDGE — zero activations: all totals 0', () => {
+    const r = engine.computePeriod({ activations: [], config: baseConfig() });
+    expect(r.items).toEqual([]);
+    expect(money(r.commissionTotal)).toBe('0.00');
+    expect(money(r.totalEarned)).toBe('0.00');
+  });
+
+  it('EDGE — per_activation incentive: applied to scope, kept separate from the rate', () => {
     const incentive: IncentiveConfig = {
       id: 'inc-1',
       scopeClientId: null,
@@ -274,85 +121,43 @@ describe('CommissionEngineService', () => {
       windowEnd: '2026-01-31',
       amount: d('20'),
     };
-    const activations = [mk(internet, 'VF', '2026-01-10'), mk(tv, 'VF', '2026-01-10')];
     const r = engine.computePeriod({
-      activations,
+      activations: [mk(internet), mk(tv)],
       config: baseConfig({ incentives: [incentive] }),
     });
-
-    const tvItem = r.items.find((i) => i.productType === tv);
-    expect(money(tvItem!.incentiveAmount)).toBe('20.00');
-    expect(tvItem!.incentiveId).toBe('inc-1');
-    expect(money(tvItem!.commissionBase)).toBe('30.00'); // base excludes incentive
-    expect(money(tvItem!.commissionPaid)).toBe('50.00'); // snapshot = base + incentive
-
-    const internetItem = r.items.find((i) => i.productType === internet);
-    expect(money(internetItem!.incentiveAmount)).toBe('0.00'); // out of scope (tv only)
-
-    expect(money(r.grossCommission)).toBe('140.00'); // 110 + 30, base only
-    expect(money(r.incentiveTotal)).toBe('20.00'); // separate, full-paid
-    expect(money(r.advanceAmount)).toBe('98.00'); // 70% of 140
-    expect(money(r.holdbackAmount)).toBe('42.00'); // 30% of 140
-    expect(money(r.totalEarned)).toBe('160.00'); // 140 + 20
+    const tvItem = r.items.find((i) => i.productType === tv)!;
+    expect(money(tvItem.incentiveAmount)).toBe('20.00');
+    expect(tvItem.incentiveId).toBe('inc-1');
+    expect(money(tvItem.commissionBase)).toBe('30.00'); // the rate excludes the incentive
+    expect(money(tvItem.commissionPaid)).toBe('50.00'); // snapshot = rate + incentive = the clawback amount
+    expect(money(r.items.find((i) => i.productType === internet)!.incentiveAmount)).toBe('0.00');
+    expect(money(r.commissionTotal)).toBe('140.00');
+    expect(money(r.incentiveTotal)).toBe('20.00');
+    expect(money(r.totalEarned)).toBe('160.00');
   });
 
-  it('EDGE — per_activation incentive with a threshold: bonus ONLY on activations beyond target_count', () => {
+  it('EDGE — per_activation incentive with a threshold: bonus ONLY beyond target_count', () => {
     const incentive: IncentiveConfig = {
       id: 'inc-pa',
       scopeClientId: null,
       scopeProductType: tv,
       targetType: 'per_activation',
-      targetCount: 2, // pay on the 3rd activation onward
+      targetCount: 2,
       windowStart: '2026-01-01',
       windowEnd: '2026-01-31',
       amount: d('20'),
     };
-    const activations = [
-      mk(tv, 'VF', '2026-01-10'),
-      mk(tv, 'VF', '2026-01-11'),
-      mk(tv, 'VF', '2026-01-12'),
-      mk(tv, 'VF', '2026-01-13'),
-    ];
+    const activations = [mk(tv, 'VF', '2026-01-10'), mk(tv, 'VF', '2026-01-11'), mk(tv, 'VF', '2026-01-12'), mk(tv, 'VF', '2026-01-13')];
     const r = engine.computePeriod({ activations, config: baseConfig({ incentives: [incentive] }) });
     const ordered = activations.map((a) => r.items.find((i) => i.id === a.id)!);
-    expect(money(ordered[0].incentiveAmount)).toBe('0.00'); // 1st — within threshold
-    expect(money(ordered[1].incentiveAmount)).toBe('0.00'); // 2nd — within threshold
-    expect(money(ordered[2].incentiveAmount)).toBe('20.00'); // 3rd — beyond
-    expect(money(ordered[3].incentiveAmount)).toBe('20.00'); // 4th — beyond
-    expect(money(r.incentiveTotal)).toBe('40.00'); // 2 × $20
-    expect(money(r.grossCommission)).toBe('120.00'); // 4 × $30 base, incentive excluded
+    expect(ordered.map((i) => money(i.incentiveAmount))).toEqual(['0.00', '0.00', '20.00', '20.00']);
+    expect(money(r.incentiveTotal)).toBe('40.00');
+    expect(money(r.commissionTotal)).toBe('120.00');
   });
 
-  it('EDGE — one_time incentive: a SINGLE bonus on the threshold-crossing activation', () => {
+  it('EDGE — one_time incentive: a SINGLE bonus on the threshold-crossing activation, else none', () => {
     const incentive: IncentiveConfig = {
       id: 'inc-ot',
-      scopeClientId: null,
-      scopeProductType: null, // any product
-      targetType: 'one_time',
-      targetCount: 3,
-      windowStart: '2026-01-01',
-      windowEnd: '2026-01-31',
-      amount: d('100'),
-    };
-    const activations = [
-      mk(internet, 'VF', '2026-01-10'),
-      mk(internet, 'VF', '2026-01-11'),
-      mk(internet, 'VF', '2026-01-12'),
-      mk(internet, 'VF', '2026-01-13'),
-      mk(internet, 'VF', '2026-01-14'),
-    ];
-    const r = engine.computePeriod({ activations, config: baseConfig({ incentives: [incentive] }) });
-    const ordered = activations.map((a) => r.items.find((i) => i.id === a.id)!);
-    expect(money(ordered[2].incentiveAmount)).toBe('100.00'); // the 3rd (crossing) activation only
-    expect(ordered[2].incentiveId).toBe('inc-ot');
-    expect(money(ordered[0].incentiveAmount)).toBe('0.00');
-    expect(money(ordered[4].incentiveAmount)).toBe('0.00');
-    expect(money(r.incentiveTotal)).toBe('100.00'); // paid exactly once
-  });
-
-  it('EDGE — one_time incentive: NO bonus when the threshold is not reached', () => {
-    const incentive: IncentiveConfig = {
-      id: 'inc-ot2',
       scopeClientId: null,
       scopeProductType: null,
       targetType: 'one_time',
@@ -361,11 +166,14 @@ describe('CommissionEngineService', () => {
       windowEnd: '2026-01-31',
       amount: d('100'),
     };
-    const r = engine.computePeriod({
-      activations: [mk(internet, 'VF', '2026-01-10'), mk(internet, 'VF', '2026-01-11')],
-      config: baseConfig({ incentives: [incentive] }),
-    });
-    expect(money(r.incentiveTotal)).toBe('0.00'); // only 2 < 3
+    const activations = ['10', '11', '12', '13', '14'].map((day) => mk(internet, 'VF', `2026-01-${day}`));
+    const r = engine.computePeriod({ activations, config: baseConfig({ incentives: [incentive] }) });
+    const ordered = activations.map((a) => r.items.find((i) => i.id === a.id)!);
+    expect(money(ordered[2].incentiveAmount)).toBe('100.00');
+    expect(money(r.incentiveTotal)).toBe('100.00');
+
+    const short = engine.computePeriod({ activations: activations.slice(0, 2), config: baseConfig({ incentives: [incentive] }) });
+    expect(money(short.incentiveTotal)).toBe('0.00');
   });
 
   it('EDGE — incentive does NOT apply outside its window or scope', () => {
@@ -379,225 +187,10 @@ describe('CommissionEngineService', () => {
       windowEnd: '2026-02-28',
       amount: d('20'),
     };
-    const r1 = engine.computePeriod({
-      activations: [mk(tv, 'VF', '2026-01-10')],
-      config: baseConfig({ incentives: [outOfWindow] }),
-    });
+    const r1 = engine.computePeriod({ activations: [mk(tv)], config: baseConfig({ incentives: [outOfWindow] }) });
     expect(money(r1.items[0].incentiveAmount)).toBe('0.00');
-    expect(money(r1.grossCommission)).toBe('30.00');
-
-    const wrongProduct: IncentiveConfig = {
-      ...outOfWindow,
-      id: 'inc-p',
-      scopeProductType: home_phone,
-      windowStart: '2026-01-01',
-      windowEnd: '2026-01-31',
-    };
-    const r2 = engine.computePeriod({
-      activations: [mk(tv, 'VF', '2026-01-10')],
-      config: baseConfig({ incentives: [wrongProduct] }),
-    });
+    const wrongClient: IncentiveConfig = { ...outOfWindow, id: 'inc-c', scopeClientId: 'RF', windowStart: '2026-01-01', windowEnd: '2026-01-31' };
+    const r2 = engine.computePeriod({ activations: [mk(tv, 'VF')], config: baseConfig({ incentives: [wrongClient] }) });
     expect(money(r2.items[0].incentiveAmount)).toBe('0.00');
-  });
-
-  it('EDGE — rounding: HALF_UP at the split, holdback = gross − advance (no lost cent)', () => {
-    const config = baseConfig({ flatRates: { ...FLAT, tv: d('100.05') } });
-    const r = engine.computePeriod({ activations: [mk(tv)], config });
-    expect(money(r.grossCommission)).toBe('100.05');
-    expect(money(r.advanceAmount)).toBe('70.04'); // 100.05 × 0.70 = 70.035 → HALF_UP 70.04
-    expect(money(r.holdbackAmount)).toBe('30.01'); // 100.05 − 70.04
-    expect(money(r.advanceAmount.plus(r.holdbackAmount))).toBe('100.05');
-  });
-
-  it('EDGE — snapshot integrity: per-item tier/rate frozen; greenfield & flats have null tier', () => {
-    const r = engine.computePeriod({
-      activations: [...mkMany(internet, 2), mk(tv), mk(greenfield_internet)],
-      config: baseConfig(),
-    });
-    const internetItems = r.items.filter((i) => i.productType === internet);
-    expect(
-      internetItems.every(
-        (i) =>
-          i.tierAtPayment === 4 &&
-          money(i.rateApplied) === '110.00' &&
-          money(i.commissionPaid) === '110.00',
-      ),
-    ).toBe(true);
-    expect(r.items.find((i) => i.productType === greenfield_internet)!.tierAtPayment).toBeNull();
-    expect(r.items.find((i) => i.productType === tv)!.tierAtPayment).toBeNull();
-    expect(r.items).toHaveLength(4);
-  });
-});
-
-/**
- * PER-PRODUCT REP RATES — a rep can be paid differently for a 150mb than a 1gig activation.
- *
- * The rule Redwave confirmed: the TALLY decides which bracket, the PRODUCT decides the rate. So everything
- * that made the tally what it is stays untouched — one cross-client count (#5), greenfield excluded (#9),
- * no re-tiering on cancellation (#6) — and only the rate lookup gains a dimension. These tests exist to
- * prove that separation holds, because collapsing it is how a period would silently re-tier.
- */
-describe('CommissionEngineService — per-product rates', () => {
-  const engine = new CommissionEngineService();
-  const GIG = 'prod-1gig';
-  const MB150 = 'prod-150mb';
-
-  const withProduct = (a: ActivationInput, productId: string): ActivationInput => ({ ...a, productId });
-
-  it('pays each internet product its OWN rate for the bracket the tally picked', () => {
-    // 20 internet → Tier 2. 1gig keeps the ladder's 145; 150mb is overridden to 120.
-    const activations = [
-      ...mkMany(internet, 12).map((a) => withProduct(a, GIG)),
-      ...mkMany(internet, 8).map((a) => withProduct(a, MB150)),
-    ];
-    const result = engine.computePeriod({
-      activations,
-      config: baseConfig({ tierRatesByProduct: { [MB150]: { 2: d('120') } } }),
-    });
-
-    expect(result.internetTally).toBe(20); // ONE tally over both products
-    expect(result.items.every((i) => i.tierAtPayment === 2)).toBe(true); // ONE tier
-    expect(money(result.grossCommission)).toBe('2700.00'); // 12×145 + 8×120
-  });
-
-  it('a product with no override still pays the ladder rate — nothing changes without config', () => {
-    const activations = mkMany(internet, 20).map((a) => withProduct(a, GIG));
-    const result = engine.computePeriod({ activations, config: baseConfig() });
-    expect(money(result.grossCommission)).toBe('2900.00'); // 20 × 145, exactly as before
-  });
-
-  it('an activation carrying NO productId falls back to the ladder rate', () => {
-    const result = engine.computePeriod({
-      activations: mkMany(internet, 20),
-      config: baseConfig({ tierRatesByProduct: { [MB150]: { 2: d('120') } } }),
-    });
-    expect(money(result.grossCommission)).toBe('2900.00');
-  });
-
-  // Most specific wins: (client + product) → (product) → ladder.
-  it("a client's own product rate beats the cross-client product rate", () => {
-    const activations = [
-      ...mkMany(internet, 10, 'VF').map((a) => withProduct(a, GIG)),
-      ...mkMany(internet, 10, 'RF').map((a) => withProduct(a, GIG)),
-    ];
-    const result = engine.computePeriod({
-      activations,
-      config: baseConfig({
-        tierRatesByProduct: { [GIG]: { 2: d('140') } },
-        tierRatesByClientProduct: { RF: { [GIG]: { 2: d('130') } } },
-      }),
-    });
-    expect(result.internetTally).toBe(20);
-    expect(money(result.grossCommission)).toBe('2700.00'); // 10×140 (VF) + 10×130 (RF)
-  });
-
-  // The property that must not break: a per-product RATE must never become a per-product TALLY.
-  it('the tally stays ONE cross-client, cross-product count (#5)', () => {
-    // 3 VF 1gig + 9 RF 150mb = 12 → Tier 3 for BOTH, even though each pays its own rate.
-    const activations = [
-      ...mkMany(internet, 3, 'VF').map((a) => withProduct(a, GIG)),
-      ...mkMany(internet, 9, 'RF').map((a) => withProduct(a, MB150)),
-    ];
-    const result = engine.computePeriod({
-      activations,
-      config: baseConfig({ tierRatesByProduct: { [MB150]: { 3: d('100') } } }),
-    });
-
-    expect(result.internetTally).toBe(12);
-    expect(result.items.every((i) => i.tierAtPayment === 3)).toBe(true);
-    expect(money(result.grossCommission)).toBe('1275.00'); // 3×125 + 9×100
-  });
-
-  it('the SAME product pays a different rate in a different bracket', () => {
-    const rates = { [MB150]: { 3: d('100'), 2: d('120') } };
-    const ten = engine.computePeriod({
-      activations: mkMany(internet, 10).map((a) => withProduct(a, MB150)),
-      config: baseConfig({ tierRatesByProduct: rates }),
-    });
-    const twenty = engine.computePeriod({
-      activations: mkMany(internet, 20).map((a) => withProduct(a, MB150)),
-      config: baseConfig({ tierRatesByProduct: rates }),
-    });
-    expect(money(ten.grossCommission)).toBe('1000.00'); // Tier 3 → 100
-    expect(money(twenty.grossCommission)).toBe('2400.00'); // Tier 2 → 120
-  });
-
-  // #9 — greenfield is flat-rated and tally-excluded; a per-product rate must not drag it into the tier path.
-  it('greenfield stays excluded from the tally and flat-rated', () => {
-    const activations = [
-      ...mkMany(internet, 6).map((a) => withProduct(a, GIG)),
-      ...mkMany(greenfield_internet, 2).map((a) => withProduct(a, 'prod-gf')),
-    ];
-    const result = engine.computePeriod({
-      activations,
-      config: baseConfig({ tierRatesByProduct: { 'prod-gf': { 4: d('999') } } }),
-    });
-    expect(result.internetTally).toBe(6); // greenfield not counted
-    expect(money(result.grossCommission)).toBe('860.00'); // 6×110 + 2×100 — the 999 never applies
-  });
-
-  // Add-ons resolve most-specific-first too: (client+product) → (product) → (client+type) → (type).
-  it('an add-on product rate beats its product-TYPE rate', () => {
-    const result = engine.computePeriod({
-      activations: [withProduct(mk(tv), 'prod-tv-premium'), mk(tv)],
-      config: baseConfig({ flatRatesByProduct: { 'prod-tv-premium': d('45') } }),
-    });
-    expect(money(result.grossCommission)).toBe('75.00'); // 45 (premium) + 30 (type fallback)
-  });
-
-  it("a client's own add-on product rate is the most specific of all", () => {
-    const result = engine.computePeriod({
-      activations: [withProduct(mk(tv, 'RF'), 'prod-tv'), withProduct(mk(tv, 'VF'), 'prod-tv')],
-      config: baseConfig({
-        flatRatesByProduct: { 'prod-tv': d('40') },
-        flatRatesByClientProduct: { RF: { 'prod-tv': d('55') } },
-      }),
-    });
-    expect(money(result.grossCommission)).toBe('95.00'); // 55 (RF) + 40 (product fallback)
-  });
-
-  it('still throws when a product type has no rate at any level (never silently zero)', () => {
-    expect(() =>
-      engine.computePeriod({
-        activations: [withProduct(mk('protection_plan' as ProductType), 'prod-pp')],
-        config: baseConfig(),
-      }),
-    ).toThrow(/No flat rate/);
-  });
-});
-
-// Client directive 2026-11-11 — "tiers off": the scope's ladder is ONE bracket [0, ∞) (tier 1) and each
-// internet product has its own tier-1 price. The engine is unchanged; this proves the config pays each
-// product its OWN price at 100%, whatever the tally, and the default for a product without one.
-describe('CommissionEngineService — base prices (single bracket + per-product price)', () => {
-  const engine = new CommissionEngineService();
-  const GIG = 'prod-1gig';
-  const MB500 = 'prod-500';
-  const OTHER = 'prod-no-price';
-  const withProduct = (a: ActivationInput, productId: string): ActivationInput => ({ ...a, productId });
-  const BASE = baseConfig({
-    tiers: [{ tierNumber: 1, minCount: 0, maxCount: null, ratePerActivation: d('140') }],
-    tierRatesByProduct: { [GIG]: { 1: d('160') }, [MB500]: { 1: d('145') } },
-    holdback: { advancePct: d('1'), holdbackPct: d('0') },
-  });
-
-  it('pays each product its own base price, the default for the rest, nothing held', () => {
-    const activations = [
-      ...mkMany(internet, 2).map((a) => withProduct(a, GIG)),
-      ...mkMany(internet, 3).map((a) => withProduct(a, MB500)),
-      withProduct(mk(internet), OTHER),
-    ];
-    const result = engine.computePeriod({ activations, config: BASE });
-    expect(money(result.grossCommission)).toBe('895.00'); // 2×160 + 3×145 + 1×140
-    expect(money(result.advanceAmount)).toBe('895.00');
-    expect(money(result.holdbackAmount)).toBe('0.00');
-    expect(result.items.every((i) => i.tierAtPayment === 1)).toBe(true);
-  });
-
-  it('the price does not change with volume — 40 activations pay the same per unit as 1', () => {
-    const one = engine.computePeriod({ activations: [withProduct(mk(internet), GIG)], config: BASE });
-    const forty = engine.computePeriod({ activations: mkMany(internet, 40).map((a) => withProduct(a, GIG)), config: BASE });
-    expect(money(one.grossCommission)).toBe('160.00');
-    expect(money(forty.grossCommission)).toBe('6400.00');
   });
 });

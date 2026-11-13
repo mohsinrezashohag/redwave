@@ -1,7 +1,6 @@
 /**
  * Client-scope resolution for commission config writes (needs Prisma, so it lives outside the pure
- * `client-scope.logic.ts`). Shared by the tier-schedule and flat-rate services so both validate the scope
- * identically. — SRS §7, CLAUDE #10
+ * `client-scope.logic.ts`). Used by the rep-rate service to validate the scope. — SRS §7, CLAUDE #10
  */
 import { UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';

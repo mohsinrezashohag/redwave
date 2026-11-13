@@ -2,7 +2,7 @@
  * Payroll-line BACKFILL — for runs finalized before `payroll_report_lines` existed (packet 02).
  *
  * The properties that matter: the lines are rebuilt from the FROZEN snapshots only and RECONCILE to the
- * frozen pay-run line (#2/#5 — nothing is recomputed or re-tiered); no snapshot is written; a mismatch writes
+ * frozen pay-run line (#2 — nothing is recomputed); no snapshot is written; a mismatch writes
  * nothing; the operation is idempotent; and it refuses a run that never finalized.
  */
 import { ConflictException } from '@nestjs/common';
@@ -16,7 +16,7 @@ const pd = (v: string) => new Prisma.Decimal(v);
 const REP = { rep_code: 'RW-D-0002', external_code: 'Redwave20', full_name: 'Sam Stone' };
 
 // Sam: one household with internet ($145) + TV ($30), one greenfield internet ($100, out of the tally #9).
-// Gross 275 → 70% 192.50 / 30% 82.50.
+// Commission 275, paid in full.
 const SALES = [
   {
     id: 'sale-1',
@@ -53,7 +53,7 @@ const SALES = [
   },
 ];
 
-function make(opts: { status?: string; existing?: number; commission70?: string; sales?: unknown[] } = {}) {
+function make(opts: { status?: string; existing?: number; commission?: string; sales?: unknown[] } = {}) {
   const prisma = {
     payRun: {
       findUnique: jest.fn().mockResolvedValue({
@@ -71,8 +71,7 @@ function make(opts: { status?: string; existing?: number; commission70?: string;
         {
           rep_id: 'rep-sam',
           rep: { rep_code: 'RW-D-0002' },
-          gross_commission: pd('275.00'),
-          commission_70: pd(opts.commission70 ?? '192.50'),
+          commission: pd(opts.commission ?? '275.00'),
         },
       ]),
     },
@@ -83,7 +82,7 @@ function make(opts: { status?: string; existing?: number; commission70?: string;
   };
   prisma.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn(prisma));
   const audit = { log: jest.fn() };
-  const config = { getEngineConfig: jest.fn().mockResolvedValue({ holdback: { advancePct: new Decimal('0.7') } }) };
+  const config = { getEngineConfig: jest.fn() };
   const service = new PayRunService(
     prisma as never, audit as never, {} as never, config as never, {} as never, {} as never, {} as never, {} as never,
   );
@@ -103,18 +102,15 @@ describe('backfillPayrollLines', () => {
 
     expect(r.outcome).toBe('written');
     expect(r.reps).toEqual([
-      { rep_code: 'RW-D-0002', sales: 2, gross: '275.00', advance_70: '192.50', held_30: '82.50' },
+      { rep_code: 'RW-D-0002', sales: 2, commission: '275.00' },
     ]);
     const rows = written(prisma);
     expect(rows).toHaveLength(2);
     expect(sum(rows, 'total_100')).toBe('275.00');
-    expect(sum(rows, 'advance_70')).toBe('192.50');
-    expect(sum(rows, 'holdback_30')).toBe('82.50');
     // Greenfield lands in its own column, not internet (#9).
     const gf = rows.find((x) => x.sale_id === 'sale-2')!;
     expect(gf.greenfield).toBe('100.00');
     expect(gf.internet_rate).toBe('0.00');
-    // As-of close, like finalize (#10).
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'backfill_payroll_lines', actorId: 'sa' }));
   });
 
@@ -129,7 +125,7 @@ describe('backfillPayrollLines', () => {
     const { service, prisma, audit } = make();
     const r = await service.backfillPayrollLines('run-10', { dryRun: true, actorId: 'sa' });
     expect(r.outcome).toBe('would_write');
-    expect(r.reps[0].advance_70).toBe('192.50');
+    expect(r.reps[0].commission).toBeDefined();
     expect(prisma.payrollReportLine.create).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(audit.log).not.toHaveBeenCalled();
@@ -150,7 +146,7 @@ describe('backfillPayrollLines', () => {
   });
 
   it('a snapshot/pay-run mismatch refuses and writes NOTHING', async () => {
-    const { service, prisma } = make({ commission70: '200.00' });
+    const { service, prisma } = make({ commission: '200.00' });
     await expect(service.backfillPayrollLines('run-10', { dryRun: false, actorId: 'sa' })).rejects.toThrow(
       /RW-D-0002/,
     );

@@ -1,6 +1,6 @@
 /**
  * ProductTypeService — the configurable product-type catalogue (the engine's behaviour seam). The Super
- * Admin can ADD types (always standard_addon — billable, flat-rated, NOT tiered, NOT greenfield, so a new
+ * Admin can ADD types (always standard_addon — billable, flat-rated, NOT internet, NOT greenfield, so a new
  * type can never change tally/greenfield logic — #5/#9), relabel them, and deactivate non-core types. The 4
  * core types are is_system (behaviour locked, non-deletable, non-deactivatable).
  *
@@ -49,7 +49,7 @@ export class ProductTypeService {
         data: {
           key: dto.key,
           label: dto.label,
-          behaviour: 'standard_addon', // FORCED — a new type can never be tiered/greenfield (#5/#9)
+          behaviour: 'standard_addon', // FORCED — a new type can never be an internet base or greenfield
           is_system: false,
           is_active: true,
         },

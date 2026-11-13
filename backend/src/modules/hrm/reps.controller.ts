@@ -50,6 +50,7 @@ import {
 import { CreateRepEquipmentDto } from './dto/rep-equipment.dto';
 import {
   DeletedRepDocumentResponse,
+  DataAccuracyResponse,
   DocumentReadResponse,
   RemovedRepDocumentResponse,
   RepDocumentResponse,
@@ -322,6 +323,18 @@ export class RepsController {
     @CurrentUser('id') actorId: string,
   ) {
     return this.documents.remove(id, docId, actorId);
+  }
+
+  @Get(':id/data-accuracy')
+  @RequirePermission('hrm', 'edit')
+  @ApiOperation({
+    summary: "Compare a rep's profile with their IDs",
+    description:
+      'Requires hrm:edit. The profile name and date of birth beside the HR-confirmed details of the latest live ID of each kind, with server-computed match flags. Document numbers are masked.',
+  })
+  @ApiOkResponse({ type: DataAccuracyResponse })
+  dataAccuracy(@Param('id', ParseUUIDPipe) id: string) {
+    return this.documents.dataAccuracy(id);
   }
 
   @Get(':id/documents/deleted')

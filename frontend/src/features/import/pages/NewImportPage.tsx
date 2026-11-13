@@ -132,7 +132,7 @@ export default function NewImportPage() {
             </FormField>
           )}
           {/* Migration-only: creating master data must never be possible on the live-sales path, where an
-              invented rep or product would flow into the tier tally and the pay run. The server refuses it
+              invented rep or product would flow into the pay run. The server refuses it
               there too (422) — this just doesn't offer it. */}
           {kind === 'historical_sales' && (
             <FormField

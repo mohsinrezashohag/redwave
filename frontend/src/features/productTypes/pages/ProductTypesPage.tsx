@@ -45,7 +45,7 @@ export default function ProductTypesPage() {
     <div>
       <PageHeader
         title="Product types"
-        subtitle="The catalogue of product types and their commission behaviour. New types are standard add-ons: they’re billable and flat-rated but never count toward the internet tier tally."
+        subtitle="The catalogue of product types and their behaviour. New types are add-ons: they’re billable and paid their own rep rate, but a sale still needs an internet base."
         actions={
           canEdit && (
             <Button variant="primary" onClick={() => setModal({ mode: 'create' })}>

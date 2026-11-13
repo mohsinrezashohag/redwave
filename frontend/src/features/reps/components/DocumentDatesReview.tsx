@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ScanText } from 'lucide-react';
-import { Banner, Button, DatePicker, FormField, LoadingSpinner, Modal, Select } from '../../../components/ui';
+import { Banner, Button, DatePicker, FormField, LoadingSpinner, Modal, PrivateInput, Select } from '../../../components/ui';
 import { datesProblem, EXPIRING_DOC_TYPES, REP_DOC_TYPES } from '../repDocTypes';
 import type { DocumentRead } from '../reps.types';
 import styles from './reps.module.css';
@@ -15,10 +15,17 @@ import styles from './reps.module.css';
 export interface DocumentDates {
   issued_on: string | null;
   expires_on: string | null;
+  /** HR-confirmed identity details (2026-11-13), IDs only. */
+  name_on_document: string | null;
+  date_of_birth: string | null;
+  /** Write-only. Undefined = keep the one on file (only its mask is ever shown). */
+  document_number?: string;
 }
 
 export interface DocumentEdit extends DocumentDates {
   doc_type: string;
+  /** "••••4567" when a number is already on file (edit). */
+  document_number_masked?: string | null;
 }
 
 export function DocumentDatesReview({
@@ -55,9 +62,14 @@ export function DocumentDatesReview({
   const [docType, setDocType] = useState('');
   const [issued, setIssued] = useState('');
   const [expires, setExpires] = useState('');
+  const [nameOnDoc, setNameOnDoc] = useState('');
+  const [dob, setDob] = useState('');
+  const [docNumber, setDocNumber] = useState('');
 
   const startIssued = initial.issued_on?.slice(0, 10) ?? '';
   const startExpires = initial.expires_on?.slice(0, 10) ?? '';
+  const startName = initial.name_on_document ?? '';
+  const startDob = initial.date_of_birth?.slice(0, 10) ?? '';
 
   // Start from what's on file; whatever the reader finds fills in on top (HR can still change it).
   useEffect(() => {
@@ -65,17 +77,29 @@ export function DocumentDatesReview({
     setDocType(initial.doc_type);
     setIssued(startIssued);
     setExpires(startExpires);
+    setNameOnDoc(startName);
+    setDob(startDob);
+    setDocNumber('');
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the panel opens
   }, [open]);
   useEffect(() => {
     if (!read) return;
     if (read.issued_on) setIssued(read.issued_on);
     if (read.expires_on) setExpires(read.expires_on);
+    if (read.name_on_document) setNameOnDoc(read.name_on_document);
+    if (read.date_of_birth) setDob(read.date_of_birth);
+    if (read.document_number) setDocNumber(read.document_number);
   }, [read]);
 
   const hasDates = EXPIRING_DOC_TYPES.has(docType);
   const problem = hasDates ? datesProblem(issued, expires) : null;
-  const dirty = docType !== initial.doc_type || issued !== startIssued || expires !== startExpires;
+  const dirty =
+    docType !== initial.doc_type ||
+    issued !== startIssued ||
+    expires !== startExpires ||
+    nameOnDoc !== startName ||
+    dob !== startDob ||
+    docNumber !== '';
   // A known type is required when editing (rows uploaded before the list existed keep a free-text type).
   const typeOptions = REP_DOC_TYPES.map((t) => ({ value: t.value, label: t.label }));
   const validType = REP_DOC_TYPES.some((t) => t.value === docType);
@@ -98,7 +122,14 @@ export function DocumentDatesReview({
             loading={saving}
             disabled={reading || !!problem || (editType && !validType)}
             onClick={() =>
-              onSave({ doc_type: docType, issued_on: hasDates ? issued || null : null, expires_on: hasDates ? expires || null : null })
+              onSave({
+                doc_type: docType,
+                issued_on: hasDates ? issued || null : null,
+                expires_on: hasDates ? expires || null : null,
+                name_on_document: hasDates ? nameOnDoc.trim() || null : null,
+                date_of_birth: hasDates ? dob || null : null,
+                ...(hasDates && docNumber.trim() ? { document_number: docNumber.trim() } : {}),
+              })
             }
           >
             {saveLabel}
@@ -135,6 +166,26 @@ export function DocumentDatesReview({
               </FormField>
               <FormField label="Expires on" error={problem ?? undefined} help="We flag it 60 days before it expires.">
                 <DatePicker value={expires} onChange={setExpires} clearable aria-label="Expires on" />
+              </FormField>
+            </div>
+
+            <p className={styles.checksTitle}>Holder details</p>
+            <FormField label="Name on document" help="As printed. Used on the Data accuracy tab.">
+              <PrivateInput value={nameOnDoc} onChange={(e) => setNameOnDoc(e.target.value)} placeholder="e.g. RIVERA, RILEY" />
+            </FormField>
+            <div className={styles.grid2}>
+              <FormField label="Date of birth">
+                <DatePicker value={dob} onChange={setDob} clearable aria-label="Date of birth on document" />
+              </FormField>
+              <FormField
+                label="Document number"
+                help={
+                  initial.document_number_masked
+                    ? `On file (${initial.document_number_masked}). Leave blank to keep it.`
+                    : 'Saved encrypted. Only the last four are shown.'
+                }
+              >
+                <PrivateInput value={docNumber} onChange={(e) => setDocNumber(e.target.value)} className="mono" placeholder="AB1234567" />
               </FormField>
             </div>
 

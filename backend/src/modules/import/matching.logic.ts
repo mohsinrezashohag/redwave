@@ -72,7 +72,7 @@ export function classifyBillingRateRow(
   return matched();
 }
 
-// ── master_migration + km_rates / commission_tiers / commission_flat_rates ──────────────────────
+// ── master_migration + km_rates / commission_flat_rates ──────────────────────
 // The REP-stream counterparts of the billing-rate migration path above. The live services reject a past
 // `effective_from` (422) to protect closed periods; these targets are the audited way to load history
 // (#10). Everything below is shape + existence only — the WRITE is the handler's job.
@@ -97,32 +97,6 @@ export function classifyKmRateRow(mapped: RawRow, ctx: { clientExists: boolean }
   if (!effective_from || !DATE.test(effective_from)) return error('effective_from must be YYYY-MM-DD');
   if (effective_to && !DATE.test(effective_to)) return error('effective_to must be YYYY-MM-DD');
   if (client_code && !ctx.clientExists) return error(`client ${client_code} not found`);
-  return matched();
-}
-
-/**
- * One row = one WHOLE schedule (brackets in the `tiers` cell), so the gate can accept or reject a schedule
- * as a unit rather than leaving a partial one behind. `parseTiers` is injected so this stays pure — the
- * service passes the real `parseTierSpec`, whose own message is already operator-readable.
- */
-export function classifyCommissionTierRow(
-  mapped: RawRow,
-  ctx: { clientExists: boolean; parseTiers: (cell: string) => unknown },
-): Classification {
-  const client_code = str(mapped, 'client_code');
-  const tiers = str(mapped, 'tiers');
-  const effective_from = str(mapped, 'effective_from');
-  const effective_to = str(mapped, 'effective_to');
-
-  if (!tiers) return error('tiers is required, e.g. "0-6:110|7-16:125|17-35:145|36+:160"');
-  if (!effective_from || !DATE.test(effective_from)) return error('effective_from must be YYYY-MM-DD');
-  if (effective_to && !DATE.test(effective_to)) return error('effective_to must be YYYY-MM-DD');
-  if (client_code && !ctx.clientExists) return error(`client ${client_code} not found`);
-  try {
-    ctx.parseTiers(tiers);
-  } catch (e) {
-    return error(e instanceof Error ? e.message : 'tiers could not be parsed');
-  }
   return matched();
 }
 
@@ -304,7 +278,7 @@ export function classifyLiveSaleRow(
     suggestion?: string | null;
     /** Listed types that have NO active product for this client. */
     missingProductTypes: string[];
-    /** True when at least one listed type has catalogue behaviour `tiered` or `greenfield`. */
+    /** True when at least one listed type has catalogue behaviour `internet` or `greenfield`. */
     hasInternetBase: boolean;
   },
 ): Classification {

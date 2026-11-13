@@ -1,7 +1,7 @@
 /**
  * BusinessTrends — the cross-period trend charts (Super Admin). Reads the bounded trends endpoint and pivots
  * its long-format rows into wide series for recharts: a revenue/payout/margin line, activations-by-product
- * stacked area, revenue-by-client line, and tier-distribution stacked area. Charts are token-themed (theme-
+ * stacked area and revenue-by-client line. Charts are token-themed (theme-
  * correct in both modes) and lazy-loaded with the page. The UI computes nothing — money is server-sourced.
  */
 import { Card } from '../../../components/ui';
@@ -53,7 +53,6 @@ export function BusinessTrends({ periods = 6 }: { periods?: number } = {}) {
 
   const prod = pivot(t?.by_product ?? [], (r) => productTypeLabel(r.product_type), (r) => r.count, periodNums);
   const clientRev = pivot(t?.by_client_revenue ?? [], (r) => r.client_code, (r) => Number(r.amount), periodNums);
-  const tier = pivot(t?.tier_distribution ?? [], (r) => `Tier ${r.tier_number}`, (r) => r.rep_count, periodNums);
 
   return (
     <DataState
@@ -77,11 +76,6 @@ export function BusinessTrends({ periods = 6 }: { periods?: number } = {}) {
         <Card title="Revenue by client (over time)">
           <ChartContainer height={280}>
             <ThemedLineChart data={clientRev.data} categoryKey="period" series={clientRev.series} valueFormatter={money} />
-          </ChartContainer>
-        </Card>
-        <Card title="Tier distribution (over time)">
-          <ChartContainer height={280}>
-            <ThemedStackedAreaChart data={tier.data} categoryKey="period" series={tier.series} />
           </ChartContainer>
         </Card>
       </div>

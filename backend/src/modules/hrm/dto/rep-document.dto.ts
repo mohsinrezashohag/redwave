@@ -32,6 +32,31 @@ export class CreateRepDocumentDto {
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'issued_on must be a YYYY-MM-DD date' })
   issued_on?: string;
+
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'RILEY RIVERA', description: 'Name as printed on the ID, HR-confirmed (2026-11-13). IDs only.' })
+  @IsOptional()
+  @ValidateIf((_o: unknown, v: unknown) => v !== null)
+  @IsString()
+  @MaxLength(120)
+  name_on_document?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true, example: '1994-03-21', description: 'Date of birth on the ID, HR-confirmed. IDs only.' })
+  @IsOptional()
+  @ValidateIf((_o: unknown, v: unknown) => v !== null)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date_of_birth must be a YYYY-MM-DD date' })
+  date_of_birth?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'AB1234567',
+    description: 'Document number. WRITE-ONLY: stored encrypted, only its last four are ever shown. IDs only.',
+  })
+  @IsOptional()
+  @ValidateIf((_o: unknown, v: unknown) => v !== null)
+  @IsString()
+  @MaxLength(40)
+  document_number?: string | null;
 }
 
 /** What kind of document is being read, so the reader knows what to look for. */
@@ -67,6 +92,31 @@ export class UpdateRepDocumentDto {
   @ValidateIf((_o: unknown, v: unknown) => v !== null)
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'expires_on must be a YYYY-MM-DD date' })
   expires_on?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'RILEY RIVERA', description: 'Name as printed on the ID, HR-confirmed (2026-11-13). IDs only.' })
+  @IsOptional()
+  @ValidateIf((_o: unknown, v: unknown) => v !== null)
+  @IsString()
+  @MaxLength(120)
+  name_on_document?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true, example: '1994-03-21', description: 'Date of birth on the ID, HR-confirmed. IDs only.' })
+  @IsOptional()
+  @ValidateIf((_o: unknown, v: unknown) => v !== null)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date_of_birth must be a YYYY-MM-DD date' })
+  date_of_birth?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'AB1234567',
+    description: 'Document number. WRITE-ONLY: stored encrypted, only its last four are ever shown. IDs only.',
+  })
+  @IsOptional()
+  @ValidateIf((_o: unknown, v: unknown) => v !== null)
+  @IsString()
+  @MaxLength(40)
+  document_number?: string | null;
 }
 
 /**
@@ -83,4 +133,29 @@ export class ReplaceRepDocumentDto {
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'issued_on must be a YYYY-MM-DD date' })
   issued_on?: string;
+
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'RILEY RIVERA', description: 'Name as printed on the ID, HR-confirmed (2026-11-13). IDs only.' })
+  @IsOptional()
+  @ValidateIf((_o: unknown, v: unknown) => v !== null)
+  @IsString()
+  @MaxLength(120)
+  name_on_document?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true, example: '1994-03-21', description: 'Date of birth on the ID, HR-confirmed. IDs only.' })
+  @IsOptional()
+  @ValidateIf((_o: unknown, v: unknown) => v !== null)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date_of_birth must be a YYYY-MM-DD date' })
+  date_of_birth?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'AB1234567',
+    description: 'Document number. WRITE-ONLY: stored encrypted, only its last four are ever shown. IDs only.',
+  })
+  @IsOptional()
+  @ValidateIf((_o: unknown, v: unknown) => v !== null)
+  @IsString()
+  @MaxLength(40)
+  document_number?: string | null;
 }

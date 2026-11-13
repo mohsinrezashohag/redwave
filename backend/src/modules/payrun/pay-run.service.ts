@@ -1,9 +1,9 @@
 /**
- * PayRunService — the orchestrator. COMPOSES the config provider + commission engine + sales; it
- * never reimplements tier/commission math (#5). Draft = preview (nothing frozen). Finalize = the
- * money action: ATOMIC + IDEMPOTENT (#8), freezes immutable snapshots (#2), transitions sales
- * Validated→In Pay Run→Paid (§16), applies bonuses, composes net. NO HOLDBACK (client decision 2026-11-13):
- * commission is paid in full, no hold is recorded and no older hold is released; holds are handled offline.
+ * PayRunService — the orchestrator. COMPOSES the config provider + commission engine + sales; it never
+ * reimplements commission math. Draft = preview (nothing frozen). Finalize = the money action: ATOMIC +
+ * IDEMPOTENT (#8), freezes immutable snapshots (#2), transitions sales Validated→In Pay Run→Paid (§16),
+ * applies bonuses, composes net. No tiers and no 70/30 (client decision 2026-11-13): each item pays one flat
+ * rep rate and the rep is paid in full; Redwave applies any tier or split manually, outside the system.
  * — SRS §9 (PAY-001..011), arch §9
  *
  * Idempotency is STATE-BASED (pay_runs has no key column): re-finalizing a non-draft run is a no-op,
@@ -66,14 +66,13 @@ const iso = (date: Date): string => date.toISOString().slice(0, 10);
 const isFinalizedStatus = (status: string): boolean => status === 'finalized' || status === 'exported';
 const dec = (value: { toString(): string }): Decimal => new Decimal(value.toString());
 const money = (value: Decimal): string => value.toFixed(2);
-const nonZero = (value: { toString(): string } | null | undefined): boolean => value != null && !dec(value).isZero();
 
 /** What `backfillPayrollLines` did (or would do, in a dry run) for one run. */
 export interface PayrollBackfillResult {
   pay_run_id: string;
   period_number: number;
   outcome: 'written' | 'would_write' | 'skipped_has_lines';
-  reps: { rep_code: string; sales: number; gross: string; advance_70: string; held_30: string }[];
+  reps: { rep_code: string; sales: number; commission: string }[];
 }
 
 type PayPeriodRow ={ id: string; start_date: Date; end_date: Date; payday: Date };
@@ -142,7 +141,6 @@ export class PayRunService {
           const { result } = await this.gatherAndRun(tx, repId, period, config);
           const bonus = existingBonuses.get(repId) ?? { amount: new Decimal(0), note: null };
           const amounts = buildLineAmounts(result, {
-            released: new Decimal(0), // no holdback: nothing is ever released (2026-11-13)
             expense: await this.expenseSeam.getApprovedExpenseTotal(repId, period.id),
             bonus: bonus.amount,
             clawback: await this.clawbackSeam.getClawbackTotal(repId, period.id),
@@ -172,8 +170,7 @@ export class PayRunService {
     }
     const bonus = new Decimal(dto.amount);
     const net = computeNet({
-      advance: dec(line.commission_70),
-      released: dec(line.holdback_release_30),
+      commission: dec(line.commission),
       expense: dec(line.expense_total),
       incentive: dec(line.incentive_total),
       bonus,
@@ -231,7 +228,6 @@ export class PayRunService {
             await tx.saleItem.update({
               where: { id: item.id },
               data: {
-                tier_at_payment: item.tierAtPayment,
                 rate_applied: money(item.rateApplied),
                 commission_paid: money(item.commissionPaid),
                 incentive_id: item.incentiveId,
@@ -246,7 +242,7 @@ export class PayRunService {
           await tx.payrollReportLine.deleteMany({
             where: { pay_run_id: run.id, sale_id: { in: sales.map((s2) => s2.id) } },
           });
-          await this.writePayrollLines(tx, run.id, sales, result, config.holdback.advancePct);
+          await this.writePayrollLines(tx, run.id, sales, result);
 
           // (b) Transition the rep's sales Validated → in_pay_run → paid (§16).
           const saleIds = sales.map((s) => s.id);
@@ -258,16 +254,13 @@ export class PayRunService {
             await tx.sale.updateMany({ where: { id: { in: saleIds } }, data: { status: 'paid' } });
           }
 
-          // (c/d) NO HOLDBACK (client decision 2026-11-13): nothing is held and no older hold is released (any
-          // still waiting were marked settled_offline by migration). The full clawback deducts from net: a flat
-          // deduction with no sequencing. — CLAUDE §3 #6
+          // (c) The full clawback deducts from net: a flat deduction. No tiers, no holdback since 2026-11-13. — §3 #6
           const clawback = await this.clawbackSeam.getClawbackTotal(repId, period.id);
 
           // (e/f) Compose net via the seams + bonus.
           const expense = await this.expenseSeam.getApprovedExpenseTotal(repId, period.id);
           const bonus = existingBonuses.get(repId) ?? { amount: new Decimal(0), note: null };
           const amounts = buildLineAmounts(result, {
-            released: new Decimal(0),
             expense,
             bonus: bonus.amount,
             clawback,
@@ -351,10 +344,6 @@ export class PayRunService {
       period_start: iso(run.pay_period.start_date),
       period_end: iso(run.pay_period.end_date),
       run_status: run.status,
-      // No holdback since 2026-11-13. An OLD run finalized with a hold keeps its frozen 70% / 30% columns:
-      // has_holdback says whether to show them, and split labels them with the split that run used.
-      has_holdback: lines.some((l) => !l.holdback_30.isZero()),
-      split: await this.config.getHoldbackSplit(iso(run.pay_period.end_date)),
       // From the run's STATUS, not from whether lines exist: a run finalized before payroll lines existed
       // (packet 02) has none until `backfillPayrollLines` runs, and must not claim "not finalized".
       is_finalized: isFinalizedStatus(run.status),
@@ -379,17 +368,13 @@ export class PayRunService {
         spiff: (l.spiff ?? new Prisma.Decimal(0)).toFixed(2),
         other_total: (l.other_total ?? new Prisma.Decimal(0)).toFixed(2),
         total_100: l.total_100.toFixed(2),
-        advance_70: l.advance_70.toFixed(2),
-        holdback_30: l.holdback_30.toFixed(2),
       })),
       total_100: sum((l) => l.total_100),
-      advance_70: sum((l) => l.advance_70),
-      holdback_30: sum((l) => l.holdback_30),
     };
   }
 
   /**
-   * ONE REP's pay statement for a run — what was sold and what it paid (an old run also shows its 70/30).
+   * ONE REP's pay statement for a run — what was sold and what it paid.
    *
    * Built from the SAME frozen `payroll_report_lines` as the payroll report, filtered to one rep, so the
    * two reconcile by construction rather than by agreement between two calculations (#2). Nothing is
@@ -431,9 +416,6 @@ export class PayRunService {
       period_end: iso(run.pay_period.end_date),
       rep_code: rep?.rep_code ?? null,
       rep_name: rep?.full_name ?? null,
-      // Only an OLD run finalized with a hold shows the "Your x%" / "Held y%" columns (2026-11-13).
-      has_holdback: lines.some((l) => !l.holdback_30.isZero()),
-      split: await this.config.getHoldbackSplit(iso(run.pay_period.end_date)),
       // Lines are empty until the run finalizes — before that nothing is owed, and a zeroed statement would
       // read as "you earned nothing" rather than "not yet calculated". The flag itself comes from the run's
       // STATUS, so a finalized run with no recorded lines says so honestly instead of "not finalized".
@@ -457,12 +439,8 @@ export class PayRunService {
         spiff: (l.spiff ?? new Prisma.Decimal(0)).toFixed(2),
         other_total: (l.other_total ?? new Prisma.Decimal(0)).toFixed(2),
         total_100: l.total_100.toFixed(2),
-        advance_70: l.advance_70.toFixed(2),
-        holdback_30: l.holdback_30.toFixed(2),
       })),
       total_100: sum((l) => l.total_100),
-      advance_70: sum((l) => l.advance_70),
-      holdback_30: sum((l) => l.holdback_30),
     };
   }
 
@@ -472,15 +450,14 @@ export class PayRunService {
    * workbook are empty although the run was paid.
    *
    * Built ONLY from the frozen snapshots — `sale_items.rate_applied` + `incentive_amount`, the exact two
-   * values finalize hands `writePayrollLines` from the engine result. The engine is NOT re-run, so the
-   * period is never re-tiered (#5); no snapshot is written (#2); no client rate is read (#3).
+   * values finalize hands `writePayrollLines` from the engine result. The engine is NOT re-run; no snapshot
+   * is written (#2); no client rate is read (#3).
    *
    * Safe by construction:
    *   - only `finalized`/`exported` runs; a run that already has ANY line is skipped (idempotent, and a
    *     finalize-written run is never touched);
-   *   - RECONCILED before writing: per rep, Σ rate_applied must equal the frozen `pay_run_lines`
-   *     gross_commission, and its 70% (half-up, the engine's split rule) must equal commission_70. Any
-   *     mismatch throws and the run's transaction writes nothing;
+   *   - RECONCILED before writing: per rep, Σ rate_applied must equal the frozen `pay_run_lines` commission.
+   *     Any mismatch throws and the run's transaction writes nothing;
    *   - one `$transaction` per run (#8), one audit row per run.
    *
    * `dryRun` performs every read and every check, and writes nothing.
@@ -503,9 +480,6 @@ export class PayRunService {
       return { ...base, outcome: 'skipped_has_lines', reps: [] };
     }
 
-    const config = await this.config.getEngineConfig(iso(run.pay_period.end_date)); // as-of close, like finalize
-    const advancePct = config.holdback.advancePct;
-
     const [runLines, sales] = await Promise.all([
       this.prisma.payRunLine.findMany({
         where: { pay_run_id: run.id },
@@ -527,27 +501,17 @@ export class PayRunService {
             incentiveAmount: dec(i.incentive_amount ?? 0),
           })),
       );
-      const gross = items.reduce((acc, i) => acc.plus(i.rateApplied), new Decimal(0));
-      const advance = gross.times(dec(advancePct)).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-
-      const frozenGross = line.gross_commission === null ? null : dec(line.gross_commission);
-      if ((frozenGross && !gross.equals(frozenGross)) || !advance.equals(dec(line.commission_70))) {
+      const total = items.reduce((acc, i) => acc.plus(i.rateApplied), new Decimal(0));
+      if (!total.equals(dec(line.commission))) {
         throw new ConflictException(
           `payroll backfill refused for run #${run.pay_period.period_number}, rep ${line.rep.rep_code}: ` +
-            `snapshots give gross ${money(gross)} / 70% ${money(advance)}, but the frozen pay-run line has ` +
-            `gross ${frozenGross ? money(frozenGross) : '—'} / 70% ${money(dec(line.commission_70))}`,
+            `snapshots give commission ${money(total)}, but the frozen pay-run line has ${money(dec(line.commission))}`,
         );
       }
       return {
         repSales,
         items,
-        summary: {
-          rep_code: line.rep.rep_code,
-          sales: repSales.length,
-          gross: money(gross),
-          advance_70: money(dec(line.commission_70)),
-          held_30: money(gross.minus(dec(line.commission_70))),
-        },
+        summary: { rep_code: line.rep.rep_code, sales: repSales.length, commission: money(total) },
       };
     });
 
@@ -570,7 +534,7 @@ export class PayRunService {
     await this.prisma.$transaction(
       async (tx) => {
         for (const plan of plans) {
-          await this.writePayrollLines(tx, run.id, plan.repSales, { items: plan.items }, dec(advancePct));
+          await this.writePayrollLines(tx, run.id, plan.repSales, { items: plan.items });
         }
       },
       { timeout: 120_000 },
@@ -669,14 +633,11 @@ export class PayRunService {
     // Always 2 dp ("2019.50", never "2019.5"): Decimal#toString drops trailing zeros, and a payroll import
     // expects fixed cents. Values are stored at 2 dp, so toFixed(2) changes the TEXT only, never the amount.
     const cents = (v: { toFixed(dp: number): string }) => v.toFixed(2);
-    // No holdback (2026-11-13): the commission column is the full amount paid. A released-holdback column is
-    // included only for an OLD run that actually released one, so its net still adds up.
-    const hasRelease = lines.some((l) => !l.holdback_release_30.isZero());
+    // The commission column is the full amount paid (no tiers, no split since 2026-11-13).
     const rows = lines.map((l) => ({
       rep_code: l.rep.rep_code,
       rep_name: l.rep.full_name,
-      commission: cents(l.commission_70),
-      ...(hasRelease ? { holdback_release: cents(l.holdback_release_30) } : {}),
+      commission: cents(l.commission),
       expense_total: cents(l.expense_total),
       incentive_total: cents(l.incentive_total),
       bonus_amount: cents(l.bonus_amount),
@@ -716,15 +677,7 @@ export class PayRunService {
     if (!run) {
       throw new NotFoundException('Pay run not found');
     }
-    const lines = await this.getLines(runId, user);
-    return {
-      ...run,
-      // No holdback since 2026-11-13. True only for an OLD run whose frozen lines held or released some, so
-      // the screens show those columns where the figures need them and nowhere else.
-      has_holdback: lines.some((l) => nonZero(l.holdback_release_30) || nonZero(l.amount_held)),
-      split: await this.config.getHoldbackSplit(iso(run.pay_period.end_date)),
-      lines,
-    };
+    return { ...run, lines: await this.getLines(runId, user) };
   }
 
   async getLines(runId: string, user: AuthUser) {
@@ -784,15 +737,14 @@ export class PayRunService {
    * render time.
    *
    * #3: rep-pay stream only. No client billing rate is read here or anywhere downstream of it.
-   * #9: greenfield gets its OWN column; it is flat-rated and out of the tally, so folding it into internet
-   *     would misreport both.
+   * #9: greenfield gets its OWN column; it is paid its own rate, so folding it into internet would
+   *     misreport both.
    */
   private async writePayrollLines(
     tx: Prisma.TransactionClient,
     runId: string,
     sales: SalesForPayroll,
     result: { items: { id: string; productType: string; rateApplied: Decimal; incentiveAmount: Decimal }[] },
-    advancePct: Decimal,
   ): Promise<void> {
     const byItemId = new Map(result.items.map((i) => [i.id, i]));
 
@@ -858,7 +810,7 @@ export class PayRunService {
       };
     });
 
-    const report = buildPayrollReport(inputs, advancePct);
+    const report = buildPayrollReport(inputs);
     for (const line of report.lines) {
       await tx.payrollReportLine.create({
         data: {
@@ -884,8 +836,6 @@ export class PayRunService {
           spiff: money(line.spiff),
           other_total: money(line.other_total),
           total_100: money(line.total_100),
-          advance_70: money(line.advance_70),
-          holdback_30: money(line.holdback_30),
         },
       });
     }
@@ -900,21 +850,13 @@ export class PayRunService {
     return {
       pay_run_id: runId,
       rep_id: repId,
-      commission_70: money(amounts.commission_70),
-      holdback_release_30: money(amounts.holdback_release_30),
+      commission: money(amounts.commission),
       expense_total: money(amounts.expense_total),
       incentive_total: money(amounts.incentive_total),
       bonus_amount: money(amounts.bonus_amount),
       bonus_note: note,
       clawback_total: money(amounts.clawback_total),
       net_payout: money(amounts.net_payout),
-      // Reconciliation facts straight off the engine result — never recomputed here (#1/#5). Persisting
-      // gross + the 30% held is what lets the UI prove commission_70 = 70% of gross without any UI math.
-      gross_commission: money(amounts.gross_commission),
-      amount_held: money(amounts.amount_held),
-      tier_at_payment: amounts.tier_at_payment,
-      internet_tally: amounts.internet_tally,
-      rate_per_activation: amounts.rate_per_activation ? money(amounts.rate_per_activation) : null,
     };
   }
 

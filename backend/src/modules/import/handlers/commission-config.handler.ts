@@ -1,14 +1,12 @@
 /**
- * Back-dated COMMISSION-CONFIG commit handlers (master_migration + commission_tiers / commission_flat_rates).
- * Writes `commission_tier_configs` + `commission_tiers` and `commission_flat_rates` DIRECTLY via the
+ * Back-dated REP-RATE commit handler (master_migration + commission_flat_rates). No tiers since 2026-11-13.
+ * Writes `commission_flat_rates` DIRECTLY via the
  * transaction — the sanctioned #10 migration path, which deliberately bypasses the commission services'
  * back-date rejection (`effective-dates.util.ts`, 422). That guard is untouched: this is a second, AUDITED
  * way in, not a relaxation of the first.
  *
- * This is the REP stream. Nothing here reads or writes `client_billing_rates` (#3) — a client-scoped tier
- * schedule or flat rate scopes only the RATE LOOKUP; the internet tally stays cross-client (#5), which is
- * the engine's business and not this file's. A blank `client_code` is the GLOBAL row every client without
- * its own falls back to.
+ * This is the REP stream. Nothing here reads or writes `client_billing_rates` (#3). A blank `client_code`
+ * is the GLOBAL row every client without its own falls back to.
  *
  * Rates are inserted VERBATIM (the import is the authoritative historical record): no supersession is
  * planned and no existing row is bounded, because the file states what was actually in force and
@@ -22,7 +20,6 @@ import { DomainError } from '../../../common/errors/domain-error';
 import { dateOnly } from '../../../common/effective-dating';
 import { normCode } from '../clean.logic';
 import { RawRow } from '../mapping.logic';
-import { parseTierSpec } from '../tier-spec.logic';
 
 /** Resolve the OPTIONAL client scope. Blank → null → the global row. */
 async function resolveScope(tx: Prisma.TransactionClient, raw: unknown): Promise<string | null> {
@@ -33,40 +30,7 @@ async function resolveScope(tx: Prisma.TransactionClient, raw: unknown): Promise
   return client.id;
 }
 
-/**
- * One row = one WHOLE schedule: the config row plus every bracket, created together so a schedule is never
- * half-written. The `tiers` cell was already parsed + contiguity-checked at classify time (the gate blocks
- * the batch on a bad one); re-parsing here keeps the handler correct on its own rather than trusting an
- * upstream step.
- */
-export async function applyCommissionTierSchedule(
-  tx: Prisma.TransactionClient,
-  mapped: RawRow,
-  createdBy: string,
-): Promise<string> {
-  const clientId = await resolveScope(tx, mapped.client_code);
-  const brackets = parseTierSpec(String(mapped.tiers));
-
-  const config = await tx.commissionTierConfig.create({
-    data: {
-      client_id: clientId, // null = the GLOBAL schedule
-      effective_from: dateOnly(String(mapped.effective_from)), // back-dated allowed here (#10)
-      effective_to: mapped.effective_to ? dateOnly(String(mapped.effective_to)) : null,
-      created_by: createdBy,
-      tiers: {
-        create: brackets.map((b) => ({
-          tier_number: b.tier_number,
-          min_count: b.min_count,
-          max_count: b.max_count,
-          rate_per_activation: b.rate_per_activation, // decimal string → Prisma Decimal (#1)
-        })),
-      },
-    },
-  });
-  return config.id;
-}
-
-/** One row = one flat rate for one product type, on the global scope or one client's. */
+/** One row = one rep rate for one product type, on the global scope or one client's. */
 export async function applyCommissionFlatRate(
   tx: Prisma.TransactionClient,
   mapped: RawRow,
@@ -83,7 +47,7 @@ export async function applyCommissionFlatRate(
 
   const row = await tx.commissionFlatRate.create({
     data: {
-      client_id: clientId, // null = the GLOBAL flat rate for this type
+      client_id: clientId, // null = the GLOBAL rate for this type
       product_type: productType,
       amount: String(mapped.amount), // decimal string → Prisma Decimal (never float, #1)
       effective_from: dateOnly(String(mapped.effective_from)), // back-dated allowed here (#10)

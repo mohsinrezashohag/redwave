@@ -59,8 +59,7 @@ export class MarginController {
     summary: 'Client rate and rep rate side by side, with their effective dates',
     description:
       'Super Admin only. Answers what we charge and what we pay for a product TODAY, which the per-sale ' +
-      'view cannot for a product that has not sold. A tiered product reports every bracket, because its ' +
-      'rep rate depends on the period volume — there is no single number.',
+      'view cannot for a product that has not sold.',
   })
   @ApiOkResponse({ type: RateInForceResponse, isArray: true })
   ratesInForce(@Query() query: RatesInForceQuery, @CurrentUser() user: AuthUser) {

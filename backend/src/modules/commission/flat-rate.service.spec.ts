@@ -32,14 +32,19 @@ const monthsOut = (n: number) => {
 };
 
 describe('FlatRateService.create (COMM-002)', () => {
-  it('rejects a tiered product_type (e.g. internet — it is tiered, not flat) — 422', async () => {
+  it('accepts internet: every product type takes a flat rep rate (no tiers since 2026-11-13)', async () => {
     const { service, prisma } = make();
-    prisma.productTypeCatalogue.findUnique.mockResolvedValue({ behaviour: 'tiered', is_active: true });
+    prisma.productTypeCatalogue.findUnique.mockResolvedValue({ behaviour: 'internet', is_active: true });
+    await service.create({ product_type: 'internet' as never, amount: '110.00', effective_from: iso(1) }, 'actor').catch(() => undefined);
+    // It reaches the write (no 422 for internet): the transaction ran.
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
+
+  it('rejects an unknown or inactive product type — 422', async () => {
+    const { service, prisma } = make();
+    prisma.productTypeCatalogue.findUnique.mockResolvedValue(null);
     await expect(
-      service.create(
-        { product_type: 'internet' as never, amount: '50.00', effective_from: iso(1) },
-        'actor',
-      ),
+      service.create({ product_type: 'wireless' as never, amount: '50.00', effective_from: iso(1) }, 'actor'),
     ).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
 

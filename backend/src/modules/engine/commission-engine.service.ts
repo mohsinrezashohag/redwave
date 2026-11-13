@@ -1,12 +1,15 @@
 /**
  * CommissionEngineService — the PURE, deterministic, config-driven commission calculator.
  *
- * Responsibility: given a rep's activations for a period + the effective configuration, return the
- * tier, per-item amounts, gross commission, the 70/30 split, and (separately) incentives. Also a
- * pure clawback-amount calculation from a frozen snapshot.
+ * Responsibility: given a rep's activations for a period + the effective configuration, return each item's
+ * rep rate, the commission total and (separately) incentives. Also a pure clawback-amount calculation from a
+ * frozen snapshot.
+ *
+ * Client decision 2026-11-13: NO tiers and NO 70/30 split. Every item pays one flat rep rate and the rep is
+ * paid in full; Redwave applies any tier or split manually, outside the system, from its exports.
  *
  * Isolation: NO database, NO HTTP, NO other module, NO @prisma/client. No constructor dependencies.
- * Same inputs → same outputs, always. — CLAUDE §3 (#1,#5,#6,#9), §6, arch §8
+ * Same inputs → same outputs, always. — CLAUDE §3 (#1,#6), §6, arch §8
  *
  * Owns no entities (it persists nothing). Whoever calls it passes inputs and consumes outputs.
  */
@@ -21,141 +24,38 @@ import {
   PeriodInput,
   PeriodResult,
   ProductType,
-  TierBracket,
 } from './engine.types';
-import { roundMoneyHalfUp, sum, ZERO } from './money';
+import { sum, ZERO } from './money';
 
 @Injectable()
 export class CommissionEngineService {
-  /**
-   * Compute a full period result for one rep.
-   * Gross tally never re-tiers; tier is from the gross internet count across ALL clients and is
-   * applied to every internet activation. — CLAUDE #5, SRS PAY-002 / §8.2
-   */
+  /** Compute a full period result for one rep: each item's rate, plus incentives. */
   computePeriod(input: PeriodInput): PeriodResult {
     const { activations, config } = input;
-
-    // Tier from the GROSS internet tally (non-greenfield internet), aggregated across all clients.
-    // ⚠ NEVER add a clientId predicate here. Per-client SCHEDULES change which rate an activation is paid
-    // at; they never split the tally — counting per client is the explicit forbidden mistake. — CLAUDE #5
-    const internetTally = activations.filter((a) => a.productType === ProductType.internet).length;
-
-    // The bracket is resolved PER CLIENT (that client's ladder, else the global one) but always against the
-    // ONE cross-client tally above — memoised so a schedule is walked once per client, not once per item.
-    const bracketCache = new Map<string, TierBracket>();
-    const bracketFor = (clientId: string): TierBracket => {
-      const cached = bracketCache.get(clientId);
-      if (cached) return cached;
-      const ladder = config.tiersByClient?.[clientId] ?? config.tiers;
-      const bracket = this.determineTier(internetTally, ladder);
-      bracketCache.set(clientId, bracket);
-      return bracket;
-    };
-
-    const items = activations.map((activation) =>
-      this.computeItem(activation, config, internetTally > 0 ? bracketFor : null),
-    );
+    const items = activations.map((activation) => this.computeItem(activation, config));
     // Incentives are applied in a PERIOD-LEVEL pass (a threshold is relative to the rep's matching
     // activations for that incentive), then frozen onto the relevant items. — SRS COMM-005
     this.applyIncentives(items, activations, config.incentives);
 
-    const grossCommission = sum(items.map((i) => i.commissionBase)); // 70/30 base — tier+flat only
-    const incentiveTotal = sum(items.map((i) => i.incentiveAmount)); // separate, paid in full
-
-    // 70/30 split: round the advance to cents (HALF_UP), derive holdback so the two sum to gross
-    // exactly (never lose a cent). — CLAUDE #1, SRS PAY-003 / NFR-001
-    const advanceAmount = roundMoneyHalfUp(grossCommission.times(config.holdback.advancePct));
-    const holdbackAmount = grossCommission.minus(advanceAmount);
-
-    // Period-level tier/rate are only meaningful when every internet activation resolved to the SAME
-    // bracket; with per-client schedules a mixed period has no single answer, so report null and let the
-    // per-item snapshots carry the truth.
-    const internetItems = items.filter((i) => i.countsTowardTally);
-    const uniformTier = this.uniformTier(internetItems);
-
-    return {
-      internetTally,
-      tierNumber: uniformTier?.tierAtPayment ?? null,
-      ratePerActivation: uniformTier?.rateApplied ?? null,
-      items,
-      grossCommission,
-      advanceAmount,
-      holdbackAmount,
-      incentiveTotal,
-      totalEarned: grossCommission.plus(incentiveTotal),
-    };
+    const commissionTotal = sum(items.map((i) => i.commissionBase));
+    const incentiveTotal = sum(items.map((i) => i.incentiveAmount));
+    return { items, commissionTotal, incentiveTotal, totalEarned: commissionTotal.plus(incentiveTotal) };
   }
 
   /**
-   * The clawback recovery for a single cancelled item: the exact amount originally paid
-   * (rate + any incentive), read from the snapshot. No date math, no re-tier, no effect on other
-   * items. — CLAUDE #4/#6, SRS CLAW-001/003/004/005
+   * The clawback recovery for a single cancelled item: the exact amount originally paid (rate + any
+   * incentive), read from the snapshot. No date math, no effect on other items. — CLAUDE #4/#6, SRS CLAW-001..005
    */
   computeClawbackAmount(snapshot: ClawbackSnapshot): Decimal {
     return snapshot.rateApplied.plus(snapshot.incentiveAmount ?? ZERO);
   }
 
-  /**
-   * Select the tier bracket whose [minCount, maxCount] contains the tally. Exactly one must match;
-   * a tally that matches none indicates a misconfigured schedule (fail loudly rather than mis-pay).
-   */
-  determineTier(tally: number, tiers: TierBracket[]): TierBracket {
-    const bracket = tiers.find(
-      (t) => tally >= t.minCount && (t.maxCount === null || tally <= t.maxCount),
-    );
-    if (!bracket) {
-      throw new Error(`No tier bracket matches an internet tally of ${tally}`);
-    }
-    return bracket;
-  }
-
-  /**
-   * The bracket shared by every internet item, or null when they differ (per-client schedules) or there
-   * are none. Compares the resolved tier + rate, which is what the period-level scalars report.
-   */
-  private uniformTier(internetItems: ComputedItem[]): ComputedItem | null {
-    const first = internetItems[0];
-    if (!first) return null;
-    const mixed = internetItems.some(
-      (i) => i.tierAtPayment !== first.tierAtPayment || !i.rateApplied.equals(first.rateApplied),
-    );
-    return mixed ? null : first;
-  }
-
-  /** Compute one activation's amounts (tier rate or flat rate, plus any per_activation incentive). */
-  private computeItem(
-    activation: ActivationInput,
-    config: EngineConfig,
-    bracketFor: ((clientId: string) => TierBracket) | null,
-  ): ComputedItem {
-    const isInternet = activation.productType === ProductType.internet;
-
-    // Base rate: tiered for internet, flat for everything else. Greenfield is flat AND tally-excluded.
-    let rateApplied: Decimal;
-    let tierAtPayment: number | null;
-    if (isInternet) {
-      // bracketFor is non-null whenever an internet activation exists (tally > 0).
-      if (!bracketFor) {
-        throw new Error('Internal: internet activation with no tier bracket');
-      }
-      // This client's ladder (else the global one), against the ONE cross-client tally. The BRACKET —
-      // which tier, from the tally — is decided here and is the same for every product (#5).
-      const bracket = bracketFor(activation.clientId);
-      // Only the RATE varies by product: this client's rate for this product, else any client's rate for
-      // this product, else the ladder's own rate. A product with no override pays exactly what it always
-      // did, which is what keeps the mandatory fixtures unchanged.
-      rateApplied = this.tierRateFor(bracket, activation, config);
-      tierAtPayment = bracket.tierNumber;
-    } else {
-      rateApplied = this.flatRateFor(activation.productType, activation.clientId, config, activation.productId);
-      tierAtPayment = null;
-    }
-
+  /** Compute one activation's amounts (its flat rep rate; incentives are added by the period pass). */
+  private computeItem(activation: ActivationInput, config: EngineConfig): ComputedItem {
+    const rateApplied = this.rateFor(activation, config);
     return {
       id: activation.id,
       productType: activation.productType,
-      countsTowardTally: isInternet, // only non-greenfield internet counts — CLAUDE #9
-      tierAtPayment,
       rateApplied,
       commissionBase: rateApplied,
       incentiveId: null, // filled by the period-level incentive pass
@@ -165,36 +65,20 @@ export class CommissionEngineService {
   }
 
   /**
-   * The rate this bracket pays for THIS activation's product. Most specific wins:
-   *   (client + product) → (product) → the bracket's own ratePerActivation.
-   * The bracket itself — and therefore the tier — is already decided from the cross-client tally and is
-   * never revisited here. This resolves a RATE only (#5).
+   * The rep rate for one item. Most specific wins: (client + product) → (product) → (client + type) → (type).
+   * A GREENFIELD internet sale skips the product steps: it keeps the internet product's id (for billing and
+   * reporting) but is paid the greenfield rate, never that product's own internet rate.
    */
-  private tierRateFor(bracket: TierBracket, activation: ActivationInput, config: EngineConfig): Decimal {
-    const productId = activation.productId;
-    if (!productId) {
-      return bracket.ratePerActivation;
-    }
-    const tier = bracket.tierNumber;
-    return (
-      config.tierRatesByClientProduct?.[activation.clientId]?.[productId]?.[tier] ??
-      config.tierRatesByProduct?.[productId]?.[tier] ??
-      bracket.ratePerActivation
-    );
-  }
-
-  private flatRateFor(productType: string, clientId: string, config: EngineConfig, productId?: string | null): Decimal {
-    // internet is handled by the tier path; every other (flat) type resolves most-specific-first:
-    //   (client + product) → (product) → (client + type) → (type).
-    // The product steps are skipped entirely when the activation carries no product, so a config with no
-    // per-product rows behaves exactly as it did before they existed.
+  private rateFor(activation: ActivationInput, config: EngineConfig): Decimal {
+    const { productType, clientId } = activation;
+    const productId = productType === ProductType.greenfield_internet ? null : activation.productId;
     const rate =
       (productId ? config.flatRatesByClientProduct?.[clientId]?.[productId] : undefined) ??
       (productId ? config.flatRatesByProduct?.[productId] : undefined) ??
       config.flatRatesByClient?.[clientId]?.[productType] ??
       config.flatRates[productType];
     if (rate === undefined) {
-      throw new Error(`No flat rate for product type ${productType} (client ${clientId})`);
+      throw new Error(`No rep rate for product type ${productType} (client ${clientId})`);
     }
     return rate;
   }
@@ -204,7 +88,7 @@ export class CommissionEngineService {
    * activations), freezing the bonus onto the relevant items. Both modes:
    *   • per_activation — bonus on each matching activation BEYOND `targetCount` (null/0 = all).
    *   • one_time      — one bonus once the rep reaches `targetCount` matching activations (the crossing one).
-   * Incentive money is SEPARATE from the 70/30 base (commissionBase is never touched). — SRS COMM-005
+   * Incentive money is kept separate from the rate (commissionBase is never touched). — SRS COMM-005
    */
   private applyIncentives(
     items: ComputedItem[],

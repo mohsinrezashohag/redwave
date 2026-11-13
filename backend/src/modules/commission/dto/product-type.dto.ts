@@ -1,5 +1,5 @@
 /**
- * Product-type catalogue DTOs. A new type is always a standard add-on (billable, flat-rated, NOT tiered,
+ * Product-type catalogue DTOs. A new type is always a standard add-on (billable, flat-rated, NOT internet,
  * NOT greenfield) — behaviour is forced server-side, never client-supplied, so a new type can never change
  * tally/greenfield logic (#5/#9). Create may carry an INLINE commission flat rate (Q2) — written to the
  * commission stream in the same transaction (#3: catalogue carries no rate).

@@ -2866,3 +2866,69 @@ runs stay readable, showing their held/released figures only where non-zero.
 **Verified LOCAL:** 1245 backend tests (payrun spec rewritten: no ledger write, no release even with a waiting
 hold, full clawback, draft = finalize; §6 engine fixtures untouched) + typecheck + lint + build + contract
 regen; FE build + lint + stylelint + vitest 162. Not seen in a browser.
+
+### Tiers and the 70/30 removed from the system entirely (migration `20261113100000`)
+
+**Ask (2026-11-13).** "Remove all the 70/30, holdback and tier stuff from code, UI and the system. The existing
+data is demo data, update it to match. Tiers and splits are maintained by Redwave manually; they need to do their
+sales work and export perfectly." Decided: greenfield keeps its own rate; old tier/holdback tables and columns
+are DROPPED after converting the prices in force.
+
+- **Pay model:** every sale item pays ONE flat rep rate, most specific wins: client+product → product →
+  client+type → type. Greenfield internet skips the product steps and pays the greenfield rate (fixes the latent
+  pitfall where an internet product's own rate would have beaten the greenfield rate). A missing rate throws →
+  422. Paid in full; incentives unchanged.
+- **Engine** rewritten to that model (no brackets, tally, tier snapshot or split). `engine.purity.spec` kept and
+  adapted. New fixtures: 20 internet + 4 TV + 3 HP + 2 greenfield → $2,610; most-specific wins; greenfield
+  ignores the product rate; missing rate throws; per-product clawback; both incentive modes.
+- **Commission config:** tier schedule, per-product tier rate and base-prices services/routes/DTOs/specs deleted;
+  `FlatRateService` takes every type (incl. internet) and an optional `product_id`; the provider builds only the
+  four rate maps + incentives. `schedule-c-v2.ts` → `genesis-rates.ts` (internet 110, greenfield 100, TV 30,
+  HP 30), seeded by bootstrap.
+- **Migration:** converts each scope's entry-bracket rate → that scope's `internet` type rate and each in-force
+  entry-tier product price → a product rate; renames `pay_run_lines.commission_70` → `commission`, rewrites old
+  demo runs (`commission = gross`, `net` recomposed); drops `holdback_release_30`, `amount_held`,
+  `gross_commission`, tier/tally/rate columns, `payroll_report_lines.advance_70/holdback_30` (saved payroll
+  layouts lose those fields), `sale_items.tier_at_payment`, the tier and holdback tables and
+  `HoldbackReleaseStatus`; renames behaviour `tiered` → `internet`. Unused `ImportType` values stay (Postgres
+  can't drop enum values cleanly); the import refuses them.
+- **Readers:** pay run (finalize/draft/backfill/report/statement/export), payroll workbook (one Total column),
+  dashboards (no tier progress / distribution; rep `commission.commission`), margin rates-in-force (one
+  `rep_rate`, resolved like the engine, now client-aware), chatbot, import (tier-schedule kind removed),
+  reconciliation tie-out, billing/sales/import behaviour checks.
+- **Frontend:** Commission Config = **Rep rates** (type or product, global or client) + Incentives; the tier
+  screens, base prices, tier mode, `split.ts`, `TierProgressBar` and tier charts deleted; pay run / statements /
+  drawer show Commission only; clawback, import, product-type, dashboard and report copy cleaned. Sales row
+  actions and pay-run line actions are clickable icons (`RowActions iconOnly`).
+
+**Not done:** the rep-rate IMPORT still takes product type only (no per-product column).
+
+**Operator:** `prisma:deploy` (adds `20261113100000`); `prisma:seed` (bootstrap rates, idempotent).
+
+### Rep banking details, ID holder details and the Data accuracy tab (migration `20261113200000`)
+
+Client follow-up items 2 and 3 (item 4, the sales row icons, shipped with the tier removal above).
+
+- **Banking:** `payment_details` gains `bank_name` (typed, else derived from the 3-digit institution number via
+  `CANADIAN_BANKS` in `rep-profile.logic`; the FE keeps a copy to suggest it while typing) and `account_holder`.
+  The routing number is **derived on read** both ways (electronic `0IIITTTTT`, cheque `TTTTT-III`), never stored.
+  No migration (JSON column). The rep form shows Bank name / Account holder / a read-only Routing no.; the
+  Banking card shows all of them. The account stays encrypted, masked and reveal-audited.
+- **ID holder details** (migration `20261113200000_rep_document_id_details`): `rep_documents` gains
+  `name_on_document`, `date_of_birth`, `document_number_ciphertext` (field-cipher) and `document_number_last4`.
+  The reader prompt + `parseMrz` (TD3/TD1, 2-digit birth year placed by today's year) suggest DOB and number;
+  `withMrzDetails` fills what the print lacked; a new `dob` check compares with the profile. HR confirms them in
+  the document review dialog; they are saved on upload / edit / replace (replace carries the old ones over),
+  **never logged** (the audit row records only `id_details_changed`) and the number is never returned unmasked.
+  Storing a number without `PII_ENCRYPTION_KEY` is a 422. All document responses go through `toDocView`.
+- **Data accuracy tab** (`GET /v1/reps/:id/data-accuracy`, `hrm:edit`; FE tab only with `hrm:edit`): the profile
+  beside the latest live ID of each kind, same rows in every column (name, DOB, document no., issued, expires,
+  address), grey value boxes, differences outlined in the warning tone, a summary banner. Match flags are the
+  server's; a value missing on either side is "not on file", never a difference.
+- **Tests:** MRZ DOB/number + century, `withMrzDetails`, the `dob` check, encryption + redaction + no-logging,
+  the no-key 422, the comparison (latest per kind, live only, missing ≠ mismatch), RBAC; FE routing/bank-name and
+  the column mapping. Verified LOCAL: 1165 backend tests, typecheck, lint, build, contract export; FE tsc, lint,
+  stylelint, 153 vitest, build. **Not seen in a browser** (the local app points at production).
+
+**Operator:** `prisma:deploy` (adds `20261113200000`). `PII_ENCRYPTION_KEY` must be set on Render to store
+document numbers (it already is required for SIN / bank account).

@@ -198,7 +198,15 @@ describe('banking', () => {
     expect(pd).toMatchObject({ institution_no: '001', transit_no: '12345', account_last4: '4567' });
     expect(pd.account_ciphertext).toMatch(/^v1\./);
     expect(JSON.stringify(pd)).not.toContain('1234567');
-    expect(res.banking).toEqual({ institution_no: '001', transit_no: '12345', account_masked: '••••4567' });
+    expect(res.banking).toEqual({
+      institution_no: '001',
+      transit_no: '12345',
+      account_masked: '••••4567',
+      bank_name: 'Bank of Montreal (BMO)', // from the institution number when none was typed
+      account_holder: null,
+      routing_electronic: '000112345',
+      routing_cheque: '12345-001',
+    });
     expect(JSON.stringify(res)).not.toContain('v1.');
   });
 
@@ -209,7 +217,7 @@ describe('banking', () => {
     );
     await service.update('r1', { banking: { institution_no: '002', transit_no: '54321', account_no: '' } }, EDITOR);
     expect(written(prisma.rep.update).payment_details).toEqual({
-      institution_no: '002', transit_no: '54321', account_last4: '9999', account_ciphertext: 'v1.keep',
+      institution_no: '002', transit_no: '54321', account_last4: '9999', account_ciphertext: 'v1.keep', bank_name: 'Scotiabank',
     });
   });
 
@@ -237,7 +245,15 @@ describe('banking', () => {
   it('view-only callers get no banking; the rep’s own view gets it masked', () => {
     const r = row({ payment_details: { institution_no: '001', transit_no: '12345', account_last4: '4567', account_ciphertext: 'v1.x' } });
     expect((toRepView(r, false) as Record<string, unknown>).banking).toBeNull();
-    expect((toRepView(r, true) as Record<string, unknown>).banking).toEqual({ institution_no: '001', transit_no: '12345', account_masked: '••••4567' });
+    expect((toRepView(r, true) as Record<string, unknown>).banking).toEqual({
+      institution_no: '001',
+      transit_no: '12345',
+      account_masked: '••••4567',
+      bank_name: 'Bank of Montreal (BMO)',
+      account_holder: null,
+      routing_electronic: '000112345',
+      routing_cheque: '12345-001',
+    });
   });
 
   it('reveal decrypts what create encrypted and AUDITS without the value', async () => {

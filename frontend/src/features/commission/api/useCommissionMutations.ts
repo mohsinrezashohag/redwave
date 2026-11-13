@@ -1,8 +1,7 @@
 /**
- * Commission Config mutations — add a (future-dated) tier schedule / flat rate (each supersedes pending +
- * bounds current server-side; back-date → 422), and create/update incentives. All invalidate the commission
- * cache. The server validates (contiguity / no internet flat / target_count) → 422 surfaced by the caller. Responses are typed via the
- * generated schema (Batch A #2).
+ * Commission Config mutations — add a (future-dated) rep rate (supersedes pending + bounds current
+ * server-side; back-date → 422), and create/update incentives. All invalidate the commission cache. The
+ * server validates → 422 surfaced by the caller. Responses are typed via the generated schema (Batch A #2).
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../api/client';
@@ -11,61 +10,11 @@ import { commissionKeys } from './keys';
 import type {
   CreateFlatRateBody,
   CreateIncentiveBody,
-  CreateTierScheduleBody,
   FlatRate,
   Incentive,
-  TierConfig,
   UpdateFlatRateBody,
   UpdateIncentiveBody,
-  UpdateTierScheduleBody,
-  CreateTierRateBody,
-  UpdateTierRateBody,
-  TierRate,
-  SetBasePricesBody,
-  BasePricesResult,
 } from '../commission.types';
-
-export function useCreateTierSchedule() {
-  const qc = useQueryClient();
-  return useMutation({
-    // The max_count swagger quirk is fixed (Batch A #2), so the generated request type is used directly.
-    mutationFn: (body: CreateTierScheduleBody) =>
-      unwrap<TierConfig>(api.POST('/v1/commission/tiers', { body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
-  });
-}
-
-/**
- * Switch a scope to BASE PRICES (tiers off): one [0,∞) bracket at the default + each product's own price,
- * written in ONE server transaction. — client request 2026-11-11
- */
-export function useSetBasePrices() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: SetBasePricesBody) =>
-      unwrap<BasePricesResult>(api.POST('/v1/commission/base-prices', { body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
-  });
-}
-
-/** Edit a PENDING tier schedule (server 422s current/past). */
-export function useUpdateTierSchedule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: UpdateTierScheduleBody }) =>
-      unwrap<TierConfig>(api.PATCH('/v1/commission/tiers/{id}', { params: { path: { id } }, body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
-  });
-}
-
-/** Delete a PENDING tier schedule (server 422s current/past). */
-export function useDeleteTierSchedule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => unwrap<void>(api.DELETE('/v1/commission/tiers/{id}', { params: { path: { id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
-  });
-}
 
 export function useCreateFlatRate() {
   const qc = useQueryClient();
@@ -88,31 +37,6 @@ export function useDeleteFlatRate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => unwrap<void>(api.DELETE('/v1/commission/flat-rates/{id}', { params: { path: { id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
-  });
-}
-
-export function useCreateTierRate() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: CreateTierRateBody) => unwrap<TierRate>(api.POST('/v1/commission/tier-rates', { body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
-  });
-}
-
-export function useUpdateTierRate() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: UpdateTierRateBody }) =>
-      unwrap<TierRate>(api.PATCH('/v1/commission/tier-rates/{id}', { params: { path: { id } }, body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
-  });
-}
-
-export function useDeleteTierRate() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => unwrap<void>(api.DELETE('/v1/commission/tier-rates/{id}', { params: { path: { id } } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: commissionKeys.all }),
   });
 }

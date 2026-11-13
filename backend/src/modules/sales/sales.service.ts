@@ -162,11 +162,11 @@ export class SalesService {
 
     // Internet is the MANDATORY BASE of a sale; TV, Home Phone, Protection Plan, Mesh Extender and
     // Speed-attach are add-ons and cannot be sold standalone. Base = a product whose catalogue
-    // behaviour is `tiered` (internet) or `greenfield`; a sale of only `standard_addon` items is
-    // rejected. This never touches commission/tally logic (#5/#9). — SRS SALE-001a (Meeting 3)
+    // behaviour is `internet` or `greenfield`; a sale of only `standard_addon` items is rejected.
+    // — SRS SALE-001a (Meeting 3)
     const hasInternetBase = dto.items.some((item) => {
       const behaviour = productById.get(item.product_id)?.product_type_ref?.behaviour;
-      return behaviour === 'tiered' || behaviour === 'greenfield';
+      return behaviour === 'internet' || behaviour === 'greenfield';
     });
     if (!hasInternetBase) {
       throw new UnprocessableEntityException(

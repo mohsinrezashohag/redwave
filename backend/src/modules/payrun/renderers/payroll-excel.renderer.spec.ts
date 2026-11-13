@@ -1,6 +1,6 @@
 /**
- * The payroll workbook: no holdback since 2026-11-13, so the 70% / 30% columns appear only for an OLD run that
- * held some, headed by that run's own split ("0.7" / "0.3"); a header an admin renamed stays as they set it.
+ * The payroll workbook: one Total column (no tiers, no split since 2026-11-13); a header an admin renamed
+ * stays exactly as they set it.
  */
 import * as ExcelJS from 'exceljs';
 import { PayrollExcelRenderer, PayrollReportForExport } from './payroll-excel.renderer';
@@ -26,8 +26,6 @@ const LINE = {
   spiff: '0.00',
   other_total: '0.00',
   total_100: '145.00',
-  advance_70: '145.00',
-  holdback_30: '0.00',
 };
 
 const report = (over: Partial<PayrollReportForExport> = {}): PayrollReportForExport => ({
@@ -39,8 +37,6 @@ const report = (over: Partial<PayrollReportForExport> = {}): PayrollReportForExp
   generated_at: '2026-11-22T00:00:00.000Z',
   lines: [LINE],
   total_100: '145.00',
-  advance_70: '145.00',
-  holdback_30: '0.00',
   ...over,
 });
 
@@ -51,31 +47,16 @@ async function headerRow(r: PayrollReportForExport): Promise<string[]> {
   return values.slice(1).map((v) => String(v));
 }
 
-describe('PayrollExcelRenderer — no holdback since 2026-11-13', () => {
-  it('a new run has no 70% / 30% columns: the sheet ends at the total', async () => {
-    const h = await headerRow(report({ split: { advance_pct: '1.0000', holdback_pct: '0.0000' } }));
-    expect(h[h.length - 1]).toBe('Total 100 %');
+describe('PayrollExcelRenderer — one Total column (no split since 2026-11-13)', () => {
+  it('the sheet ends at the Total column; there are no 70% / 30% columns', async () => {
+    const h = await headerRow(report());
+    expect(h[h.length - 1]).toBe('Total');
     expect(h).not.toContain('0.7');
     expect(h).not.toContain('0.3');
   });
 
-  it('an OLD run that held some keeps Redwave’s "0.7" / "0.3" columns, headed by its own split', async () => {
-    const h = await headerRow(
-      report({ has_holdback: true, split: { advance_pct: '0.7000', holdback_pct: '0.3000' } }),
-    );
-    expect(h).toEqual(expect.arrayContaining(['0.7', '0.3']));
-  });
-
-  it('a header renamed in Export Layouts is left exactly as the admin set it (old run)', async () => {
-    const layout = [
-      { field: 'rep_name', header: 'Agent' },
-      { field: 'total_100', header: 'Total' },
-      { field: 'advance_70', header: 'Paid now' },
-      { field: 'holdback_30', header: 'Held' },
-    ];
-    const h = await headerRow(report({ layout, has_holdback: true, split: { advance_pct: '0.7000', holdback_pct: '0.3000' } }));
-    expect(h).toEqual(['Agent', 'Total', 'Paid now', 'Held']);
-    const h2 = await headerRow(report({ layout }));
-    expect(h2).toEqual(['Agent', 'Total']);
+  it('a header renamed in Export Layouts is left exactly as the admin set it', async () => {
+    const h = await headerRow(report({ layout: [{ field: 'rep_name', header: 'Agent' }, { field: 'total_100', header: 'Paid' }] }));
+    expect(h).toEqual(['Agent', 'Paid']);
   });
 });

@@ -31,7 +31,6 @@ const biz: BusinessDashboard = {
   activations_by_client: [],
   validation_funnel: { entered: 5, validated: 10, in_pay_run: 0, paid: 45 },
   active_rep_count: 8,
-  tier_distribution: [],
   client_mix: [],
   revenue_growth: { current: '12000.00', previous: '10000.00', pct: '20.0' },
   activation_growth: { current: 60, previous: 50, pct: '20.0' },
@@ -61,7 +60,7 @@ describe('businessSummaryRows — scalars → metric/value rows (pure formatting
     expect(byMetric.get('Period')).toBe('Period 12');
     expect(byMetric.get('Revenue (billing stream)')).toBe('$12,000.00');
     expect(byMetric.get('Net margin %')).toBe('33.3%');
-    expect(byMetric.get('Internet activations (tally)')).toBe('48');
+    expect(byMetric.get('Internet activations')).toBe('48');
     expect(byMetric.get('Activations: TV')).toBe('8');
     // every cell is a string (the exportRows contract)
     expect(rows.every((r) => typeof r.metric === 'string' && typeof r.value === 'string')).toBe(true);
@@ -85,18 +84,13 @@ describe('column defs — string cells; the leaderboard carries NO money', () =>
     const line = {
       id: 'l1', pay_run_id: 'run1', rep_id: 'r1',
       rep: { id: 'r1', rep_code: 'RW-D-001', full_name: 'Rep One' },
-      commission_70: '2317.00', holdback_release_30: '993.00', expense_total: '45.00',
+      commission: '2317.00', expense_total: '45.00',
       incentive_total: '0.00', bonus_amount: '100.00', bonus_note: null,
       clawback_total: '30.00', net_payout: '3425.00',
-    } as Parameters<ReturnType<typeof payrunColumns>[0]['value']>[0];
-    // A new run: commission paid in full, no holdback column (2026-11-13).
-    expect(payrunColumns().map((c) => c.header)).not.toContain('Holdback released');
-    expect(payrunColumns().map((c) => c.value(line))).toEqual([
+    } as Parameters<(typeof payrunColumns)[0]['value']>[0];
+    expect(payrunColumns.map((c) => c.header)).not.toContain('Holdback released');
+    expect(payrunColumns.map((c) => c.value(line))).toEqual([
       'RW-D-001', 'Rep One', '$2,317.00', '$45.00', '$0.00', '$100.00', '$30.00', '$3,425.00',
-    ]);
-    // An OLD run that released a hold keeps the column, so its net adds up.
-    expect(payrunColumns(true).map((c) => c.value(line))).toEqual([
-      'RW-D-001', 'Rep One', '$2,317.00', '$993.00', '$45.00', '$0.00', '$100.00', '$30.00', '$3,425.00',
     ]);
   });
 

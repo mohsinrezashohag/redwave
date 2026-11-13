@@ -139,8 +139,7 @@ export class ReconciliationService {
       tieOutPayRunLine({
         rep_id: l.rep_id,
         rep_code: l.rep.rep_code,
-        commission_70: l.commission_70.toString(),
-        holdback_release_30: l.holdback_release_30.toString(),
+        commission: l.commission.toString(),
         expense_total: l.expense_total.toString(),
         incentive_total: l.incentive_total.toString(),
         bonus_amount: l.bonus_amount.toString(),

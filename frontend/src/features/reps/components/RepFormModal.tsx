@@ -21,7 +21,7 @@ import { todayIso } from '../../../lib/format/date';
 import { useCan } from '../../../auth/useCan';
 import { useUsers } from '../../admin/api/useUsers';
 import { useCreateRep, useRepHeadshotUrl, useUpdateRep, useUploadHeadshot } from '../api/useRepProfile';
-import { CLOTHING_SIZES, NONE, PROVINCES, repFormDefaults, repFormSchema, toCreateBody, toUpdateBody, type RepFormValues } from '../repForm';
+import { bankNameFor, CLOTHING_SIZES, NONE, PROVINCES, repFormDefaults, routingNumbers, repFormSchema, toCreateBody, toUpdateBody, type RepFormValues } from '../repForm';
 import type { Rep } from '../reps.types';
 import styles from './reps.module.css';
 
@@ -87,6 +87,10 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
   }, [open]);
   const errors = formState.errors;
   const status = useWatch({ control, name: 'status' });
+  const bankInstitution = useWatch({ control, name: 'bank_institution' }) ?? '';
+  const bankTransit = useWatch({ control, name: 'bank_transit' }) ?? '';
+  const suggestedBank = bankNameFor(bankInstitution);
+  const routing = routingNumbers(bankInstitution, bankTransit);
 
   const onSubmit = (values: RepFormValues) => {
     const done = async (rep: Rep, title: string) => {
@@ -248,6 +252,16 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
               <PrivateInput {...register('bank_transit')} inputMode="numeric" placeholder="12345" className="mono" />
             </FormField>
             <FormField
+              label="Bank name"
+              error={errors.bank_name?.message}
+              help={suggestedBank ? `Leave blank to use ${suggestedBank}.` : 'Filled in for the main Canadian banks; type it for any other.'}
+            >
+              <PrivateInput {...register('bank_name')} placeholder={suggestedBank ?? 'e.g. Assiniboine Credit Union'} />
+            </FormField>
+            <FormField label="Account holder" error={errors.bank_account_holder?.message} help="As printed on the void cheque.">
+              <PrivateInput {...register('bank_account_holder')} placeholder="Name on the account" />
+            </FormField>
+            <FormField
               label="Account no."
               error={errors.bank_account?.message}
               help={
@@ -257,6 +271,9 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
               }
             >
               <PrivateInput {...register('bank_account')} inputMode="numeric" placeholder="1234567" className="mono" />
+            </FormField>
+            <FormField label="Routing no." help={routing ? `Cheque format ${routing.cheque}.` : 'Worked out from the institution and transit numbers.'}>
+              <Input value={routing?.electronic ?? ''} readOnly placeholder="—" className="mono" aria-readonly="true" />
             </FormField>
           </div>
         </section>

@@ -166,10 +166,25 @@ function BankingCard({ rep, canSee, canReveal, self }: { rep: Rep; canSee: boole
         <p className={styles.muted}>No banking details on file.</p>
       ) : (
         <dl className={styles.dl}>
+          <dt>Bank</dt>
+          <dd>{b.bank_name ?? '—'}</dd>
+          <dt>Account holder</dt>
+          <dd>{b.account_holder ?? '—'}</dd>
           <dt>Institution</dt>
           <dd className="mono">{b.institution_no}</dd>
           <dt>Transit</dt>
           <dd className="mono">{b.transit_no ?? '—'}</dd>
+          <dt>Routing no.</dt>
+          <dd>
+            {b.routing_electronic ? (
+              <>
+                <span className="mono">{b.routing_electronic}</span>
+                <span className={styles.muted}> (cheque {b.routing_cheque})</span>
+              </>
+            ) : (
+              '—'
+            )}
+          </dd>
           <dt>Account</dt>
           <dd>
             <span className={styles.sinRow}>

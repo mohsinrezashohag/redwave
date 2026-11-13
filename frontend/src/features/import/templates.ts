@@ -89,18 +89,6 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    id: 'commission_tiers',
-    label: 'Historical tier schedules',
-    group: 'Master data',
-    description: 'Back-dated commission tier schedules. One row is one whole schedule.',
-    fields: [
-      f('client_code', 'Client code', '', 'VF', 'Client (by code). LEAVE BLANK for the global schedule every client falls back to.'),
-      f('tiers', 'Tiers', '0-6:110|7-16:125|17-35:145|36+:160', '0-9:120|10+:150', 'The whole schedule in one cell: min-max:rate separated by |, with min+:rate for the open top bracket. Must cover every tally with no gaps or overlaps. Tier numbers are assigned by rate (highest = Tier 1).', true),
-      f('effective_from', 'Effective from', '2026-01-01', '2026-01-01', 'Date the schedule took effect. Back-dating is allowed here only.', true),
-      f('effective_to', 'Effective to', '2026-12-31', '', 'Optional end date (open-ended if blank).'),
-    ],
-  },
-  {
     id: 'commission_flat_rates',
     label: 'Historical commission flat rates',
     group: 'Master data',
@@ -132,7 +120,7 @@ export const TEMPLATES: TemplateDef[] = [
     label: 'Bulk sales entry (live)',
     group: 'Sales',
     description:
-      'Real sales that DO count toward the tier tally, pay runs and clawbacks. One row is one sale: put every product on the sale in `product_types`, separated by commas. Import clients, products and reps first.',
+      'Real sales that DO reach pay runs and clawbacks. One row is one sale: put every product on the sale in `product_types`, separated by commas. Import clients, products and reps first.',
     fields: [
       f('client_code', 'Client code', 'VF', 'RF', 'Client code. The client must already exist.', true),
       f('rep_code', 'Rep code', 'RW-D-0001', 'RW-D-0001', 'Rep code. The rep must exist and be active.', true),
@@ -145,7 +133,7 @@ export const TEMPLATES: TemplateDef[] = [
       f('province_state', 'Province/State', 'MB', '', 'Optional. Shows as a dash when left blank.'),
       f('postal_code', 'Postal code', 'R3C 1A1', '', 'Optional. Shows as a dash when left blank.'),
       f('mpu_id', 'MPU ID', 'MPU-2001', '', 'Client house/unit identifier (also disambiguates the Sale ID).'),
-      f('is_greenfield', 'Greenfield', 'false', 'false', 'true/false. Greenfield internet is flat-rated and EXCLUDED from the tier tally.'),
+      f('is_greenfield', 'Greenfield', 'false', 'false', 'true/false. Greenfield internet is paid the greenfield rate.'),
       f('status', 'Status', 'entered', 'validated', 'entered (default) or validated. "validated" also validates the sale at commit.'),
     ],
   },
@@ -210,7 +198,6 @@ export const KIND_TO_TEMPLATE: Record<string, string> = {
   create_products: 'products',
   billing_rate: 'billing_rates',
   km_rate: 'km_rates',
-  commission_tier_schedule: 'commission_tiers',
   commission_flat_rate: 'commission_flat_rates',
   create_reps: 'reps',
   historical_sales: 'historical_sales',

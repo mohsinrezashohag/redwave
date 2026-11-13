@@ -38,6 +38,45 @@ const POSTAL = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
 const bankDigits = (v: string) => v.replace(/[\s-]/g, '');
 
 /**
+ * Canadian institutions by number — a copy of the server's list (hrm/rep-profile.logic CANADIAN_BANKS), used
+ * only to SUGGEST the bank name as HR types. The server derives the same name when the field is left blank.
+ */
+export const CANADIAN_BANKS: Readonly<Record<string, string>> = {
+  '001': 'Bank of Montreal (BMO)',
+  '002': 'Scotiabank',
+  '003': 'RBC Royal Bank',
+  '004': 'TD Canada Trust',
+  '006': 'National Bank of Canada',
+  '010': 'CIBC',
+  '016': 'HSBC Bank Canada',
+  '030': 'Canadian Western Bank',
+  '039': 'Laurentian Bank',
+  '219': 'ATB Financial',
+  '540': 'Manulife Bank',
+  '614': 'Tangerine',
+  '621': 'EQ Bank',
+  '815': 'Desjardins',
+  '828': 'Central 1 Credit Union',
+  '837': 'Meridian Credit Union',
+};
+
+/** The suggested bank name for an institution number as typed; null when unknown or incomplete. */
+export function bankNameFor(institution: string): string | null {
+  return CANADIAN_BANKS[bankDigits(institution)] ?? null;
+}
+
+/**
+ * The routing number both ways, from institution + transit (mirrors the server): electronic `0IIITTTTT`
+ * (direct deposit / EFT) and cheque `TTTTT-III`. Null until both parts are complete.
+ */
+export function routingNumbers(institution: string, transit: string): { electronic: string; cheque: string } | null {
+  const i = bankDigits(institution);
+  const t = bankDigits(transit);
+  if (!/^\d{3}$/.test(i) || !/^\d{5}$/.test(t)) return null;
+  return { electronic: `0${i}${t}`, cheque: `${t}-${i}` };
+}
+
+/**
  * @param accountOnFile the rep already has a bank account stored — then a blank account field means "keep it"
  *   (it is write-only, like the SIN).
  */
@@ -71,6 +110,8 @@ export function repFormSchema(mode: 'create' | 'edit', today: string, accountOnF
       bank_institution: z.string().refine((v) => !v.trim() || /^\d{3}$/.test(bankDigits(v)), '3 digits, e.g. 001'),
       bank_transit: z.string().refine((v) => !v.trim() || /^\d{5}$/.test(bankDigits(v)), '5 digits, e.g. 12345'),
       bank_account: z.string().refine((v) => !v.trim() || /^\d{7,12}$/.test(bankDigits(v)), '7 to 12 digits'),
+      bank_name: z.string().max(120),
+      bank_account_holder: z.string().max(120),
     })
     .superRefine((v, ctx) => {
       if (mode === 'create' && !v.rep_code.trim()) {
@@ -116,6 +157,8 @@ export function repFormDefaults(rep: Rep | null): RepFormValues {
     bank_institution: rep?.banking?.institution_no ?? '',
     bank_transit: rep?.banking?.transit_no ?? '',
     bank_account: '', // write-only: never pre-filled
+    bank_name: rep?.banking?.bank_name ?? '',
+    bank_account_holder: rep?.banking?.account_holder ?? '',
   };
 }
 
@@ -128,7 +171,17 @@ export function bankingBody(v: RepFormValues, hadBanking: boolean) {
   const transit = v.bank_transit.trim();
   const account = v.bank_account.trim();
   if (!inst && !transit && !account) return hadBanking ? { banking: null } : {};
-  return { banking: { institution_no: inst, transit_no: transit, ...(account ? { account_no: account } : {}) } };
+  const bankName = v.bank_name.trim();
+  const holder = v.bank_account_holder.trim();
+  return {
+    banking: {
+      institution_no: inst,
+      transit_no: transit,
+      ...(account ? { account_no: account } : {}),
+      ...(bankName ? { bank_name: bankName } : {}),
+      ...(holder ? { account_holder: holder } : {}),
+    },
+  };
 }
 
 const orNull = (v: string) => (v.trim() ? v.trim() : null);

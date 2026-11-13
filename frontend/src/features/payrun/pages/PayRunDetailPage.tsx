@@ -5,8 +5,7 @@
  * read-only (the UI mirrors the backend's #8 guarantee — re-finalize is a no-op so it isn't offered).
  * payrun:view to see; approve/export gate the actions; the server is the real gate (§5).
  *
- * No holdback since 2026-11-13: commission is paid in full. Only an OLD run that held or released some
- * (`has_holdback`) shows those figures, labelled with that run's own split, so its net still adds up.
+ * No tiers and no 70/30 since 2026-11-13: commission is paid in full.
  */
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -30,7 +29,6 @@ import { FinalizeConfirmModal } from '../components/FinalizeConfirmModal';
 import { ExportModal } from '../components/ExportModal';
 import { NetPayoutCell } from '../components/NetPayoutCell';
 import styles from '../components/payrun.module.css';
-import { splitLabels } from '../split';
 
 export default function PayRunDetailPage() {
   const { id } = useParams();
@@ -94,14 +92,11 @@ export default function PayRunDetailPage() {
   }
 
   const isDraft = run.status === 'draft';
-  // Labels for an OLD run's 70/30 figures (has_holdback); a new run never shows them.
-  const labels = splitLabels(run.split);
-  const hasHoldback = run.has_holdback;
   const isExported = run.status === 'exported';
   const lines = run.lines;
   const selectedLine = lines.find((l) => l.id === selectedLineId) ?? null;
   const bonusLine = lines.find((l) => l.id === bonusLineId) ?? null;
-  const totalCommission = sumMoney(lines.map((l) => l.commission_70));
+  const totalCommission = sumMoney(lines.map((l) => l.commission));
   const totalNet = sumMoney(lines.map((l) => l.net_payout));
 
   const onRecompute = () =>
@@ -166,7 +161,7 @@ export default function PayRunDetailPage() {
 
       <div className={styles.summary}>
         <StatCard label="Reps" value={String(lines.length)} />
-        <StatCard label={hasHoldback ? `Total ${labels.paid}` : 'Total commission'} value={money(totalCommission)} />
+        <StatCard label="Total commission" value={money(totalCommission)} />
         <StatCard label="Total net payout" value={<NetPayoutCell value={totalNet} />} />
       </div>
 
@@ -182,8 +177,6 @@ export default function PayRunDetailPage() {
           // Only on a FINALIZED run: the statement reads lines frozen at finalize, so a draft has none.
           onStatement={!isDraft && canExport ? (l) => setStatementRepId(l.rep.id) : undefined}
           canBonus={isDraft && canApprove}
-          hasHoldback={hasHoldback}
-          labels={labels}
         />
       )}
 
@@ -193,7 +186,7 @@ export default function PayRunDetailPage() {
         onClose={() => setStatementRepId(null)}
       />
 
-      <LineBreakdownDrawer line={selectedLine} open={selectedLine !== null} onClose={() => setSelectedLineId(null)} hasHoldback={hasHoldback} labels={labels} />
+      <LineBreakdownDrawer line={selectedLine} open={selectedLine !== null} onClose={() => setSelectedLineId(null)} />
       <BonusModal runId={run.id} line={bonusLine} onClose={() => setBonusLineId(null)} />
       <FinalizeConfirmModal runId={run.id} open={finalizeOpen} onClose={() => setFinalizeOpen(false)} />
       <ExportModal

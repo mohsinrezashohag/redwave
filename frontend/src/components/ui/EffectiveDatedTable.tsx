@@ -4,7 +4,7 @@
  * effective window + a RateStatusBadge. The primary change path is superseding (adding a new future-dated
  * row); current/past rows are immutable. An optional `rowActions` slot lets the caller offer edit/delete on
  * PENDING rows only (the server also enforces this). Reused by Clients billing rates and Commission Config
- * (tiers/flats/holdback). Tokens only.
+ * (rep rates, billing rates). Tokens only.
  */
 import type { ReactNode } from 'react';
 import { displayDate } from '../../lib/format/date';
