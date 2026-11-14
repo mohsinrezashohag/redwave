@@ -479,7 +479,7 @@ export class SalesService {
     });
     return {
       export: { id: log.id, generated_at: log.generated_at, row_count: rows.length, only_new: log.only_new, format: log.format },
-      rows: await this.withEstimatedRates(await this.attachPeriods(rows)),
+      rows: await this.withClawbackTotals(await this.withEstimatedRates(await this.attachPeriods(rows))),
     };
   }
 
@@ -529,6 +529,24 @@ export class SalesService {
       out.push({ ...sale, sale_items: items });
     }
     return out;
+  }
+
+  /**
+   * EXPORT ONLY (2026-11-15): the amount recovered from each sale by clawbacks (pending or applied), read
+   * from the clawback records themselves (the frozen recovery, #6). The rate columns keep showing what was
+   * paid, so this column is what makes the deduction visible in the file. null = nothing clawed back.
+   */
+  private async withClawbackTotals<T extends { id: string }>(sales: T[]): Promise<Array<T & { clawback_total: string | null }>> {
+    const sums = await this.prisma.clawback.groupBy({
+      by: ['sale_id'],
+      where: { sale_id: { in: sales.map((s) => s.id) } },
+      _sum: { amount: true },
+    });
+    const bySale = new Map(sums.map((r) => [r.sale_id, r._sum.amount]));
+    return sales.map((s) => {
+      const total = bySale.get(s.id);
+      return { ...s, clawback_total: total ? new Prisma.Decimal(total).toFixed(2) : null };
+    });
   }
 
   /** "Last exported …" + how many sales match the filters, and how many of those were never exported. */

@@ -177,6 +177,14 @@ export class SaleResponse {
     description: 'Derived from sale_date on list/findOne; absent on create/edit/validate responses.',
   })
   pay_period?: SalePayPeriodResponse | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '30.00',
+    description: 'Sales export only (2026-11-15): total recovered from this sale by clawbacks. null = none.',
+  })
+  clawback_total?: string | null;
 }
 
 export class BulkValidateItemResponse {

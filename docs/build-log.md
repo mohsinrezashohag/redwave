@@ -2952,3 +2952,6 @@ from this file, so it has to carry everything they need.
 - Removed the stale `tier_at_payment` field from `SaleItemResponse` (the column was dropped on 13 Nov).
 - Verified LOCAL: 1167 backend tests, typecheck, lint, build, contract export; FE tsc, lint, stylelint, 156
   vitest, build. Not seen in a browser.
+- **Follow-up:** a **Clawed back** column (per sale, summed from the clawback records, export only) so the
+  deduction shows next to the paid amount; **Client** is left off the PDF (Channel already shows the code)
+  to give the printed table room.

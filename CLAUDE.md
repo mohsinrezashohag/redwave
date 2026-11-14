@@ -660,7 +660,7 @@ forbids.
   snapshot; an unpaid live item (entered / validated / in pay run) shows the rate **in force on its sale
   date** (`estimated_rate`, resolved server-side by the engine's `rateInForce`, the pay run's own lookup,
   never stored), and the **Rate basis** column says `Paid` or `Estimated` (2026-11-15: Redwave does tiers
-  and splits in Excel from this file). An item with no rate set stays **blank, never a zero**. Money columns
+  and splits in Excel from this file). An item with no rate set stays **blank, never a zero**. A **Clawed back** column carries what clawbacks recovered from the sale (read from the clawback records), since the rate columns keep showing what was paid. Money columns
   are numbers in CSV/Excel (`ExportColumn.money`); detail columns are `pdf: false`. **Deleted sales are left
   out of an export** unless the status filter asks for them.
 - **Every sales export is LOGGED before the file is built** (2026-11-11). The browser calls

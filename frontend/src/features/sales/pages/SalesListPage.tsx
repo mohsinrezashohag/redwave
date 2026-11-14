@@ -91,7 +91,8 @@ export default function SalesListPage() {
     { header: 'Agent Name', value: (s) => s.rep_name ?? '' },
     { header: 'Customer', value: (s) => s.customer_name },
     { header: 'Channel', value: (s) => clientCode(s.client_id) },
-    { header: 'Client', value: (s) => clientName(s.client_id) },
+    // Channel already prints the client code; the full name only fits in CSV/Excel.
+    { header: 'Client', value: (s) => clientName(s.client_id), pdf: false },
     { header: 'Product', value: (s) => row(s).product_name },
     { header: 'Internet', value: (s) => yesNo(row(s).has_internet) },
     { header: 'TV', value: (s) => yesNo(row(s).has_tv) },
@@ -102,6 +103,8 @@ export default function SalesListPage() {
     { header: 'Other', value: (s) => row(s).other_total, money: true },
     { header: 'Total', value: (s) => row(s).total, money: true },
     { header: 'Incentive', value: (s) => row(s).incentive, money: true, pdf: false },
+    // What clawbacks recovered from the sale (the rate columns keep showing what was paid). 2026-11-15
+    { header: 'Clawed back', value: (s) => s.clawback_total ?? '', money: true },
     { header: 'Rate basis', value: (s) => row(s).rate_basis },
     { header: 'Greenfield', value: (s) => yesNo(s.is_greenfield) },
     { header: 'Status', value: (s) => saleStatusLabel(s.status) },

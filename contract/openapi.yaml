@@ -11831,6 +11831,12 @@ components:
           type: object
           allOf:
             - $ref: "#/components/schemas/SalePayPeriodResponse"
+        clawback_total:
+          type: string
+          nullable: true
+          example: "30.00"
+          description: "Sales export only (2026-11-15): total recovered from this sale by
+            clawbacks. null = none."
       required:
         - id
         - sale_code
