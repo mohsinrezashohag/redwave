@@ -107,3 +107,52 @@ describe('SalesService.exportSummary / listExports', () => {
     );
   });
 });
+
+describe('export — deleted sales and rates in force (2026-11-15)', () => {
+  it('leaves deleted sales out unless the operator filtered for them', async () => {
+    const a = make();
+    await a.service.exportSales({ format: 'csv', filename: 'f' }, user('sa'));
+    expect(JSON.stringify(whereOf(a.prisma))).toContain('"status":{"not":"deleted"}');
+    const b = make();
+    await b.service.exportSales({ format: 'csv', filename: 'f', filters: { status: 'deleted' } }, user('sa'));
+    expect(JSON.stringify(whereOf(b.prisma))).not.toContain('"not":"deleted"');
+  });
+
+  it('gives unpaid items the rate the pay run would use, keeps frozen ones, and writes nothing', async () => {
+    const { CommissionEngineService } = await import('../engine/commission-engine.service');
+    const Decimal = (await import('decimal.js')).default;
+    const item = (over: Record<string, unknown>) => ({
+      id: 'i', product_id: 'p-fibre', product_type: 'internet', counts_toward_tally: true, rate_applied: null, ...over,
+    });
+    const rows = [
+      {
+        id: 's1', status: 'validated', client_id: 'vf', sale_date: new Date('2026-11-10T00:00:00Z'), rep: null,
+        sale_items: [item({ id: 'a' }), item({ id: 'b', product_type: 'tv', product_id: 'p-tv' })],
+      },
+      // greenfield internet pays the greenfield rate, never the product's own (#9)
+      { id: 's2', status: 'validated', client_id: 'vf', sale_date: new Date('2026-11-10T00:00:00Z'), rep: null,
+        sale_items: [item({ id: 'c', counts_toward_tally: false })] },
+      { id: 's3', status: 'paid', client_id: 'vf', sale_date: new Date('2026-11-10T00:00:00Z'), rep: null,
+        sale_items: [item({ id: 'd', rate_applied: '145.00' })] },
+    ];
+    const { prisma, audit, tx } = make({ rows, count: 3 });
+    const config = {
+      flatRates: { internet: new Decimal(110), greenfield_internet: new Decimal(100), tv: new Decimal(30) },
+      flatRatesByProduct: { 'p-fibre': new Decimal(125) },
+    };
+    const provider = { getEngineConfig: jest.fn().mockResolvedValue(config) };
+    const service = new SalesService(
+      prisma as never, audit as never,
+      { getRepScope: jest.fn().mockResolvedValue({ level: 'all', repIds: [] }) } as never,
+      {} as never, undefined, provider as never, new CommissionEngineService(),
+    );
+    const res = await service.exportSales({ format: 'csv', filename: 'f' }, user('sa'));
+    const rates = (res.rows as Array<{ sale_items: Array<{ estimated_rate?: string | null }> }>).map((s) =>
+      s.sale_items.map((i) => i.estimated_rate ?? null),
+    );
+    expect(rates).toEqual([['125.00', '30.00'], ['100.00'], [null]]);
+    // one config load per sale DATE, not per sale
+    expect(provider.getEngineConfig).toHaveBeenCalledTimes(1);
+    expect(tx.reportExportSale.createMany).toHaveBeenCalled();
+  });
+});

@@ -19,7 +19,6 @@ const item = (product_type: string, name: string, rate_applied: string | null): 
     product_type,
     counts_toward_tally: product_type === 'internet',
     item_status: 'active',
-    tier_at_payment: null,
     rate_applied,
     commission_paid: rate_applied,
     incentive_id: null,
@@ -39,7 +38,8 @@ describe('toSaleExportRow — the bill’s component shape, from the frozen comm
       BEHAVIOURS,
     );
 
-    expect(row.product_name).toBe('Fibre 1gig/2.5gig'); // the SPEED, not the add-ons
+    expect(row.product_name).toBe('Fibre 1gig/2.5gig + TV + Home Phone'); // every product, internet first
+    expect(row.rate_basis).toBe('Paid');
     expect([row.has_internet, row.has_tv, row.has_home_phone]).toEqual([true, true, true]);
     expect(row.internet_rate).toBe('145.00');
     expect(row.tv_rate).toBe('30.00');
@@ -92,7 +92,7 @@ describe('toSaleExportRow — the bill’s component shape, from the frozen comm
       BEHAVIOURS,
     );
     expect(row.other_total).toBe('5.00');
-    expect(row.product_name).toBe('Fibre'); // the unknown type never claims the Product column
+    expect(row.product_name).toBe('Fibre + Mystery'); // internet first; the unknown type is listed after it
   });
 
   it('adds exactly — no float drift on repeating cents', () => {
@@ -113,7 +113,7 @@ describe('toSaleExportRow — the bill’s component shape, from the frozen comm
       BEHAVIOURS,
     );
     expect(row.internet_rate).toBe('290.00');
-    expect(row.product_name).toBe('Fibre 500'); // first internet item names the row
+    expect(row.product_name).toBe('Fibre 500 + Fibre 1gig');
   });
 
   it('a sale with no items yields flags off and blank amounts', () => {
@@ -121,5 +121,26 @@ describe('toSaleExportRow — the bill’s component shape, from the frozen comm
     expect([row.has_internet, row.has_tv, row.has_home_phone]).toEqual([false, false, false]);
     expect(row.total).toBe('');
     expect(row.product_name).toBe('');
+  });
+});
+
+describe('rate in force on unpaid sales (2026-11-15)', () => {
+  const unpaid = (product_type: string, name: string, estimated: string | null): SaleItem =>
+    ({ ...item(product_type, name, null), estimated_rate: estimated }) as SaleItem;
+
+  it('shows the server’s rate in force, marked Estimated, and totals it', () => {
+    const row = toSaleExportRow(sale([unpaid('tv', 'Basic TV', '30.00'), unpaid('internet', 'Fibre 150', '110.00')]), BEHAVIOURS);
+    expect(row.product_name).toBe('Fibre 150 + Basic TV');
+    expect([row.internet_rate, row.tv_rate, row.total, row.rate_basis]).toEqual(['110.00', '30.00', '140.00', 'Estimated']);
+  });
+
+  it('an item with no rate set stays blank, never a zero', () => {
+    const row = toSaleExportRow(sale([unpaid('internet', 'Fibre 150', null)]), BEHAVIOURS);
+    expect([row.internet_rate, row.total, row.rate_basis]).toEqual(['', '', '']);
+  });
+
+  it('sums frozen incentives', () => {
+    const paid = { ...item('internet', 'Fibre', '110.00'), incentive_amount: '20.00' } as SaleItem;
+    expect(toSaleExportRow(sale([paid]), BEHAVIOURS).incentive).toBe('20.00');
   });
 });

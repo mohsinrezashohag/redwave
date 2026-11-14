@@ -2932,3 +2932,23 @@ Client follow-up items 2 and 3 (item 4, the sales row icons, shipped with the ti
 
 **Operator:** `prisma:deploy` (adds `20261113200000`). `PII_ENCRYPTION_KEY` must be set on Render to store
 document numbers (it already is required for SIN / bank account).
+
+### Sales export for offline tier and split work (no migration)
+
+Reviewed against the client's 11 Nov sales export PDF. Redwave now does tiers and the 70/30 split by hand
+from this file, so it has to carry everything they need.
+
+- **Rates on unpaid sales:** the rate columns were blank until a pay run, which was almost every row. Now that
+  each item pays one flat rate, the export shows the rate **in force on the sale date** for unpaid live
+  sales. The server resolves it with `CommissionEngineService.rateInForce` (the pay run's own lookup,
+  greenfield included) and the config is loaded once per sale date. It is never stored. The new **Rate basis**
+  column reads `Paid` (frozen) or `Estimated`. No rate set = blank.
+- **Deleted sales** were exported (and logged as "exported", which skewed "only new"). They are now left out
+  unless the status filter is `deleted`.
+- **New columns:** Incentive, Rate basis, Pay period, Validated on, MPU ID, Street, City, Province, Postal
+  code. **Product** lists every product on the sale (internet first). **Status** is the human label.
+- **Excel/CSV money is numeric** (plain decimal; Excel cells are numbers, 2 dp), so Redwave can total it.
+  The PDF keeps `$` formatting and drops the detail columns (`pdf: false`) to stay readable.
+- Removed the stale `tier_at_payment` field from `SaleItemResponse` (the column was dropped on 13 Nov).
+- Verified LOCAL: 1167 backend tests, typecheck, lint, build, contract export; FE tsc, lint, stylelint, 156
+  vitest, build. Not seen in a browser.

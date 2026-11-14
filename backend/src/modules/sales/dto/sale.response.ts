@@ -55,9 +55,6 @@ export class SaleItemResponse {
   item_status!: SaleItemStatus;
 
   // ── Frozen snapshot (set ONCE at pay-run finalize; non-null only on PAID items — #2). ──────────────
-  @ApiProperty({ type: Number, nullable: true, description: 'Tier bracket at payment (internet only).' })
-  tier_at_payment!: number | null;
-
   @ApiProperty({ type: String, nullable: true, example: '145.00', description: 'Decimal string. Frozen rate.' })
   rate_applied!: string | null;
 
@@ -74,6 +71,15 @@ export class SaleItemResponse {
 
   @ApiProperty({ type: String, nullable: true, example: '20.00', description: 'Decimal string. Frozen incentive.' })
   incentive_amount!: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '110.00',
+    description:
+      'Sales export only (2026-11-15): the rep rate IN FORCE on the sale date for an item not yet paid, resolved like the pay run. An estimate, never stored; null when the item is paid or no rate is set.',
+  })
+  estimated_rate?: string | null;
 }
 
 export class SaleResponse {

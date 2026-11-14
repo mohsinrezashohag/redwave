@@ -1,7 +1,7 @@
 /**
  * SalesService — sale entry, the Sale ID, the lifecycle state machine, validation, and the
  * greenfield two-step. PRODUCES activations the engine consumes but runs NO commission math:
- * sale_items snapshot fields (tier_at_payment, rate_applied, commission_paid, incentive_amount)
+ * sale_items snapshot fields (rate_applied, commission_paid, incentive_amount)
  * stay NULL until Pay Run (#5). sale_date GOVERNS the pay period (#7). Data is scoped in the QUERY
  * via ScopeService (rep=own, manager=roster, admin=all). — SRS §8 / §16, arch §6.5
  */
@@ -61,6 +61,9 @@ export function toExportLogRow(r: {
   };
 }
 import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
+import { CommissionConfigProvider } from '../commission/commission-config.provider';
+import { CommissionEngineService } from '../engine/commission-engine.service';
+import { mapToEngineProductType } from '../payrun/activation-mapping.logic';
 
 const dateOnly = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
 
@@ -106,6 +109,8 @@ export class SalesService {
     private readonly scope: ScopeService,
     @Inject(NOTIFICATION_EMITTER) private readonly emitter: NotificationEmitter,
     @Optional() private readonly avatars?: AvatarService,
+    @Optional() private readonly commissionConfig?: CommissionConfigProvider,
+    @Optional() private readonly engine?: CommissionEngineService,
   ) {}
 
   /**
@@ -474,8 +479,56 @@ export class SalesService {
     });
     return {
       export: { id: log.id, generated_at: log.generated_at, row_count: rows.length, only_new: log.only_new, format: log.format },
-      rows: await this.attachPeriods(rows),
+      rows: await this.withEstimatedRates(await this.attachPeriods(rows)),
     };
+  }
+
+  /**
+   * EXPORT ONLY (2026-11-15): give each not-yet-paid item of a live sale its rep rate IN FORCE on the sale
+   * date, resolved exactly as the pay run will (most specific wins; greenfield internet pays the greenfield
+   * rate, #5/#9). Redwave works tiers and splits out in Excel from this file, so they need the rate before
+   * the pay run. It is an ESTIMATE: computed on the fly, never written, and a paid item keeps showing its
+   * frozen snapshot (#2). Incentives are not estimated (they depend on the whole period).
+   */
+  private async withEstimatedRates<T extends { status: string; sale_date: Date; client_id: string; sale_items: Array<Record<string, unknown>> }>(
+    sales: T[],
+  ): Promise<T[]> {
+    if (!this.commissionConfig || !this.engine) return sales;
+    const ESTIMABLE = new Set(['entered', 'validated', 'in_pay_run']);
+    const configs = new Map<string, Awaited<ReturnType<CommissionConfigProvider['getEngineConfig']>>>();
+    const configFor = async (day: string) => {
+      let c = configs.get(day);
+      if (!c) {
+        c = await this.commissionConfig!.getEngineConfig(day);
+        configs.set(day, c);
+      }
+      return c;
+    };
+    const out: T[] = [];
+    for (const sale of sales) {
+      if (!ESTIMABLE.has(sale.status)) {
+        out.push(sale);
+        continue;
+      }
+      const day = sale.sale_date.toISOString().slice(0, 10);
+      const config = await configFor(day);
+      const items = sale.sale_items.map((item) => {
+        if (item.rate_applied != null) return { ...item, estimated_rate: null };
+        const rate = this.engine!.rateInForce(
+          {
+            id: String(item.id),
+            productType: mapToEngineProductType(String(item.product_type), Boolean(item.counts_toward_tally)),
+            clientId: sale.client_id,
+            productId: (item.product_id as string | null) ?? null,
+            saleDate: day,
+          },
+          config,
+        );
+        return { ...item, estimated_rate: rate ? rate.toFixed(2) : null };
+      });
+      out.push({ ...sale, sale_items: items });
+    }
+    return out;
   }
 
   /** "Last exported …" + how many sales match the filters, and how many of those were never exported. */
@@ -515,8 +568,11 @@ export class SalesService {
 
   private async exportWhere(filters: SaleExportFilters, onlyNew: boolean, user: AuthUser): Promise<Prisma.SaleWhereInput> {
     const base = await this.listWhere(filters, user);
+    // A deleted sale is not a sale: an export leaves it out unless the operator filtered FOR deleted sales.
+    // (It used to ride along and was then logged as "exported", which skewed "only new".) 2026-11-15
+    const live: Prisma.SaleWhereInput = filters.status ? base : { AND: [base, { status: { not: 'deleted' } }] };
     // "Not exported before" is company-wide: once anyone has exported a sale, it is no longer new.
-    return onlyNew ? { AND: [base, { export_links: { none: {} } }] } : base;
+    return onlyNew ? { AND: [live, { export_links: { none: {} } }] } : live;
   }
 
   private async exportLogScope(user: AuthUser): Promise<Prisma.ReportExportWhereInput> {

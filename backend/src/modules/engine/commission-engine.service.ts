@@ -70,6 +70,23 @@ export class CommissionEngineService {
    * reporting) but is paid the greenfield rate, never that product's own internet rate.
    */
   private rateFor(activation: ActivationInput, config: EngineConfig): Decimal {
+    const rate = this.lookupRate(activation, config);
+    if (rate === undefined) {
+      throw new Error(`No rep rate for product type ${activation.productType} (client ${activation.clientId})`);
+    }
+    return rate;
+  }
+
+  /**
+   * The rep rate in force for one item, or null when none is configured. The SAME resolution the pay run
+   * uses (most specific wins, greenfield skips the product steps), exposed so a read can show the rate a
+   * sale WILL be paid before it is frozen. Never writes anything. — CLAUDE #5/#9
+   */
+  rateInForce(activation: ActivationInput, config: EngineConfig): Decimal | null {
+    return this.lookupRate(activation, config) ?? null;
+  }
+
+  private lookupRate(activation: ActivationInput, config: EngineConfig): Decimal | undefined {
     const { productType, clientId } = activation;
     const productId = productType === ProductType.greenfield_internet ? null : activation.productId;
     const rate =
@@ -77,9 +94,6 @@ export class CommissionEngineService {
       (productId ? config.flatRatesByProduct?.[productId] : undefined) ??
       config.flatRatesByClient?.[clientId]?.[productType] ??
       config.flatRates[productType];
-    if (rate === undefined) {
-      throw new Error(`No rep rate for product type ${productType} (client ${clientId})`);
-    }
     return rate;
   }
 

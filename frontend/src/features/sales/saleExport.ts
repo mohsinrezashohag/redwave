@@ -4,9 +4,11 @@
  * split the statement renderer uses (Internet / TV / Home Phone, everything else into "Other"), so a
  * sales export lines up against a bill column-for-column.
  *
- * The money here is the FROZEN COMMISSION snapshot (`sale_items.rate_applied`) — what the REP earned, set
- * once at pay-run finalize (#2). It is deliberately BLANK on an entered/validated sale, because such a sale
- * genuinely has no amount yet; showing a zero would read as "earned nothing". This never reads a client
+ * The money here is the REP's rate: the FROZEN snapshot (`sale_items.rate_applied`) once the pay run has
+ * paid the item (#2), else — since 2026-11-15, when tiers went and every item pays one flat rate — the rate
+ * IN FORCE on the sale date (`estimated_rate`, server-resolved exactly as the pay run will). Redwave applies
+ * tiers and splits in Excel from this file, so it needs the rate before the pay run. `rate_basis` says
+ * which it is ('Paid' / 'Estimated'); an item with no rate set stays BLANK, never a zero. This never reads a client
  * billing rate: the two rate streams stay separate (#3), and a rep's export never reveals what the client
  * is charged.
  *
@@ -23,7 +25,7 @@ const HOME_PHONE_KEY = 'home_phone';
 const INTERNET_BEHAVIOURS = new Set(['internet', 'greenfield']);
 
 export interface SaleExportRow {
-  /** The internet speed product on the sale ('' when it has no internet component). */
+  /** Every product on the sale, internet first ('Fibre 150 + Basic TV'). */
   product_name: string;
   has_internet: boolean;
   has_tv: boolean;
@@ -34,12 +36,16 @@ export interface SaleExportRow {
   hp_rate: string;
   /** Priced components with no column of their own (Wireless / Protection Plan / Mesh / …). */
   other_total: string;
-  /** The sum of the four above — '' when the sale is unpaid. */
+  /** The sum of the four above — '' when nothing on the sale is priced. */
   total: string;
+  /** Incentives frozen on the sale at pay run ('' when none). */
+  incentive: string;
+  /** 'Paid' = frozen at pay run; 'Estimated' = rate in force, may change before the pay run; '' = no rate. */
+  rate_basis: '' | 'Paid' | 'Estimated';
 }
 
-/** A rate only exists once Pay Run froze it; treat anything else as "not yet priced". */
-const rateOf = (item: SaleItem): string | null => item.rate_applied ?? null;
+/** The frozen rate once paid, else the server's rate in force; null = no rate set. */
+const rateOf = (item: SaleItem): string | null => item.rate_applied ?? item.estimated_rate ?? null;
 
 const sumOrBlank = (values: string[]): string => (values.length > 0 ? sumMoney(values) : '');
 
@@ -54,16 +60,24 @@ export function toSaleExportRow(sale: Sale, behaviourByType: Map<string, string>
   const tv: string[] = [];
   const hp: string[] = [];
   const other: string[] = [];
-  let product_name = '';
+  const names: string[] = [];
   let has_internet = false;
   let has_tv = false;
   let has_home_phone = false;
 
-  for (const item of sale.sale_items) {
+  let estimated = false;
+  let frozen = false;
+  const incentives: string[] = [];
+  // Internet first, so the Product cell reads like the sale: 'Fibre 150 + Basic TV'.
+  const ordered = [...sale.sale_items].sort((a, b) => Number(isInternet(b)) - Number(isInternet(a)));
+  for (const item of ordered) {
     const rate = rateOf(item);
+    if (item.product?.name) names.push(item.product.name);
+    if (item.rate_applied) frozen = true;
+    else if (rate) estimated = true;
+    if (item.incentive_amount && Number(item.incentive_amount) !== 0) incentives.push(item.incentive_amount);
     if (isInternet(item)) {
       has_internet = true;
-      if (!product_name) product_name = item.product?.name ?? '';
       if (rate) internet.push(rate);
     } else if (item.product_type === TV_KEY) {
       has_tv = true;
@@ -78,7 +92,7 @@ export function toSaleExportRow(sale: Sale, behaviourByType: Map<string, string>
 
   const all = [...internet, ...tv, ...hp, ...other];
   return {
-    product_name,
+    product_name: names.join(' + '),
     has_internet,
     has_tv,
     has_home_phone,
@@ -87,6 +101,8 @@ export function toSaleExportRow(sale: Sale, behaviourByType: Map<string, string>
     hp_rate: sumOrBlank(hp),
     other_total: sumOrBlank(other),
     total: sumOrBlank(all),
+    incentive: sumOrBlank(incentives),
+    rate_basis: estimated ? 'Estimated' : frozen ? 'Paid' : '',
   };
 }
 

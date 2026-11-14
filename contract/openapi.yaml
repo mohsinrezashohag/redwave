@@ -11672,10 +11672,6 @@ components:
             - active
             - cancelled
             - clawed_back
-        tier_at_payment:
-          type: number
-          nullable: true
-          description: Tier bracket at payment (internet only).
         rate_applied:
           type: string
           nullable: true
@@ -11695,6 +11691,14 @@ components:
           nullable: true
           example: "20.00"
           description: Decimal string. Frozen incentive.
+        estimated_rate:
+          type: string
+          nullable: true
+          example: "110.00"
+          description: "Sales export only (2026-11-15): the rep rate IN FORCE on the sale
+            date for an item not yet paid, resolved like the pay run. An
+            estimate, never stored; null when the item is paid or no rate is
+            set."
       required:
         - id
         - sale_id
@@ -11703,7 +11707,6 @@ components:
         - product_type
         - counts_toward_tally
         - item_status
-        - tier_at_payment
         - rate_applied
         - commission_paid
         - incentive_id
