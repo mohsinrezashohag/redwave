@@ -656,8 +656,13 @@ forbids.
   row and bounds the current one **server-side**. Only **pending** rows may be edited or deleted.
   **The `status` comes from the server** — no client-side date math beyond a `todayIso()` default
   and a back-date guard the server re-enforces with 422.
-- **The sales export shows the frozen commission snapshot and reads no billing rate** (#3) — it is
-  deliberately **blank on an unpaid sale**, because a zero would read as "earned nothing".
+- **The sales export shows the REP rate and reads no billing rate** (#3). A paid item shows its frozen
+  snapshot; an unpaid live item (entered / validated / in pay run) shows the rate **in force on its sale
+  date** (`estimated_rate`, resolved server-side by the engine's `rateInForce`, the pay run's own lookup,
+  never stored), and the **Rate basis** column says `Paid` or `Estimated` (2026-11-15: Redwave does tiers
+  and splits in Excel from this file). An item with no rate set stays **blank, never a zero**. Money columns
+  are numbers in CSV/Excel (`ExportColumn.money`); detail columns are `pdf: false`. **Deleted sales are left
+  out of an export** unless the status filter asks for them.
 - **Every sales export is LOGGED before the file is built** (2026-11-11). The browser calls
   `POST /v1/sales/exports` (`sales:export`), which records who/when/format/filters/row count + EXACTLY which
   sales (`report_export_sales`) and returns the rows; the file is then built from those rows. Never export

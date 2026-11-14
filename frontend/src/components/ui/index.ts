@@ -61,6 +61,7 @@ export type { BannerTone } from './Banner';
 export { Badge } from './Badge';
 export type { BadgeTone } from './Badge';
 export { StatusPill, ProposedChip } from './StatusPill';
+export { saleStatusLabel } from './saleStatus';
 export type { SaleStatus } from './StatusPill';
 export { RateStatusBadge } from './RateStatusBadge';
 export type { RateStatus } from './RateStatusBadge';

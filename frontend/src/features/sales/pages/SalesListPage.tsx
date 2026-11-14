@@ -7,14 +7,13 @@
  */
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, PageHeader } from '../../../components/ui';
+import { Button, PageHeader, saleStatusLabel } from '../../../components/ui';
 import { Can } from '../../../auth/Can';
 import { useCan } from '../../../auth/useCan';
 import { ExportMenu } from '../../../components/data/ExportMenu';
 import type { ExportColumn } from '../../../lib/export/exportRows';
 import { exportFilename } from '../../../lib/export/exportFilename';
 import { displayDate, todayIso } from '../../../lib/format/date';
-import { money } from '../../../lib/format/money';
 import { useProductTypes } from '../../productTypes/api/useProductTypes';
 import { saleExportRowAccessor } from '../saleExport';
 import { SalesFilterBar } from '../components/SalesFilterBar';
@@ -76,12 +75,13 @@ export default function SalesListPage() {
   const clientCode = (id: string) => clients.data?.find((c) => c.id === id)?.client_code ?? '';
 
   // The export uses the CLIENT BILL's column shape — a flag and an amount per component — so a sales
-  // export can be read beside a statement. The amounts are the FROZEN COMMISSION snapshot (what the rep
-  // earned), blank until Pay Run freezes them; no client billing rate is read here (#3).
+  // export can be read beside a statement. The amounts are the REP's rates: frozen once paid, else the rate
+  // in force (Rate basis says which); no client billing rate is read here (#3). Money columns are plain
+  // numbers in CSV/Excel so Redwave can do the tier / split maths there (2026-11-15). Address and other
+  // detail columns are left off the PDF, which has no room for them.
   const behaviourByType = new Map((productTypes.data ?? []).map((t) => [t.key, t.behaviour]));
   const row = saleExportRowAccessor(behaviourByType); // projects each sale once, not once per column
   const yesNo = (on: boolean) => (on ? 'Yes' : 'No');
-  const amount = (value: string) => (value ? money(value) : ''); // blank ≠ $0.00 — it isn't priced yet
   const exportColumns: ExportColumn<Sale>[] = [
     { header: 'Sale ID', value: (s) => s.sale_code },
     { header: 'Sale date', value: (s) => displayDate(s.sale_date) },
@@ -96,13 +96,27 @@ export default function SalesListPage() {
     { header: 'Internet', value: (s) => yesNo(row(s).has_internet) },
     { header: 'TV', value: (s) => yesNo(row(s).has_tv) },
     { header: 'Home Phone', value: (s) => yesNo(row(s).has_home_phone) },
-    { header: 'Internet rate', value: (s) => amount(row(s).internet_rate) },
-    { header: 'TV rate', value: (s) => amount(row(s).tv_rate) },
-    { header: 'HP rate', value: (s) => amount(row(s).hp_rate) },
-    { header: 'Other', value: (s) => amount(row(s).other_total) },
-    { header: 'Total', value: (s) => amount(row(s).total) },
+    { header: 'Internet rate', value: (s) => row(s).internet_rate, money: true },
+    { header: 'TV rate', value: (s) => row(s).tv_rate, money: true },
+    { header: 'HP rate', value: (s) => row(s).hp_rate, money: true },
+    { header: 'Other', value: (s) => row(s).other_total, money: true },
+    { header: 'Total', value: (s) => row(s).total, money: true },
+    { header: 'Incentive', value: (s) => row(s).incentive, money: true, pdf: false },
+    { header: 'Rate basis', value: (s) => row(s).rate_basis },
     { header: 'Greenfield', value: (s) => yesNo(s.is_greenfield) },
-    { header: 'Status', value: (s) => s.status },
+    { header: 'Status', value: (s) => saleStatusLabel(s.status) },
+    {
+      header: 'Pay period',
+      value: (s) =>
+        s.pay_period ? `#${s.pay_period.period_number} (${displayDate(s.pay_period.start_date)} to ${displayDate(s.pay_period.end_date)})` : '',
+      pdf: false,
+    },
+    { header: 'Validated on', value: (s) => (s.validated_at ? displayDate(s.validated_at) : ''), pdf: false },
+    { header: 'MPU ID', value: (s) => s.mpu_id ?? '', pdf: false },
+    { header: 'Street', value: (s) => s.street, pdf: false },
+    { header: 'City', value: (s) => s.city, pdf: false },
+    { header: 'Province', value: (s) => s.province_state, pdf: false },
+    { header: 'Postal code', value: (s) => s.postal_code, pdf: false },
   ];
 
   const exportFile = exportFilename({
