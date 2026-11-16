@@ -23,6 +23,7 @@
     "sa:reset": "ts-node --transpile-only scripts/reset-superadmin.ts",
     "payroll:backfill": "ts-node --transpile-only scripts/backfill-payroll-lines.ts",
     "documents:purge": "ts-node --transpile-only scripts/purge-deleted-documents.ts",
+    "data:cleanup": "ts-node --transpile-only scripts/cleanup-sales-data.ts",
     "prisma:studio": "prisma studio",
     "contract:export": "ts-node --transpile-only scripts/export-openapi.ts"
   },

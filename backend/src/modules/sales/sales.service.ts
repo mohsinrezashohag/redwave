@@ -179,6 +179,26 @@ export class SalesService {
       );
     }
 
+    // One client + MPU is one household: a second live sale for it would pay the rep twice (re-imported
+    // files did exactly that). Deleted sales don't count, so a corrected re-entry stays possible.
+    // Runs on `db`, so inside an import commit it also sees the batch's own earlier rows. — §14 rule 8
+    const mpuId = dto.mpu_id?.trim() || null;
+    if (mpuId) {
+      const existing = await db.sale.findFirst({
+        where: {
+          client_id: client.id,
+          status: { not: 'deleted' },
+          mpu_id: { equals: mpuId, mode: 'insensitive' },
+        },
+        select: { sale_code: true },
+      });
+      if (existing) {
+        throw new ConflictException(
+          `A sale with MPU ${mpuId} already exists for this client (${existing.sale_code}).`,
+        );
+      }
+    }
+
     const saleDate = dto.sale_date ?? todayInWinnipeg();
     const isGreenfield = dto.is_greenfield ?? false;
     const base = saleCodeBase({

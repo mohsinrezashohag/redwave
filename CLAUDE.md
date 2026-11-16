@@ -123,6 +123,7 @@ npm -w frontend exec -- vitest                                  # watch
 | `npm -w backend run seed:reset` | handover clean-wipe of transactional data, keeps the master catalogue | operator; needs `RESET_CONFIRM=yes` |
 | `npm -w backend run sa:reset` | Super Admin password/lockout recovery | local only; needs `RESET_SA_CONFIRM=yes` |
 | `npm -w backend run payroll:backfill` | rebuild payroll lines for runs finalized before packet 02 (dry-run default) | operator; writes only with `BACKFILL_CONFIRM=yes` |
+| `npm -w backend run data:cleanup` | pre-handover cleanup: demo reps (`RW-D-*`), client + MPU duplicates, soft-deleted sales (dry-run default) | operator; writes only with `CLEANUP_CONFIRM=yes` |
 | `npm -w backend run prisma:studio` | Prisma Studio | developer |
 
 Never run `prisma:migrate` against a deployed database — it can reset it. Operators run
@@ -760,7 +761,10 @@ surrounding code.
    only "if provided", and a client report matches on it **where available** — a row without one falls back
    to customer name + address + date. That fallback **never auto-validates on a guess**: only an
    unambiguous strong candidate matches, and everything else is surfaced with its candidates for the
-   operator, because validating the wrong sale pays the wrong rep.
+   operator, because validating the wrong sale pays the wrong rep. **A live sale is unique per client + MPU
+   (2026-11-16):** the live-sales import classifies a repeat (against existing non-deleted sales or an earlier
+   row of the same file) as `duplicate`, and `SalesService` create returns 409 naming the existing sale.
+   Re-imported files had created a second, payable copy of each household.
 
 9. **An import reads the file's shape; it does not demand one.** Product types may arrive as a list in one
    cell (`"Internet, TV"`) **or as one true/false column per type** — the layout Redwave's own files use.

@@ -2955,3 +2955,23 @@ from this file, so it has to carry everything they need.
 - **Follow-up:** a **Clawed back** column (per sale, summed from the clawback records, export only) so the
   deduction shows next to the paid amount; **Client** is left off the PDF (Channel already shows the code)
   to give the printed table room.
+
+### Duplicate guard and pre-handover data cleanup (no migration)
+
+The client's export still showed test sales (`RW-D-*`), hundreds of deleted re-import copies and, worse,
+**the same household validated twice** (e.g. `2026-07-03-MPU-3291-VF` and `-VF-1`, same rep and customer).
+Re-importing a file created a second payable copy of every sale, because neither the import nor manual
+entry looked at the MPU, and the Sale ID just appended `-1`.
+
+- **Guard:** the live-sales import classifies a row whose client + MPU matches a non-deleted sale (or an
+  earlier row of the same file) as `duplicate`, and the reconcile gate blocks it. `SalesService` create
+  returns 409 with the existing sale code. It runs on the caller's tx, so it also protects the import commit.
+  Rows without an MPU (RF Now) are unaffected. Deleted sales don't count, so a corrected re-entry still works.
+- **Cleanup** (`npm -w backend run data:cleanup`, dry run by default, `CLEANUP_CONFIRM=yes` writes, one tx):
+  removes the demo reps and everything they own (statements that billed a demo sale, demo-only pay runs,
+  expenses, documents) and deactivates their logins. It collapses client + MPU duplicates, keeping the
+  single paid copy or else the oldest, and reports any group with two paid copies. It purges soft-deleted
+  sales unless a clawback, payroll line or statement line still points at them. Same-name lookalikes
+  without an MPU are only listed. Pure planner in `common/ops/sales-cleanup.ts`, spec'd.
+- **Export:** "Channel" (it printed the client code under a second name) is now **Client** (code); the full
+  name is **Client name** in CSV/Excel. Removed two unused 70/30 / tier CSS rules from the pay-run styles.

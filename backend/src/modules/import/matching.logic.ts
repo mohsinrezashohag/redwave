@@ -280,6 +280,12 @@ export function classifyLiveSaleRow(
     missingProductTypes: string[];
     /** True when at least one listed type has catalogue behaviour `internet` or `greenfield`. */
     hasInternetBase: boolean;
+    /**
+     * The sale this row would duplicate: an existing live sale with the same client + MPU (its sale code),
+     * or `'this file'` for an earlier row of the same batch. MPU is the partner's per-house id, so one
+     * client + MPU is one household (§14 rule 8). null/absent = not a duplicate.
+     */
+    duplicateOf?: string | null;
   },
 ): Classification {
   const client_code = str(mapped, 'client_code');
@@ -301,6 +307,16 @@ export function classifyLiveSaleRow(
   if (unknownTypes.length > 0) return error(unknownTypeIssue(unknownTypes, ctx.suggestion ?? null));
   if (!ctx.clientExists) return error(`client ${client_code} not found`);
   if (!ctx.repActive) return error(`rep ${rep_code} not found or not active`);
+  if (ctx.duplicateOf) {
+    const mpu = str(mapped, 'mpu_id');
+    return {
+      match_status: 'duplicate',
+      issue:
+        ctx.duplicateOf === 'this file'
+          ? `MPU ${mpu} appears more than once in this file`
+          : `MPU ${mpu} is already entered for client ${client_code} as ${ctx.duplicateOf}`,
+    };
+  }
   if (ctx.missingProductTypes.length > 0) {
     return error(
       `no active ${ctx.missingProductTypes.join(', ')} product for client ${client_code}. Import products first.`,

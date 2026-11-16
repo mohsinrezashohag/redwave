@@ -150,6 +150,43 @@ describe('SalesService.create', () => {
   });
 });
 
+describe('SalesService.create — one live sale per client + MPU (§14 rule 8)', () => {
+  const arrange = () => {
+    const ctx = make(SELF);
+    ctx.prisma.rep.findUnique.mockResolvedValue({ status: 'active' });
+    ctx.prisma.client.findUnique.mockResolvedValue({ id: 'c1', is_active: true, client_code: 'VF' });
+    ctx.prisma.product.findMany.mockResolvedValue([
+      { id: 'p1', product_type: 'internet', is_active: true, product_type_ref: { behaviour: 'internet' } },
+    ]);
+    ctx.prisma.sale.create.mockResolvedValue({ id: 's1', sale_code: 'x', sale_items: [] });
+    return ctx;
+  };
+
+  it('rejects a second live sale with the same MPU for the client (409, names the existing sale)', async () => {
+    const { service, prisma } = arrange();
+    prisma.sale.findFirst.mockResolvedValue({ sale_code: '2026-07-03-MPU-3291-VF' });
+    await expect(service.create({ ...createDto, mpu_id: '3291' }, authUser('rep-self'))).rejects.toThrow(
+      /2026-07-03-MPU-3291-VF/,
+    );
+    expect(prisma.sale.create).not.toHaveBeenCalled();
+    const where = (prisma.sale.findFirst.mock.calls[0][0] as { where: Record<string, unknown> }).where;
+    expect(where).toMatchObject({ client_id: 'c1', status: { not: 'deleted' } });
+  });
+
+  it('creates the sale when no live sale has that MPU', async () => {
+    const { service, prisma } = arrange();
+    prisma.sale.findFirst.mockResolvedValue(null);
+    await service.create({ ...createDto, mpu_id: '3291' }, authUser('rep-self'));
+    expect(prisma.sale.create).toHaveBeenCalled();
+  });
+
+  it('does not look up duplicates for a sale without an MPU', async () => {
+    const { service, prisma } = arrange();
+    await service.create(createDto, authUser('rep-self'));
+    expect(prisma.sale.findFirst).not.toHaveBeenCalled();
+  });
+});
+
 describe('SalesService.createWithinTx (composable inside the Import commit — IMP-013)', () => {
   type Data = {
     sale_code: string;

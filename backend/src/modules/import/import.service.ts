@@ -882,8 +882,31 @@ export class ImportService {
       ),
     );
     const vocab = await this.productTypeVocab();
+    // A live sale is unique per client + MPU (§14 rule 8): a re-imported file must not create a second,
+    // payable copy of a household. Deleted sales don't count, so a corrected re-entry stays possible.
+    const mpus = [...new Set(mappedRows.map((r) => str(r, 'mpu_id')).filter((m): m is string => !!m))];
+    const existing = clientIds.length && mpus.length
+      ? await this.prisma.sale.findMany({
+          where: {
+            client_id: { in: clientIds },
+            status: { not: 'deleted' },
+            OR: mpus.map((m) => ({ mpu_id: { equals: m, mode: 'insensitive' as const } })),
+          },
+          select: { client_id: true, mpu_id: true, sale_code: true },
+        })
+      : [];
+    const mpuKey = (cid: string, mpu: string) => `${cid}|${mpu.trim().toLowerCase()}`;
+    const existingByMpu = new Map(existing.map((s) => [mpuKey(s.client_id, s.mpu_id ?? ''), s.sale_code]));
+    const seenInFile = new Set<string>();
     return mappedRows.map((r) => {
       const cid = byCode.get(up(str(r, 'client_code')));
+      const mpu = str(r, 'mpu_id');
+      let duplicateOf: string | null = null;
+      if (cid && mpu) {
+        const key = mpuKey(cid, mpu);
+        duplicateOf = existingByMpu.get(key) ?? (seenInFile.has(key) ? 'this file' : null);
+        seenInFile.add(key);
+      }
       canonicaliseSingle(r, 'status', SALE_STATUS_VOCAB); // "Validated" → validated
       const resolved = canonicaliseProductTypes(r, vocab, productTypeCtx);
       const types = resolved.keys;
@@ -897,6 +920,7 @@ export class ImportService {
           const behaviour = behaviours.get(t);
           return behaviour === 'internet' || behaviour === 'greenfield';
         }),
+        duplicateOf,
       });
     });
   }

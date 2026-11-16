@@ -90,9 +90,10 @@ export default function SalesListPage() {
     { header: 'Agent ID', value: (s) => s.rep_external_code ?? s.rep_code ?? '' },
     { header: 'Agent Name', value: (s) => s.rep_name ?? '' },
     { header: 'Customer', value: (s) => s.customer_name },
-    { header: 'Channel', value: (s) => clientCode(s.client_id) },
-    // Channel already prints the client code; the full name only fits in CSV/Excel.
-    { header: 'Client', value: (s) => clientName(s.client_id), pdf: false },
+    // The client code (VF / RF / CTI) everywhere; the full name only fits in CSV/Excel. "Channel" used to
+    // print the same code under a second name, which read as a different field. 2026-11-16
+    { header: 'Client', value: (s) => clientCode(s.client_id) },
+    { header: 'Client name', value: (s) => clientName(s.client_id), pdf: false },
     { header: 'Product', value: (s) => row(s).product_name },
     { header: 'Internet', value: (s) => yesNo(row(s).has_internet) },
     { header: 'TV', value: (s) => yesNo(row(s).has_tv) },

@@ -196,6 +196,21 @@ describe('classifyLiveSaleRow (LIVE sales — IMP-013)', () => {
     expect(c.issue).toMatch(/mandatory base/);
   });
 
+  // One client + MPU is one household (§14 rule 8): a re-imported file must not pay a sale twice.
+  it('an MPU already entered for the client → duplicate naming the existing sale', () => {
+    const c = classifyLiveSaleRow({ ...good, mpu_id: '3291' }, { ...ctx, duplicateOf: '2026-07-03-MPU-3291-VF' });
+    expect(c.match_status).toBe('duplicate');
+    expect(c.issue).toContain('2026-07-03-MPU-3291-VF');
+  });
+  it('an MPU repeated within the same file → duplicate', () => {
+    const c = classifyLiveSaleRow({ ...good, mpu_id: '3291' }, { ...ctx, duplicateOf: 'this file' });
+    expect(c.match_status).toBe('duplicate');
+    expect(c.issue).toMatch(/more than once in this file/);
+  });
+  it('no duplicate → matched', () => {
+    expect(classifyLiveSaleRow({ ...good, mpu_id: '3291' }, { ...ctx, duplicateOf: null }).match_status).toBe('matched');
+  });
+
   it('missing required columns → error', () => {
     expect(classifyLiveSaleRow({ ...good, client_code: '' }, ctx).match_status).toBe('error');
     expect(classifyLiveSaleRow({ ...good, rep_code: '' }, ctx).match_status).toBe('error');
