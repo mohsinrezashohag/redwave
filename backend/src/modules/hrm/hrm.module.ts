@@ -8,11 +8,21 @@ import { RepDocumentsService } from './rep-documents.service';
 import { RepEquipmentService } from './rep-equipment.service';
 import { DocumentReaderService } from './document-reader.service';
 import { RepDocumentPurgeService } from './rep-document-purge.service';
+import { RepPhotosService } from './rep-photos.service';
+import { BirthdayService } from './birthday.service';
 
 @Module({
   imports: [StorageModule],
   controllers: [RepsController, EquipmentController, MyRepProfileController],
-  providers: [RepsService, RepDocumentsService, RepEquipmentService, DocumentReaderService, RepDocumentPurgeService],
-  exports: [RepsService, RepDocumentsService, RepEquipmentService, RepDocumentPurgeService],
+  providers: [
+    RepsService,
+    RepDocumentsService,
+    RepEquipmentService,
+    DocumentReaderService,
+    RepDocumentPurgeService,
+    RepPhotosService,
+    BirthdayService,
+  ],
+  exports: [RepsService, RepDocumentsService, RepEquipmentService, RepDocumentPurgeService, BirthdayService],
 })
 export class HrmModule {}

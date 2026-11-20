@@ -4,7 +4,8 @@
  * Pay Run reads `getClawbackTotal` (folded into net) and, at finalize, calls `markApplied` INSIDE its
  * transaction to atomically flip the rep's pending clawbacks to applied + link the run — so a clawback
  * is never deducted twice. The default `ZeroClawbackTotalProvider` (no Clawback module) returns 0 and
- * no-ops `markApplied`; the Clawback module re-binds this token to the real provider. — CLAUDE §3 #6
+ * no-ops `markApplied`. Since 2026-11-16 ("Remove clawbacks") the Clawback module binds THIS zero provider, so
+ * commission reports apply no clawback deduction. `payPeriodId` is null for a date-range report. — CLAUDE §3 #6
  */
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -14,7 +15,7 @@ export const CLAWBACK_TOTAL_PROVIDER = Symbol('CLAWBACK_TOTAL_PROVIDER');
 
 export interface ClawbackTotalProvider {
   /** Flat clawback deduction total to apply to this rep now (exact decimal). */
-  getClawbackTotal(repId: string, payPeriodId: string): Promise<Decimal>;
+  getClawbackTotal(repId: string, payPeriodId: string | null): Promise<Decimal>;
 
   /**
    * Mark the rep's pending clawbacks applied + linked to the pay run. Runs in finalize's transaction
@@ -22,7 +23,7 @@ export interface ClawbackTotalProvider {
    */
   markApplied(
     repId: string,
-    payPeriodId: string,
+    payPeriodId: string | null,
     payRunId: string,
     tx: Prisma.TransactionClient,
   ): Promise<void>;

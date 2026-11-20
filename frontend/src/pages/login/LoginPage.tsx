@@ -4,6 +4,7 @@
  * challenge and the page switches to a 6-digit code / recovery-code entry (no session until verified). The
  * password is masked, never logged; the error is the backend's message (lockout) or a generic credential error.
  */
+import { Check, LogIn } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Banner, Button, FormField, Input, Logo } from '../../components/ui';
@@ -101,7 +102,7 @@ export default function LoginPage() {
                   autoFocus
                 />
               </FormField>
-              <Button type="submit" variant="primary" fullWidth loading={submitting} disabled={!canVerify}>
+              <Button leftIcon={<Check size={16} />} type="submit" variant="primary" fullWidth loading={submitting} disabled={!canVerify}>
                 Verify
               </Button>
             </form>
@@ -151,7 +152,7 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </FormField>
-              <Button type="submit" variant="primary" fullWidth loading={submitting} disabled={!canSubmit}>
+              <Button leftIcon={<LogIn size={16} />} type="submit" variant="primary" fullWidth loading={submitting} disabled={!canSubmit}>
                 Sign in
               </Button>
             </form>

@@ -56,3 +56,39 @@ export function buildTimeline(doc: Document): TimelineEvent[] {
 export function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }
+
+type SignField = SignatureRequest['signature_fields'][number];
+
+/** Reading order of a signer's fields: page, then top-to-bottom, then left-to-right (drives "Next field"). */
+export function orderFields<T extends Pick<SignField, 'page' | 'x' | 'y'>>(fields: T[]): T[] {
+  return [...fields].sort((a, b) => a.page - b.page || Number(a.y) - Number(b.y) || Number(a.x) - Number(b.x));
+}
+
+/**
+ * A human label for each field. The API carries no field label, so a text field is named by its page
+ * ("Text on page 2", numbered when a page has several). Pages are shown 1-based.
+ */
+export function fieldLabels(fields: Pick<SignField, 'id' | 'type' | 'page'>[]): Record<string, string> {
+  const base: Record<SignField['type'], string> = { signature: 'Signature', initial: 'Initials', date: 'Date', text: 'Text' };
+  const counts = new Map<string, number>();
+  for (const f of fields) counts.set(`${f.type}:${f.page}`, (counts.get(`${f.type}:${f.page}`) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  const out: Record<string, string> = {};
+  for (const f of fields) {
+    const k = `${f.type}:${f.page}`;
+    const n = (seen.get(k) ?? 0) + 1;
+    seen.set(k, n);
+    const suffix = (counts.get(k) ?? 0) > 1 ? ` (${n})` : '';
+    out[f.id] = `${base[f.type]} on page ${f.page + 1}${suffix}`;
+  }
+  return out;
+}
+
+/** Recipients the requester asked to sign who got NO signature/initial box (warn before sending). */
+export function recipientsWithoutSignature(
+  recipientIds: string[],
+  fields: { recipient_user_id: string; type: string }[],
+): string[] {
+  if (fields.length === 0) return []; // no placement at all = a plain click-to-sign request
+  return recipientIds.filter((id) => !fields.some((f) => f.recipient_user_id === id && (f.type === 'signature' || f.type === 'initial')));
+}

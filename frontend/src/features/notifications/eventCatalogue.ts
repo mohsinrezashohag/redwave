@@ -36,6 +36,13 @@ export const EVENT_CATALOGUE: Record<string, EventDoc> = {
   statement_ready: { recipients: 'Admins & Super Admins', variables: ['period_number'] },
   rate_change: { recipients: 'Admins & Super Admins', variables: ['rate_kind', 'client_code'] },
   import_committed: { recipients: 'Admins & Super Admins', variables: ['import_type', 'committed_count'] },
+  duplicate_sale_flagged: {
+    recipients: 'Admins, Super Admins and the rep’s field manager',
+    variables: ['sale_code', 'original_sale_code', 'customer_name'],
+  },
+  sale_edit_requested: { recipients: 'Admins & Super Admins', variables: ['sale_code', 'requester_name', 'customer_name'] },
+  sale_edit_decided: { recipients: 'The rep who asked for the edit', variables: ['sale_code', 'decision', 'note'] },
+  birthday: { recipients: 'Admins, Super Admins and the rep’s field manager', variables: ['rep_name', 'rep_code'] },
   broadcast: { recipients: 'Chosen at send time (the Broadcast composer)', variables: [] },
 };
 

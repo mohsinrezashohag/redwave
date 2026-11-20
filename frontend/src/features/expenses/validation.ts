@@ -56,7 +56,7 @@ export function validateFormItem(item: ValidatableFormItem, config: FieldConfig 
 
   if (!isKm) {
     if (isEmpty(item.amount)) alerts.push({ code: 'amount_required', severity: 'alert', field: 'amount', message: 'Amount is required' });
-    if (config?.requires_receipt && isEmpty(item.receipt_url)) alerts.push({ code: 'receipt_required', severity: 'alert', field: 'receipt_url', message: 'A receipt is required for this category' });
+    if (config?.requires_receipt !== false && isEmpty(item.receipt_url)) alerts.push({ code: 'receipt_required', severity: 'alert', field: 'receipt_url', message: 'A receipt is required for this category' });
     if (config?.requires_description !== false && isEmpty(item.description)) alerts.push({ code: 'description_required', severity: 'alert', field: 'description', message: 'A description is required for this category' });
     for (const def of fields) {
       if (def.required && isEmpty(item.field_values?.[def.key])) alerts.push({ code: 'field_required', severity: 'alert', field: def.key, message: `${def.label} is required` });

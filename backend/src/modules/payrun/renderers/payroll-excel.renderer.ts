@@ -57,7 +57,8 @@ export interface PayrollReportForExport {
    */
   layout?: LayoutColumn[];
   pay_run_id: string;
-  period_number: number;
+  /** Legacy period runs only; null for a date-range report (2026-11-16). */
+  period_number: number | null;
   period_start: string; // 'YYYY-MM-DD'
   period_end: string; // 'YYYY-MM-DD'
   run_status: string;
@@ -79,7 +80,8 @@ export class PayrollExcelRenderer {
   async render(r: PayrollReportForExport): Promise<Buffer> {
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Redwave Marketing Inc.';
-    const ws = wb.addWorksheet(`Payroll P${r.period_number}`);
+    // Sheet names cap at 31 chars and forbid '/', so a range report is named by its first sale date.
+    const ws = wb.addWorksheet(r.period_number !== null ? `Payroll P${r.period_number}` : `Payroll ${r.period_start}`);
 
     // "Other" appears only when it carries money — otherwise the sheet is the exact 18-column target. A
     // priced item must never be silently dropped, but the common case should match their file.
@@ -114,7 +116,8 @@ export class PayrollExcelRenderer {
         cell.numFmt = '#,##0.00';
       }
     }
-    summary.getCell(1).value = `Payroll · Period ${r.period_number}`;
+    summary.getCell(1).value =
+      r.period_number !== null ? `Payroll · Period ${r.period_number}` : `Payroll · ${r.period_start} to ${r.period_end}`;
     if (firstMoney > 5) summary.getCell(5).value = `${r.period_start} → ${r.period_end}`;
     summary.font = { bold: true };
 

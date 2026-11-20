@@ -2,7 +2,8 @@
  * DocumentsListPage — /documents. The documents the user can SEE (owner OR recipient; Admin/Super see all) —
  * the SERVER returns only visible ones; the UI renders what's returned (it never filters by visibility). The
  * overall status is server-derived (displayed via DocumentStatusBadge). `documents:view` to see; `documents:
- * create` to upload. 403 → AccessDenied; the server is the real gate (§5).
+ * create` to upload. 403 → AccessDenied; the server is the real gate (§5). `?queue=to-sign` lists only the
+ * documents waiting for THIS user's signature (row-level server-side); the banner on top links there.
  */
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -13,7 +14,9 @@ import { DataState } from '../../../components/data/DataState';
 import { isForbidden } from '../../../lib/api/apiError';
 import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
+import { useIsMobile } from '../../../lib/useMediaQuery';
 import { useDocuments } from '../api/useDocuments';
+import { PendingSignaturesBanner } from '../components/PendingSignaturesBanner';
 import { useUserLookup } from '../api/useUserLookup';
 import { DocumentStatusBadge } from '../components/DocumentStatusBadge';
 import { UploadDocumentModal } from '../components/UploadDocumentModal';
@@ -38,6 +41,8 @@ export default function DocumentsListPage() {
   const [params] = useSearchParams();
   // The Operations "Signature requests" card deep-links here as ?queue=awaiting-signatures (server-filtered).
   const awaitingSignatures = params.get('queue') === 'awaiting-signatures';
+  const toSign = params.get('queue') === 'to-sign';
+  const isMobile = useIsMobile();
   const [status, setStatus] = useState<DocumentStatus | 'all'>('all');
   const [docType, setDocType] = useState<DocType | 'all'>('all');
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -47,6 +52,7 @@ export default function DocumentsListPage() {
       status: status === 'all' ? undefined : status,
       doc_type: docType === 'all' ? undefined : docType,
       pending_signatures: awaitingSignatures || undefined,
+      awaiting_my_signature: toSign || undefined,
     },
     canView,
   );
@@ -61,11 +67,13 @@ export default function DocumentsListPage() {
   return (
     <div className={styles.page}>
       <PageHeader
-        title={awaitingSignatures ? 'Documents awaiting signatures' : 'Documents'}
+        title={toSign ? 'Documents to sign' : awaitingSignatures ? 'Documents awaiting signatures' : 'Documents'}
         subtitle={
-          awaitingSignatures
-            ? 'Documents with at least one pending signature request.'
-            : 'Upload, share for signature, and track signing. You see documents you own or are asked to sign.'
+          toSign
+            ? 'Documents waiting for your signature.'
+            : awaitingSignatures
+              ? 'Documents with at least one pending signature request.'
+              : 'Upload, share for signature, and track signing. You see documents you own or are asked to sign.'
         }
         actions={
           canCreate ? (
@@ -75,6 +83,8 @@ export default function DocumentsListPage() {
           ) : undefined
         }
       />
+
+      {!toSign && <PendingSignaturesBanner />}
 
       <div className={styles.controls}>
         <div className={styles.control}>
@@ -90,35 +100,43 @@ export default function DocumentsListPage() {
         isError={q.isError}
         isEmpty={rows.length === 0}
         onRetry={() => q.refetch()}
-        emptyNode={<p className="mono">No documents to show.</p>}
+        emptyNode={<p className={styles.note}>{toSign ? 'Nothing is waiting for your signature.' : 'No documents to show.'}</p>}
       >
         <Table>
           <THead>
             <TR>
               <TH>Name</TH>
-              <TH>Type</TH>
-              <TH>Owner</TH>
+              {!isMobile && <TH>Type</TH>}
+              {!isMobile && <TH>Owner</TH>}
               <TH>Status</TH>
-              <TH>Created</TH>
-              <TH align="right" aria-label="View" />
+              {!isMobile && <TH>Created</TH>}
+              <TH align="right" aria-label="Actions" />
             </TR>
           </THead>
           <TBody>
             {rows.map((d) => (
               <TR key={d.id}>
-                <TD>{d.title}</TD>
-                <TD>{DOC_TYPE_LABELS[d.doc_type]}</TD>
                 <TD>
-                  <PersonName name={resolve(d.owner_user_id).label} photoUrl={resolve(d.owner_user_id).avatarUrl} />
+                  <Link className={styles.titleLink} to={`/documents/${d.id}`}>
+                    {d.title}
+                  </Link>
                 </TD>
+                {!isMobile && <TD>{DOC_TYPE_LABELS[d.doc_type]}</TD>}
+                {!isMobile && (
+                  <TD>
+                    <PersonName name={resolve(d.owner_user_id).label} photoUrl={resolve(d.owner_user_id).avatarUrl} />
+                  </TD>
+                )}
                 <TD>
                   <DocumentStatusBadge status={d.status} />
                 </TD>
-                <TD>
-                  <span className="mono">{displayDate(d.created_at)}</span>
-                </TD>
+                {!isMobile && (
+                  <TD>
+                    <span className="mono">{displayDate(d.created_at)}</span>
+                  </TD>
+                )}
                 <TD align="right">
-                  <Link to={`/documents/${d.id}`}>View</Link>
+                  <Link to={toSign ? `/documents/${d.id}/sign` : `/documents/${d.id}`}>{toSign ? 'Sign' : 'View'}</Link>
                 </TD>
               </TR>
             ))}

@@ -185,6 +185,30 @@ export class SaleResponse {
     description: 'Sales export only (2026-11-15): total recovered from this sale by clawbacks. null = none.',
   })
   clawback_total?: string | null;
+
+  // ── Possible duplicate (client meeting 2026-11-16) ──────────────────────────────────────────────
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Set when another live sale has the same client + MPU. The sale cannot be validated until approved.',
+  })
+  duplicate_of_sale_id!: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'The original sale’s Sale ID, for display.' })
+  duplicate_of_sale_code?: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'When the duplicate was approved.' })
+  duplicate_approved_at!: string | null;
+
+  // ── 5-day edit window (client meeting 2026-11-16) — the FE does no date math ─────────────────────
+  @ApiPropertyOptional({ type: String, example: '2026-11-21', description: 'Last Winnipeg day this sale may be edited.' })
+  edit_window_ends_on?: string;
+
+  @ApiPropertyOptional({ description: 'True while the sale may be edited (status entered/validated AND inside the window).' })
+  editable?: boolean;
+
+  @ApiPropertyOptional({ description: 'True when an edit request for this sale is waiting for a decision.' })
+  has_pending_edit_request?: boolean;
 }
 
 export class BulkValidateItemResponse {

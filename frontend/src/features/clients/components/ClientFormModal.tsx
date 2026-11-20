@@ -8,7 +8,7 @@ import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useFieldArray, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Trash2 } from 'lucide-react';
+import { Plus, Save, Trash2 } from 'lucide-react';
 import { Button, FormField, IconButton, Input, Modal, Select, Switch, useToast, ModalClose } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useCurrencies } from '../../currencies/api/useCurrencies';
@@ -140,7 +140,7 @@ export function ClientFormModal({ state, onClose }: { state: ClientFormState; on
               </div>
             ))}
             <div>
-              <Button type="button" variant="tertiary" size="sm" onClick={() => customFields.append({ field_name: '', field_value: '' })}>
+              <Button leftIcon={<Plus size={16} />} type="button" variant="tertiary" size="sm" onClick={() => customFields.append({ field_name: '', field_value: '' })}>
                 Add field
               </Button>
             </div>
@@ -153,7 +153,7 @@ export function ClientFormModal({ state, onClose }: { state: ClientFormState; on
               Cancel
             </Button>
           </ModalClose>
-          <Button variant="primary" type="submit" disabled={!fieldsLoaded} loading={create.isPending || update.isPending}>
+          <Button leftIcon={<Save size={16} />} variant="primary" type="submit" disabled={!fieldsLoaded} loading={create.isPending || update.isPending}>
             {state?.mode === 'edit' ? 'Save changes' : 'Create client'}
           </Button>
         </div>

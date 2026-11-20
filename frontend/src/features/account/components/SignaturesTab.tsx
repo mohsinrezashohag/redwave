@@ -4,7 +4,7 @@
  * every call). The default is applied first when signing. — SRS §13 (saved signature)
  */
 import { useRef, useState } from 'react';
-import { Check, Star, Trash2 } from 'lucide-react';
+import { Check, Save, Star, Trash2 } from 'lucide-react';
 import {
   Badge,
   Banner,
@@ -169,7 +169,7 @@ export function SignaturesTab() {
             <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="My signature" maxLength={60} />
           </FormField>
           <div className={styles.saveRow}>
-            <Button variant="primary" onClick={onSave} loading={create.isPending} disabled={!canSave}>
+            <Button leftIcon={<Save size={16} />} variant="primary" onClick={onSave} loading={create.isPending} disabled={!canSave}>
               Save signature
             </Button>
           </div>

@@ -7,6 +7,7 @@
  * an FX rate freezes at issue. On success → the document detail page. billing:create-gated (server is the real
  * gate, §5).
  */
+import { Eye, FileText } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Banner, Button, FormField, Input, Modal, MultiSelect, useToast } from '../../../components/ui';
@@ -150,11 +151,11 @@ export function GenerateExpenseDocModal({ open, onClose, clients, periods, prese
           <Button variant="secondary" type="button" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="tertiary" type="button" onClick={onPreview} loading={previewMut.isPending} disabled={busy || !clientId || !periodId}>
+          <Button leftIcon={<Eye size={16} />} variant="tertiary" type="button" onClick={onPreview} loading={previewMut.isPending} disabled={busy || !clientId || !periodId}>
             {preview ? 'Refresh preview' : 'Preview'}
           </Button>
           {preview && (
-            <Button variant="primary" type="button" onClick={onIssue} loading={genMut.isPending} disabled={busy}>
+            <Button leftIcon={<FileText size={16} />} variant="primary" type="button" onClick={onIssue} loading={genMut.isPending} disabled={busy}>
               {alreadyExists ? 'Issue new version' : 'Generate & issue'}
             </Button>
           )}

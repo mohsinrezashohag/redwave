@@ -14,6 +14,8 @@ export enum ReconcileAction {
   match = 'match',
   edit = 'edit',
   ignore = 'ignore',
+  /** Live sales only (2026-11-16): an approver (import:approve) accepts a possible duplicate; it commits flagged and held. */
+  accept_duplicate = 'accept_duplicate',
 }
 
 /** One row resolution. — SRS §15 (IMP-005) */

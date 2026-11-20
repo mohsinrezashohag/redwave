@@ -6,6 +6,7 @@
  */
 import { MatchStatus } from '@prisma/client';
 import { RawRow } from './mapping.logic';
+import { invalidFields, invalidMessage, isTrue } from './clean.logic';
 import { resolveVocabValue, splitValues, Vocab } from './value-vocabulary.logic';
 
 export interface Classification {
@@ -28,6 +29,32 @@ const matched = (id?: string): Classification => ({
   ...(id ? { matched_entity_id: id } : {}),
 });
 const error = (issue: string): Classification => ({ match_status: 'error', issue });
+
+/**
+ * A blank REQUIRED field says "is required"; a non-blank value that could not be parsed says "is not a
+ * valid …" (cleaning remembers it, see `invalidFields`). A blank OPTIONAL field is never an issue.
+ * — client meeting 2026-11-16
+ */
+export function dateIssue(mapped: RawRow, field: string, required: boolean): string | null {
+  const value = str(mapped, field);
+  if (invalidFields(mapped)[field] !== undefined || (value && !DATE.test(value))) {
+    return invalidMessage(field, 'date');
+  }
+  return !value && required ? `${field} is required` : null;
+}
+
+export function moneyIssue(mapped: RawRow, field: string, required: boolean): string | null {
+  const value = str(mapped, field);
+  if (invalidFields(mapped)[field] !== undefined || (value && !MONEY.test(value))) {
+    return invalidMessage(field, 'money');
+  }
+  return !value && required ? `${field} is required` : null;
+}
+
+/** Marker the reconcile step writes into a live-sale row an approver accepted as a possible duplicate. */
+export const ACCEPT_DUPLICATE_KEY = 'accept_duplicate';
+export const ACCEPTED_DUPLICATE_ISSUE =
+  'Accepted as a possible duplicate. The sale will be held until its duplicate is approved, then it can be validated.';
 
 // ── client_report + sales (bulk validation; SALE-007 / IMP-010) ──────────────────────────────────
 /** `matchedSaleIds` = the `entered` sales the service found for this row's MPU + client. */
@@ -56,17 +83,14 @@ export function classifyBillingRateRow(
 ): Classification {
   const client_code = str(mapped, 'client_code');
   const rate_kind = str(mapped, 'rate_kind');
-  const amount = str(mapped, 'amount');
-  const effective_from = str(mapped, 'effective_from');
   const product_name = str(mapped, 'product_name');
-  const effective_to = str(mapped, 'effective_to');
 
   if (!client_code) return error('client_code is required');
   if (!rate_kind) return error('rate_kind is required');
   if (rate_kind === 'product' && !product_name) return error("rate_kind 'product' requires a product_name");
-  if (!amount || !MONEY.test(amount)) return error('amount must be a decimal string (≤2 dp)');
-  if (!effective_from || !DATE.test(effective_from)) return error('effective_from must be YYYY-MM-DD');
-  if (effective_to && !DATE.test(effective_to)) return error('effective_to must be YYYY-MM-DD');
+  if (moneyIssue(mapped, 'amount', true)) return error(moneyIssue(mapped, 'amount', true)!);
+  if (dateIssue(mapped, 'effective_from', true)) return error(dateIssue(mapped, 'effective_from', true)!);
+  if (dateIssue(mapped, 'effective_to', false)) return error(dateIssue(mapped, 'effective_to', false)!);
   if (!ctx.clientExists) return error(`client ${client_code} not found`);
   if (rate_kind === 'product' && !ctx.productExists) return error(`product "${product_name}" not found for this client`);
   return matched();
@@ -88,14 +112,12 @@ export function classifyKmRateRow(mapped: RawRow, ctx: { clientExists: boolean }
   const client_code = str(mapped, 'client_code');
   const stream = str(mapped, 'stream');
   const rate_per_km = str(mapped, 'rate_per_km');
-  const effective_from = str(mapped, 'effective_from');
-  const effective_to = str(mapped, 'effective_to');
 
   if (!stream) return error('stream is required (rep or client_bill)');
   if (!KM_STREAMS.has(stream)) return error(`stream must be 'rep' or 'client_bill', not "${stream}"`);
   if (!rate_per_km || !RATE_PER_KM.test(rate_per_km)) return error('rate_per_km must be a decimal string (≤3 dp)');
-  if (!effective_from || !DATE.test(effective_from)) return error('effective_from must be YYYY-MM-DD');
-  if (effective_to && !DATE.test(effective_to)) return error('effective_to must be YYYY-MM-DD');
+  if (dateIssue(mapped, 'effective_from', true)) return error(dateIssue(mapped, 'effective_from', true)!);
+  if (dateIssue(mapped, 'effective_to', false)) return error(dateIssue(mapped, 'effective_to', false)!);
   if (client_code && !ctx.clientExists) return error(`client ${client_code} not found`);
   return matched();
 }
@@ -107,14 +129,11 @@ export function classifyCommissionFlatRateRow(
 ): Classification {
   const client_code = str(mapped, 'client_code');
   const product_type = str(mapped, 'product_type');
-  const amount = str(mapped, 'amount');
-  const effective_from = str(mapped, 'effective_from');
-  const effective_to = str(mapped, 'effective_to');
 
   if (!product_type) return error('product_type is required');
-  if (!amount || !MONEY.test(amount)) return error('amount must be a decimal string (≤2 dp)');
-  if (!effective_from || !DATE.test(effective_from)) return error('effective_from must be YYYY-MM-DD');
-  if (effective_to && !DATE.test(effective_to)) return error('effective_to must be YYYY-MM-DD');
+  if (moneyIssue(mapped, 'amount', true)) return error(moneyIssue(mapped, 'amount', true)!);
+  if (dateIssue(mapped, 'effective_from', true)) return error(dateIssue(mapped, 'effective_from', true)!);
+  if (dateIssue(mapped, 'effective_to', false)) return error(dateIssue(mapped, 'effective_to', false)!);
   if (!ctx.productTypeExists) return error(`product type "${product_type}" is not in the catalogue`);
   if (client_code && !ctx.clientExists) return error(`client ${client_code} not found`);
   return matched();
@@ -146,8 +165,8 @@ export function classifyProductRow(
   if (!product_type) return error('product_type is required');
   if (!ctx.clientExists) return error(`client ${client_code} not found`);
   if (!ctx.productTypeExists) return error(`product_type "${product_type}" is not in the catalogue`);
+  if (moneyIssue(mapped, 'billing_amount', false)) return error(moneyIssue(mapped, 'billing_amount', false)!);
   if (billing_amount) {
-    if (!MONEY.test(billing_amount)) return error('billing_amount must be a decimal string (≤2 dp)');
     if (!effective_from || !DATE.test(effective_from)) return error('a billing_amount requires effective_from (YYYY-MM-DD)');
   }
   return matched();
@@ -157,10 +176,9 @@ export function classifyProductRow(
 export function classifyRepRow(mapped: RawRow, ctx: { codeExists: boolean }): Classification {
   const rep_code = str(mapped, 'rep_code');
   const full_name = str(mapped, 'full_name');
-  const hire_date = str(mapped, 'hire_date');
   if (!rep_code) return error('rep_code is required');
   if (!full_name) return error('full_name is required');
-  if (!hire_date || !DATE.test(hire_date)) return error('hire_date must be YYYY-MM-DD');
+  if (dateIssue(mapped, 'hire_date', true)) return error(dateIssue(mapped, 'hire_date', true)!);
   if (ctx.codeExists) return error(`Rep code ${rep_code} already exists. Codes are never reused.`);
   return matched();
 }
@@ -198,13 +216,11 @@ export function classifyHistoricalSaleRow(
   const client_code = str(mapped, 'client_code');
   const rep_code = str(mapped, 'rep_code');
   const product_types = str(mapped, 'product_types');
-  const sale_date = str(mapped, 'sale_date');
-  const billed_amount = str(mapped, 'billed_amount');
   if (!client_code) return error('client_code is required');
   if (!rep_code) return error('rep_code is required');
   if (!product_types) return error('product_types is required');
-  if (!sale_date || !DATE.test(sale_date)) return error('sale_date must be YYYY-MM-DD');
-  if (!billed_amount || !MONEY.test(billed_amount)) return error('billed_amount must be a decimal string (≤2 dp)');
+  if (dateIssue(mapped, 'sale_date', true)) return error(dateIssue(mapped, 'sale_date', true)!);
+  if (moneyIssue(mapped, 'billed_amount', true)) return error(moneyIssue(mapped, 'billed_amount', true)!);
 
   // An unresolvable TYPE is always an error, even with create-missing on: the product-type catalogue is
   // Super-Admin-governed configuration (#10), not something an uploaded file may extend.
@@ -291,15 +307,18 @@ export function classifyLiveSaleRow(
   const client_code = str(mapped, 'client_code');
   const rep_code = str(mapped, 'rep_code');
   const rawTypes = str(mapped, 'product_types');
-  const sale_date = str(mapped, 'sale_date');
-  const customer_name = str(mapped, 'customer_name');
+  // A blank customer cell is fine when the first + last name columns carry it: SalesService derives the
+  // display name from the pair. — 2026-11-16
+  const customer_name =
+    str(mapped, 'customer_name') ??
+    ([str(mapped, 'customer_first_name'), str(mapped, 'customer_last_name')].filter(Boolean).join(' ') || null);
   const status = (str(mapped, 'status') ?? 'entered').toLowerCase();
 
   if (!client_code) return error('client_code is required');
   if (!rep_code) return error('rep_code is required');
   if (!rawTypes) return error('product_types is required (comma-separated)');
-  if (!sale_date || !DATE.test(sale_date)) return error('sale_date must be YYYY-MM-DD');
-  if (!customer_name) return error('customer_name is required');
+  if (dateIssue(mapped, 'sale_date', true)) return error(dateIssue(mapped, 'sale_date', true)!);
+  if (!customer_name) return error('customer_name is required (or the first and last name)');
   if (!LIVE_SALE_STATUSES.includes(status)) {
     return error(`status must be entered or validated (got "${status}")`);
   }
@@ -307,7 +326,8 @@ export function classifyLiveSaleRow(
   if (unknownTypes.length > 0) return error(unknownTypeIssue(unknownTypes, ctx.suggestion ?? null));
   if (!ctx.clientExists) return error(`client ${client_code} not found`);
   if (!ctx.repActive) return error(`rep ${rep_code} not found or not active`);
-  if (ctx.duplicateOf) {
+  const acceptedDuplicate = !!ctx.duplicateOf && isTrue(mapped[ACCEPT_DUPLICATE_KEY]);
+  if (ctx.duplicateOf && !acceptedDuplicate) {
     const mpu = str(mapped, 'mpu_id');
     return {
       match_status: 'duplicate',
@@ -328,5 +348,7 @@ export function classifyLiveSaleRow(
       'a sale must include an internet activation (the mandatory base); add-ons cannot be sold standalone',
     );
   }
-  return matched();
+  // An approver accepted this possible duplicate at reconcile: it commits FLAGGED (SalesService sets
+  // duplicate_of_sale_id) and stays held until approved. — 2026-11-16
+  return acceptedDuplicate ? { match_status: 'matched', issue: ACCEPTED_DUPLICATE_ISSUE } : matched();
 }

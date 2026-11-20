@@ -3,6 +3,7 @@
  * (the deep-linkable detail route, like the role editor). `clients:view` to see; edit/add gated by useCan.
  * 403 → AccessDenied. Touches ONLY /v1/clients* (#3).
  */
+import { Pencil, Plus } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button, Card, PageHeader } from '../../../components/ui';
@@ -47,7 +48,7 @@ export default function ClientDetailPage() {
           <>
             <Card
               title="Client"
-              actions={canEdit ? <Button variant="secondary" size="sm" onClick={() => setClientModal({ mode: 'edit', client: c })}>Edit</Button> : undefined}
+              actions={canEdit ? <Button leftIcon={<Pencil size={16} />} variant="secondary" size="sm" onClick={() => setClientModal({ mode: 'edit', client: c })}>Edit</Button> : undefined}
             >
               <div className={styles.detailHead}>
                 <span className={styles.codeCell}>{c.client_code}</span>
@@ -73,7 +74,7 @@ export default function ClientDetailPage() {
 
             <Card
               title="Products"
-              actions={canEdit ? <Button variant="secondary" size="sm" onClick={() => setProductModal({ mode: 'create', clientId: c.id })}>Add product</Button> : undefined}
+              actions={canEdit ? <Button leftIcon={<Plus size={16} />} variant="secondary" size="sm" onClick={() => setProductModal({ mode: 'create', clientId: c.id })}>Add product</Button> : undefined}
             >
               <DataState
                 isLoading={products.isLoading}

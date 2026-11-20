@@ -31,4 +31,9 @@ export class ChatbotConfigCache {
     this.cache = { value: row, at: now };
     return row;
   }
+
+  /** Drop the cached row (after the Super Admin changes the config) so the next call re-reads it. */
+  invalidate(): void {
+    this.cache = null;
+  }
 }

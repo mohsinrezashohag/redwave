@@ -10,6 +10,7 @@ import { useAdminDashboard } from '../api/useDashboards';
 import { AdminQueueCard } from '../components/AdminQueueCard';
 import { AccessDenied } from '../components/AccessDenied';
 import { isForbidden } from '../../../lib/api/apiError';
+import { PendingSignaturesBanner } from '../../documents/components/PendingSignaturesBanner';
 import styles from '../dashboards.module.css';
 
 export default function AdminDashboardPage() {
@@ -20,6 +21,8 @@ export default function AdminDashboardPage() {
   return (
     <div className={styles.page}>
       <PageHeader title="Operations" subtitle="Open queues across the platform. Jump in where there's work." />
+      {/* Signature nudge (renders nothing when none are waiting). 2026-11-16 */}
+      <PendingSignaturesBanner />
       <DataState isLoading={q.isLoading} isError={q.isError} isEmpty={false} onRetry={() => q.refetch()}>
         {d && (
           <div className={styles.queueGrid}>

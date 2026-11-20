@@ -6,7 +6,7 @@
  * rep with no roster) → AccessDenied. — SRS §14
  */
 import { useState } from 'react';
-import { CheckSquare, Receipt, UserCog } from 'lucide-react';
+import { CheckSquare, Receipt, Target, UserCog } from 'lucide-react';
 import { Badge, Button, Card, PageHeader, PersonName, StatCard } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useCan } from '../../../auth/useCan';
@@ -17,6 +17,7 @@ import { LeaderboardTable } from '../components/LeaderboardTable';
 import { SetTargetsModal } from '../components/SetTargetsModal';
 import { AccessDenied } from '../components/AccessDenied';
 import { isForbidden } from '../../../lib/api/apiError';
+import { PendingSignaturesBanner } from '../../documents/components/PendingSignaturesBanner';
 import styles from '../dashboards.module.css';
 
 export default function ManagerDashboardPage() {
@@ -33,8 +34,10 @@ export default function ManagerDashboardPage() {
       <PageHeader
         title="Team dashboard"
         subtitle={d?.period ? `Pay period ${d.period.period_number}` : 'No open pay period'}
-        actions={canEditTargets && d ? <Button variant="secondary" onClick={() => setTargetsOpen(true)}>Set targets</Button> : undefined}
+        actions={canEditTargets && d ? <Button leftIcon={<Target size={16} />} variant="secondary" onClick={() => setTargetsOpen(true)}>Set targets</Button> : undefined}
       />
+      {/* Signature nudge (renders nothing when none are waiting). 2026-11-16 */}
+      <PendingSignaturesBanner />
       <DataState isLoading={q.isLoading} isError={q.isError} isEmpty={false} onRetry={() => q.refetch()}>
         {d && (
           <>

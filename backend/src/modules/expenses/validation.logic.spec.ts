@@ -10,7 +10,7 @@ const mealsSchema = (over: Partial<CategorySchema> = {}): CategorySchema => ({
   fields: [
     { key: 'vendor', label: 'Vendor', type: 'text', required: true },
     { key: 'city', label: 'City', type: 'text', required: false },
-    { key: 'gratuity', label: 'Gratuity', type: 'money', required: false, soft_cap: '20.00' },
+    { key: 'extra_charge', label: 'Extra charge', type: 'money', required: false, soft_cap: '20.00' },
   ],
   ...over,
 });
@@ -59,8 +59,8 @@ describe('validateExpenseItem — Warnings (flag, non-blocking)', () => {
   });
 
   it('warns when a field value exceeds its own soft cap', () => {
-    const { warnings } = validateExpenseItem(item({ field_values: { vendor: 'X', gratuity: '25.00' } }), mealsSchema());
-    expect(warnings.map((w) => w.field)).toContain('gratuity');
+    const { warnings } = validateExpenseItem(item({ field_values: { vendor: 'X', extra_charge: '25.00' } }), mealsSchema());
+    expect(warnings.map((w) => w.field)).toContain('extra_charge');
   });
 
   it('warns on a km trip the commute deduction zeroed ($0 claim)', () => {
@@ -166,5 +166,16 @@ describe('validateExpenseItem — a category that requires neither receipt nor d
   it('absent schema is treated as REQUIRED — an unconfigured category never stops asking', () => {
     const { alerts } = validateExpenseItem(item({ description: null }), undefined);
     expect(alerts.map((a) => a.field)).toContain('description');
+  });
+
+  it('absent schema REQUIRES a receipt too (every non-km category asks unless config relaxes it) — 2026-11-16', () => {
+    const { alerts } = validateExpenseItem(item({ receipt_url: null }), undefined);
+    expect(alerts.map((a) => a.field)).toContain('receipt_url');
+  });
+
+  it('a km item never needs a receipt, even when its config says requires_receipt', () => {
+    const km = mealsSchema({ category_key: 'km', behaviour: 'km', requires_receipt: true, fields: [], amount_soft_cap: null });
+    const { alerts } = validateExpenseItem({ category: 'km', amount: null, receipt_url: null, km: { billable_km: '40' } }, km);
+    expect(alerts).toHaveLength(0);
   });
 });

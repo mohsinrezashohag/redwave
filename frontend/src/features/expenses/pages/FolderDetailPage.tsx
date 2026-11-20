@@ -7,7 +7,7 @@
  */
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { ArrowLeft, Check, Pencil, Plus, Save, Send, Trash2, Undo2, XCircle } from 'lucide-react';
 import { Banner, Button, Card, ConfirmDialog, Input, Modal, PageHeader, useToast } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { useAuth } from '../../../auth/useAuth';
@@ -82,15 +82,15 @@ export default function FolderDetailPage() {
                 subtitle={`${displayDate(folder.week_start)} – ${displayDate(folder.week_end)} · ${folder.item_count} item(s) · ${money(folder.total_reimbursable_cad)} reimbursable`}
                 actions={
                   <div className={styles.folderActions}>
-                    <Button variant="tertiary" onClick={() => navigate('/expenses')}>Back</Button>
+                    <Button leftIcon={<ArrowLeft size={16} />} variant="tertiary" onClick={() => navigate('/expenses')}>Back</Button>
                     {canManage && (folder.status === 'draft' || folder.status === 'needs_attention') && folder.item_count > 0 && (
-                      <Button variant="primary" loading={submit.isPending} onClick={() => run(submit.mutateAsync(folder.id), 'Folder submitted')}>
+                      <Button leftIcon={<Send size={16} />} variant="primary" loading={submit.isPending} onClick={() => run(submit.mutateAsync(folder.id), 'Folder submitted')}>
                         Submit folder
                       </Button>
                     )}
                     {canReview && folder.status === 'pending' && (
                       <>
-                        <Button
+                        <Button leftIcon={<Check size={16} />}
                           variant="primary"
                           loading={review.isPending}
                           onClick={() => run(review.mutateAsync({ id: folder.id, body: { decision: 'approve' } }), 'Folder approved')}
@@ -98,18 +98,18 @@ export default function FolderDetailPage() {
                           Approve all
                         </Button>
                         {/* Sending back / rejecting a whole folder asks first, with an optional note. */}
-                        <Button variant="secondary" disabled={review.isPending} onClick={() => setDecision('send_back')}>
+                        <Button leftIcon={<Undo2 size={16} />} variant="secondary" disabled={review.isPending} onClick={() => setDecision('send_back')}>
                           Send all back
                         </Button>
-                        <Button variant="secondary" disabled={review.isPending} onClick={() => setDecision('reject')}>
+                        <Button leftIcon={<XCircle size={16} />} variant="secondary" disabled={review.isPending} onClick={() => setDecision('reject')}>
                           Reject all
                         </Button>
                       </>
                     )}
                     {canManage && (
-                      <Button variant="secondary" onClick={() => { setRenameVal(folder.name); setRenameOpen(true); }}>Rename</Button>
+                      <Button leftIcon={<Pencil size={16} />} variant="secondary" onClick={() => { setRenameVal(folder.name); setRenameOpen(true); }}>Rename</Button>
                     )}
-                    {canManage && <Button variant="tertiary" onClick={() => setConfirmDel(true)}>Delete</Button>}
+                    {canManage && <Button leftIcon={<Trash2 size={16} />} variant="tertiary" onClick={() => setConfirmDel(true)}>Delete</Button>}
                   </div>
                 }
               />
@@ -159,7 +159,7 @@ export default function FolderDetailPage() {
                 footer={
                   <div className={styles.footer}>
                     <Button variant="secondary" onClick={() => setRenameOpen(false)}>Cancel</Button>
-                    <Button
+                    <Button leftIcon={<Save size={16} />}
                       variant="primary"
                       loading={rename.isPending}
                       onClick={() =>

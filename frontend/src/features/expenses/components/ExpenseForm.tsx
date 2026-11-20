@@ -4,6 +4,7 @@
  * `items.${index}.*` from the form context) is reused unchanged. PATCH replaces the item; the km amount is
  * computed server-side. On success → the item detail. Tokens only.
  */
+import { Save } from 'lucide-react';
 import { useMemo } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { FormProvider, useForm } from 'react-hook-form';
@@ -12,6 +13,7 @@ import { Button, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useUpdateItem } from '../api/useExpenseMutations';
 import { ExpenseItemRow } from './ExpenseItemRow';
+import { useRoundTripConfirm } from './useRoundTripConfirm';
 import { buildItemBody, makeExpenseSchema, type ExpenseFormValues, type ItemValue } from './expenseForm.schema';
 import type { ExpenseItem, FieldConfig } from '../expenses.types';
 import styles from './expenses.module.css';
@@ -55,8 +57,9 @@ export function ExpenseForm({
 
   const methods = useForm<ExpenseFormValues>({ resolver, defaultValues: itemToValues(item) });
   const { handleSubmit } = methods;
+  const roundTrip = useRoundTripConfirm(configs);
 
-  const onSubmit = (values: ExpenseFormValues) => {
+  const save = (values: ExpenseFormValues) => {
     update.mutate(
       { id: item.id, body: buildItemBody(values) },
       {
@@ -69,6 +72,8 @@ export function ExpenseForm({
       },
     );
   };
+  // A round km trip asks first ("Yes, submit" / "Back to edit"). — meeting 2026-11-16
+  const onSubmit = (values: ExpenseFormValues) => roundTrip.guard(values, () => save(values));
 
   return (
     <FormProvider {...methods}>
@@ -80,11 +85,12 @@ export function ExpenseForm({
               Cancel
             </Button>
           )}
-          <Button variant="primary" type="submit" loading={update.isPending}>
+          <Button leftIcon={<Save size={16} />} variant="primary" type="submit" loading={update.isPending}>
             Save changes
           </Button>
         </div>
       </form>
+      {roundTrip.dialog}
     </FormProvider>
   );
 }

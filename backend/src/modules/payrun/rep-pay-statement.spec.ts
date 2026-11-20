@@ -48,7 +48,9 @@ function make(opts: { lines?: unknown[]; saleIds?: string[] } = {}) {
       findUnique: jest.fn().mockResolvedValue({
         id: 'run-1',
         status: 'finalized',
-        pay_period: { period_number: 6, start_date: d('2026-03-01'), end_date: d('2026-03-14') },
+        pay_period_id: 'P6',
+        label: null,
+        pay_period: { id: 'P6', period_number: 6, start_date: d('2026-03-01'), end_date: d('2026-03-14') },
       }),
       findMany: jest.fn().mockResolvedValue([]),
     },
@@ -127,7 +129,9 @@ describe('Rep pay statement — is_finalized comes from the run STATUS', () => {
     prisma.payRun.findUnique.mockResolvedValue({
       id: 'run-1',
       status: 'draft',
-      pay_period: { period_number: 6, start_date: d('2026-03-01'), end_date: d('2026-03-14') },
+      pay_period_id: 'P6',
+      label: null,
+      pay_period: { id: 'P6', period_number: 6, start_date: d('2026-03-01'), end_date: d('2026-03-14') },
     });
     prisma.payrollReportLine.findMany.mockResolvedValue([]);
     const statement = await service.repPayStatement('run-1', 'rep-A');

@@ -4,6 +4,7 @@
  * name/phone/status + roles. Self-guardrails: you can't change your OWN status or roles here (the server has
  * no self-protection, so we don't offer it). A password RESET is a row action (link / temp), not here.
  */
+import { Mail, Save } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -97,7 +98,7 @@ function CreateUserForm({
             Cancel
           </Button>
         </ModalClose>
-        <Button variant="primary" type="submit" loading={create.isPending}>
+        <Button leftIcon={<Mail size={16} />} variant="primary" type="submit" loading={create.isPending}>
           Send invitation
         </Button>
       </div>
@@ -195,7 +196,7 @@ function EditUserForm({
             Cancel
           </Button>
         </ModalClose>
-        <Button variant="primary" type="submit" loading={update.isPending || setRoles.isPending}>
+        <Button leftIcon={<Save size={16} />} variant="primary" type="submit" loading={update.isPending || setRoles.isPending}>
           Save changes
         </Button>
       </div>

@@ -12,6 +12,7 @@ export const REP_DOC_TYPES = [
   { value: 'drivers_licence', label: "Driver's licence" },
   { value: 'passport', label: 'Passport' },
   { value: 'contract', label: 'Contract' },
+  { value: 'recruitment', label: 'Recruitment documents' },
   { value: 'other', label: 'Other' },
 ] as const;
 

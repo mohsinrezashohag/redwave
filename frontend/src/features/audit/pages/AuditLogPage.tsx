@@ -3,7 +3,8 @@
  * append-only audit_log; a row opens a drawer showing before → after. The data is read-only (no mutations).
  * — arch §security (audit)
  */
-import { useState } from 'react';
+import { Eye, X } from 'lucide-react';
+import { Fragment, useState } from 'react';
 import { Badge, Button, DatePicker, Drawer, FormField, Input, PageHeader, PersonName } from '../../../components/ui';
 import { DataTable, type DataColumn } from '../../../components/data/DataTable';
 import { useCan } from '../../../auth/useCan';
@@ -12,6 +13,7 @@ import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useAuditTable } from '../api/useAuditLogs';
 import type { AuditFilters, AuditLog, AuditSortKey } from '../audit.types';
 import styles from './audit.module.css';
+import { actionLabel, describeChanges } from '../historyDiff';
 
 const when = (iso: string): string => {
   try {
@@ -44,7 +46,7 @@ export default function AuditLogPage() {
       header: 'Actor',
       render: (r) => (r.actor ? <PersonName name={r.actor.full_name} photoUrl={r.actor.avatar_url} /> : r.user_id.slice(0, 8)),
     },
-    { id: 'action', header: 'Action', sortKey: 'action', render: (r) => <Badge tone="neutral">{r.action}</Badge> },
+    { id: 'action', header: 'Action', sortKey: 'action', render: (r) => <Badge tone="neutral">{actionLabel(r.action)}</Badge> },
     { id: 'entity_type', header: 'Entity', sortKey: 'entity_type', render: (r) => r.entity_type },
     { id: 'entity_id', header: 'Record', render: (r) => <span className="mono">{r.entity_id.slice(0, 8)}</span> },
     { id: 'ip', header: 'IP', render: (r) => <span className="mono">{r.ip_address ?? '—'}</span> },
@@ -74,7 +76,7 @@ export default function AuditLogPage() {
           <DatePicker value={filters.date_to ?? ''} onChange={(v) => set({ date_to: v })} />
         </FormField>
         <div className={styles.clear}>
-          <Button variant="tertiary" onClick={() => setFilters({})}>
+          <Button leftIcon={<X size={16} />} variant="tertiary" onClick={() => setFilters({})}>
             Clear
           </Button>
         </div>
@@ -92,7 +94,7 @@ export default function AuditLogPage() {
         limit={table.limit}
         onPageChange={table.setPage}
         rowActions={(r) => (
-          <Button variant="tertiary" onClick={() => setDetail(r)}>
+          <Button leftIcon={<Eye size={16} />} variant="tertiary" onClick={() => setDetail(r)}>
             View
           </Button>
         )}
@@ -109,13 +111,30 @@ export default function AuditLogPage() {
             <dl className={styles.meta}>
               <dt>When</dt><dd className="mono">{when(detail.created_at)}</dd>
               <dt>Actor</dt><dd>{detail.actor?.full_name ?? detail.user_id} {detail.actor?.email ? `· ${detail.actor.email}` : ''}</dd>
-              <dt>Action</dt><dd>{detail.action}</dd>
+              <dt>Action</dt><dd>{actionLabel(detail.action)} <span className="mono">({detail.action})</span></dd>
               <dt>Entity</dt><dd>{detail.entity_type} · <span className="mono">{detail.entity_id}</span></dd>
               <dt>IP</dt><dd className="mono">{detail.ip_address ?? '—'}</dd>
             </dl>
-            <h4 className={styles.diffHead}>Before</h4>
+            {/* Readable summary first; the raw JSON below stays for forensic detail. 2026-11-18 */}
+            {(() => {
+              const changes = describeChanges(detail.before_json, detail.after_json);
+              return changes.length > 0 ? (
+                <>
+                  <h4 className={styles.diffHead}>Changes</h4>
+                  <dl className={styles.meta}>
+                    {changes.map((c) => (
+                      <Fragment key={c.field}>
+                        <dt>{c.field}</dt>
+                        <dd>{c.before !== null ? `${c.before} → ${c.after ?? '—'}` : c.after ?? '—'}</dd>
+                      </Fragment>
+                    ))}
+                  </dl>
+                </>
+              ) : null;
+            })()}
+            <h4 className={styles.diffHead}>Before (raw)</h4>
             <JsonBlock value={detail.before_json} />
-            <h4 className={styles.diffHead}>After</h4>
+            <h4 className={styles.diffHead}>After (raw)</h4>
             <JsonBlock value={detail.after_json} />
           </div>
         )}

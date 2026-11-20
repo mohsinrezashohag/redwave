@@ -52,14 +52,14 @@ describe('SalesListPage — renders against the { data, meta } envelope (no .map
   it('renders when /v1/reps returns a POPULATED { data, meta } envelope', async () => {
     const { client } = renderWithProviders(<SalesListPage />, { route: '/sales' });
     // The crash was a post-fetch re-render; wait until the rep query settles, then assert the page is intact.
-    await waitFor(() => expect(client.getQueryData(['reps', 'list'])).toBeDefined());
+    await waitFor(() => expect(client.getQueryData(['reps', 'list', 'active'])).toBeDefined());
     expect(await screen.findByText('Sales')).toBeTruthy();
   });
 
   it('renders when /v1/reps returns an EMPTY { data: [], meta } envelope', async () => {
     h.state.reps = h.env([]);
     const { client } = renderWithProviders(<SalesListPage />, { route: '/sales' });
-    await waitFor(() => expect(client.getQueryData(['reps', 'list'])).toBeDefined());
+    await waitFor(() => expect(client.getQueryData(['reps', 'list', 'active'])).toBeDefined());
     expect(await screen.findByText('Sales')).toBeTruthy();
   });
 });

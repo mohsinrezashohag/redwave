@@ -1,7 +1,7 @@
 /**
  * RepDashboardPage — the rep's own-data view (design-system §10.1: calm, motivational, own-data only).
  * KPI tiles (this period's activations + pay composition), an activations-by-product chart,
- * the rep's leaderboard standing (counts only), and recent clawbacks. All data is server-scoped to the
+ * and the rep's leaderboard standing (counts only). Clawbacks are hidden since 2026-11-16. All data is server-scoped to the
  * caller's rep; a 403 (e.g. a user with no linked rep) renders AccessDenied. — SRS §14
  */
 import { Badge, Card, PageHeader, StatCard, Table, TBody, TD, TH, THead, TR } from '../../../components/ui';
@@ -13,10 +13,10 @@ import { money } from '../../../lib/format/money';
 import { useLeaderboard, useRepDashboard } from '../api/useDashboards';
 import { ChartContainer } from '../charts/ChartContainer';
 import { ThemedBarChart } from '../charts/ThemedBarChart';
-import { RecentClawbacks } from '../components/RecentClawbacks';
 import { LeaderboardTable } from '../components/LeaderboardTable';
 import { AccessDenied } from '../components/AccessDenied';
 import { isForbidden } from '../../../lib/api/apiError';
+import { PendingSignaturesBanner } from '../../documents/components/PendingSignaturesBanner';
 import styles from '../dashboards.module.css';
 
 export default function RepDashboardPage() {
@@ -39,13 +39,15 @@ export default function RepDashboardPage() {
         title="My dashboard"
         subtitle={d?.period ? `Pay period ${d.period.period_number}` : 'No open pay period'}
       />
+      {/* Signature nudge (renders nothing when none are waiting). 2026-11-16 */}
+      <PendingSignaturesBanner />
       <DataState isLoading={q.isLoading} isError={q.isError} isEmpty={false} onRetry={() => q.refetch()}>
         {d && (
           <>
             <div className={styles.kpiGrid}>
               <StatCard label="Internet activations" value={d.internet_activations} footnote="This period, excluding greenfield" />
               <StatCard label="Estimated commission" value={money(d.commission.commission)} footnote="This period, paid in full" />
-              <StatCard label="Net payout (period)" value={money(d.commission.net_payout)} footnote="After expenses, bonuses and clawbacks" />
+              <StatCard label="Net payout (period)" value={money(d.commission.net_payout)} footnote="After expenses and bonuses" />
               <StatCard
                 label="Target progress"
                 value={`${d.target.actual} / ${d.target.target_activations ?? '—'}`}
@@ -97,9 +99,6 @@ export default function RepDashboardPage() {
             </Card>
 
             <div className={styles.cols}>
-              <Card title="Recent clawbacks">
-                <RecentClawbacks rows={d.recent_clawbacks} />
-              </Card>
               <Card title="Leaderboard standing">
                 <DataState
                   isLoading={board.isLoading}

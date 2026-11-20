@@ -8,6 +8,7 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PayPeriodStatus, PayRunStatus } from '@prisma/client';
+import { PageMetaResponse } from '../../../common/pagination/page.response';
 
 export class PayPeriodResponse {
   @ApiProperty()
@@ -80,15 +81,77 @@ export class PayRunLineResponse {
 
 }
 
-export class PayRunSummaryResponse {
+/** The client a range report is limited to. */
+export class RunClientLiteResponse {
   @ApiProperty()
   id!: string;
 
   @ApiProperty()
-  pay_period_id!: string;
+  client_code!: string;
 
-  @ApiProperty({ type: () => PayPeriodResponse })
-  pay_period!: PayPeriodResponse;
+  @ApiProperty()
+  name!: string;
+}
+
+/** The rep a range report is limited to. */
+export class RunRepLiteResponse {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  rep_code!: string;
+
+  @ApiProperty()
+  full_name!: string;
+}
+
+/**
+ * A commission report header. Since 2026-11-16 a run is a SALE-DATE range (`kind: 'range'`), optionally one
+ * client and/or one rep; legacy runs (`kind: 'period'`) carry a pay period instead. `window_start` /
+ * `window_end` are the covered sale dates either way.
+ */
+export class PayRunSummaryResponse {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty({ enum: ['period', 'range'] })
+  kind!: 'period' | 'range';
+
+  @ApiProperty({ example: 'Pay period #6', description: 'The run label, else Pay period #N, else the date range.' })
+  display_label!: string;
+
+  @ApiProperty({ type: String, nullable: true, description: 'The name the admin gave the report, if any.' })
+  label!: string | null;
+
+  @ApiProperty({ type: String, example: '2026-11-01', description: 'First sale_date covered (YYYY-MM-DD).' })
+  window_start!: string;
+
+  @ApiProperty({ type: String, example: '2026-11-14', description: 'Last sale_date covered (YYYY-MM-DD).' })
+  window_end!: string;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Legacy runs only.' })
+  pay_period_id!: string | null;
+
+  @ApiProperty({ type: () => PayPeriodResponse, nullable: true, description: 'Legacy runs only.' })
+  pay_period!: PayPeriodResponse | null;
+
+  @ApiProperty({ type: String, nullable: true, format: 'date-time' })
+  date_from!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, format: 'date-time' })
+  date_to!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  client_id!: string | null;
+
+  @ApiProperty({ type: () => RunClientLiteResponse, nullable: true, description: 'Set when limited to one client.' })
+  client!: RunClientLiteResponse | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  rep_id!: string | null;
+
+  @ApiProperty({ type: () => RunRepLiteResponse, nullable: true, description: 'Set when limited to one rep.' })
+  scope_rep!: RunRepLiteResponse | null;
 
   @ApiProperty({ type: String, format: 'date-time' })
   run_date!: string;
@@ -107,6 +170,84 @@ export class PayRunSummaryResponse {
 export class PayRunResponse extends PayRunSummaryResponse {
   @ApiProperty({ type: () => [PayRunLineResponse] })
   lines!: PayRunLineResponse[];
+}
+
+/** The paginated commission-report history. */
+export class PayRunPageResponse {
+  @ApiProperty({ type: () => [PayRunSummaryResponse] })
+  data!: PayRunSummaryResponse[];
+
+  @ApiProperty({ type: () => PageMetaResponse })
+  meta!: PageMetaResponse;
+}
+
+/** One item of a sale in a report: the REP rate (frozen once paid, the rate in force while a draft). */
+export class RunSaleItemResponse {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty({ example: 'internet' })
+  product_type!: string;
+
+  @ApiProperty({ type: String, nullable: true })
+  product_name!: string | null;
+
+  @ApiProperty({ type: String, example: '110.00', description: 'Decimal string. The rep rate.' })
+  rate_applied!: string;
+
+  @ApiProperty({ type: String, example: '0.00', description: 'Decimal string. Incentive on this item.' })
+  incentive_amount!: string;
+
+  @ApiProperty({ type: String, example: '110.00', description: 'Decimal string. Rate + incentive.' })
+  commission_paid!: string;
+}
+
+/** One sale in a report for one rep — the per-sale drill-down. Rep stream only (#3). */
+export class RunSaleResponse {
+  @ApiProperty()
+  sale_id!: string;
+
+  @ApiProperty({ example: '2026-11-03-VF' })
+  sale_code!: string;
+
+  @ApiProperty({ type: String, example: '2026-11-03' })
+  sale_date!: string;
+
+  @ApiProperty()
+  customer_name!: string;
+
+  @ApiProperty({ example: 'VF' })
+  client_code!: string;
+
+  @ApiProperty()
+  client_name!: string;
+
+  @ApiProperty({ example: 'validated' })
+  status!: string;
+
+  @ApiProperty({ type: () => [RunSaleItemResponse] })
+  items!: RunSaleItemResponse[];
+
+  @ApiProperty({ type: String, example: '140.00', description: 'Decimal string. Σ commission_paid (server-summed).' })
+  total!: string;
+}
+
+/** A rep's sales in one report. `basis` says whether the amounts are frozen (paid) or the draft preview. */
+export class RunRepSalesResponse {
+  @ApiProperty()
+  pay_run_id!: string;
+
+  @ApiProperty()
+  rep_id!: string;
+
+  @ApiProperty({ enum: ['paid', 'estimated'] })
+  basis!: 'paid' | 'estimated';
+
+  @ApiProperty({ type: () => [RunSaleResponse] })
+  sales!: RunSaleResponse[];
+
+  @ApiProperty({ type: String, description: 'Decimal string. Σ of the sales totals.' })
+  total!: string;
 }
 
 export class ExportResultResponse {
@@ -200,8 +341,14 @@ export class PayrollReportResponse {
   @ApiProperty()
   pay_run_id!: string;
 
-  @ApiProperty({ type: Number, example: 6 })
-  period_number!: number;
+  @ApiProperty({ type: Number, nullable: true, example: 6, description: 'Legacy pay-period runs only; null for a date-range report.' })
+  period_number!: number | null;
+
+  @ApiProperty({ enum: ['period', 'range'], description: 'A legacy pay-period run or a date-range commission report (2026-11-16).' })
+  kind!: 'period' | 'range';
+
+  @ApiProperty({ example: '2026-11-01 to 2026-11-14', description: 'The run label, else Pay period #N, else the date range.' })
+  display_label!: string;
 
   @ApiProperty({ type: String, example: '2026-03-01' })
   period_start!: string;
@@ -290,8 +437,14 @@ export class RepPayStatementResponse {
   @ApiProperty()
   pay_run_id!: string;
 
-  @ApiProperty({ type: Number, example: 6 })
-  period_number!: number;
+  @ApiProperty({ type: Number, nullable: true, example: 6, description: 'Legacy pay-period runs only; null for a date-range report.' })
+  period_number!: number | null;
+
+  @ApiProperty({ enum: ['period', 'range'], description: 'A legacy pay-period run or a date-range commission report (2026-11-16).' })
+  kind!: 'period' | 'range';
+
+  @ApiProperty({ example: '2026-11-01 to 2026-11-14', description: 'The run label, else Pay period #N, else the date range.' })
+  display_label!: string;
 
   @ApiProperty({ type: String, example: '2026-03-01' })
   period_start!: string;
@@ -320,8 +473,14 @@ export class RepPayStatementSummaryResponse {
   @ApiProperty()
   pay_run_id!: string;
 
-  @ApiProperty({ type: Number, example: 6 })
-  period_number!: number;
+  @ApiProperty({ type: Number, nullable: true, example: 6, description: 'Legacy pay-period runs only; null for a date-range report.' })
+  period_number!: number | null;
+
+  @ApiProperty({ enum: ['period', 'range'], description: 'A legacy pay-period run or a date-range commission report (2026-11-16).' })
+  kind!: 'period' | 'range';
+
+  @ApiProperty({ example: '2026-11-01 to 2026-11-14', description: 'The run label, else Pay period #N, else the date range.' })
+  display_label!: string;
 
   @ApiProperty({ type: String, example: '2026-03-01' })
   period_start!: string;

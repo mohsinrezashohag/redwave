@@ -4,6 +4,7 @@
  * never edited (#2); the reported date is informational (#6); per-item. `clawback:create`
  * to record; `sales:view` to search. 403 → AccessDenied; the server is the real gate (§5).
  */
+import { Eye } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Banner, Button, Card, PageHeader } from '../../../components/ui';
@@ -81,7 +82,7 @@ export default function ClawbackEntryPage() {
         title="Record a clawback"
         subtitle="Find a paid sale, pick the cancelled item, and record the recovery. The amount is computed by the server from the frozen snapshot."
         actions={
-          <Button variant="tertiary" onClick={() => navigate('/clawbacks')}>
+          <Button leftIcon={<Eye size={16} />} variant="tertiary" onClick={() => navigate('/clawbacks')}>
             View clawbacks
           </Button>
         }

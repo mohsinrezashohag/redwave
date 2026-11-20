@@ -8,6 +8,7 @@ import {
   Bell,
   CalendarRange,
   CheckSquare,
+  FilePen,
   Columns3,
   FileSignature,
   FileText,
@@ -15,7 +16,6 @@ import {
   Megaphone,
   Receipt,
   ReceiptText,
-  Scale,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -26,7 +26,6 @@ import {
   Tags,
   Sparkles,
   Trophy,
-  Undo2,
   Upload,
   User,
   UserCircle,
@@ -105,7 +104,8 @@ const NAV: NavGroup[] = [
         label: 'Sales',
         icon: ShoppingCart,
         to: '/sales',
-        match: (l) => l.pathname.startsWith('/sales') && statusOf(l.search) !== 'entered',
+        match: (l) =>
+          l.pathname.startsWith('/sales') && l.pathname !== '/sales/edit-requests' && statusOf(l.search) !== 'entered',
       },
       {
         label: 'Validation',
@@ -113,24 +113,25 @@ const NAV: NavGroup[] = [
         to: '/sales?status=entered',
         match: (l) => l.pathname === '/sales' && statusOf(l.search) === 'entered',
       },
+      {
+        // Reps' requested sale edits (5-day window). 2026-11-16
+        label: 'Edit requests',
+        icon: FilePen,
+        to: '/sales/edit-requests',
+        match: (l) => l.pathname === '/sales/edit-requests',
+        show: (a) => a.permissions.has('sales:edit'),
+      },
     ],
   },
   {
     heading: 'Money',
     items: [
       {
-        label: 'Pay Run',
+        label: 'Commission reports',
         icon: Wallet,
         to: '/pay-runs',
         match: (l) => l.pathname.startsWith('/pay-runs'),
         show: (a) => a.permissions.has('payrun:view'),
-      },
-      {
-        label: 'Clawbacks',
-        icon: Undo2,
-        to: '/clawbacks',
-        match: (l) => l.pathname.startsWith('/clawbacks'),
-        show: (a) => a.permissions.has('clawback:view'),
       },
       {
         label: 'Expenses',
@@ -157,12 +158,6 @@ const NAV: NavGroup[] = [
         icon: ReceiptText,
         to: '/billing/expense-documents',
         match: (l) => l.pathname.startsWith('/billing/expense-documents'),
-        show: (a) => a.permissions.has('billing:view'),
-      },
-      {
-        label: 'Reconciliation',
-        icon: Scale,
-        to: '/admin/reconciliation',
         show: (a) => a.permissions.has('billing:view'),
       },
     ],

@@ -3,7 +3,7 @@
  * payrun:approve gates the money actions (finalize, bonus). Every route declares its permission;
  * the global guard enforces it and the service scopes data per caller.
  */
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import {
   ApiBearerAuth,
@@ -22,7 +22,7 @@ import { PayPeriodService } from './pay-period.service';
 import { PayRunService } from './pay-run.service';
 import { PayrollExcelRenderer } from './renderers/payroll-excel.renderer';
 import { ExportLayoutService } from '../../common/export/export-layout.service';
-import { CreatePayRunDto } from './dto/create-pay-run.dto';
+import { CreatePayRunDto, ListPayRunsQuery, PayrollReportFilterQuery } from './dto/create-pay-run.dto';
 import { SetBonusDto } from './dto/bonus.dto';
 import { ExportPayRunDto } from './dto/export.dto';
 import {
@@ -34,8 +34,9 @@ import {
   ExportResultResponse,
   PayPeriodResponse,
   PayRunLineResponse,
+  PayRunPageResponse,
   PayRunResponse,
-  PayRunSummaryResponse,
+  RunRepSalesResponse,
 } from './dto/pay-run.response';
 
 @ApiTags('Pay Run')
@@ -70,17 +71,24 @@ export class PayRunController {
 
   @Get()
   @RequirePermission('payrun', 'view')
-  @ApiOperation({ summary: 'List pay runs', description: 'Requires payrun:view.' })
-  @ApiOkResponse({ type: PayRunSummaryResponse, isArray: true })
-  list() {
-    return this.payRuns.listRuns();
+  @ApiOperation({
+    summary: 'List commission reports (pay runs)',
+    description:
+      'Requires payrun:view. Paginated history of legacy pay-period runs and date-range reports (2026-11-16).',
+  })
+  @ApiOkResponse({ type: PayRunPageResponse })
+  list(@Query() query: ListPayRunsQuery) {
+    return this.payRuns.listRuns(query);
   }
 
   @Post()
   @RequirePermission('payrun', 'create')
   @ApiOperation({
-    summary: 'Create / refresh a DRAFT pay run',
-    description: 'Requires payrun:create. Computes preview lines via the engine; nothing frozen.',
+    summary: 'Create / refresh a DRAFT commission report',
+    description:
+      'Requires payrun:create. Body: date_from + date_to (sale_date range, inclusive) with optional client_id, ' +
+      'rep_id and label; the same range + client + rep refreshes its open draft. The legacy pay_period_id body ' +
+      'is still accepted. Computes preview lines via the engine; nothing frozen.',
   })
   @ApiCreatedResponse({ type: PayRunResponse })
   create(@Body() dto: CreatePayRunDto, @CurrentUser() user: AuthUser) {
@@ -96,6 +104,34 @@ export class PayRunController {
   @ApiOkResponse({ type: PayRunResponse })
   findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.payRuns.getRun(id, user);
+  }
+
+  @Delete(':id')
+  @RequirePermission('payrun', 'delete')
+  @ApiOperation({
+    summary: 'Delete a DRAFT commission report',
+    description: 'Requires payrun:delete. Drafts only (nothing was frozen); a paid report is permanent (409).',
+  })
+  @ApiOkResponse({ schema: { type: 'object', properties: { id: { type: 'string' }, deleted: { type: 'boolean' } } } })
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.payRuns.deleteDraft(id, user);
+  }
+
+  @Get(':id/reps/:repId/sales')
+  @RequirePermission('payrun', 'view')
+  @ApiOperation({
+    summary: "One rep's sales in a report (per-sale drill-down)",
+    description:
+      'Requires payrun:view (scoped). Paid run: the FROZEN snapshots. Draft: the rep rate in force on each ' +
+      'sale date (basis=estimated). Rep stream only, no client rate (#3).',
+  })
+  @ApiOkResponse({ type: RunRepSalesResponse })
+  repSales(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('repId', ParseUUIDPipe) repId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.payRuns.runSales(id, repId, user);
   }
 
   @Get(':id/lines')
@@ -160,8 +196,12 @@ export class PayRunController {
       'has not finalized has no lines yet and reports is_finalized=false rather than showing zeros.',
   })
   @ApiOkResponse({ type: PayrollReportResponse })
-  payrollReport(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
-    return this.payRuns.payrollReport(id, user);
+  payrollReport(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() filter: PayrollReportFilterQuery,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.payRuns.payrollReport(id, user, filter);
   }
 
   @Get(':id/payroll-report/download')
@@ -170,19 +210,25 @@ export class PayRunController {
   @ApiOperation({
     summary: 'Download the payroll report workbook (.xlsx)',
     description:
-      'Requires payrun:export. Header on row 2 with the SUBTOTAL strip on row 1, matching Redwave’s file.',
+      'Requires payrun:export. Header on row 2 with the SUBTOTAL strip on row 1, matching Redwave’s file. ' +
+      'Optional client_id / rep_id narrow it to one client or one rep.',
   })
   async payrollReportDownload(
     @Param('id', ParseUUIDPipe) id: string,
+    @Query() filter: PayrollReportFilterQuery,
     @CurrentUser() user: AuthUser,
     @Res() res: Response,
   ): Promise<void> {
-    const report = await this.payRuns.payrollReport(id, user);
+    const report = await this.payRuns.payrollReport(id, user, filter);
     // The admin's saved payroll Export Layout (columns, order, labels). The workbook is rendered fresh from the
     // lines frozen at finalize each time, so the layout in force NOW is the right one (no frozen-layout id).
     const { columns: layout } = await this.layouts.resolve('payroll');
     const bytes = await this.payrollExcel.render({ ...report, layout, generated_at: new Date().toISOString() });
-    const filename = `redwave-payroll-period-${report.period_number}.xlsx`;
+    // A legacy run is named by its period; a range report by its sale-date window.
+    const filename =
+      report.kind === 'period'
+        ? `redwave-payroll-period-${report.period_number}.xlsx`
+        : `redwave-payroll-${report.period_start}_${report.period_end}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Length', String(bytes.length));

@@ -4,6 +4,7 @@
  * detail route (§13.2), never a drawer. hrm:view to see; Edit is hrm:edit. 403 → AccessDenied, 404 → a
  * graceful not-found. PII is redacted server-side for callers without hrm:edit. Tokens only.
  */
+import { Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Avatar, Badge, Button, PageHeader, Tabs } from '../../../components/ui';
@@ -42,7 +43,7 @@ export default function RepDetailPage() {
         title={r?.full_name ?? 'Rep'}
         actions={
           r && canEdit ? (
-            <Button variant="secondary" onClick={() => setForm({ mode: 'edit', rep: r })}>
+            <Button leftIcon={<Pencil size={16} />} variant="secondary" onClick={() => setForm({ mode: 'edit', rep: r })}>
               Edit profile
             </Button>
           ) : undefined

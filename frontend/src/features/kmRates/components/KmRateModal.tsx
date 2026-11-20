@@ -4,6 +4,7 @@
  * are never combined (#3). Client = All (global default) or a specific client. Rate is a $/km decimal (≤3dp).
  * The server is the real gate; this mirrors its rules. Tokens only.
  */
+import { Plus } from 'lucide-react';
 import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
@@ -141,7 +142,7 @@ export function KmRateModal({ open, onClose }: { open: boolean; onClose: () => v
               Cancel
             </Button>
           </ModalClose>
-          <Button variant="primary" type="submit" loading={create.isPending}>
+          <Button leftIcon={<Plus size={16} />} variant="primary" type="submit" loading={create.isPending}>
             Add rate
           </Button>
         </div>

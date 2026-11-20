@@ -3,6 +3,7 @@
  * Requires hrm:edit (the server is the real gate). Only changed rows are PUT (fan-out); the dashboards
  * invalidate so target-vs-actual refreshes. Tokens only.
  */
+import { Save } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button, Input, Modal, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -77,7 +78,7 @@ export function SetTargetsModal({
             <Button variant="secondary" onClick={onClose}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={onSave} loading={saving} disabled={rows.length === 0}>
+            <Button leftIcon={<Save size={16} />} variant="primary" onClick={onSave} loading={saving} disabled={rows.length === 0}>
               Save targets
             </Button>
           </div>

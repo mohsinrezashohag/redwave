@@ -25,6 +25,8 @@ export interface DocumentFilters {
   status?: DocumentStatus;
   doc_type?: DocType;
   pending_signatures?: boolean;
+  /** Only documents where the CALLER has a pending signature (the "to sign" inbox; row-level server-side). */
+  awaiting_my_signature?: boolean;
 }
 
 // Request bodies. The PDF uploads via POST /v1/files first (with progress); the JSON create then claims

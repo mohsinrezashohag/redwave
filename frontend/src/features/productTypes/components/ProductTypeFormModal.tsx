@@ -5,6 +5,7 @@
  * stream. Edit changes the label + active flag only; the key + behaviour are immutable and a system (core)
  * type cannot be deactivated. Tokens only.
  */
+import { Plus, Save } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -122,7 +123,7 @@ function CreateForm({ onClose }: { onClose: () => void }) {
             Cancel
           </Button>
         </ModalClose>
-        <Button variant="primary" type="submit" loading={create.isPending}>
+        <Button leftIcon={<Plus size={16} />} variant="primary" type="submit" loading={create.isPending}>
           Add type
         </Button>
       </div>
@@ -174,7 +175,7 @@ function EditForm({ type, onClose }: { type: ProductType; onClose: () => void })
             Cancel
           </Button>
         </ModalClose>
-        <Button variant="primary" type="submit" loading={update.isPending}>
+        <Button leftIcon={<Save size={16} />} variant="primary" type="submit" loading={update.isPending}>
           Save changes
         </Button>
       </div>

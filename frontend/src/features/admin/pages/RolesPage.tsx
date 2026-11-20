@@ -4,7 +4,7 @@
  * editor). DELETE is offered only for CUSTOM roles (built-in → the server 409s and the UI doesn't offer
  * it). `roles:view` to see; create/delete gated by `useCan`. Reuses the playbook.
  */
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -74,7 +74,7 @@ export default function RolesPage() {
         subtitle="Build roles from a module × action permission matrix."
         actions={
           canCreate ? (
-            <Button variant="primary" onClick={() => navigate('/admin/roles/new')}>
+            <Button leftIcon={<Plus size={16} />} variant="primary" onClick={() => navigate('/admin/roles/new')}>
               New role
             </Button>
           ) : undefined
@@ -126,7 +126,7 @@ export default function RolesPage() {
             <Button variant="secondary" onClick={() => setConfirm(null)}>
               Cancel
             </Button>
-            <Button variant="destructive" loading={del.isPending} onClick={doDelete}>
+            <Button leftIcon={<Trash2 size={16} />} variant="destructive" loading={del.isPending} onClick={doDelete}>
               Delete role
             </Button>
           </>

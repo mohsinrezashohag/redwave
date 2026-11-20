@@ -1,0 +1,41 @@
+/* Leaderboard counts — approved and pending each carry their own colour (tokens only). Counts, never money. */
+
+.head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.swatch {
+  display: inline-block;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+.swatchApproved {
+  background: var(--chart-2);
+}
+
+.swatchPending {
+  background: var(--chart-4);
+}
+
+.count {
+  display: inline-block;
+  min-width: var(--space-6);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full);
+  font-weight: var(--weight-semibold);
+  text-align: center;
+}
+
+.approved {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.pending {
+  color: var(--warning);
+  background: var(--warning-bg);
+}

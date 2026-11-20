@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     for (const runId of await payRuns.finalizedRunIds()) {
       try {
         const r = await payRuns.backfillPayrollLines(runId, { dryRun, actorId: actor.id });
-        console.log(`Run #${r.period_number}: ${r.outcome}`);
+        console.log(`Run ${r.display_label}: ${r.outcome}`);
         for (const rep of r.reps) {
           console.log(
             `   ${rep.rep_code.padEnd(12)} ${String(rep.sales).padStart(3)} sales   commission ${rep.commission.padStart(10)}`,

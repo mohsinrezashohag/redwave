@@ -7,6 +7,7 @@
  * shared `exportRows` helper. The page lists only the types the caller's permissions allow — convenience
  * only, the server is the real gate (§5). This UI computes no money; every figure is server-sourced.
  */
+import { Download } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   Badge,
@@ -137,7 +138,7 @@ export default function ReportExportsPage() {
         const detail = await unwrap<PayRun>(api.GET('/v1/pay-runs/{id}', { params: { path: { id: run.id } } }));
         rows = detail.lines;
         columns = payrunColumns;
-        title = `${def.label}, period ${detail.pay_period.period_number} (${detail.status})`;
+        title = `${def.label}, ${detail.display_label} (${detail.status})`;
       } else {
         rows = await fetchAllExpenseItems({ from: from || undefined, to: to || undefined });
         columns = expenseColumns;
@@ -221,7 +222,7 @@ export default function ReportExportsPage() {
               onValueChange={(v) => setFormat(v as ReportFormat)}
             />
           </div>
-          <Button variant="primary" loading={busy} onClick={() => void generate()}>
+          <Button leftIcon={<Download size={16} />} variant="primary" loading={busy} onClick={() => void generate()}>
             Generate &amp; download
           </Button>
         </div>

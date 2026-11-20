@@ -10,7 +10,10 @@ import { unwrap } from '../../../lib/query/unwrap';
 import { payrunKeys } from './keys';
 import type { CreatePayRunBody, ExportPayRunBody, ExportResult, PayRun, PayRunLine, SetBonusBody } from '../payrun.types';
 
-/** DRAFT / refresh a run for a period — backend computes the preview lines; nothing frozen. */
+/**
+ * DRAFT / refresh a commission report for a sale-date range (+ optional client / rep / label). The backend
+ * computes the preview lines; nothing is frozen. The same range + client + rep refreshes its open draft.
+ */
 export function useDraftRun() {
   const qc = useQueryClient();
   return useMutation({
@@ -29,7 +32,17 @@ export function useSetBonus() {
   });
 }
 
-/** FINALIZE — the money-committing action (payrun:approve). Atomic + idempotent server-side (#8). */
+/** DELETE a DRAFT report (payrun:delete). A paid report is permanent (409 server-side). */
+export function useDeleteRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: string) =>
+      unwrap<{ id: string; deleted: boolean }>(api.DELETE('/v1/pay-runs/{id}', { params: { path: { id: runId } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: payrunKeys.all }),
+  });
+}
+
+/** FINALIZE ("Mark as paid") — the money-committing action (payrun:approve). Atomic + idempotent server-side (#8). */
 export function useFinalizeRun() {
   const qc = useQueryClient();
   return useMutation({

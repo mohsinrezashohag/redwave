@@ -5,6 +5,7 @@
  * (server 422); back-dating is rejected (server 422) — surfaced as toasts. Money is an exact-decimal string
  * (MoneyInput). Tokens only.
  */
+import { Save } from 'lucide-react';
 import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm, useWatch } from 'react-hook-form';
@@ -18,6 +19,7 @@ import { useProductTypes } from '../../productTypes/api/useProductTypes';
 import { useCreateBillingRate, useUpdateBillingRate } from '../api/useClientMutations';
 import type { BillingRate, Product, RateKind } from '../clients.types';
 import styles from './clients.module.css';
+import { joinDistinct } from '../../../lib/format/text';
 
 const dateOnly = (v: string | null | undefined) => (v ? v.slice(0, 10) : '');
 
@@ -176,7 +178,7 @@ export function BillingRateFormModal({
               <FormField label="Product" required error={errors.product_id?.message}>
                 <Select
                   placeholder="Select a product"
-                  options={products.map((p) => ({ value: p.id, label: `${p.name} · ${productTypeLabel(p.product_type)}` }))}
+                  options={products.map((p) => ({ value: p.id, label: joinDistinct([p.name, productTypeLabel(p.product_type)]) }))}
                   value={field.value || undefined}
                   onValueChange={field.onChange}
                 />
@@ -236,7 +238,7 @@ export function BillingRateFormModal({
               Cancel
             </Button>
           </ModalClose>
-          <Button variant="primary" type="submit" loading={create.isPending || update.isPending}>
+          <Button leftIcon={<Save size={16} />} variant="primary" type="submit" loading={create.isPending || update.isPending}>
             {isEdit ? 'Save changes' : 'Add rate'}
           </Button>
         </div>

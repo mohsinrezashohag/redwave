@@ -15,6 +15,7 @@ const CHAT_INTENTS = [
   'business_summary',
   'unknown',
   'rate_limited', // soft cap — a graceful "try again shortly" answer, not an error
+  'ai', // answered by the AI model from one or more scoped tools (see tools_used)
 ] as const;
 type ChatIntent = (typeof CHAT_INTENTS)[number];
 
@@ -195,7 +196,13 @@ export class LeaderboardRowResponse {
   @ApiProperty({ type: String, nullable: true, description: "The rep's photo (HR headshot), short-lived URL. Not money." })
   photo_url!: string | null;
 
-  @ApiProperty({ description: 'Internet activation count — the ONLY metric (no earnings).' })
+  @ApiProperty({ description: 'Approved internet activations (validated / in pay run / paid). A count, never earnings.' })
+  approved_count!: number;
+
+  @ApiProperty({ description: 'Pending internet activations (entered, awaiting validation). A count, never earnings.' })
+  pending_count!: number;
+
+  @ApiProperty({ description: 'Back-compat alias of approved_count (internet activation count, no earnings).' })
   activation_count!: number;
 }
 
@@ -278,6 +285,12 @@ export class ChatResponse {
   @ApiProperty({ enum: CHAT_INTENTS, description: 'The recognised intent (or "unknown").' })
   intent!: ChatIntent;
 
-  @ApiProperty({ description: 'The server-formatted text answer (or a refusal).' })
+  @ApiProperty({ description: 'The text answer (or a refusal).' })
   answer!: string;
+
+  @ApiProperty({ enum: ['ai', 'basic'], description: 'ai = the language model answered; basic = the keyword assistant.' })
+  mode!: 'ai' | 'basic';
+
+  @ApiProperty({ type: [String], description: 'The scoped tools the AI model called for this answer (empty in basic mode).' })
+  tools_used!: string[];
 }

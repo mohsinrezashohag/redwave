@@ -22,8 +22,27 @@ export type RepLite = components['schemas']['RepLiteResponse'];
  */
 export type PayRunLine = components['schemas']['PayRunLineResponse'];
 
-/** A pay-run header as returned by the list endpoint (no lines). */
+/**
+ * A commission-report header (no lines). Since 2026-11-16 a report is a SALE-DATE range (`kind: 'range'`),
+ * optionally one client and/or one rep; legacy runs (`kind: 'period'`) carry a pay period. Show
+ * `display_label`, never `pay_period.period_number` (null on a range report).
+ */
 export type PayRunSummary = components['schemas']['PayRunSummaryResponse'];
+export type PayRunKind = PayRunSummary['kind'];
+export type PayRunPage = components['schemas']['PayRunPageResponse'];
+
+/** One rep's sales in a report (the per-sale drill-down). `basis` = paid (frozen) or estimated (draft). */
+export type RunRepSales = components['schemas']['RunRepSalesResponse'];
+export type RunSale = components['schemas']['RunSaleResponse'];
+
+/** History filters (URL-free local state; all optional). */
+export interface PayRunFilters {
+  status?: PayRunStatus;
+  kind?: PayRunKind;
+  client_id?: string;
+  rep_id?: string;
+  search?: string;
+}
 
 /** A pay run with its computed lines (draft / get / finalize responses). */
 export type PayRun = components['schemas']['PayRunResponse'];

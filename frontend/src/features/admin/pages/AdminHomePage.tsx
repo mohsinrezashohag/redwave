@@ -12,7 +12,6 @@ import {
   Megaphone,
   Receipt,
   Route,
-  Scale,
   ScrollText,
   ShieldCheck,
   ShoppingBag,
@@ -24,6 +23,8 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { PageHeader } from '../../../components/ui';
+import { BirthdaysCard } from '../../reps/components/BirthdaysCard';
+import { ChatbotSettingsCard } from '../../chatbot/components/ChatbotSettingsCard';
 import { useAuth } from '../../../auth/useAuth';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { AdminHubCard } from '../components/AdminHubCard';
@@ -52,7 +53,6 @@ const CARDS: HubCard[] = [
   { title: 'Notification settings', description: 'Per-event channels and title/body templates.', icon: <Bell size={20} />, permission: 'settings:view', to: '/admin/notifications' },
   { title: 'Security settings', description: 'Multi-factor authentication enforcement policy (per role).', icon: <ShieldCheck size={20} />, permission: 'settings:view', to: '/admin/security' },
   { title: 'Audit log', description: 'Every money and configuration change: who, what changed, IP address and time.', icon: <ScrollText size={20} />, permission: 'audit:view', to: '/admin/audit' },
-  { title: 'Reconciliation', description: 'Tie statements to sales and pay runs to their lines; flag discrepancies.', icon: <Scale size={20} />, permission: 'billing:view', to: '/admin/reconciliation' },
   { title: 'Send broadcast', description: 'Compose a one-off announcement to everyone, a role, or specific people.', icon: <Megaphone size={20} />, permission: 'notifications:broadcast', to: '/admin/broadcast' },
   { title: 'Commission Config', description: 'Rep rates per product and incentives.', icon: <SlidersHorizontal size={20} />, permission: 'commission:edit', to: '/admin/commission' },
   { title: 'Product Types', description: 'The configurable product-type catalogue + commission behaviour.', icon: <Tags size={20} />, permission: 'product_types:view', to: '/admin/product-types' },
@@ -78,11 +78,15 @@ export default function AdminHomePage() {
         title="Administration"
         subtitle="Org-wide configuration. You see only the areas your role permits."
       />
+      {/* Upcoming rep birthdays (renders nothing without hrm:view). 2026-11-16 */}
+      <BirthdaysCard />
       <div className={styles.grid}>
         {visible.map((c) => (
           <AdminHubCard key={c.title} title={c.title} description={c.description} icon={c.icon} to={c.to} />
         ))}
       </div>
+      {/* AI assistant on/off + model (Super Admin; hides itself without settings:view). 2026-11-16 */}
+      <ChatbotSettingsCard />
     </div>
   );
 }

@@ -54,7 +54,8 @@ function capUnits(item: ValidatableItem, fields: ExpenseFieldDef[]): number {
 
 /**
  * Compute the item's alerts + warnings against its category schema. A missing schema (unknown category)
- * yields only the core amount alert — the service separately rejects an inactive/unknown category.
+ * is treated as REQUIRED (amount, receipt, description), so an unconfigured category never silently stops
+ * asking; the service separately rejects an inactive/unknown category.
  */
 export function validateExpenseItem(item: ValidatableItem, schema: CategorySchema | undefined): ValidationResult {
   const alerts: ValidationRule[] = [];
@@ -71,7 +72,9 @@ export function validateExpenseItem(item: ValidatableItem, schema: CategorySchem
     if (isEmpty(item.amount)) {
       alerts.push({ code: 'amount_required', severity: 'alert', field: 'amount', message: `Amount is required for a ${schema?.category_key ?? item.category} item` });
     }
-    if (schema?.requires_receipt && isEmpty(item.receipt_url)) {
+    // Absent config = REQUIRED (CLAUDE §13.10): every non-km category asks for a receipt unless its config
+    // explicitly relaxes it, so an unconfigured category never silently stops asking. — meeting 2026-11-16
+    if (schema?.requires_receipt !== false && isEmpty(item.receipt_url)) {
       alerts.push({ code: 'receipt_required', severity: 'alert', field: 'receipt_url', message: 'A receipt is required for this category' });
     }
     // Config-driven like the receipt: a category may declare that its items speak for themselves. Absent

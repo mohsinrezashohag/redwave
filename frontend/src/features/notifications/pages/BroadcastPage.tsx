@@ -6,6 +6,7 @@
  * real gate (§5). Unlike automatic events, a broadcast targets freely — automatic events are never
  * silently re-routed.
  */
+import { Send } from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -143,7 +144,7 @@ export default function BroadcastPage() {
         </Banner>
 
         <div className={styles.actions}>
-          <Button type="submit" variant="primary" loading={broadcast.isPending}>
+          <Button leftIcon={<Send size={16} />} type="submit" variant="primary" loading={broadcast.isPending}>
             Send broadcast
           </Button>
         </div>

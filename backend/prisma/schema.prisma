@@ -952,6 +952,11 @@ model Sale {
   pay_run_id          String?    @db.Uuid
   pay_run             PayRun?    @relation(fields: [pay_run_id], references: [id])
   import_batch_id     String?    @db.Uuid // provenance for imported sales (bulk-validated / historical); no FK (polymorphic, IMP-008)
+  // Possible duplicate (same client + MPU as a live sale). Held until an admin/manager approves it; it cannot be
+  // validated before. No FK (points at a sibling sale that may later be deleted). — client meeting 2026-11-16
+  duplicate_of_sale_id  String?   @db.Uuid
+  duplicate_approved_by String?   @db.Uuid
+  duplicate_approved_at DateTime?
   created_at          DateTime   @default(now())
 
   sale_items             SaleItem[]
@@ -961,6 +966,7 @@ model Sale {
   payroll_report_lines   PayrollReportLine[]
   // Every sales export this sale was included in (the "only sales not exported before" filter). — 2026-11-11
   export_links           ReportExportSale[]
+  edit_requests          SaleEditRequest[]
 
   @@index([rep_id, sale_date])
   @@index([client_id, mpu_id])
@@ -968,6 +974,25 @@ model Sale {
   @@index([client_id, sale_date]) // billing/statement scans by client + date
   @@index([import_batch_id]) // trace imported sales back to their batch
   @@map("sales")
+}
+
+// A rep's requested change to their own sale (within the 5-day edit window). An admin/manager approves (applied)
+// or rejects it. `changes` holds only the edited fields. — client meeting 2026-11-16
+model SaleEditRequest {
+  id           String    @id @default(uuid()) @db.Uuid
+  sale_id      String    @db.Uuid
+  sale         Sale      @relation(fields: [sale_id], references: [id])
+  requested_by String    @db.Uuid
+  changes      Json
+  status       String    @default("pending") // pending | approved | rejected
+  note         String?
+  decided_by   String?   @db.Uuid
+  decided_at   DateTime?
+  created_at   DateTime  @default(now())
+
+  @@index([status])
+  @@index([sale_id])
+  @@map("sale_edit_requests")
 }
 
 // SALE ITEM — carries the IMMUTABLE pay snapshot. rate_applied / commission_paid / incentive_amount are
@@ -1037,8 +1062,15 @@ model BillingPeriod {
 
 model PayRun {
   id            String       @id @default(uuid()) @db.Uuid
-  pay_period_id String       @db.Uuid
-  pay_period    PayPeriod    @relation(fields: [pay_period_id], references: [id])
+  // Legacy period-based runs carry a pay period. Since 2026-11-16 a run is a date-range commission report
+  // (date_from..date_to on sale_date, optionally scoped to one client and/or rep) and the period is null.
+  pay_period_id String?      @db.Uuid
+  pay_period    PayPeriod?   @relation(fields: [pay_period_id], references: [id])
+  date_from     DateTime?    @db.Date
+  date_to       DateTime?    @db.Date
+  client_id     String?      @db.Uuid
+  rep_id        String?      @db.Uuid
+  label         String?
   run_date      DateTime     @db.Date
   status        PayRunStatus
   executed_by   String       @db.Uuid

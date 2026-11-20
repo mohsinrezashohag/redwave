@@ -9,7 +9,7 @@ import { api } from '../../../api/client';
 import { unwrapList } from '../../../lib/query/unwrapList';
 import { unwrap } from '../../../lib/query/unwrap';
 import { clientsKeys, salesKeys } from './keys';
-import type { ClientPage, Product, Rep, Sale, SalePage, SalesFilters } from '../sales.types';
+import type { ClientPage, OwnRepProfile, Product, Rep, Sale, SalePage, SalesFilters } from '../sales.types';
 
 // The list endpoint is paginated (max 100/page); dropdowns/finders that want "all matching" cap here.
 const LOOKUP_LIMIT = 100;
@@ -69,13 +69,28 @@ export function useClientProducts(clientId: string | undefined, enabled = true) 
   });
 }
 
-/** Reps for the on-behalf selector + rep filter — gated on hrm:view (reps don't have it; admins/SA do). */
+/**
+ * ACTIVE reps for the on-behalf selector + rep filter, gated on hrm:view (reps don't have it; admins/SA do).
+ * limit=100 (the API max): the default page of 20 is why reps after REDWAVE15 seemed missing. 2026-11-16
+ */
 export function useReps(enabled = true) {
   return useQuery({
-    queryKey: ['reps', 'list'],
+    queryKey: ['reps', 'list', 'active'],
     // /v1/reps is the paginated {data,meta} envelope — unwrapList returns the rep array (was the crash site).
-    queryFn: () => unwrapList<Rep>(api.GET('/v1/reps')),
+    queryFn: () =>
+      unwrapList<Rep>(api.GET('/v1/reps', { params: { query: { status: 'active', limit: LOOKUP_LIMIT } } })),
     enabled,
     staleTime: 5 * 60_000,
+  });
+}
+
+/** The signed-in rep's own Agent ID, shown read-only on the sale form (token-scoped, no id sent). */
+export function useOwnRepCode(enabled = true) {
+  return useQuery({
+    queryKey: ['account', 'rep-profile', 'sale-form'],
+    queryFn: () => unwrap<OwnRepProfile>(api.GET('/v1/account/rep-profile')),
+    enabled,
+    staleTime: 5 * 60_000,
+    select: (p) => ({ agentId: p.external_code ?? p.rep_code, repCode: p.rep_code, name: p.full_name }),
   });
 }

@@ -3,11 +3,12 @@
  * owns page + sort state and sends them as query params; the table consumes { data, meta }. Read-only list
  * (this batch builds the roster view; rep CRUD is its own future screen). `hrm:view` server-enforced.
  */
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
 import { useServerTable } from '../../../lib/query/useServerTable';
-import type { Rep, RepPage, RepSortKey, RepsFilters, RepsListParams } from '../reps.types';
+import { downloadFile } from '../../../lib/api/downloadFile';
+import type { Rep, RepPage, RepSortKey, RepsFilters, RepsListParams, UpcomingBirthday } from '../reps.types';
 
 const LIMIT = 20;
 const LOOKUP_LIMIT = 100;
@@ -48,4 +49,38 @@ export async function fetchAllReps(filters: RepsFilters): Promise<Rep[]> {
     if (page >= (res.meta.pageCount || 1)) break;
   }
   return out;
+}
+
+/**
+ * Which logins are already linked to a rep (login user id → that rep), for the rep form's "Linked login"
+ * picker. Reads every rep of any status (the roster is small) so a terminated rep's login counts too.
+ */
+export function useLinkedLogins(enabled = true) {
+  return useQuery({
+    queryKey: [...repsListKeys.all, 'linked-logins'] as const,
+    queryFn: async () => {
+      const reps = await fetchAllReps({ status: 'all' });
+      return new Map(reps.filter((r) => r.user_id).map((r) => [r.user_id as string, { id: r.id, rep_code: r.rep_code, full_name: r.full_name }]));
+    },
+    enabled,
+  });
+}
+
+/** Birthdays in the next `days` days (GET /v1/reps/birthdays/upcoming, hrm:view). Month/day only. */
+export function useUpcomingBirthdays(days = 30, enabled = true) {
+  return useQuery({
+    queryKey: [...repsListKeys.all, 'birthdays', days] as const,
+    queryFn: () => unwrap<UpcomingBirthday[]>(api.GET('/v1/reps/birthdays/upcoming', { params: { query: { days } } })),
+    enabled,
+  });
+}
+
+/** Download the ZIP of rep photos for the current filters (hrm:edit, audited server-side). */
+export function exportRepPhotos(filters: RepsFilters): Promise<void> {
+  const qs = new URLSearchParams();
+  if (filters.status) qs.set('status', filters.status);
+  if (filters.fieldManagerId) qs.set('fieldManagerId', filters.fieldManagerId);
+  if (filters.search) qs.set('search', filters.search);
+  const query = qs.toString();
+  return downloadFile(`/v1/reps/photos/export${query ? `?${query}` : ''}`);
 }

@@ -122,8 +122,41 @@ export function cleanValue(value: unknown, type: FieldType): string | null {
 /** Clean every field of a mapped row by its declared type; unknown fields get whitespace-trim only. */
 export function cleanMappedRow(mapped: RawRow, fieldTypes: Record<string, FieldType>): RawRow {
   const out: RawRow = {};
+  const invalid: Record<string, string> = {};
   for (const [field, value] of Object.entries(mapped)) {
-    out[field] = cleanValue(value, fieldTypes[field] ?? 'text');
+    const cleaned = cleanValue(value, fieldTypes[field] ?? 'text');
+    out[field] = cleaned;
+    // A non-blank cell that cleaned to null did not parse: remember it (see `invalidFields`).
+    if (cleaned === null && normWs(value) !== null) invalid[field] = normWs(value)!;
   }
+  if (Object.keys(invalid).length > 0) INVALID.set(out, invalid);
   return out;
+}
+
+// ── Invalid-value marker (2026-11-16) ────────────────────────────────────────────────────────────
+// Cleaning turns BOTH a blank cell and an unparseable one into null, but the operator needs to hear two
+// different things: "sale_date is required" vs "sale_date is not a valid date (YYYY-MM-DD)". The original
+// text of every non-blank cell that failed to parse is remembered here, keyed by the cleaned row object, so a
+// classifier can tell them apart without the marker ever being written into the staged mapped_data.
+const INVALID = new WeakMap<RawRow, Record<string, string>>();
+
+/** Field → the original text of a non-blank value that could not be parsed for its type. */
+export function invalidFields(row: RawRow): Record<string, string> {
+  return INVALID.get(row) ?? {};
+}
+
+/** The parse-failure message for a field's type. */
+export function invalidMessage(field: string, type: FieldType): string {
+  switch (type) {
+    case 'date':
+      return `${field} is not a valid date (YYYY-MM-DD)`;
+    case 'money':
+      return `${field} is not a valid amount`;
+    case 'int':
+      return `${field} is not a valid whole number`;
+    case 'bool':
+      return `${field} is not a valid yes/no value`;
+    default:
+      return `${field} is not valid`;
+  }
 }

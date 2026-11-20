@@ -5,6 +5,7 @@
  * 2026-11-11: who/when/which sales; "only sales not exported before"); it needs sales:export. The "Enter sale" action is
  * gated by `sales:create` for convenience — the server still authorizes (CLAUDE §5). — SALE-001/007
  */
+import { Plus } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, PageHeader, saleStatusLabel } from '../../../components/ui';
@@ -104,8 +105,6 @@ export default function SalesListPage() {
     { header: 'Other', value: (s) => row(s).other_total, money: true },
     { header: 'Total', value: (s) => row(s).total, money: true },
     { header: 'Incentive', value: (s) => row(s).incentive, money: true, pdf: false },
-    // What clawbacks recovered from the sale (the rate columns keep showing what was paid). 2026-11-15
-    { header: 'Clawed back', value: (s) => s.clawback_total ?? '', money: true },
     { header: 'Rate basis', value: (s) => row(s).rate_basis },
     { header: 'Greenfield', value: (s) => yesNo(s.is_greenfield) },
     { header: 'Status', value: (s) => saleStatusLabel(s.status) },
@@ -154,7 +153,7 @@ export default function SalesListPage() {
             />
             )}
             <Can permission="sales:create">
-              <Button variant="primary" onClick={() => navigate('/sales/new')}>
+              <Button leftIcon={<Plus size={16} />} variant="primary" onClick={() => navigate('/sales/new')}>
                 Enter sale
               </Button>
             </Can>

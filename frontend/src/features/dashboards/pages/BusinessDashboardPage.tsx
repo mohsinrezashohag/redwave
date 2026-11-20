@@ -16,6 +16,7 @@ import { ThemedBarChart } from '../charts/ThemedBarChart';
 import { BusinessTrends } from '../components/BusinessTrends';
 import { AccessDenied } from '../components/AccessDenied';
 import { isForbidden } from '../../../lib/api/apiError';
+import { PendingSignaturesBanner } from '../../documents/components/PendingSignaturesBanner';
 import styles from '../dashboards.module.css';
 
 const CURRENT = '__current__';
@@ -26,8 +27,6 @@ function growthDelta(g: { pct: string | null } | undefined) {
   const n = Number(g.pct);
   return { value: `${n >= 0 ? '+' : ''}${g.pct}%`, direction: (n >= 0 ? 'up' : 'down') as 'up' | 'down' };
 }
-/** A ratio string like "0.0181" → "1.81%". */
-const ratePct = (r: string) => `${(Number(r) * 100).toFixed(2)}%`;
 
 export default function BusinessDashboardPage() {
   const canViewPeriods = useCan('payrun:view');
@@ -63,6 +62,8 @@ export default function BusinessDashboardPage() {
           ) : undefined
         }
       />
+      {/* Signature nudge (renders nothing when none are waiting). 2026-11-16 */}
+      <PendingSignaturesBanner />
       <DataState isLoading={q.isLoading} isError={q.isError} isEmpty={false} onRetry={() => q.refetch()}>
         {d && (
           <>
@@ -71,7 +72,6 @@ export default function BusinessDashboardPage() {
               <StatCard label="Revenue" value={money(d.revenue)} delta={growthDelta(d.revenue_growth)} footnote="Client statements" />
               <StatCard label="Rep payout" value={money(d.rep_payout)} footnote="Pay-run net" />
               <StatCard label="Net margin" value={money(d.net_margin)} footnote={`${d.net_margin_pct}% of revenue`} />
-              <StatCard label="Clawbacks" value={money(d.clawback_total)} footnote={`Rate ${ratePct(d.clawback_rate)} of paid commission`} />
               <StatCard label="Expenses" value={money(d.expense.total)} footnote={`KM ${money(d.expense.km)} · Other ${money(d.expense.other)}`} />
             </div>
 

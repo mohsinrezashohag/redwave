@@ -4,7 +4,7 @@
  * applies the change to the live user; Reject (with a confirm) discards it. Server re-checks routing on
  * both. Tokens only.
  */
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Check, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { Avatar, Button, Card, Modal, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -86,10 +86,10 @@ export function ReviewRequestCard({ request }: { request: ReviewRequest }) {
       </div>
 
       <div className={styles.actions}>
-        <Button variant="primary" onClick={doApprove} loading={approve.isPending}>
+        <Button leftIcon={<Check size={16} />} variant="primary" onClick={doApprove} loading={approve.isPending}>
           Approve
         </Button>
-        <Button variant="destructive" onClick={() => setConfirmReject(true)}>
+        <Button leftIcon={<XCircle size={16} />} variant="destructive" onClick={() => setConfirmReject(true)}>
           Reject
         </Button>
       </div>
@@ -103,7 +103,7 @@ export function ReviewRequestCard({ request }: { request: ReviewRequest }) {
             <Button variant="secondary" onClick={() => setConfirmReject(false)}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={doReject} loading={reject.isPending}>
+            <Button leftIcon={<XCircle size={16} />} variant="destructive" onClick={doReject} loading={reject.isPending}>
               Reject change
             </Button>
           </>

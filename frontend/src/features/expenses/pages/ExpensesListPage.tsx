@@ -4,6 +4,7 @@
  * flagged count) and "All items" (the flat cross-folder item list + grouping/export, kept for admins). "New
  * report" creates a folder. `expenses:view` to see; 403 → AccessDenied. Reuses the playbook.
  */
+import { Download, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button, PageHeader, SegmentedControl } from '../../../components/ui';
@@ -97,10 +98,10 @@ export default function ExpensesListPage() {
           <div className={styles.headerActions}>
             {view === 'items' && <ExpenseExportControls filters={filters} groupMode={groupMode} onGroupChange={setGroupMode} configs={configs.data} />}
             {view === 'items' && canExport && (
-              <Button variant="secondary" onClick={() => setExportOpen(true)}>Record export</Button>
+              <Button leftIcon={<Download size={16} />} variant="secondary" onClick={() => setExportOpen(true)}>Record export</Button>
             )}
             {canCreate && (
-              <Button variant="primary" onClick={() => setNewReportOpen(true)}>New report</Button>
+              <Button leftIcon={<Plus size={16} />} variant="primary" onClick={() => setNewReportOpen(true)}>New report</Button>
             )}
           </div>
         }

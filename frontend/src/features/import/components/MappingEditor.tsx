@@ -5,6 +5,7 @@
  * persists a reusable mapping for next time. The system fields come from the target template; the source
  * columns from the rows' raw_data keys.
  */
+import { Save, Wand2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Button, Card, FormField, Input, Select, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -81,9 +82,9 @@ export function MappingEditor({ batch, kind }: { batch: ImportBatch; kind?: Kind
         ))}
       </div>
       <div className={styles.mapActions}>
-        <Button variant="primary" size="sm" loading={remap.isPending} onClick={onApply}>Apply mapping</Button>
+        <Button leftIcon={<Wand2 size={16} />} variant="primary" size="sm" loading={remap.isPending} onClick={onApply}>Apply mapping</Button>
         <Input value={mappingName} onChange={(e) => setMappingName(e.target.value)} placeholder="Save as… (e.g. RF Now monthly)" maxLength={120} />
-        <Button variant="secondary" size="sm" loading={save.isPending} disabled={!mappingName.trim()} onClick={onSave}>Save mapping</Button>
+        <Button leftIcon={<Save size={16} />} variant="secondary" size="sm" loading={save.isPending} disabled={!mappingName.trim()} onClick={onSave}>Save mapping</Button>
       </div>
     </Card>
   );

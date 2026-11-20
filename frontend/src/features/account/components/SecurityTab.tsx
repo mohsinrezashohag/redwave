@@ -3,6 +3,7 @@
  * password is verified server-side (wrong → 400 surfaced as a toast). Fields are type="password" and are
  * never logged or echoed. On success the form resets. Tokens only.
  */
+import { KeyRound } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -61,7 +62,7 @@ export function SecurityTab() {
           <Input type="password" autoComplete="new-password" {...register('confirm_password')} />
         </FormField>
         <div className={styles.actions}>
-          <Button variant="primary" type="submit" loading={change.isPending}>
+          <Button leftIcon={<KeyRound size={16} />} variant="primary" type="submit" loading={change.isPending}>
             Change password
           </Button>
         </div>

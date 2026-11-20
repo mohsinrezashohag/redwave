@@ -41,3 +41,11 @@
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
+
+/* Sale ID + the possible-duplicate badge stacked under it (2026-11-16). */
+.idCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}

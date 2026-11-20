@@ -4,8 +4,10 @@
  * requester PLACES signature fields on the PDF (where/what each recipient signs, DOC-003). Needs
  * `users:view` to populate the picker (the detail returns raw ids); without it, a graceful note.
  */
+import { Send } from 'lucide-react';
 import { useState } from 'react';
-import { Banner, Button, DatePicker, FormField, Modal, MultiSelect, Switch, Textarea, useToast } from '../../../components/ui';
+import { Banner, Button, ConfirmDialog, DatePicker, FormField, Modal, ModalClose, MultiSelect, Switch, Textarea, useToast } from '../../../components/ui';
+import { recipientsWithoutSignature } from '../documents.logic';
 import { useAuth } from '../../../auth/useAuth';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
@@ -25,6 +27,7 @@ export function RequestSignatureModal({ open, onClose, documentId }: { open: boo
   const [dueDate, setDueDate] = useState('');
   const [placing, setPlacing] = useState(false);
   const [fields, setFields] = useState<PlacedField[]>([]);
+  const [confirmMissing, setConfirmMissing] = useState(false);
 
   const activeUsers = users.filter((u) => u.status === 'active' && u.id !== user?.id);
   const options = activeUsers.map((u) => ({ value: u.id, label: `${u.full_name} (${u.email})` }));
@@ -41,10 +44,21 @@ export function RequestSignatureModal({ open, onClose, documentId }: { open: boo
     setFields([]);
   };
 
+  const validFields = fields.filter((f) => recipientIds.includes(f.recipient_user_id));
+  // Fields were placed, but someone has no signature/initial box: they could "sign" without signing anything.
+  const missing = placing ? recipientsWithoutSignature(recipientIds, validFields) : [];
+  const missingNames = missing.map((id) => recipients.find((r) => r.id === id)?.label ?? id);
+
+  const trySubmit = () => {
+    if (missing.length > 0) setConfirmMissing(true);
+    else onSubmit();
+  };
+
   const onSubmit = () => {
+    setConfirmMissing(false);
     if (recipientIds.length === 0) return;
     // Drop fields whose recipient was removed; strip the local key.
-    const valid = fields.filter((f) => recipientIds.includes(f.recipient_user_id));
+    const valid = placing ? validFields : [];
     const body = {
       recipient_user_ids: recipientIds,
       message: message.trim() || undefined,
@@ -73,15 +87,23 @@ export function RequestSignatureModal({ open, onClose, documentId }: { open: boo
   return (
     <Modal
       open={open}
-      onOpenChange={(o) => !o && !request.isPending && onClose()}
+      onOpenChange={(o) => {
+        if (!o && !request.isPending) {
+          reset();
+          onClose();
+        }
+      }}
       title="Request signatures"
-      size={placing ? 'lg' : 'md'}
+      size={placing ? 'xl' : 'md'}
+      dirty={recipientIds.length > 0 || fields.length > 0 || !!message.trim()}
       footer={
         <div className={styles.footer}>
-          <Button variant="secondary" type="button" onClick={onClose} disabled={request.isPending}>
-            Cancel
-          </Button>
-          <Button variant="primary" type="button" onClick={onSubmit} loading={request.isPending} disabled={request.isPending || recipientIds.length === 0 || !canViewUsers}>
+          <ModalClose asChild>
+            <Button variant="secondary" type="button" disabled={request.isPending}>
+              Cancel
+            </Button>
+          </ModalClose>
+          <Button leftIcon={<Send size={16} />} variant="primary" type="button" onClick={trySubmit} loading={request.isPending} disabled={request.isPending || recipientIds.length === 0 || !canViewUsers}>
             Send request
           </Button>
         </div>
@@ -107,6 +129,11 @@ export function RequestSignatureModal({ open, onClose, documentId }: { open: boo
             {placing && recipientIds.length > 0 && (
               <FieldPlacer documentId={documentId} recipients={recipients} fields={fields} onChange={setFields} />
             )}
+            {missing.length > 0 && (
+              <Banner tone="warning" title="Some recipients have no signature box">
+                {missingNames.join(', ')} will be asked to sign, but no signature or initials box was placed for them.
+              </Banner>
+            )}
           </>
         ) : (
           <Banner tone="warning" title="User-list access required">
@@ -114,6 +141,16 @@ export function RequestSignatureModal({ open, onClose, documentId }: { open: boo
           </Banner>
         )}
       </div>
+      <ConfirmDialog
+        open={confirmMissing}
+        onOpenChange={(o) => !o && setConfirmMissing(false)}
+        title="Send without a signature box?"
+        description={`${missingNames.join(', ')} ${missing.length === 1 ? 'has' : 'have'} no signature or initials box on the document.`}
+        confirmLabel="Send anyway"
+        cancelLabel="Go back"
+        destructive={false}
+        onConfirm={onSubmit}
+      />
     </Modal>
   );
 }

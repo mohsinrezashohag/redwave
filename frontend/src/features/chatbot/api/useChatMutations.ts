@@ -1,16 +1,43 @@
 /**
- * Chatbot mutation — send a prompt to the authenticated-only, scoped endpoint and get back the text answer.
- * This is the feature's ONLY network call: the UI does NO data access of its own (the backend is structurally
- * leak-proof — the LLM gets intent only, the tools take only the AuthUser). The page appends the response to
- * its session-only conversation state. Response `never`-typed → cast. Toast at the call site (real errors only).
+ * Chatbot API hooks. `useChatQuery` sends a prompt to the authenticated-only, scoped endpoint and returns the
+ * text answer; the UI does NO data access of its own. `useChatbotStatus` tells the page whether the AI model
+ * is on (so the "basic assistant" banner can go). `useChatbotConfig` / `useSaveChatbotConfig` back the Super
+ * Admin settings card (settings:view / settings:edit; the server is the gate). Toasts at the call site.
  */
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../lib/query/unwrap';
-import type { ChatResponse, ChatbotQueryBody } from '../chatbot.types';
+import { chatbotKeys } from './keys';
+import type { ChatResponse, ChatbotConfig, ChatbotQueryBody, ChatbotStatus, UpdateChatbotConfigBody } from '../chatbot.types';
 
 export function useChatQuery() {
   return useMutation({
     mutationFn: (body: ChatbotQueryBody) => unwrap<ChatResponse>(api.POST('/v1/chatbot/query', { body })),
+  });
+}
+
+export function useChatbotStatus() {
+  return useQuery({
+    queryKey: chatbotKeys.status(),
+    queryFn: () => unwrap<ChatbotStatus>(api.GET('/v1/chatbot/status')),
+  });
+}
+
+export function useChatbotConfig(enabled = true) {
+  return useQuery({
+    queryKey: chatbotKeys.config(),
+    queryFn: () => unwrap<ChatbotConfig>(api.GET('/v1/chatbot/config')),
+    enabled,
+  });
+}
+
+export function useSaveChatbotConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateChatbotConfigBody) => unwrap<ChatbotConfig>(api.PATCH('/v1/chatbot/config', { body })),
+    onSuccess: (data) => {
+      qc.setQueryData(chatbotKeys.config(), data);
+      void qc.invalidateQueries({ queryKey: chatbotKeys.status() });
+    },
   });
 }

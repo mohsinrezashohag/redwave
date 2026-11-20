@@ -13,7 +13,7 @@ import { money } from '../../../lib/format/money';
 import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
 import { useClients } from '../../clients/api/useClients';
-import { usePayRuns, usePayPeriods } from '../../payrun/api/usePayRun';
+import { usePayRuns } from '../../payrun/api/usePayRun';
 import { useBillingPeriods } from '../../billing/api/useBilling';
 import { useStatementTieOut, usePayRunTieOut } from '../api/useReconciliation';
 
@@ -28,7 +28,6 @@ export default function ReconciliationPage() {
   const clientsQ = useClients('all', canBilling);
   // Statements bill by WEEK; pay runs are per pay period — two different calendars, two pickers.
   const billingPeriodsQ = useBillingPeriods(canBilling);
-  const payPeriodsQ = usePayPeriods(canPayrun);
   const runsQ = usePayRuns(canPayrun);
 
   const [clientId, setClientId] = useState<string | undefined>();
@@ -42,10 +41,9 @@ export default function ReconciliationPage() {
     return <AccessDenied message="Reconciliation requires the billing view permission." />;
   }
 
-  const periodNum = new Map((payPeriodsQ.data ?? []).map((p) => [p.id, p.period_number]));
   const clientOptions = (clientsQ.data ?? []).map((c) => ({ value: c.id, label: `${c.name} (${c.client_code})` }));
   const periodOptions = (billingPeriodsQ.data ?? []).map((p) => ({ value: p.id, label: `Bill ${p.period_number} · ${displayDate(p.start_date)}–${displayDate(p.end_date)}` }));
-  const runOptions = (runsQ.data ?? []).map((r) => ({ value: r.id, label: `Period #${periodNum.get(r.pay_period_id) ?? '—'} · ${r.status}` }));
+  const runOptions = (runsQ.data ?? []).map((r) => ({ value: r.id, label: `${r.display_label} · ${r.status}` }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>

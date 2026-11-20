@@ -159,6 +159,20 @@ describe('DocumentsService visibility scoping (§5)', () => {
     expect(where.AND[0]).toEqual({});
   });
 
+  it('awaiting_my_signature narrows to the CALLER own pending signature in a pending request (even for an admin)', async () => {
+    const { service, prisma } = make();
+    await service.list({ awaiting_my_signature: true }, admin);
+    const where = (prisma.document.findMany.mock.calls[0][0] as { where: { AND: unknown[] } }).where;
+    expect(where.AND).toContainEqual({
+      signature_requests: {
+        some: {
+          status: 'pending',
+          document_signatures: { some: { recipient_user_id: admin.id, status: 'pending' } },
+        },
+      },
+    });
+  });
+
   it('detail returns 404 when the document is not visible to the caller', async () => {
     const { service, prisma } = make();
     prisma.document.findFirst.mockResolvedValue(null);

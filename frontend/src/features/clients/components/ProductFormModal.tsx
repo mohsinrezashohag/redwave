@@ -3,6 +3,7 @@
  * creation** (sale_items & rates reference it) — it's set on create and shown READ-ONLY on edit (the update
  * body omits it). Soft-deactivate is a separate row action. Tokens only.
  */
+import { Plus, Save } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -130,7 +131,7 @@ function CreateProductForm({ clientId, onClose }: { clientId: string; onClose: (
             Cancel
           </Button>
         </ModalClose>
-        <Button variant="primary" type="submit" loading={create.isPending}>
+        <Button leftIcon={<Plus size={16} />} variant="primary" type="submit" loading={create.isPending}>
           Add product
         </Button>
       </div>
@@ -170,7 +171,7 @@ function EditProductForm({ product, onClose }: { product: Product; onClose: () =
             Cancel
           </Button>
         </ModalClose>
-        <Button variant="primary" type="submit" loading={update.isPending}>
+        <Button leftIcon={<Save size={16} />} variant="primary" type="submit" loading={update.isPending}>
           Save changes
         </Button>
       </div>

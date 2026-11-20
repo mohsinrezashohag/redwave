@@ -3,6 +3,7 @@
  * the Sales API (entered sales for the batch's client); the UI never runs the matcher — it sends the chosen
  * sale id and the backend records the match. Tokens only.
  */
+import { Link2 } from 'lucide-react';
 import { useState } from 'react';
 import { Banner, Button, Input, Modal, useToast } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
@@ -57,7 +58,7 @@ export function MatchSaleModal({ batchId, row, clientId, onClose }: { batchId: s
                         <span className="mono">{s.sale_code}</span> · {s.customer_name}
                         {s.mpu_id ? <> · MPU <span className="mono">{s.mpu_id}</span></> : ''} · <span className={styles.note}>{displayDate(s.sale_date)}</span>
                       </span>
-                      <Button variant="secondary" size="sm" loading={reconcile.isPending} disabled={reconcile.isPending} onClick={() => onMatch(s.id)}>
+                      <Button leftIcon={<Link2 size={16} />} variant="secondary" size="sm" loading={reconcile.isPending} disabled={reconcile.isPending} onClick={() => onMatch(s.id)}>
                         Match
                       </Button>
                     </div>

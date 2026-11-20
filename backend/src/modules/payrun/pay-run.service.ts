@@ -6,8 +6,14 @@
  * rep rate and the rep is paid in full; Redwave applies any tier or split manually, outside the system.
  * — SRS §9 (PAY-001..011), arch §9
  *
+ * Since 2026-11-16 (client decision: "Pay runs will no longer be fixed") a run is a COMMISSION REPORT over a
+ * sale_date RANGE, optionally one client and/or one rep; "Mark as paid" is the same finalize. Legacy runs keep
+ * their pay period and still list, display and export. The window logic is pure (`run-window.logic.ts`).
+ * Clawbacks apply no deduction any more ("Remove clawbacks"): the seam is bound to the zero provider.
+ *
  * Idempotency is STATE-BASED (pay_runs has no key column): re-finalizing a non-draft run is a no-op,
- * and the freeze is further guarded (sales become Paid).
+ * and the freeze is further guarded: inside the transaction a sale moves validated → in_pay_run only if it
+ * is STILL validated, so two overlapping reports can never pay the same sale (#8).
  * Money math uses decimal.js; conversion to Prisma Decimal (`.toFixed(2)`) happens only on write.
  */
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
@@ -23,6 +29,18 @@ import { CommissionEngineService } from '../engine/commission-engine.service';
 import { ActivationInput } from '../engine/engine.types';
 import { mapToEngineProductType, toActivationInput } from './activation-mapping.logic';
 import { buildPayrollReport, PayrollSaleInput } from './payroll-report.logic';
+import { DomainError } from '../../common/errors/domain-error';
+import { winnipegDateOnly } from '../../common/timezone';
+import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
+import {
+  DateSpan,
+  isoDate,
+  parseRange,
+  RunWindow,
+  runDisplayLabel,
+  uncoveredSpans,
+  windowOfRun,
+} from './run-window.logic';
 
 /**
  * Exactly what a payroll line needs off a sale — written out rather than derived, so the list is a
@@ -46,7 +64,7 @@ import { buildLineAmounts, computeNet } from './line-amounts.logic';
 import { EXPENSE_TOTAL_PROVIDER, ExpenseTotalProvider } from './seams/expense-total.provider';
 import { CLAWBACK_TOTAL_PROVIDER, ClawbackTotalProvider } from './seams/clawback-total.provider';
 import { NOTIFICATION_EMITTER, NotificationEmitter } from '../../common/notifications/notification-emitter';
-import { CreatePayRunDto } from './dto/create-pay-run.dto';
+import { CreatePayRunDto, ListPayRunsQuery, PayrollReportFilterQuery } from './dto/create-pay-run.dto';
 import { SetBonusDto } from './dto/bonus.dto';
 import { ExportPayRunDto } from './dto/export.dto';
 
@@ -58,10 +76,15 @@ import { ExportPayRunDto } from './dto/export.dto';
 const PAYROLL_SALE_INCLUDE = {
   sale_items: { include: { product: { select: { name: true } } } },
   rep: { select: { rep_code: true, external_code: true, full_name: true } },
-  client: { select: { client_code: true } },
+  client: { select: { client_code: true, name: true } },
 } satisfies Prisma.SaleInclude;
 
-const iso = (date: Date): string => date.toISOString().slice(0, 10);
+/** Every run read carries its (optional, legacy) pay period, which `windowOfRun` needs. */
+const RUN_INCLUDE = { pay_period: true } satisfies Prisma.PayRunInclude;
+type RunRow = Prisma.PayRunGetPayload<{ include: typeof RUN_INCLUDE }>;
+const RUN_SORT = ['created_at', 'run_date', 'status', 'date_from', 'date_to'] as const;
+
+const iso = isoDate;
 /** A run whose snapshots are frozen — the only runs that have (or should have) payroll lines. */
 const isFinalizedStatus = (status: string): boolean => status === 'finalized' || status === 'exported';
 const dec = (value: { toString(): string }): Decimal => new Decimal(value.toString());
@@ -70,13 +93,16 @@ const money = (value: Decimal): string => value.toFixed(2);
 /** What `backfillPayrollLines` did (or would do, in a dry run) for one run. */
 export interface PayrollBackfillResult {
   pay_run_id: string;
-  period_number: number;
+  /** Legacy period runs only; null for a date-range report. */
+  period_number: number | null;
+  /** "Pay period #N" or the date range. */
+  display_label: string;
   outcome: 'written' | 'would_write' | 'skipped_has_lines';
   reps: { rep_code: string; sales: number; commission: string }[];
 }
 
-type PayPeriodRow ={ id: string; start_date: Date; end_date: Date; payday: Date };
 type RepBonus = { amount: Decimal; note: string | null };
+type DbClient = Prisma.TransactionClient;
 
 @Injectable()
 export class PayRunService {
@@ -94,8 +120,81 @@ export class PayRunService {
 
   // ── Draft ───────────────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Create / refresh a DRAFT. Two shapes, exactly one required:
+   *   - `date_from` + `date_to` (+ optional client / rep / label): the date-range commission report
+   *     (client decision 2026-11-16). The same range + client + rep reuses its open draft (a refresh).
+   *   - `pay_period_id`: the LEGACY period run, kept for compatibility; the app no longer sends it.
+   */
   async createDraft(dto: CreatePayRunDto, user: AuthUser) {
-    const period = await this.prisma.payPeriod.findUnique({ where: { id: dto.pay_period_id } });
+    const hasRange = dto.date_from !== undefined || dto.date_to !== undefined;
+    if (dto.pay_period_id && hasRange) {
+      throw new DomainError('PAY_RUN_WINDOW_AMBIGUOUS', 'Send a date range or a pay period, not both.');
+    }
+    if (dto.pay_period_id) {
+      return this.createPeriodDraft(dto.pay_period_id, user);
+    }
+    if (!dto.date_from || !dto.date_to) {
+      throw new DomainError('PAY_RUN_WINDOW_REQUIRED', 'Choose a start date and an end date for the report.');
+    }
+    return this.createRangeDraft(dto, user);
+  }
+
+  private async createRangeDraft(dto: CreatePayRunDto, user: AuthUser) {
+    const { from, to } = parseRange(dto.date_from!, dto.date_to!);
+    const clientId = dto.client_id ?? null;
+    const repId = dto.rep_id ?? null;
+    if (clientId && !(await this.prisma.client.findUnique({ where: { id: clientId }, select: { id: true } }))) {
+      throw new NotFoundException('Client not found');
+    }
+    if (repId) {
+      if (!(await this.prisma.rep.findUnique({ where: { id: repId }, select: { id: true } }))) {
+        throw new NotFoundException('Rep not found');
+      }
+      // A manager may only report on their own roster (scope in the query, §5).
+      const scoped = await this.scopeRepIds(user);
+      if (scoped && !scoped.includes(repId)) {
+        throw new ForbiddenException('That rep is outside your scope');
+      }
+    }
+    const label = dto.label?.trim() ? dto.label.trim() : null;
+
+    const existing = await this.prisma.payRun.findFirst({
+      where: { pay_period_id: null, status: 'draft', date_from: from, date_to: to, client_id: clientId, rep_id: repId },
+    });
+    const run = existing
+      ? label !== null && label !== existing.label
+        ? await this.prisma.payRun.update({ where: { id: existing.id }, data: { label } })
+        : existing
+      : await this.prisma.payRun.create({
+          data: {
+            pay_period_id: null,
+            date_from: from,
+            date_to: to,
+            client_id: clientId,
+            rep_id: repId,
+            label,
+            run_date: winnipegDateOnly(),
+            status: 'draft',
+            executed_by: user.id,
+          },
+        });
+
+    const window = windowOfRun({ ...run, pay_period: null });
+    await this.computeDraftLines(run.id, window, user);
+    await this.audit.log({
+      actorId: user.id,
+      entityType: 'pay_runs',
+      entityId: run.id,
+      action: existing ? 'refresh' : 'create',
+      after: { date_from: iso(from), date_to: iso(to), client_id: clientId, rep_id: repId, label, status: 'draft' },
+    });
+    return this.getRun(run.id, user);
+  }
+
+  /** LEGACY: a draft for a pre-loaded pay period (one finalized run per period). */
+  private async createPeriodDraft(payPeriodId: string, user: AuthUser) {
+    const period = await this.prisma.payPeriod.findUnique({ where: { id: payPeriodId } });
     if (!period) {
       throw new NotFoundException('Pay period not found');
     }
@@ -118,7 +217,7 @@ export class PayRunService {
         },
       }));
 
-    await this.computeDraftLines(run.id, period, user);
+    await this.computeDraftLines(run.id, windowOfRun({ ...run, pay_period: period }), user);
     await this.audit.log({
       actorId: user.id,
       entityType: 'pay_runs',
@@ -129,27 +228,53 @@ export class PayRunService {
     return this.getRun(run.id, user);
   }
 
-  private async computeDraftLines(runId: string, period: PayPeriodRow, user: AuthUser) {
-    const reps = await this.repsWithValidatedSales(period, await this.scopeRepIds(user));
+  private async computeDraftLines(runId: string, window: RunWindow, user: AuthUser) {
+    const reps = await this.repsWithValidatedSales(window, await this.scopeRepIds(user));
     const existingBonuses = await this.bonusesByRep(runId);
-    const config = await this.config.getEngineConfig(iso(period.end_date)); // once per run, as-of close
+    const config = await this.config.getEngineConfig(iso(window.to)); // once per run, as-of close
 
     await this.prisma.$transaction(
       async (tx) => {
         await tx.payRunLine.deleteMany({ where: { pay_run_id: runId } });
         for (const repId of reps) {
-          const { result } = await this.gatherAndRun(tx, repId, period, config);
+          const { result } = await this.gatherAndRun(tx, repId, window, config);
           const bonus = existingBonuses.get(repId) ?? { amount: new Decimal(0), note: null };
           const amounts = buildLineAmounts(result, {
-            expense: await this.expenseSeam.getApprovedExpenseTotal(repId, period.id),
+            expense: await this.expenseFor(tx, repId, window, runId),
             bonus: bonus.amount,
-            clawback: await this.clawbackSeam.getClawbackTotal(repId, period.id),
+            clawback: await this.clawbackSeam.getClawbackTotal(repId, window.payPeriodId),
           });
           await tx.payRunLine.create({ data: this.lineData(runId, repId, amounts, bonus.note) });
         }
       },
-      { timeout: 60_000 },
+      { timeout: 120_000 },
     );
+  }
+
+  /**
+   * DELETE a DRAFT report (nothing was frozen or paid, so nothing is lost). A finalized run is the ledger
+   * record of a payment and can never be deleted (409).
+   */
+  async deleteDraft(runId: string, user: AuthUser) {
+    const run = await this.prisma.payRun.findUnique({ where: { id: runId } });
+    if (!run) {
+      throw new NotFoundException('Pay run not found');
+    }
+    if (run.status !== 'draft') {
+      throw new ConflictException('only a draft report can be deleted; a paid report is a permanent record');
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payRunLine.deleteMany({ where: { pay_run_id: runId } });
+      await tx.payRun.delete({ where: { id: runId } });
+    });
+    await this.audit.log({
+      actorId: user.id,
+      entityType: 'pay_runs',
+      entityId: runId,
+      action: 'delete',
+      before: { status: run.status, pay_period_id: run.pay_period_id, date_from: run.date_from, date_to: run.date_to },
+    });
+    return { id: runId, deleted: true };
   }
 
   // ── Bonus (draft only) ────────────────────────────────────────────────────────────────────────
@@ -207,13 +332,14 @@ export class PayRunService {
       return this.getRun(runId, user);
     }
 
-    const period = run.pay_period;
-    const reps = await this.repsWithValidatedSales(period, await this.scopeRepIds(user));
+    const window = windowOfRun(run);
+    const reps = await this.repsWithValidatedSales(window, await this.scopeRepIds(user));
     const existingBonuses = await this.bonusesByRep(run.id);
-    const config = await this.config.getEngineConfig(iso(period.end_date));
+    const config = await this.config.getEngineConfig(iso(window.to));
 
     // Collected during the tx; emitted AFTER it commits (best-effort, never inside the money tx).
     const notices: { repId: string; net: Decimal }[] = [];
+    let paidReps = 0;
 
     // EVERYTHING in one transaction — a mid-step throw rolls back entirely (no partial pay run). (#8)
     await this.prisma.$transaction(
@@ -221,7 +347,33 @@ export class PayRunService {
         await tx.payRunLine.deleteMany({ where: { pay_run_id: run.id } });
 
         for (const repId of reps) {
-          const { result, sales } = await this.gatherAndRun(tx, repId, period, config);
+          // Re-read INSIDE the tx: only sales STILL validated are taken, so a sale another report paid
+          // after this draft was built is never paid twice.
+          const { result, sales } = await this.gatherAndRun(tx, repId, window, config);
+          const bonus = existingBonuses.get(repId) ?? { amount: new Decimal(0), note: null };
+          if (sales.length === 0 && bonus.amount.isZero()) {
+            continue; // everything this rep had in range was paid by another report meanwhile
+          }
+
+          // (b) Claim the rep's sales Validated → in_pay_run → paid (§16). The `status: 'validated'` guard
+          // makes the claim exclusive: a concurrent finalize that got there first leaves fewer rows to move,
+          // and the whole transaction rolls back rather than paying a sale twice (#8).
+          const saleIds = sales.map((s) => s.id);
+          if (saleIds.length > 0) {
+            const moved = await tx.sale.updateMany({
+              where: { id: { in: saleIds }, status: 'validated' },
+              data: { status: 'in_pay_run', pay_run_id: run.id },
+            });
+            if (moved.count !== saleIds.length) {
+              throw new ConflictException(
+                'Some of these sales were just paid by another report. Refresh the report and try again.',
+              );
+            }
+            await tx.sale.updateMany({
+              where: { id: { in: saleIds }, pay_run_id: run.id, status: 'in_pay_run' },
+              data: { status: 'paid' },
+            });
+          }
 
           // (a) FREEZE the immutable snapshots onto each sale_item (#2).
           for (const item of result.items) {
@@ -244,22 +396,12 @@ export class PayRunService {
           });
           await this.writePayrollLines(tx, run.id, sales, result);
 
-          // (b) Transition the rep's sales Validated → in_pay_run → paid (§16).
-          const saleIds = sales.map((s) => s.id);
-          if (saleIds.length > 0) {
-            await tx.sale.updateMany({
-              where: { id: { in: saleIds } },
-              data: { status: 'in_pay_run', pay_run_id: run.id },
-            });
-            await tx.sale.updateMany({ where: { id: { in: saleIds } }, data: { status: 'paid' } });
-          }
-
-          // (c) The full clawback deducts from net: a flat deduction. No tiers, no holdback since 2026-11-13. — §3 #6
-          const clawback = await this.clawbackSeam.getClawbackTotal(repId, period.id);
+          // (c) Clawbacks: the seam is bound to the ZERO provider since 2026-11-16 ("Remove clawbacks"), so
+          // this reads 0 and marks nothing. Kept on the seam so the rule can be re-enabled by one binding. — §3 #6
+          const clawback = await this.clawbackSeam.getClawbackTotal(repId, window.payPeriodId);
 
           // (e/f) Compose net via the seams + bonus.
-          const expense = await this.expenseSeam.getApprovedExpenseTotal(repId, period.id);
-          const bonus = existingBonuses.get(repId) ?? { amount: new Decimal(0), note: null };
+          const expense = await this.expenseFor(tx, repId, window, run.id);
           const amounts = buildLineAmounts(result, {
             expense,
             bonus: bonus.amount,
@@ -267,15 +409,18 @@ export class PayRunService {
           });
           await tx.payRunLine.create({ data: this.lineData(run.id, repId, amounts, bonus.note) });
           notices.push({ repId, net: amounts.net_payout });
+          paidReps += 1;
 
-          // (h) Atomically mark the rep's pending clawbacks applied + linked to this run (CLAW-006/008).
-          // Read total (above) and mark are the same pending set in one transaction — never double-deducted.
-          await this.clawbackSeam.markApplied(repId, period.id, run.id, tx);
+          // (h) Mark the rep's pending clawbacks applied (a no-op with the zero provider). (CLAW-006/008)
+          await this.clawbackSeam.markApplied(repId, window.payPeriodId, run.id, tx);
         }
 
-        // (g) Mark the run finalized and the period paid.
+        // (g) Mark the run finalized. Only a LEGACY period run marks its pay period paid: a date-range report
+        // says nothing about a whole pay period.
         await tx.payRun.update({ where: { id: run.id }, data: { status: 'finalized' } });
-        await tx.payPeriod.update({ where: { id: period.id }, data: { status: 'paid' } });
+        if (window.kind === 'period' && window.payPeriodId) {
+          await tx.payPeriod.update({ where: { id: window.payPeriodId }, data: { status: 'paid' } });
+        }
       },
       { timeout: 120_000 },
     );
@@ -285,7 +430,15 @@ export class PayRunService {
       entityType: 'pay_runs',
       entityId: run.id,
       action: 'finalize',
-      after: { pay_period_id: period.id, rep_count: reps.length },
+      after: {
+        kind: window.kind,
+        pay_period_id: window.payPeriodId,
+        date_from: iso(window.from),
+        date_to: iso(window.to),
+        client_id: window.clientId,
+        rep_id: window.repId,
+        rep_count: paidReps,
+      },
     });
 
     // Best-effort, post-commit: notify each paid rep. — pay_run_finalized
@@ -294,13 +447,18 @@ export class PayRunService {
       select: { id: true, user_id: true },
     });
     const userByRep = new Map(repUsers.map((r) => [r.id, r.user_id]));
-    const periodNo = String(period.period_number);
+    // A legacy run names its period; a range report names its dates (or the admin's label).
+    const periodNo = window.kind === 'period' ? String(window.periodNumber) : runDisplayLabel(window, run.label);
+    const body =
+      window.kind === 'period'
+        ? (net: string) => `Pay period ${periodNo} is finalized. Net payout ${net}.`
+        : (net: string) => `Your commission for ${iso(window.from)} to ${iso(window.to)} is paid. Net payout ${net}.`;
     for (const n of notices) {
       const userId = userByRep.get(n.repId);
       await this.emitter.emitMany([userId], {
         eventType: 'pay_run_finalized',
         title: 'Your pay is ready',
-        body: `Pay period ${periodNo} is finalized. Net payout ${money(n.net)}.`,
+        body: body(money(n.net)),
         relatedEntityType: 'pay_runs',
         relatedEntityId: run.id,
         variables: { period_number: periodNo, net_payout: money(n.net) },
@@ -320,18 +478,35 @@ export class PayRunService {
    *
    * Rep-pay stream only — nothing here touches the client-billing rate tables (#3).
    */
-  async payrollReport(runId: string, user: AuthUser) {
+  async payrollReport(runId: string, user: AuthUser, filter: PayrollReportFilterQuery = {}) {
     const run = await this.prisma.payRun.findUnique({
       where: { id: runId },
-      include: { pay_period: true },
+      include: RUN_INCLUDE,
     });
     if (!run) {
       throw new NotFoundException('Pay run not found');
     }
-    await this.scopeRepIds(user); // permission-shaped read; the run itself is admin-scoped like the rest
+    const window = windowOfRun(run);
+    // Scope in the QUERY (§5): a manager sees only their roster's rows. Plus the optional export filter:
+    // every rep (default), one client, or one rep.
+    const repIds = await this.scopeRepIds(user);
+    const narrowed = repIds !== null || !!filter.client_id || !!filter.rep_id;
+    const saleIds = narrowed
+      ? (
+          await this.prisma.sale.findMany({
+            where: {
+              pay_run_id: runId,
+              ...(repIds ? { rep_id: { in: repIds } } : {}),
+              ...(filter.rep_id ? { AND: [{ rep_id: filter.rep_id }] } : {}),
+              ...(filter.client_id ? { client_id: filter.client_id } : {}),
+            },
+            select: { id: true },
+          })
+        ).map((s) => s.id)
+      : null;
 
     const lines = await this.prisma.payrollReportLine.findMany({
-      where: { pay_run_id: runId },
+      where: { pay_run_id: runId, ...(saleIds ? { sale_id: { in: saleIds } } : {}) },
       orderBy: { sort_order: 'asc' },
     });
 
@@ -340,9 +515,11 @@ export class PayRunService {
 
     return {
       pay_run_id: run.id,
-      period_number: run.pay_period.period_number,
-      period_start: iso(run.pay_period.start_date),
-      period_end: iso(run.pay_period.end_date),
+      period_number: window.periodNumber,
+      kind: window.kind,
+      display_label: runDisplayLabel(window, run.label),
+      period_start: iso(window.from),
+      period_end: iso(window.to),
       run_status: run.status,
       // From the run's STATUS, not from whether lines exist: a run finalized before payroll lines existed
       // (packet 02) has none until `backfillPayrollLines` runs, and must not claim "not finalized".
@@ -390,11 +567,12 @@ export class PayRunService {
   private async buildRepStatement(runId: string, repId: string) {
     const run = await this.prisma.payRun.findUnique({
       where: { id: runId },
-      include: { pay_period: true },
+      include: RUN_INCLUDE,
     });
     if (!run) {
       throw new NotFoundException('Pay run not found');
     }
+    const window = windowOfRun(run);
 
     const lines = await this.prisma.payrollReportLine.findMany({
       where: { pay_run_id: runId, sale_id: { in: (await this.saleIdsForRep(runId, repId)) } },
@@ -411,9 +589,11 @@ export class PayRunService {
 
     return {
       pay_run_id: run.id,
-      period_number: run.pay_period.period_number,
-      period_start: iso(run.pay_period.start_date),
-      period_end: iso(run.pay_period.end_date),
+      period_number: window.periodNumber,
+      kind: window.kind,
+      display_label: runDisplayLabel(window, run.label),
+      period_start: iso(window.from),
+      period_end: iso(window.to),
       rep_code: rep?.rep_code ?? null,
       rep_name: rep?.full_name ?? null,
       // Lines are empty until the run finalizes — before that nothing is owed, and a zeroed statement would
@@ -466,14 +646,16 @@ export class PayRunService {
     runId: string,
     opts: { dryRun: boolean; actorId: string },
   ): Promise<PayrollBackfillResult> {
-    const run = await this.prisma.payRun.findUnique({ where: { id: runId }, include: { pay_period: true } });
+    const run = await this.prisma.payRun.findUnique({ where: { id: runId }, include: RUN_INCLUDE });
     if (!run) {
       throw new NotFoundException('Pay run not found');
     }
     if (!isFinalizedStatus(run.status)) {
       throw new ConflictException('only a finalized pay run has payroll lines to backfill');
     }
-    const base = { pay_run_id: run.id, period_number: run.pay_period.period_number };
+    const window = windowOfRun(run);
+    const runName = runDisplayLabel(window, run.label);
+    const base = { pay_run_id: run.id, period_number: window.periodNumber, display_label: runName };
 
     const existing = await this.prisma.payrollReportLine.count({ where: { pay_run_id: run.id } });
     if (existing > 0) {
@@ -504,7 +686,7 @@ export class PayRunService {
       const total = items.reduce((acc, i) => acc.plus(i.rateApplied), new Decimal(0));
       if (!total.equals(dec(line.commission))) {
         throw new ConflictException(
-          `payroll backfill refused for run #${run.pay_period.period_number}, rep ${line.rep.rep_code}: ` +
+          `payroll backfill refused for run ${runName}, rep ${line.rep.rep_code}: ` +
             `snapshots give commission ${money(total)}, but the frozen pay-run line has ${money(dec(line.commission))}`,
         );
       }
@@ -520,7 +702,7 @@ export class PayRunService {
     const orphan = sales.find((s) => !covered.has(s.rep_id));
     if (orphan) {
       throw new ConflictException(
-        `payroll backfill refused for run #${run.pay_period.period_number}: sale ${orphan.id} has no pay-run line for its rep`,
+        `payroll backfill refused for run ${runName}: sale ${orphan.id} has no pay-run line for its rep`,
       );
     }
 
@@ -544,7 +726,7 @@ export class PayRunService {
       entityType: 'pay_runs',
       entityId: run.id,
       action: 'backfill_payroll_lines',
-      after: { period_number: run.pay_period.period_number, reps },
+      after: { period_number: window.periodNumber, display_label: runName, reps },
     });
     return { ...base, outcome: 'written', reps };
   }
@@ -554,7 +736,7 @@ export class PayRunService {
     const runs = await this.prisma.payRun.findMany({
       where: { status: { in: ['finalized', 'exported'] } },
       select: { id: true },
-      orderBy: { pay_period: { start_date: 'asc' } },
+      orderBy: { created_at: 'asc' },
     });
     return runs.map((r) => r.id);
   }
@@ -601,16 +783,22 @@ export class PayRunService {
     const runIds = sales.map((s) => s.pay_run_id).filter((id): id is string => id !== null);
     const runs = await this.prisma.payRun.findMany({
       where: { id: { in: runIds } },
-      include: { pay_period: true },
+      include: RUN_INCLUDE,
       orderBy: { run_date: 'desc' },
     });
-    return runs.map((r) => ({
-      pay_run_id: r.id,
-      period_number: r.pay_period.period_number,
-      period_start: iso(r.pay_period.start_date),
-      period_end: iso(r.pay_period.end_date),
-      run_status: r.status,
-    }));
+    // Both kinds: a legacy period run and a date-range commission report (2026-11-16).
+    return runs.map((r) => {
+      const window = windowOfRun(r);
+      return {
+        pay_run_id: r.id,
+        period_number: window.periodNumber,
+        kind: window.kind,
+        display_label: runDisplayLabel(window, r.label),
+        period_start: iso(window.from),
+        period_end: iso(window.to),
+        run_status: r.status,
+      };
+    });
   }
 
   async exportRun(runId: string, dto: ExportPayRunDto, user: AuthUser) {
@@ -624,8 +812,14 @@ export class PayRunService {
     // Scope the exported rows to the caller's reps — a manager exports only their roster, a rep only their
     // own; admin/SA (null) export all. Without this an export would leak every rep's pay. — CLAUDE §5 (PII)
     const repIds = await this.scopeRepIds(user);
+    // Optional one-rep export. The ADP file pays WHOLE reps (net includes expenses and bonus), so it filters
+    // by rep only; a one-client file is a report generated for that client.
+    if (dto.rep_id && repIds && !repIds.includes(dto.rep_id)) {
+      throw new ForbiddenException('That rep is outside your scope');
+    }
+    const repWhere = dto.rep_id ? { rep_id: dto.rep_id } : repIds ? { rep_id: { in: repIds } } : {};
     const lines = await this.prisma.payRunLine.findMany({
-      where: { pay_run_id: runId, ...(repIds ? { rep_id: { in: repIds } } : {}) },
+      where: { pay_run_id: runId, ...repWhere },
       include: { rep: { select: { rep_code: true, full_name: true } } },
       orderBy: { rep: { rep_code: 'asc' } },
     });
@@ -655,29 +849,160 @@ export class PayRunService {
       entityType: 'pay_runs',
       entityId: runId,
       action: 'export',
-      after: { format, line_count: rows.length },
+      after: { format, line_count: rows.length, rep_id: dto.rep_id ?? null },
     });
     return { pay_run_id: runId, format, line_count: rows.length, content };
   }
 
   // ── Reads ─────────────────────────────────────────────────────────────────────────────────────
 
-  listRuns() {
-    return this.prisma.payRun.findMany({
-      include: { pay_period: true },
-      orderBy: { created_at: 'desc' },
-    });
+  /**
+   * The commission-report history, paginated (arch §5.1): legacy period runs and date-range reports alike,
+   * newest first. Filters: status, kind, client, rep.
+   */
+  async listRuns(query: ListPayRunsQuery = {}) {
+    const { skip, take, page, limit } = toSkipTake({ page: query.page, limit: query.limit });
+    const where: Prisma.PayRunWhereInput = {
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.kind === 'period' ? { pay_period_id: { not: null } } : {}),
+      ...(query.kind === 'range' ? { pay_period_id: null } : {}),
+      ...(query.client_id ? { client_id: query.client_id } : {}),
+      ...(query.rep_id ? { rep_id: query.rep_id } : {}),
+      ...(query.search ? { label: { contains: query.search, mode: 'insensitive' as const } } : {}),
+    };
+    const orderBy = resolveOrderBy(query.sort, RUN_SORT, { created_at: 'desc' });
+    const [rows, total] = await Promise.all([
+      this.prisma.payRun.findMany({ where, include: RUN_INCLUDE, orderBy, skip, take }),
+      this.prisma.payRun.count({ where }),
+    ]);
+    return buildPage(await this.toSummaries(rows), total, page, limit);
   }
 
   async getRun(runId: string, user: AuthUser) {
     const run = await this.prisma.payRun.findUnique({
       where: { id: runId },
-      include: { pay_period: true },
+      include: RUN_INCLUDE,
     });
     if (!run) {
       throw new NotFoundException('Pay run not found');
     }
-    return { ...run, lines: await this.getLines(runId, user) };
+    const [summary] = await this.toSummaries([run]);
+    return { ...summary, lines: await this.getLines(runId, user) };
+  }
+
+  /**
+   * ONE REP's sales in a report — the per-sale drill-down. A PAID run shows the FROZEN snapshots (#2); a
+   * DRAFT shows the rate in force on each sale date, from the same engine call the draft used (never stored,
+   * never recomputed in the UI). Rep stream only: no client billing rate is read (#3). Scoped (§5).
+   */
+  async runSales(runId: string, repId: string, user: AuthUser) {
+    const repIds = await this.scopeRepIds(user);
+    if (repIds && !repIds.includes(repId)) {
+      throw new ForbiddenException('That rep is outside your scope');
+    }
+    const run = await this.prisma.payRun.findUnique({ where: { id: runId }, include: RUN_INCLUDE });
+    if (!run) {
+      throw new NotFoundException('Pay run not found');
+    }
+    const window = windowOfRun(run);
+    const paid = run.status !== 'draft';
+
+    type Item = { id: string; product_type: string; product_name: string | null; rate: Decimal; incentive: Decimal };
+    type SaleRow = Prisma.SaleGetPayload<{ include: typeof PAYROLL_SALE_INCLUDE }>;
+    let rows: { sale: SaleRow; items: Item[] }[] = [];
+    if (paid) {
+      const sales = await this.prisma.sale.findMany({
+        where: { pay_run_id: runId, rep_id: repId },
+        include: PAYROLL_SALE_INCLUDE,
+        orderBy: [{ sale_date: 'asc' }, { sale_code: 'asc' }],
+      });
+      rows = sales.map((sale) => ({
+        sale,
+        items: sale.sale_items
+          .filter((i) => i.commission_paid !== null) // frozen ⇒ paid in this run
+          .map((i) => ({
+            id: i.id,
+            product_type: i.product_type,
+            product_name: i.product?.name ?? null,
+            rate: dec(i.rate_applied ?? 0),
+            incentive: dec(i.incentive_amount ?? 0),
+          })),
+      }));
+    } else if (!window.repId || window.repId === repId) {
+      const config = await this.config.getEngineConfig(iso(window.to));
+      const { result, sales } = await this.gatherAndRun(this.prisma, repId, window, config);
+      const byId = new Map(result.items.map((i) => [i.id, i]));
+      rows = [...sales]
+        .sort((a, b) => a.sale_date.getTime() - b.sale_date.getTime() || a.sale_code.localeCompare(b.sale_code))
+        .map((sale) => ({
+          sale,
+          items: sale.sale_items.flatMap((i) => {
+            const c = byId.get(i.id);
+            return c
+              ? [{ id: i.id, product_type: i.product_type, product_name: i.product?.name ?? null, rate: c.rateApplied, incentive: c.incentiveAmount }]
+              : [];
+          }),
+        }));
+    }
+
+    let grand = new Decimal(0);
+    const out = rows.map(({ sale, items }) => {
+      const total = items.reduce((acc, i) => acc.plus(i.rate).plus(i.incentive), new Decimal(0));
+      grand = grand.plus(total);
+      return {
+        sale_id: sale.id,
+        sale_code: sale.sale_code,
+        sale_date: iso(sale.sale_date),
+        customer_name: sale.customer_name,
+        client_code: sale.client?.client_code ?? '',
+        client_name: sale.client?.name ?? '',
+        status: sale.status,
+        items: items.map((i) => ({
+          id: i.id,
+          product_type: i.product_type,
+          product_name: i.product_name,
+          rate_applied: money(i.rate),
+          incentive_amount: money(i.incentive),
+          commission_paid: money(i.rate.plus(i.incentive)),
+        })),
+        total: money(total),
+      };
+    });
+    return {
+      pay_run_id: runId,
+      rep_id: repId,
+      basis: paid ? ('paid' as const) : ('estimated' as const),
+      sales: out,
+      total: money(grand),
+    };
+  }
+
+  /** Header shape for the list/detail: the window, its label and the scoped client/rep names. */
+  private async toSummaries(runs: RunRow[]) {
+    const clientIds = [...new Set(runs.map((r) => r.client_id).filter((id): id is string => !!id))];
+    const repIds = [...new Set(runs.map((r) => r.rep_id).filter((id): id is string => !!id))];
+    const [clients, reps] = await Promise.all([
+      clientIds.length
+        ? this.prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, client_code: true, name: true } })
+        : Promise.resolve([] as { id: string; client_code: string; name: string }[]),
+      repIds.length
+        ? this.prisma.rep.findMany({ where: { id: { in: repIds } }, select: { id: true, rep_code: true, full_name: true } })
+        : Promise.resolve([] as { id: string; rep_code: string; full_name: string }[]),
+    ]);
+    const clientById = new Map(clients.map((c) => [c.id, c]));
+    const repById = new Map(reps.map((r) => [r.id, r]));
+    return runs.map((run) => {
+      const window = windowOfRun(run);
+      return {
+        ...run,
+        kind: window.kind,
+        display_label: runDisplayLabel(window, run.label),
+        window_start: iso(window.from),
+        window_end: iso(window.to),
+        client: run.client_id ? clientById.get(run.client_id) ?? null : null,
+        scope_rep: run.rep_id ? repById.get(run.rep_id) ?? null : null,
+      };
+    });
   }
 
   async getLines(runId: string, user: AuthUser) {
@@ -696,16 +1021,18 @@ export class PayRunService {
 
   /** Gather a rep's validated sales in the period and run the engine. Pure engine call (no DB writes). */
   private async gatherAndRun(
-    tx: Prisma.TransactionClient,
+    tx: DbClient,
     repId: string,
-    period: PayPeriodRow,
+    window: RunWindow,
     config: Awaited<ReturnType<CommissionConfigProvider['getEngineConfig']>>,
   ) {
     const sales = await tx.sale.findMany({
       where: {
         rep_id: repId,
+        // ONLY still-validated sales: a sale already paid (or claimed by another run) is never taken again.
         status: 'validated',
-        sale_date: { gte: period.start_date, lte: period.end_date }, // sale_date governs (#7)
+        sale_date: { gte: window.from, lte: window.to }, // sale_date governs (#7)
+        ...(window.clientId ? { client_id: window.clientId } : {}),
       },
       include: PAYROLL_SALE_INCLUDE,
     });
@@ -861,19 +1188,60 @@ export class PayRunService {
   }
 
   private async repsWithValidatedSales(
-    period: PayPeriodRow,
+    window: RunWindow,
     repIds: string[] | null,
   ): Promise<string[]> {
+    // A one-rep report outside the caller's scope covers nobody (scope in the query, §5).
+    if (window.repId && repIds && !repIds.includes(window.repId)) {
+      return [];
+    }
+    const repWhere = window.repId ? { rep_id: window.repId } : repIds ? { rep_id: { in: repIds } } : {};
     const rows = await this.prisma.sale.findMany({
       where: {
         status: 'validated',
-        sale_date: { gte: period.start_date, lte: period.end_date },
-        ...(repIds ? { rep_id: { in: repIds } } : {}),
+        sale_date: { gte: window.from, lte: window.to },
+        ...(window.clientId ? { client_id: window.clientId } : {}),
+        ...repWhere,
       },
       select: { rep_id: true },
       distinct: ['rep_id'],
     });
     return rows.map((r) => r.rep_id);
+  }
+
+  /**
+   * The approved expenses this run reimburses a rep.
+   *
+   *   - LEGACY period run: the period seam, unchanged (items carry their own pay_period_id, EXP-009).
+   *   - Range report for ONE CLIENT: none. It is a client commission report; the rep's expenses belong to
+   *     the all-clients report, so they are never split or paid twice across client reports.
+   *   - Range report for all clients: items whose OWN expense_date is in range, MINUS the days an earlier
+   *     finalized all-clients run (range or legacy period) that paid this rep already covered. Expense items
+   *     carry no "paid in run" marker, so this coverage rule is what keeps overlapping reports from
+   *     reimbursing the same expense twice. Read on the caller's client, so finalize reads it in its tx.
+   */
+  private async expenseFor(db: DbClient, repId: string, window: RunWindow, runId: string): Promise<Decimal> {
+    if (window.kind === 'period') {
+      return this.expenseSeam.getApprovedExpenseTotal(repId, window.payPeriodId!);
+    }
+    if (window.clientId || !this.expenseSeam.getApprovedExpenseTotalForRange) {
+      return new Decimal(0);
+    }
+    const prior = await db.payRun.findMany({
+      where: {
+        id: { not: runId },
+        status: { in: ['finalized', 'exported'] },
+        client_id: null,
+        pay_run_lines: { some: { rep_id: repId } },
+      },
+      include: RUN_INCLUDE,
+    });
+    const covered: DateSpan[] = prior.map((r) => windowOfRun(r)).map((w) => ({ from: w.from, to: w.to }));
+    let total = new Decimal(0);
+    for (const span of uncoveredSpans({ from: window.from, to: window.to }, covered)) {
+      total = total.plus(await this.expenseSeam.getApprovedExpenseTotalForRange(repId, span.from, span.to));
+    }
+    return total;
   }
 
   private async bonusesByRep(runId: string): Promise<Map<string, RepBonus>> {

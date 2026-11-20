@@ -4,6 +4,7 @@
  * → enabled. Disable requires a current code. The secret/codes are server-issued; the UI stores nothing.
  * — AUTH MFA
  */
+import { Ban, Check, Copy, ShieldCheck, ShieldOff } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Banner, Button, Card, FormField, Input, Modal, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -73,7 +74,7 @@ export function MfaSection({ onEnabled }: { onEnabled?: () => void } = {}) {
 
       {!enabled && !provisioning && (
         <div style={{ marginTop: 'var(--space-4)' }}>
-          <Button variant="primary" onClick={startSetup} loading={setup.isPending}>
+          <Button leftIcon={<ShieldCheck size={16} />} variant="primary" onClick={startSetup} loading={setup.isPending}>
             Enable two-factor authentication
           </Button>
         </div>
@@ -97,7 +98,7 @@ export function MfaSection({ onEnabled }: { onEnabled?: () => void } = {}) {
             <Input inputMode="numeric" autoComplete="one-time-code" placeholder="123456" value={code} onChange={(e) => setCode(e.target.value)} />
           </FormField>
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <Button variant="primary" onClick={confirmEnable} loading={enable.isPending} disabled={code.trim() === ''}>
+            <Button leftIcon={<Check size={16} />} variant="primary" onClick={confirmEnable} loading={enable.isPending} disabled={code.trim() === ''}>
               Verify & enable
             </Button>
             <Button variant="tertiary" onClick={() => setProvisioning(null)}>
@@ -109,7 +110,7 @@ export function MfaSection({ onEnabled }: { onEnabled?: () => void } = {}) {
 
       {enabled && (
         <div style={{ marginTop: 'var(--space-4)' }}>
-          <Button variant="destructive" onClick={() => setDisableOpen(true)}>
+          <Button leftIcon={<ShieldOff size={16} />} variant="destructive" onClick={() => setDisableOpen(true)}>
             Disable two-factor authentication
           </Button>
         </div>
@@ -135,7 +136,7 @@ export function MfaSection({ onEnabled }: { onEnabled?: () => void } = {}) {
           ))}
         </div>
         <div style={{ marginTop: 'var(--space-4)', display: 'flex', gap: 'var(--space-2)' }}>
-          <Button
+          <Button leftIcon={<Copy size={16} />}
             variant="secondary"
             onClick={() => {
               navigator.clipboard?.writeText((recoveryCodes ?? []).join('\n')).catch(() => {});
@@ -144,7 +145,7 @@ export function MfaSection({ onEnabled }: { onEnabled?: () => void } = {}) {
           >
             Copy codes
           </Button>
-          <Button variant="primary" onClick={() => setRecoveryCodes(null)}>
+          <Button leftIcon={<Check size={16} />} variant="primary" onClick={() => setRecoveryCodes(null)}>
             I’ve saved them
           </Button>
         </div>
@@ -162,7 +163,7 @@ export function MfaSection({ onEnabled }: { onEnabled?: () => void } = {}) {
           <Button variant="tertiary" onClick={() => setDisableOpen(false)}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={confirmDisable} loading={disable.isPending} disabled={disableCode.trim() === ''}>
+          <Button leftIcon={<Ban size={16} />} variant="destructive" onClick={confirmDisable} loading={disable.isPending} disabled={disableCode.trim() === ''}>
             Disable
           </Button>
         </div>

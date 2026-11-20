@@ -4,6 +4,7 @@
  * Review (Approve/Reject/Send-back) shows for an approver while the item is submitted/sent_back. The server
  * is the real gate.
  */
+import { ArrowLeft, Eye, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Badge, Button, Card, PageHeader } from '../../../components/ui';
@@ -141,7 +142,7 @@ export default function ExpenseDetailPage() {
                       <dt>Receipt</dt>
                       <dd>
                         {item.receipt_url ? (
-                          <Button variant="secondary" size="sm" onClick={() => setViewingReceipt(true)}>
+                          <Button leftIcon={<Eye size={16} />} variant="secondary" size="sm" onClick={() => setViewingReceipt(true)}>
                             View receipt
                           </Button>
                         ) : (
@@ -201,12 +202,12 @@ export default function ExpenseDetailPage() {
 
               <div className={styles.actions}>
                 {editable && (
-                  <Button variant="secondary" onClick={() => navigate(`/expenses/${item.id}/edit`)}>
+                  <Button leftIcon={<Pencil size={16} />} variant="secondary" onClick={() => navigate(`/expenses/${item.id}/edit`)}>
                     Edit
                   </Button>
                 )}
                 {reviewable && <ReviewActions item={item} onDone={() => q.refetch()} />}
-                <Button variant="tertiary" onClick={() => navigate('/expenses')}>
+                <Button leftIcon={<ArrowLeft size={16} />} variant="tertiary" onClick={() => navigate('/expenses')}>
                   Back to expenses
                 </Button>
               </div>

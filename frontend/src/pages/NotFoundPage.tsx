@@ -3,6 +3,7 @@
  * stale URL never dead-ends on a blank React-Router 404. Offers a link back home. (Known aliases like
  * /users redirect to their real route; this is the genuine "unknown path" fallback.)
  */
+import { LayoutDashboard } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button, PageHeader } from '../components/ui';
 
@@ -11,7 +12,7 @@ export default function NotFoundPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', alignItems: 'flex-start' }}>
       <PageHeader title="Page not found" subtitle="That page doesn’t exist or has moved. Check the address, or head back to your dashboard." />
-      <Button variant="primary" onClick={() => navigate('/')}>
+      <Button leftIcon={<LayoutDashboard size={16} />} variant="primary" onClick={() => navigate('/')}>
         Go to dashboard
       </Button>
     </div>

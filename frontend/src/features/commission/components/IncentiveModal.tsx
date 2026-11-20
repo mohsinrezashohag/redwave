@@ -5,6 +5,7 @@
  * a client picker via GET /v1/clients (a REFERENCE the backend validates, not a rate-stream join — #3 holds).
  * Money exact-decimal. Tokens only.
  */
+import { Plus, Save } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
@@ -207,7 +208,7 @@ function CreateForm({ onClose }: { onClose: () => void }) {
             Cancel
           </Button>
         </ModalClose>
-        <Button variant="primary" type="submit" loading={create.isPending}>
+        <Button leftIcon={<Plus size={16} />} variant="primary" type="submit" loading={create.isPending}>
           Create incentive
         </Button>
       </div>
@@ -268,7 +269,7 @@ function EditForm({ incentive, onClose }: { incentive: Incentive; onClose: () =>
             Cancel
           </Button>
         </ModalClose>
-        <Button variant="primary" type="submit" loading={update.isPending}>
+        <Button leftIcon={<Save size={16} />} variant="primary" type="submit" loading={update.isPending}>
           Save changes
         </Button>
       </div>

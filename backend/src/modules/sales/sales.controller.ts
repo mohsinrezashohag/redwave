@@ -42,6 +42,12 @@ import {
 } from './dto/sale-export.dto';
 import { PaginationQuery } from '../../common/pagination/pagination.query';
 import {
+  ListSaleEditRequestsQuery,
+  SaleEditRequestPageResponse,
+  SaleEditRequestResponse,
+} from './dto/sale-edit-request.dto';
+import { ApproveSaleEditRequestDto, RejectSaleEditRequestDto } from './dto/update-sale.dto';
+import {
   BulkValidateResultResponse,
   DeletedSaleResponse,
   SalePageResponse,
@@ -144,8 +150,11 @@ export class SalesController {
   @Patch(':id')
   @RequirePermission('sales', 'edit')
   @ApiOperation({
-    summary: 'Edit an entered sale',
-    description: 'Requires sales:edit. Only Entered sales; client/sale_date/mpu_id are immutable.',
+    summary: 'Edit a sale inside its 5-day window',
+    description:
+      'Requires sales:edit. Entered or validated sales only, within 5 days of entry (Winnipeg); otherwise 422. ' +
+      'Customer name, address, products and greenfield are editable; client/sale_date/mpu_id/rep are not. ' +
+      'Products re-run the entry rules (SALE-001a).',
   })
   @ApiOkResponse({ type: SaleResponse })
   edit(
@@ -171,6 +180,37 @@ export class SalesController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.sales.validate(id, dto, user);
+  }
+
+  @Post(':id/approve-duplicate')
+  @HttpCode(200)
+  @RequirePermission('sales', 'approve')
+  @ApiOperation({
+    summary: 'Approve a possible duplicate (2026-11-16)',
+    description:
+      'Requires sales:approve. A sale entered with the same client + MPU as a live sale is held as a possible ' +
+      'duplicate and cannot be validated until approved here. Scoped + audited; a repeat is a no-op.',
+  })
+  @ApiOkResponse({ type: SaleResponse })
+  approveDuplicate(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.sales.approveDuplicate(id, user);
+  }
+
+  @Post(':id/edit-requests')
+  @RequirePermission('sales', 'view')
+  @ApiOperation({
+    summary: 'Request an edit to your own sale (2026-11-16)',
+    description:
+      'Requires sales:view and that the sale is the caller’s own. Same body and 5-day window as PATCH; ' +
+      'stored as a pending request (only the changed fields) and the approvers are notified.',
+  })
+  @ApiCreatedResponse({ type: SaleEditRequestResponse })
+  requestEdit(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateSaleDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.sales.requestEdit(id, dto, user);
   }
 
   @Post(':id/greenfield')
@@ -200,5 +240,56 @@ export class SalesController {
   @ApiOkResponse({ type: DeletedSaleResponse })
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.sales.remove(id, user);
+  }
+}
+
+/**
+ * SaleEditRequestsController — /v1/sale-edit-requests. A rep's edit of their own sale waits here for an
+ * admin/manager (sales:edit). Approving applies it through the same edit path (5-day window + status
+ * re-checked in one transaction); rejecting keeps the sale as it is. Scoped like the sales list (§5).
+ * — client meeting 2026-11-16
+ */
+@ApiTags('Sales & Validation')
+@ApiBearerAuth()
+@ApiErrorResponses()
+@Controller('sale-edit-requests')
+export class SaleEditRequestsController {
+  constructor(private readonly sales: SalesService) {}
+
+  @Get()
+  @RequirePermission('sales', 'edit')
+  @ApiOperation({
+    summary: 'List sale edit requests',
+    description: 'Requires sales:edit. Paginated; filter by status (pending/approved/rejected); search by Sale ID or customer.',
+  })
+  @ApiOkResponse({ type: SaleEditRequestPageResponse })
+  list(@Query() query: ListSaleEditRequestsQuery, @CurrentUser() user: AuthUser) {
+    return this.sales.listEditRequests(query, user);
+  }
+
+  @Post(':id/approve')
+  @HttpCode(200)
+  @RequirePermission('sales', 'edit')
+  @ApiOperation({ summary: 'Approve (apply) an edit request', description: 'Requires sales:edit. 422 once the window has closed.' })
+  @ApiOkResponse({ type: SaleEditRequestResponse })
+  approve(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ApproveSaleEditRequestDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.sales.approveEditRequest(id, dto.note, user);
+  }
+
+  @Post(':id/reject')
+  @HttpCode(200)
+  @RequirePermission('sales', 'edit')
+  @ApiOperation({ summary: 'Reject an edit request', description: 'Requires sales:edit. The rep is notified with the note.' })
+  @ApiOkResponse({ type: SaleEditRequestResponse })
+  reject(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RejectSaleEditRequestDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.sales.rejectEditRequest(id, dto.note, user);
   }
 }

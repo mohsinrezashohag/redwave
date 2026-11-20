@@ -1,9 +1,9 @@
 /**
  * ImportRowsTable — the staged rows with their server-assigned match status, the mapped data, the matched
  * target, and the per-row issue. While the batch is staged, a kebab offers the reconcile actions (Match a
- * sale / Edit data / Ignore) — the UI never matches; it asks the backend to reconcile. Tokens only.
+ * sale / Accept possible duplicate / Edit data / Ignore) — the UI never matches; it asks the backend to reconcile. Tokens only.
  */
-import { EyeOff, Link2, Pencil } from 'lucide-react';
+import { CopyCheck, EyeOff, Link2, Pencil } from 'lucide-react';
 import { Table, TableEmpty, TBody, TD, TH, THead, TR, type MenuEntry } from '../../../components/ui';
 import { RowActions } from '../../../components/data/RowActions';
 import { RowStatusBadge } from './RowStatusBadge';
@@ -17,15 +17,20 @@ interface Props {
   onMatch: (row: ImportRow) => void;
   onEdit: (row: ImportRow) => void;
   onIgnore: (row: ImportRow) => void;
+  /** Live sales (2026-11-16): an approver accepts a possible duplicate; it commits held for approval. */
+  onAcceptDuplicate?: (row: ImportRow) => void;
 }
 
-export function ImportRowsTable({ batch, kind, canEdit, onMatch, onEdit, onIgnore }: Props) {
+export function ImportRowsTable({ batch, kind, canEdit, onMatch, onEdit, onIgnore, onAcceptDuplicate }: Props) {
   const staged = batch.status === 'staged';
   const rows = batch.import_rows ?? [];
 
   const menu = (row: ImportRow): MenuEntry[] => {
     const items: MenuEntry[] = [];
     if (kind?.kind === 'bulk_validation') items.push({ label: 'Match a sale', icon: <Link2 size={15} />, onSelect: () => onMatch(row) });
+    if (onAcceptDuplicate && kind?.kind === 'bulk_sales' && row.match_status === 'duplicate') {
+      items.push({ label: 'Accept possible duplicate', icon: <CopyCheck size={15} />, onSelect: () => onAcceptDuplicate(row) });
+    }
     items.push({ label: 'Edit data', icon: <Pencil size={15} />, onSelect: () => onEdit(row) });
     if (row.match_status !== 'ignored') items.push('separator', { label: 'Ignore (skip)', icon: <EyeOff size={15} />, onSelect: () => onIgnore(row) });
     return items;

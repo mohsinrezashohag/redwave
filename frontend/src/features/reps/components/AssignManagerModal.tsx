@@ -3,6 +3,7 @@
  * manager (hrm:edit; the server validates the manager + is the real gate). The manager options are the
  * Manager-role users. On success the roster (+ the manager-scoped views that read field_manager_id) updates.
  */
+import { UserCheck } from 'lucide-react';
 import { useState } from 'react';
 import { Button, FormField, Modal, Select, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -51,7 +52,7 @@ export function AssignManagerModal({
           <Button variant="secondary" onClick={onClose} disabled={assign.isPending}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={onConfirm} loading={assign.isPending} disabled={!managerId}>
+          <Button leftIcon={<UserCheck size={16} />} variant="primary" onClick={onConfirm} loading={assign.isPending} disabled={!managerId}>
             Assign {repIds.length} rep{repIds.length === 1 ? '' : 's'}
           </Button>
         </>

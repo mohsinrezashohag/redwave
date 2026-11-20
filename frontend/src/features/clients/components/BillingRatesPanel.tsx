@@ -5,6 +5,7 @@
  * (billing_rates:create) supersedes/bounds, and PENDING rows offer Edit (billing_rates:edit) / Delete
  * (billing_rates:delete). Money is exact-decimal via money(). Reads ONLY billing rates — never commission (#3).
  */
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Banner, Button, ConfirmDialog, SegmentedControl, Select, useToast } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
@@ -125,7 +126,7 @@ export function BillingRatesPanel({
         </DataState>
         {canCreate && (
           <div className={styles.panelActions}>
-            <Button variant="secondary" onClick={() => setAddOpen(true)}>
+            <Button leftIcon={<Plus size={16} />} variant="secondary" onClick={() => setAddOpen(true)}>
               Add rate
             </Button>
           </div>
@@ -190,12 +191,12 @@ export function BillingRatesPanel({
                   r.status === 'pending' ? (
                     <span className={styles.rowActions}>
                       {canEdit && (
-                        <Button variant="tertiary" size="sm" onClick={() => setEditRate(r)}>
+                        <Button leftIcon={<Pencil size={16} />} variant="tertiary" size="sm" onClick={() => setEditRate(r)}>
                           Edit
                         </Button>
                       )}
                       {canDelete && (
-                        <Button variant="tertiary" size="sm" onClick={() => setDeleteRate(r)}>
+                        <Button leftIcon={<Trash2 size={16} />} variant="tertiary" size="sm" onClick={() => setDeleteRate(r)}>
                           Delete
                         </Button>
                       )}
@@ -222,7 +223,7 @@ export function BillingRatesPanel({
 
       {canCreate && (
         <div className={styles.panelActions}>
-          <Button variant="secondary" onClick={() => setAddOpen(true)}>
+          <Button leftIcon={<Plus size={16} />} variant="secondary" onClick={() => setAddOpen(true)}>
             Add rate
           </Button>
         </div>

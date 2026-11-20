@@ -15,6 +15,7 @@ import { AppModule } from './app.module';
 import { buildOpenApiConfig } from './openapi';
 import { ErrorEnvelopeDto } from './common/errors/error-envelope.dto';
 import { RepDocumentPurgeService } from './modules/hrm/rep-document-purge.service';
+import { BirthdayService } from './modules/hrm/birthday.service';
 import { ipOfRequest, runWithRequestContext } from './common/audit/request-context';
 
 async function bootstrap(): Promise<void> {
@@ -116,6 +117,8 @@ async function bootstrap(): Promise<void> {
   // still frees storage when it wakes. Only the real server does this (never scripts / seeds). — 2026-11-12
   const purge = app.get(RepDocumentPurgeService);
   setTimeout(() => void purge.runScheduled(), 60_000).unref();
+  // An instance asleep at 08:00 Winnipeg catches up the day's birthday notices once awake (never twice).
+  setTimeout(() => void app.get(BirthdayService).runCatchUp(), 90_000).unref();
 }
 
 /** Minimal HTTP Basic gate for the Swagger UI in production (no extra dependency). */

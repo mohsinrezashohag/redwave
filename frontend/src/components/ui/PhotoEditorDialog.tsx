@@ -5,7 +5,7 @@
  * saved photo is exactly what was shown. Keyboard: arrow keys move the photo, +/− zoom. Tokens only.
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
+import { RotateCw, Save, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from './Button';
 import { Modal } from './Modal';
 import {
@@ -131,7 +131,7 @@ export function PhotoEditorDialog({
           <Button variant="secondary" type="button" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
-          <Button variant="primary" type="button" onClick={() => void save()} loading={saving} disabled={!size}>
+          <Button leftIcon={<Save size={16} />} variant="primary" type="button" onClick={() => void save()} loading={saving} disabled={!size}>
             {saveLabel}
           </Button>
         </>

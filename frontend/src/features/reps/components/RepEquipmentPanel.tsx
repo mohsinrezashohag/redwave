@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
-import { Plus } from 'lucide-react';
+import { Plus, UserCheck } from 'lucide-react';
 import { Badge, Button, ConfirmDialog, DatePicker, FormField, Input, Modal, MoneyInput, Select, Table, TBody, TD, TH, THead, TR, useToast } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
 import { RowActions } from '../../../components/data/RowActions';
@@ -216,7 +216,7 @@ function AssignEquipmentModal({ repId, open, onClose }: { repId: string; open: b
           <Button variant="secondary" type="button" onClick={close}>
             Cancel
           </Button>
-          <Button variant="primary" type="submit" loading={assign.isPending}>
+          <Button leftIcon={<UserCheck size={16} />} variant="primary" type="submit" loading={assign.isPending}>
             Assign
           </Button>
         </div>

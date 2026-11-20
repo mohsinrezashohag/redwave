@@ -1,9 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -13,7 +14,15 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+import { REGION_CODES } from '../../../common/geo/regions';
+
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** `mb ` → `MB`, so a lower-case code from a caller still validates. */
+export const upperTrim = ({ value }: { value: unknown }): unknown =>
+  typeof value === 'string' ? value.trim().toUpperCase() : value;
+
+export const REGION_MESSAGE = 'province_state must be a Canadian province/territory or US state code (e.g. MB)';
 
 export class SaleItemInput {
   @ApiProperty({ description: 'A product belonging to the sale’s client (active).' })
@@ -86,10 +95,14 @@ export class CreateSaleDto {
   @MaxLength(100)
   city!: string;
 
-  @ApiProperty()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(100)
+  @ApiProperty({
+    example: 'MB',
+    description:
+      'Province/territory or US state CODE (common/geo/regions). Required on every new write; legacy free text ' +
+      'already stored is still returned as-is. — client meeting 2026-11-16',
+  })
+  @Transform(upperTrim)
+  @IsIn(REGION_CODES, { message: REGION_MESSAGE })
   province_state!: string;
 
   @ApiProperty()

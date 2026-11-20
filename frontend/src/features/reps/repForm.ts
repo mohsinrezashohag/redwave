@@ -87,6 +87,8 @@ export function repFormSchema(mode: 'create' | 'edit', today: string, accountOnF
       full_name: z.string().trim().min(1, 'Required').max(150),
       external_code: z.string().max(50),
       field_manager_id: z.string().min(1, 'Pick a field manager'),
+      // The login that opens this rep's own My Account view (NONE = no login). 2026-11-16
+      user_id: z.string(),
       hire_date: z.string().min(1, 'Required'),
       status: z.enum(['active', 'terminated']),
       termination_date: z.string(),
@@ -141,6 +143,7 @@ export function repFormDefaults(rep: Rep | null): RepFormValues {
     full_name: rep?.full_name ?? '',
     external_code: rep?.external_code ?? '',
     field_manager_id: rep?.field_manager_id ?? '',
+    user_id: rep?.user_id ?? NONE,
     hire_date: day(rep?.hire_date),
     status: rep?.status ?? 'active',
     termination_date: day(rep?.termination_date),
@@ -210,6 +213,7 @@ export function toCreateBody(v: RepFormValues): CreateRepBody {
     field_manager_id: v.field_manager_id,
     hire_date: v.hire_date,
     ...(v.external_code.trim() ? { external_code: v.external_code.trim() } : {}),
+    ...(pick(v.user_id) ? { user_id: pick(v.user_id) } : {}),
     ...profileBody(v),
     ...bankingBody(v, false),
   } as CreateRepBody;
@@ -222,9 +226,33 @@ export function toUpdateBody(v: RepFormValues, hadBanking = false): UpdateRepBod
     external_code: v.external_code.trim(),
     field_manager_id: v.field_manager_id,
     hire_date: v.hire_date,
+    // null unlinks the login (the server allows it on edit).
+    user_id: pick(v.user_id),
     status: v.status,
     ...(v.status === 'terminated' ? { termination_date: v.termination_date } : {}),
     ...profileBody(v),
     ...bankingBody(v, hadBanking),
   } as UpdateRepBody;
+}
+
+/**
+ * Options for the rep form's "Linked login" picker: None, then active logins not already linked to ANOTHER rep.
+ * The rep's current login is always kept, even if inactive or missing from the list. 2026-11-16
+ */
+export function loginOptions(
+  users: { id: string; full_name: string; email: string; status: string }[],
+  linked: Map<string, { id: string }>,
+  editing?: { id: string; user_id?: string | null } | null,
+): { value: string; label: string }[] {
+  const opts = users
+    .filter((u) => u.status === 'active' || u.id === editing?.user_id)
+    .filter((u) => {
+      const owner = linked.get(u.id);
+      return !owner || owner.id === editing?.id;
+    })
+    .map((u) => ({ value: u.id, label: `${u.full_name} (${u.email})` }));
+  if (editing?.user_id && !opts.some((o) => o.value === editing.user_id)) {
+    opts.unshift({ value: editing.user_id, label: 'Current login' });
+  }
+  return [{ value: NONE, label: 'None' }, ...opts];
 }

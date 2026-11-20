@@ -15,6 +15,7 @@ import { isTrue, normCode } from '../clean.logic';
 import { RawRow } from '../mapping.logic';
 import { splitProductTypes } from '../matching.logic';
 import { findRepByAnyCode } from './master.handlers';
+import { normaliseRegionLenient, splitCityRegion } from '../../../common/geo/regions';
 
 const text = (row: RawRow, key: string): string | null => {
   const v = row[key];
@@ -61,6 +62,7 @@ export async function applyLiveSale(
   }
 
   // SalesService owns every entry rule (incl. SALE-001a and the Sale ID) — we only supply the DTO.
+  const cityPart = splitCityRegion(text(mapped, 'city') ?? null, text(mapped, 'province_state') ?? null);
   const sale = await sales.createWithinTx(
     tx,
     {
@@ -68,14 +70,17 @@ export async function applyLiveSale(
       rep_id: rep.id,
       sale_date: String(mapped.sale_date),
       activation_date: text(mapped, 'activation_date') ?? undefined,
-      customer_name: text(mapped, 'customer_name')!,
+      // Blank when the file carries only first + last name: SalesService derives the name from the pair.
+      customer_name: text(mapped, 'customer_name') ?? '',
       // Optional on this target: supplied together they DERIVE the customer name (SalesService owns that
       // rule), so a file with separate name columns needs no pre-joining.
       customer_first_name: text(mapped, 'customer_first_name') ?? undefined,
       customer_last_name: text(mapped, 'customer_last_name') ?? undefined,
       street: addr(mapped, 'street'),
-      city: addr(mapped, 'city'),
-      province_state: addr(mapped, 'province_state'),
+      // A city cell like "Edmonton, AB" keeps only the city; the province it named fills a blank province. 2026-11-18
+      city: cityPart.city ?? addr(mapped, 'city'),
+      // Lenient (2026-11-16): a code or full name becomes the code; anything else is kept as written.
+      province_state: normaliseRegionLenient(text(mapped, 'province_state')) ?? cityPart.region ?? '—',
       postal_code: addr(mapped, 'postal_code'),
       mpu_id: text(mapped, 'mpu_id') ?? undefined,
       is_greenfield: isTrue(mapped.is_greenfield),
@@ -86,7 +91,9 @@ export async function applyLiveSale(
   );
 
   // Optional second step: the row may ask for the sale to land already validated.
-  if ((text(mapped, 'status') ?? 'entered').toLowerCase() === 'validated') {
+  // A possible duplicate (same client + MPU) is created HELD: it cannot be validated until approved, so the
+  // row's "validated" is not applied to it (it would roll the whole batch back). — 2026-11-16
+  if ((text(mapped, 'status') ?? 'entered').toLowerCase() === 'validated' && !sale.duplicate_of_sale_id) {
     await sales.validateWithinTx(tx, sale.id, {}, user);
   }
   return sale.id;

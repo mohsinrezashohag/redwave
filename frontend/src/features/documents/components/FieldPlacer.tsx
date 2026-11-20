@@ -3,17 +3,19 @@
  * the document via pdf.js and overlays draggable/resizable boxes per page. Coordinates are stored as
  * normalized 0..1 fractions (top-left origin) — resolution-independent, matching the server's stamp model.
  * Pick a type + recipient, then click an empty area of a page to drop a box; drag to move, corner to resize,
- * × to remove. — SRS DOC-003
+ * × to remove. Placed fields are listed under the toolbar (remove one, or undo the last). Each field gets a
+ * STABLE id from a counter, so removing one never re-keys the rest. — SRS DOC-003
  */
-import { useId, useRef, useState } from 'react';
-import { X } from 'lucide-react';
-import { FormField, Select } from '../../../components/ui';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Trash2, Undo2, X } from 'lucide-react';
+import { Button, FormField, IconButton, Select } from '../../../components/ui';
 import { DocumentPreview } from './DocumentPreview';
 import { useDocumentFileUrl } from '../api/useDocumentFiles';
 import { seriesColor } from '../../dashboards/charts/chartTheme';
 import type { RenderedPage } from '../../../components/pdf/PdfDocumentView';
 import type { SignatureFieldInput, SignatureFieldType } from '../documents.types';
 import styles from './fieldPlacer.module.css';
+import docStyles from './documents.module.css';
 
 export interface PlacedField extends SignatureFieldInput {
   key: string; // local id
@@ -48,6 +50,18 @@ export function FieldPlacer({ documentId, recipients, fields, onChange }: Props)
   const [type, setType] = useState<SignatureFieldType>('signature');
   const [recipientId, setRecipientId] = useState<string>(recipients[0]?.id ?? '');
   const drag = useRef<{ key: string; mode: 'move' | 'resize'; rect: DOMRect } | null>(null);
+  const seq = useRef(0);
+  const box = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const update = () => setWidth(Math.floor(el.clientWidth / 40) * 40);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const recipientColor = (id: string) => seriesColor(Math.max(0, recipients.findIndex((r) => r.id === id)));
   const recipientLabel = (id: string) => recipients.find((r) => r.id === id)?.label ?? 'recipient';
@@ -59,7 +73,7 @@ export function FieldPlacer({ documentId, recipients, fields, onChange }: Props)
     const cx = (e.clientX - rect.left) / rect.width;
     const cy = (e.clientY - rect.top) / rect.height;
     const field: PlacedField = {
-      key: `${baseId}-${fields.length}-${page}`,
+      key: `${baseId}-${++seq.current}`,
       type,
       recipient_user_id: recipientId,
       page,
@@ -144,6 +158,9 @@ export function FieldPlacer({ documentId, recipients, fields, onChange }: Props)
     </div>
   );
 
+  const typeLabel = (t: SignatureFieldType) => FIELD_TYPES.find((x) => x.value === t)?.label ?? t;
+  const undoLast = () => onChange(fields.slice(0, -1));
+
   return (
     <div className={styles.wrap}>
       <div className={styles.toolbar}>
@@ -160,7 +177,36 @@ export function FieldPlacer({ documentId, recipients, fields, onChange }: Props)
         </FormField>
         <p className={styles.hint}>Click a page to drop the field, drag to move, corner to resize.</p>
       </div>
-      <DocumentPreview query={fileUrl} renderPageOverlay={overlay} maxWidth={560} />
+      {fields.length > 0 && (
+        <div className={styles.placed}>
+          <div className={styles.placedHead}>
+            <span>
+              {fields.length} field{fields.length === 1 ? '' : 's'} placed
+            </span>
+            <Button variant="tertiary" size="sm" leftIcon={<Undo2 size={14} />} onClick={undoLast}>
+              Undo last
+            </Button>
+          </div>
+          <ul className={docStyles.placedList}>
+            {fields.map((f) => (
+              <li key={f.key} className={docStyles.placedRow}>
+                <span className={docStyles.swatch} style={{ background: recipientColor(f.recipient_user_id) }} aria-hidden />
+                <span>
+                  {typeLabel(f.type)} · {recipientLabel(f.recipient_user_id)} · page {f.page + 1}
+                </span>
+                <IconButton
+                  label={`Remove ${typeLabel(f.type)} for ${recipientLabel(f.recipient_user_id)} on page ${f.page + 1}`}
+                  icon={<Trash2 size={14} />}
+                  onClick={() => onChange(fields.filter((x) => x.key !== f.key))}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div ref={box} className={styles.previewBox}>
+        {width > 0 && <DocumentPreview query={fileUrl} renderPageOverlay={overlay} maxWidth={Math.max(280, Math.min(width - 32, 900))} />}
+      </div>
     </div>
   );
 }

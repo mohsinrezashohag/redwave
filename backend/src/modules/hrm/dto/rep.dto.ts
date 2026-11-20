@@ -6,13 +6,17 @@ import {
   IsEmail,
   IsEnum,
   IsIn,
+  IsInt,
   IsObject,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -210,10 +214,15 @@ export class UpdateRepDto extends RepProfileFieldsDto {
   @Matches(DATE, { message: 'hire_date must be a YYYY-MM-DD date' })
   hire_date?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    nullable: true,
+    type: String,
+    description: 'The login linked to this rep (their own My Account view). null unlinks. 409 when linked to another rep.',
+  })
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsUUID()
-  user_id?: string;
+  user_id?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -256,4 +265,34 @@ export class BulkAssignManagerDto {
   @ApiProperty({ description: 'The field-manager user id (must be an active user holding the Manager role).' })
   @IsUUID()
   field_manager_id!: string;
+}
+
+/** Filters for the photo export (2026-11-16): the same as the rep list; default active reps. */
+export class RepPhotoExportQuery {
+  @ApiPropertyOptional({ enum: ['active', 'terminated', 'all'], default: 'active' })
+  @IsOptional()
+  @IsIn(['active', 'terminated', 'all'])
+  status?: 'active' | 'terminated' | 'all';
+
+  @ApiPropertyOptional({ description: 'Only this field manager’s reps (user id).' })
+  @IsOptional()
+  @IsUUID()
+  fieldManagerId?: string;
+
+  @ApiPropertyOptional({ description: 'Case-insensitive match on name or rep code.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  search?: string;
+}
+
+/** Window for the upcoming-birthdays list (2026-11-16). */
+export class UpcomingBirthdaysQuery {
+  @ApiPropertyOptional({ default: 30, minimum: 0, maximum: 366, description: 'Days ahead, 0 = today only.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(366)
+  days?: number;
 }

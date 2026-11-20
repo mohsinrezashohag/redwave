@@ -15,7 +15,7 @@
  * server's.
  */
 import { useState } from 'react';
-import { AlertTriangle, CalendarCog, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CalendarCog, Eye, RefreshCw } from 'lucide-react';
 import {
   Badge,
   Banner,
@@ -192,7 +192,7 @@ export default function PeriodConfigPage() {
             onValueChange={setCount}
             options={['13', '26', '52'].map((n) => ({ value: n, label: `${n} periods` }))}
           />
-          <Button variant="secondary" onClick={onPreview} loading={preview.isPending}>
+          <Button leftIcon={<Eye size={16} />} variant="secondary" onClick={onPreview} loading={preview.isPending}>
             Preview
           </Button>
           {canEdit && plan && blocked.length === 0 && (

@@ -5,6 +5,7 @@
  * pathless layout inside AppShell (so the panel renders WITHIN the shell) + the RequireAuth backstop. The
  * technical error is logged for developers; the user sees a calm, actionable message. — CLAUDE §13
  */
+import { LayoutDashboard, RefreshCw } from 'lucide-react';
 import { isRouteErrorResponse, useNavigate, useRouteError } from 'react-router-dom';
 import { Banner, Button } from '../components/ui';
 
@@ -38,10 +39,10 @@ export function RouteErrorBoundary() {
         {message}
       </Banner>
       <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-        <Button variant="primary" onClick={() => window.location.reload()}>
+        <Button leftIcon={<RefreshCw size={16} />} variant="primary" onClick={() => window.location.reload()}>
           Try again
         </Button>
-        <Button variant="secondary" onClick={() => navigate('/')}>
+        <Button leftIcon={<LayoutDashboard size={16} />} variant="secondary" onClick={() => navigate('/')}>
           Back to dashboard
         </Button>
       </div>

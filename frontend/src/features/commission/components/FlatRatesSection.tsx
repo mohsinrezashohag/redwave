@@ -5,6 +5,7 @@
  * most specific wins (client + product → product → client + type → type). "Add rate" supersedes; PENDING rows
  * offer Edit and Delete. The server is the real gate (current/past → 422).
  */
+import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Button, Card, ConfirmDialog, EffectiveDatedTable, useToast, type EffectiveColumn } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
@@ -57,7 +58,7 @@ export function FlatRatesSection({ scope = SCOPE_ALL }: { scope?: ScopeValue }) 
   return (
     <Card
       title="Rep rates"
-      actions={canEdit ? <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>Add rate</Button> : undefined}
+      actions={canEdit ? <Button leftIcon={<Plus size={16} />} variant="secondary" size="sm" onClick={() => setOpen(true)}>Add rate</Button> : undefined}
     >
       <p className={styles.note}>
         Each sale item pays one rate. The most specific rate wins: a client&rsquo;s rate for a product, then the

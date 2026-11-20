@@ -4,6 +4,7 @@
  * add-on (the form enforces it). Gated product_types:view (page) / product_types:edit (writes) — its own RBAC
  * module, so it can be granted without all Commission Config access. The server is the real gate (§5); 403 → AccessDenied.
  */
+import { Pencil, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Badge, Button, PageHeader } from '../../../components/ui';
 import { DataTable, type DataColumn } from '../../../components/data/DataTable';
@@ -48,7 +49,7 @@ export default function ProductTypesPage() {
         subtitle="The catalogue of product types and their behaviour. New types are add-ons: they’re billable and paid their own rep rate, but a sale still needs an internet base."
         actions={
           canEdit && (
-            <Button variant="primary" onClick={() => setModal({ mode: 'create' })}>
+            <Button leftIcon={<Plus size={16} />} variant="primary" onClick={() => setModal({ mode: 'create' })}>
               Add product type
             </Button>
           )
@@ -66,7 +67,7 @@ export default function ProductTypesPage() {
         rowActions={
           canEdit
             ? (t) => (
-                <Button variant="tertiary" size="sm" onClick={() => setModal({ mode: 'edit', type: t })}>
+                <Button leftIcon={<Pencil size={16} />} variant="tertiary" size="sm" onClick={() => setModal({ mode: 'edit', type: t })}>
                   Edit
                 </Button>
               )

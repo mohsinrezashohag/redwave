@@ -3,6 +3,7 @@
  * collects a new password (mirrors the server policy as a hint; the server is the real gate), and POSTs to
  * /v1/auth/reset-password. Used for BOTH the forgot-password reset and the first-login invite (copy varies).
  */
+import { KeyRound } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Banner, Button, FormField, Input } from '../../../components/ui';
@@ -59,7 +60,7 @@ export default function ResetPasswordPage({ flavor = 'reset' }: { flavor?: 'rese
           <FormField label="Confirm password" error={mismatch ? 'Passwords do not match.' : undefined}>
             <Input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
           </FormField>
-          <Button type="submit" variant="primary" fullWidth loading={reset.isPending} disabled={!canSubmit}>
+          <Button leftIcon={<KeyRound size={16} />} type="submit" variant="primary" fullWidth loading={reset.isPending} disabled={!canSubmit}>
             {flavor === 'invite' ? 'Activate account' : 'Reset password'}
           </Button>
         </form>

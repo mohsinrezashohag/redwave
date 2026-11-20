@@ -15,8 +15,6 @@ import { TargetsService } from './targets.service';
 import { LeaderboardService } from './leaderboard.service';
 import { ChatbotService } from './chatbot.service';
 import { LLM_PROVIDER, StubLlmProvider } from './chatbot/llm.provider';
-import { GeminiLlmProvider } from './chatbot/gemini.provider';
-import { LlmProviderRouter } from './chatbot/llm-router.provider';
 import { ChatbotConfigCache } from './chatbot/chatbot-config.cache';
 
 /**
@@ -48,10 +46,9 @@ import { ChatbotConfigCache } from './chatbot/chatbot-config.cache';
     ChatbotService,
     ChatbotConfigCache,
     StubLlmProvider,
-    GeminiLlmProvider,
-    LlmProviderRouter,
-    // Router picks Gemini when ChatbotConfig is active + provider 'gemini' + GEMINI_API_KEY present; else stub.
-    { provide: LLM_PROVIDER, useExisting: LlmProviderRouter },
+    // The basic (keyword) assistant. AI mode (Gemini function calling) lives in chatbot/gemini-agent.ts and is
+    // chosen per request by ChatbotService from ChatbotConfig + GEMINI_API_KEY. 2026-11-16
+    { provide: LLM_PROVIDER, useExisting: StubLlmProvider },
   ],
 })
 export class ReportingModule {}

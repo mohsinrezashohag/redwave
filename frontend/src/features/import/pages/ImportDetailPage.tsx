@@ -89,6 +89,22 @@ export default function ImportDetailPage() {
       { onSuccess: () => toast({ title: 'Row ignored', tone: 'success' }), onError },
     );
 
+  // Live sales (2026-11-16): a possible duplicate is ACCEPTED, not blocked. It commits as a held sale that
+  // still needs duplicate approval before validation. Approver only (import:approve); the server re-checks.
+  const onAcceptDuplicate = (row: ImportRow) =>
+    reconcile.mutate(
+      { id: batch.id, body: { resolutions: [{ row_id: row.id, action: 'accept_duplicate' }] } },
+      {
+        onSuccess: () =>
+          toast({
+            title: 'Duplicate accepted',
+            description: 'The sale will be held until its duplicate is approved.',
+            tone: 'success',
+          }),
+        onError,
+      },
+    );
+
   return (
     <div className={styles.page}>
       <PageHeader
@@ -124,7 +140,7 @@ export default function ImportDetailPage() {
           <IssueGroupsBanner groups={issueGroups} />
         ) : (
           <Banner tone="warning" title={`${outstanding} row(s) still need reconciliation`}>
-            Resolve every unmatched / duplicate / error row (match, edit, or ignore) before committing. The server blocks a commit while any remain.
+            Resolve every unmatched / duplicate / error row (match, accept, edit, or ignore) before committing. The server blocks a commit while any remain.
           </Banner>
         )
       ) : (
@@ -162,7 +178,7 @@ export default function ImportDetailPage() {
       )}
 
       <Card title="Rows" flush>
-        <ImportRowsTable batch={batch} kind={kind} canEdit={canEdit} onMatch={setMatchRow} onEdit={setEditRow} onIgnore={onIgnore} />
+        <ImportRowsTable batch={batch} kind={kind} canEdit={canEdit} onMatch={setMatchRow} onEdit={setEditRow} onIgnore={onIgnore} onAcceptDuplicate={canApprove ? onAcceptDuplicate : undefined} />
       </Card>
 
       <MatchSaleModal batchId={batch.id} row={matchRow} clientId={batch.client_id} onClose={() => setMatchRow(null)} />

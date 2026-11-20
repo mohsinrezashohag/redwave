@@ -4,6 +4,9 @@ import { PayRunService } from './pay-run.service';
 import { ZeroExpenseTotalProvider } from './seams/expense-total.provider';
 import { ZeroClawbackTotalProvider } from './seams/clawback-total.provider';
 import { AuthUser } from '../../common/rbac/auth-user.type';
+import { CLAWBACK_TOTAL_PROVIDER } from './seams/clawback-total.provider';
+import { ClawbackModule } from '../clawback/clawback.module';
+import { windowOfRun } from './run-window.logic';
 
 const user: AuthUser = {
   id: 'admin-1',
@@ -41,6 +44,7 @@ function make(opts: { runStatus?: string; bonuses?: unknown[]; clawbackTotal?: s
   const runStatus = opts.runStatus ?? 'draft';
   const period = {
     id: 'P1',
+    period_number: 1,
     start_date: new Date('2026-01-04T00:00:00.000Z'),
     end_date: new Date('2026-01-17T00:00:00.000Z'),
     payday: new Date('2026-01-30T00:00:00.000Z'),
@@ -57,7 +61,8 @@ function make(opts: { runStatus?: string; bonuses?: unknown[]; clawbackTotal?: s
           sale_items: [{ id: 'item-1', product_type: 'internet', counts_toward_tally: true }],
         },
       ]),
-      updateMany: jest.fn(),
+      // The claim's `count` is checked against the sales gathered (a mismatch = paid elsewhere → 409).
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     saleItem: { update: jest.fn() },
     // The payroll-report line frozen alongside the snapshots (same tx, same engine result).
@@ -73,7 +78,17 @@ function make(opts: { runStatus?: string; bonuses?: unknown[]; clawbackTotal?: s
     payRun: {
       findUnique: jest
         .fn()
-        .mockResolvedValue({ id: 'run-1', status: runStatus, pay_period: period }),
+        .mockResolvedValue({
+          id: 'run-1',
+          status: runStatus,
+          pay_period_id: 'P1',
+          pay_period: period,
+          date_from: null,
+          date_to: null,
+          client_id: null,
+          rep_id: null,
+          label: null,
+        }),
       findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn().mockResolvedValue({}),
@@ -165,19 +180,25 @@ describe('PayRunService.finalize — paid in full (no tiers, no 70/30 since 2026
     expect(lineArg(tx).net_payout).toBe('160.00'); // 110 + 50 bonus
   });
 
-  it('a clawback deducts IN FULL from net (flat) and is marked applied once', async () => {
-    const { service, tx, clawbackSeam } = make({ clawbackTotal: '20.00' });
+  // Client decision 2026-11-16 ("Remove clawbacks"): the Clawback module binds the ZERO provider, so a
+  // report never deducts a clawback and marks nothing applied.
+  it('applies NO clawback deduction: the seam bound by ClawbackModule is the zero provider', async () => {
+    const providers = Reflect.getMetadata('providers', ClawbackModule) as Array<Record<string, unknown>>;
+    const binding = providers.find((p) => typeof p === 'object' && p.provide === CLAWBACK_TOTAL_PROVIDER);
+    expect(binding).toEqual({ provide: CLAWBACK_TOTAL_PROVIDER, useClass: ZeroClawbackTotalProvider });
+
+    const { service, tx } = make();
     await service.finalize('run-1', user);
-    expect(lineArg(tx).clawback_total).toBe('20.00');
-    expect(lineArg(tx).net_payout).toBe('90.00'); // 110 − 20
-    expect((clawbackSeam as { markApplied: jest.Mock }).markApplied).toHaveBeenCalledTimes(1);
+    expect(lineArg(tx).clawback_total).toBe('0.00');
+    expect(lineArg(tx).net_payout).toBe('110.00'); // commission in full, nothing deducted
   });
 
   it('the DRAFT preview shows the same net finalize will pay', async () => {
-    const draft = make({ clawbackTotal: '20.00' });
-    await (draft.service as unknown as { computeDraftLines: (r: string, p: unknown, u: AuthUser) => Promise<void> })
-      .computeDraftLines('run-1', draft.period, user);
-    const fin = make({ clawbackTotal: '20.00' });
+    const draft = make();
+    const run = await draft.prisma.payRun.findUnique();
+    await (draft.service as unknown as { computeDraftLines: (r: string, w: unknown, u: AuthUser) => Promise<void> })
+      .computeDraftLines('run-1', windowOfRun(run), user);
+    const fin = make();
     await fin.service.finalize('run-1', user);
     expect(lineArg(draft.tx).net_payout).toBe(lineArg(fin.tx).net_payout);
   });
@@ -203,7 +224,7 @@ describe('PayRunService.setBonus', () => {
 });
 
 describe('PayRunService.exportRun — RBAC scope (PII; a manager exports only their roster)', () => {
-  const finalizedRun = { id: 'run-1', status: 'finalized', pay_period: { id: 'P1' } };
+  const finalizedRun = { id: 'run-1', status: 'finalized', pay_period_id: 'P1', pay_period: { id: 'P1' } };
 
   it('a roster-scoped caller filters the exported lines to their reps', async () => {
     const { service, prisma } = make({ runStatus: 'finalized', scopeRepIds: ['rep-1', 'rep-2'] });

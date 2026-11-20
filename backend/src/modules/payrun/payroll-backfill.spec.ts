@@ -59,7 +59,9 @@ function make(opts: { status?: string; existing?: number; commission?: string; s
       findUnique: jest.fn().mockResolvedValue({
         id: 'run-10',
         status: opts.status ?? 'exported',
-        pay_period: { period_number: 10, start_date: d('2026-05-10'), end_date: d('2026-05-23') },
+        pay_period_id: 'P10',
+        label: null,
+        pay_period: { id: 'P10', period_number: 10, start_date: d('2026-05-10'), end_date: d('2026-05-23') },
       }),
     },
     payrollReportLine: {
