@@ -6,6 +6,7 @@
  * enforced (#6). The snapshot is never edited; a clawback is a new record (#2). Per-item — it does not touch
  * the internet activation or any other item on the sale.
  */
+import { Undo2 } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -114,7 +115,7 @@ export function ClawbackEntryModal({ saleItem, saleCode, onClose }: Props) {
                 Cancel
               </Button>
             </ModalClose>
-            <Button variant="primary" type="submit" loading={create.isPending}>
+            <Button leftIcon={<Undo2 size={16} />} variant="primary" type="submit" loading={create.isPending}>
               Record clawback
             </Button>
           </div>

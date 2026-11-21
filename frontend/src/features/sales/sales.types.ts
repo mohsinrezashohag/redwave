@@ -77,3 +77,13 @@ export type CreateSaleBody = components['schemas']['CreateSaleDto'];
 export type ValidateSaleBody = components['schemas']['ValidateSaleDto'];
 export type SetGreenfieldBody = components['schemas']['SetGreenfieldDto'];
 export type BulkValidateBody = components['schemas']['BulkValidateDto'];
+export type UpdateSaleBody = components['schemas']['UpdateSaleDto'];
+
+/** The signed-in rep's own profile (only the Agent ID is read, for the sale form). */
+export type OwnRepProfile = components['schemas']['MyRepProfileResponse'];
+
+// ── Sale edit requests (client meeting 2026-11-16) ──
+export type SaleEditRequest = components['schemas']['SaleEditRequestResponse'];
+export type SaleEditRequestPage = components['schemas']['SaleEditRequestPageResponse'];
+export type SaleEditDiff = components['schemas']['SaleEditDiffResponse'];
+export type SaleEditRequestStatus = SaleEditRequest['status'];

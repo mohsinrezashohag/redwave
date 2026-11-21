@@ -1,4 +1,4 @@
-import { cleanMappedRow, coerceDate, coerceMoney, normCode, normWs, coerceInt } from './clean.logic';
+import { cleanMappedRow, coerceDate, coerceMoney, normCode, normWs, coerceInt, invalidFields, invalidMessage } from './clean.logic';
 
 describe('clean.logic — coerceDate', () => {
   it('passes ISO through, formats a Date by its UTC calendar day (no shift)', () => {
@@ -60,5 +60,15 @@ describe('clean.logic — cleanMappedRow', () => {
       { client_code: 'code', amount: 'money', sale_date: 'date' },
     );
     expect(out).toEqual({ client_code: 'VF', amount: '60.00', sale_date: '2026-03-12', note: 'hi' });
+  });
+});
+
+describe('clean.logic — invalid marker (2026-11-16)', () => {
+  it('remembers a non-blank value that did not parse, but not a blank one', () => {
+    const out = cleanMappedRow({ sale_date: 'soon', amount: '', note: 'x' }, { sale_date: 'date', amount: 'money' });
+    expect(out.sale_date).toBeNull();
+    expect(invalidFields(out)).toEqual({ sale_date: 'soon' });
+    expect(invalidMessage('sale_date', 'date')).toBe('sale_date is not a valid date (YYYY-MM-DD)');
+    expect(invalidFields(cleanMappedRow({ amount: '1.00' }, { amount: 'money' }))).toEqual({});
   });
 });

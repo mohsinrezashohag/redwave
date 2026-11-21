@@ -20,4 +20,13 @@ export class ListDocumentsQuery {
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   pending_signatures?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "Only documents where the CALLER has a pending signature in a pending request (the 'to sign' inbox). Row-level: always the caller's own signatures, even for an admin.",
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  awaiting_my_signature?: boolean;
 }

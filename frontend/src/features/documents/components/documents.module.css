@@ -166,3 +166,93 @@
   color: var(--text-link);
   text-decoration: none;
 }
+
+/* ── "To sign" banners ──────────────────────────────────────────────────────── */
+.bannerBody {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.bannerActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.bannerCta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  background-color: var(--accent-600);
+  color: var(--on-accent);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+}
+
+.bannerCta:hover {
+  background-color: var(--accent-700);
+}
+
+.bannerCta:focus-visible {
+  outline: 2px solid var(--accent-600);
+  outline-offset: 2px;
+}
+
+.titleLink {
+  color: var(--text-link);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+}
+
+.titleLink:hover {
+  text-decoration: underline;
+}
+
+.placedList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.placedRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.placedRow > span:nth-of-type(2) {
+  flex: 1;
+  min-width: 0;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+@media (max-width: 639.98px) {
+  .control {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .signerRow {
+    flex-wrap: wrap;
+  }
+}

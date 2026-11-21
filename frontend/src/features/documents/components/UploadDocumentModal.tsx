@@ -4,6 +4,7 @@
  * JSON create CLAIMS the stored path (server-validated: own upload + PDF — DOC-001). The display name
  * defaults to the title. The 10 MB pipeline cap applies. On success → the detail page.
  */
+import { Upload } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -77,7 +78,7 @@ export function UploadDocumentModal({ open, onClose }: { open: boolean; onClose:
           <Button variant="secondary" type="button" onClick={onClose} disabled={upload.isPending}>
             Cancel
           </Button>
-          <Button variant="primary" type="button" onClick={onSubmit} loading={upload.isPending} disabled={!canSubmit}>
+          <Button leftIcon={<Upload size={16} />} variant="primary" type="button" onClick={onSubmit} loading={upload.isPending} disabled={!canSubmit}>
             Upload
           </Button>
         </div>

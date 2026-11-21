@@ -40,7 +40,7 @@ export function ExpenseItemRow({
   const { control, getValues, setValue } = useFormContext<ExpenseFormValues>();
   const category = useWatch({ control, name: `items.${index}.category` });
   const cfg = configs.find((c) => c.category_key === category);
-  const requiresReceipt = !!cfg?.requires_receipt;
+  const requiresReceipt = cfg?.requires_receipt !== false; // absent config = required (server mirror)
   // Absent config = required, so an unconfigured category never silently stops asking.
   const requiresDescription = cfg?.requires_description !== false;
   const categoryOptions = configs.filter((c) => c.is_active).map((c) => ({ value: c.category_key, label: c.label }));

@@ -25,11 +25,13 @@ interface Props {
   renderPageOverlay?: (page: RenderedPage) => ReactNode;
   onReady?: (pageCount: number) => void;
   maxWidth?: number;
+  /** Extra class on the scrolling viewer (the signing page lets it grow with the page). */
+  viewerClassName?: string;
   /** Message when no file is available yet (e.g. completed copy before completion). */
   emptyMessage?: string;
 }
 
-export function DocumentPreview({ query, renderPageOverlay, onReady, maxWidth, emptyMessage }: Props) {
+export function DocumentPreview({ query, renderPageOverlay, onReady, maxWidth, viewerClassName, emptyMessage }: Props) {
   if (query.isLoading) {
     return (
       <div className={styles.state}>
@@ -56,7 +58,7 @@ export function DocumentPreview({ query, renderPageOverlay, onReady, maxWidth, e
         </div>
       }
     >
-      <PdfDocumentView url={query.data.url} renderPageOverlay={renderPageOverlay} onReady={onReady} maxWidth={maxWidth} />
+      <PdfDocumentView url={query.data.url} renderPageOverlay={renderPageOverlay} onReady={onReady} maxWidth={maxWidth} viewerClassName={viewerClassName} />
     </Suspense>
   );
 }

@@ -7,7 +7,11 @@ import {
   classifyProductRow,
   classifyRepRow,
   classifySalesRow,
+  ACCEPTED_DUPLICATE_ISSUE,
+  dateIssue,
+  moneyIssue,
 } from './matching.logic';
+import { cleanMappedRow } from './clean.logic';
 
 describe('classifySalesRow (bulk validation — SALE-007/IMP-010)', () => {
   it('exactly one entered match → matched + matched_entity_id', () => {
@@ -196,6 +200,21 @@ describe('classifyLiveSaleRow (LIVE sales — IMP-013)', () => {
     expect(c.issue).toMatch(/mandatory base/);
   });
 
+  // One client + MPU is one household (§14 rule 8): a re-imported file must not pay a sale twice.
+  it('an MPU already entered for the client → duplicate naming the existing sale', () => {
+    const c = classifyLiveSaleRow({ ...good, mpu_id: '3291' }, { ...ctx, duplicateOf: '2026-07-03-MPU-3291-VF' });
+    expect(c.match_status).toBe('duplicate');
+    expect(c.issue).toContain('2026-07-03-MPU-3291-VF');
+  });
+  it('an MPU repeated within the same file → duplicate', () => {
+    const c = classifyLiveSaleRow({ ...good, mpu_id: '3291' }, { ...ctx, duplicateOf: 'this file' });
+    expect(c.match_status).toBe('duplicate');
+    expect(c.issue).toMatch(/more than once in this file/);
+  });
+  it('no duplicate → matched', () => {
+    expect(classifyLiveSaleRow({ ...good, mpu_id: '3291' }, { ...ctx, duplicateOf: null }).match_status).toBe('matched');
+  });
+
   it('missing required columns → error', () => {
     expect(classifyLiveSaleRow({ ...good, client_code: '' }, ctx).match_status).toBe('error');
     expect(classifyLiveSaleRow({ ...good, rep_code: '' }, ctx).match_status).toBe('error');
@@ -210,5 +229,40 @@ describe('splitProductTypes', () => {
     expect(splitProductTypes(' Internet , TV ,, home_phone ')).toEqual(['internet', 'tv', 'home_phone']);
     expect(splitProductTypes(null)).toEqual([]);
     expect(splitProductTypes('')).toEqual([]);
+  });
+});
+
+describe('client meeting 2026-11-16 — required vs invalid, derived name, accepted duplicates', () => {
+  const ctx = { clientExists: true, repActive: true, missingProductTypes: [], hasInternetBase: true };
+  const base = { client_code: 'VF', rep_code: 'R1', product_types: 'internet', sale_date: '2026-07-06' };
+
+  it('a blank customer cell is fine when first + last name are present', () => {
+    const c = classifyLiveSaleRow({ ...base, customer_first_name: 'Jane', customer_last_name: 'Doe' }, ctx);
+    expect(c.match_status).toBe('matched');
+    expect(classifyLiveSaleRow(base, ctx).issue).toMatch(/customer_name is required/);
+  });
+
+  it('a blank required date says "is required"; an unparseable one says "is not a valid date"', () => {
+    expect(classifyLiveSaleRow({ ...base, sale_date: null, customer_name: 'J' }, ctx).issue).toBe('sale_date is required');
+    const bad = cleanMappedRow({ ...base, sale_date: '45/99/2026', customer_name: 'J' }, { sale_date: 'date' });
+    expect(classifyLiveSaleRow(bad, ctx).issue).toBe('sale_date is not a valid date (YYYY-MM-DD)');
+  });
+
+  it('a blank optional field is never an issue; an unparseable required amount is "not a valid amount"', () => {
+    const rate = { client_code: 'VF', rate_kind: 'tv_addon', effective_from: '2026-01-01' };
+    expect(classifyBillingRateRow({ ...rate, amount: '5.00' }, { clientExists: true, productExists: true }).match_status).toBe('matched');
+    const bad = cleanMappedRow({ ...rate, amount: 'five' }, { amount: 'money' });
+    expect(classifyBillingRateRow(bad, { clientExists: true, productExists: true }).issue).toBe('amount is not a valid amount');
+    expect(dateIssue({ effective_to: null }, 'effective_to', false)).toBeNull();
+    expect(moneyIssue({ amount: null }, 'amount', true)).toBe('amount is required');
+  });
+
+  it('a duplicate stays a duplicate until an approver accepts it, then it is matched with a note', () => {
+    const row = { ...base, customer_name: 'J', mpu_id: 'M1' };
+    expect(classifyLiveSaleRow(row, { ...ctx, duplicateOf: 'ORIG' }).match_status).toBe('duplicate');
+    const accepted = classifyLiveSaleRow({ ...row, accept_duplicate: 'true' }, { ...ctx, duplicateOf: 'ORIG' });
+    expect(accepted).toEqual({ match_status: 'matched', issue: ACCEPTED_DUPLICATE_ISSUE });
+    // Accepting never skips the other entry rules.
+    expect(classifyLiveSaleRow({ ...row, accept_duplicate: 'true' }, { ...ctx, duplicateOf: 'ORIG', hasInternetBase: false }).match_status).toBe('error');
   });
 });

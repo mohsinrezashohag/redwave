@@ -15,6 +15,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UnprocessableEntityException,
   UploadedFile,
   UseInterceptors,
@@ -27,8 +28,10 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiProduces,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { ApiErrorResponses } from '../../common/errors/api-error-responses.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -39,7 +42,16 @@ import { RepsService } from './reps.service';
 import { REP_DOC_TYPES, repDocumentProblem } from './rep-documents.logic';
 import { RepDocumentsService } from './rep-documents.service';
 import { RepEquipmentService } from './rep-equipment.service';
-import { BulkAssignManagerDto, CreateRepDto, ListRepsQuery, UpdateRepDto } from './dto/rep.dto';
+import {
+  BulkAssignManagerDto,
+  CreateRepDto,
+  ListRepsQuery,
+  RepPhotoExportQuery,
+  UpcomingBirthdaysQuery,
+  UpdateRepDto,
+} from './dto/rep.dto';
+import { RepPhotosService } from './rep-photos.service';
+import { BirthdayService } from './birthday.service';
 import { SuccessResponse } from '../../common/dto/success.response';
 import {
   CreateRepDocumentDto,
@@ -59,6 +71,7 @@ import {
   RepResponse,
   RevealSinResponse,
   RevealAccountResponse,
+  UpcomingBirthdayResponse,
 } from './dto/hrm.response';
 
 const MAX_REP_DOC_BYTES = 25 * 1024 * 1024; // 25 MB
@@ -82,6 +95,8 @@ export class RepsController {
     private readonly reps: RepsService,
     private readonly documents: RepDocumentsService,
     private readonly equipment: RepEquipmentService,
+    private readonly photos: RepPhotosService,
+    private readonly birthdays: BirthdayService,
   ) {}
 
   @Get()
@@ -116,6 +131,42 @@ export class RepsController {
   @ApiOkResponse({ type: SuccessResponse })
   bulkAssignManager(@Body() dto: BulkAssignManagerDto, @CurrentUser('id') actorId: string) {
     return this.reps.bulkAssignManager(dto, actorId);
+  }
+
+  // Fixed two-segment routes, declared before ':id' so they are never read as a rep id. — 2026-11-16
+
+  @Get('photos/export')
+  @RequirePermission('hrm', 'edit')
+  @ApiProduces('application/zip')
+  @ApiOperation({
+    summary: 'Export rep photos (ZIP)',
+    description:
+      'Requires hrm:edit. A ZIP of each rep’s latest live headshot, named <rep_code>-<full_name>.jpg|png, plus ' +
+      'manifest.txt listing the reps skipped (no photo). Same filters as the list (default active reps). Audited. ' +
+      '503 when file storage is not configured.',
+  })
+  async exportPhotos(
+    @Query() query: RepPhotoExportQuery,
+    @CurrentUser('id') actorId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const file = await this.photos.exportZip(query, actorId);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+    res.setHeader('Content-Length', String(file.bytes.length));
+    res.end(file.bytes);
+  }
+
+  @Get('birthdays/upcoming')
+  @RequirePermission('hrm', 'view')
+  @ApiOperation({
+    summary: 'Rep birthdays in the next N days',
+    description:
+      'Requires hrm:view. Active reps, soonest first. Month and day only: the birth year and age are never returned.',
+  })
+  @ApiOkResponse({ type: UpcomingBirthdayResponse, isArray: true })
+  upcomingBirthdays(@Query() query: UpcomingBirthdaysQuery) {
+    return this.birthdays.upcoming(query.days ?? 30);
   }
 
   @Get(':id')

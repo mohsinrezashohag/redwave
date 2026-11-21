@@ -3,6 +3,7 @@
  * a status filter + free-text search + export; create and row edit/soft-deactivate. `clients:view` to see
  * (server-enforced; 403 → the DataTable's forbidden panel). Reuses the playbook. Touches ONLY /v1/clients* (#3).
  */
+import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Input, PageHeader, Select } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
@@ -71,7 +72,7 @@ export default function ClientsPage() {
             <Select options={STATUS_OPTIONS} value={status} onValueChange={(v) => setStatus(v as StatusFilter)} aria-label="Status filter" />
             <ExportMenu filename={exportFilename({ source: 'clients', generatedOn: todayIso() })} title="Clients" columns={EXPORT_COLUMNS} getRows={() => fetchAllClients(filters)} />
             {canCreate && (
-              <Button variant="primary" onClick={() => setModal({ mode: 'create' })}>
+              <Button leftIcon={<Plus size={16} />} variant="primary" onClick={() => setModal({ mode: 'create' })}>
                 Create client
               </Button>
             )}

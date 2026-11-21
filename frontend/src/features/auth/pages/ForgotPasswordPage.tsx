@@ -2,6 +2,7 @@
  * ForgotPasswordPage — /forgot-password (public). Enter an email → POST /v1/auth/forgot-password. The
  * server never reveals whether the account exists, so we always show the same "check your email" message.
  */
+import { Mail } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Banner, Button, FormField, Input } from '../../../components/ui';
@@ -30,7 +31,7 @@ export default function ForgotPasswordPage() {
           <FormField label="Email">
             <Input type="email" autoComplete="username" placeholder="you@redwave.local" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
           </FormField>
-          <Button type="submit" variant="primary" fullWidth loading={forgot.isPending} disabled={!email.trim() || forgot.isPending}>
+          <Button leftIcon={<Mail size={16} />} type="submit" variant="primary" fullWidth loading={forgot.isPending} disabled={!email.trim() || forgot.isPending}>
             Send reset link
           </Button>
         </form>

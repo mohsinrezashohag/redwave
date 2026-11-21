@@ -1,5 +1,5 @@
 /**
- * RepStatementDrawer — one rep's pay statement for a finalized run: per sale, what it paid the rep (in full;
+ * RepStatementDrawer — one rep's pay statement for a paid report (legacy period run or date-range report): per sale, what it paid the rep (in full;
  * no tiers or split since 2026-11-13). Admin-facing (`payrun:view`); the rep's own copy lives at /my-pay-statements and uses the
  * self-scoped endpoint that takes no repId at all.
  *
@@ -31,8 +31,8 @@ export function RepStatementDrawer({
       {s && (
         <div className={styles.statement}>
           <p className={styles.note}>
-            <strong>{s.rep_name ?? s.rep_code}</strong> · Period {s.period_number} ·{' '}
-            {displayDate(s.period_start)} – {displayDate(s.period_end)}
+            <strong>{s.rep_name ?? s.rep_code}</strong> · {s.display_label} · sale dates{' '}
+            {displayDate(s.period_start)} to {displayDate(s.period_end)}
           </p>
           <Table>
             <THead>
@@ -64,12 +64,12 @@ export function RepStatementDrawer({
           </Table>
           {!s.is_finalized && (
             <p className={styles.note}>
-              This run has not been finalized, so no amounts are frozen yet and nothing is owed for it.
+              This report has not been marked as paid, so no amounts are frozen yet and nothing is owed for it.
             </p>
           )}
           {s.is_finalized && s.lines.length === 0 && (
             <p className={styles.note}>
-              This run is finalized, but no statement lines are recorded for this rep. If the run was finalized
+              This report is paid, but no statement lines are recorded for this rep. If it was paid
               before pay statements existed, an administrator can rebuild them from the frozen amounts.
             </p>
           )}

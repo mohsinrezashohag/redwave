@@ -3,6 +3,7 @@
  * pay period. The backend records the export with a STUBBED file_url (generation deferred). `expenses:export`.
  * Tokens only.
  */
+import { Download } from 'lucide-react';
 import { useState } from 'react';
 import { Button, FormField, Modal, Select, useToast } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
@@ -49,7 +50,7 @@ export function ExportModal({ open, onOpenChange }: { open: boolean; onOpenChang
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="primary" loading={create.isPending} onClick={onGenerate}>
+          <Button leftIcon={<Download size={16} />} variant="primary" loading={create.isPending} onClick={onGenerate}>
             Generate export
           </Button>
         </>

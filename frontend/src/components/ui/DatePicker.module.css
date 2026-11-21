@@ -52,7 +52,8 @@
 }
 
 .content {
-  width: 264px;
+  width: min(288px, calc(100vw - var(--space-4)));
+  box-sizing: border-box;
   background-color: var(--surface-0);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -69,12 +70,6 @@
   margin-bottom: var(--space-2);
 }
 
-.monthLabel {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--text-primary);
-}
-
 .navBtn {
   display: inline-flex;
   align-items: center;
@@ -86,9 +81,52 @@
   cursor: pointer;
 }
 
-.navBtn:hover {
+.navBtn:hover:not(:disabled) {
   background-color: var(--surface-2);
   color: var(--text-primary);
+}
+
+.navBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.navBtn:focus-visible,
+.jump:focus-visible,
+.day:focus-visible,
+.footerBtn:focus-visible {
+  outline: 2px solid var(--accent-600);
+  outline-offset: 1px;
+}
+
+/* Month + year dropdowns: native selects (best on touch), dressed in tokens. */
+.jumps {
+  display: flex;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.jump {
+  height: 28px;
+  padding: 0 var(--space-1);
+  background-color: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.jump:hover {
+  border-color: var(--text-secondary);
+}
+
+.table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .weekRow,
@@ -111,7 +149,12 @@
   gap: 2px;
 }
 
+.grid > span {
+  display: flex;
+}
+
 .day {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -171,6 +214,28 @@
 .footerBtn:disabled {
   color: var(--text-secondary);
   cursor: not-allowed;
+}
+
+/* Phones: 44px touch targets (design-system §8). */
+@media (max-width: 639.98px) {
+  .content {
+    width: min(360px, calc(100vw - var(--space-4)));
+  }
+
+  .navBtn,
+  .jump,
+  .day,
+  .footerBtn {
+    height: 44px;
+  }
+
+  .navBtn {
+    width: 44px;
+  }
+
+  .jump {
+    font-size: var(--text-base);
+  }
 }
 
 @keyframes datepicker-in {

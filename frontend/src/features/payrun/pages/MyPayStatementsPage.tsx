@@ -31,20 +31,20 @@ export default function MyPayStatementsPage() {
   const s = statement.data;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-      <PageHeader title="My pay statements" subtitle="What each sale paid you, period by period." />
+      <PageHeader title="My pay statements" subtitle="What each sale paid you, report by report." />
 
-      <Card title="Pay periods">
+      <Card title="Reports">
         {list.isLoading && <TableSkeleton rows={3} />}
         {list.isError && <TableError message="Could not load your statements." onRetry={() => list.refetch()} />}
         {!list.isLoading && runs.length === 0 && (
-          <p className={styles.note}>No pay statements yet. One appears here after a pay run is finalized.</p>
+          <p className={styles.note}>No pay statements yet. One appears here after a commission report is marked as paid.</p>
         )}
         {runs.length > 0 && (
           <Table>
             <THead>
               <TR>
-                <TH>Period</TH>
-                <TH>Dates</TH>
+                <TH>Report</TH>
+                <TH>Sale dates</TH>
                 <TH>Status</TH>
               </TR>
             </THead>
@@ -54,13 +54,13 @@ export default function MyPayStatementsPage() {
                   {/* A real button, not a click handler on the row — keyboard-reachable and announced (§7). */}
                   <TD>
                     <button type="button" className={styles.linkButton} onClick={() => setRunId(r.pay_run_id)}>
-                      Period {r.period_number}
+                      {r.display_label}
                     </button>
                   </TD>
                   <TD>
-                    {displayDate(r.period_start)} – {displayDate(r.period_end)}
+                    {displayDate(r.period_start)} to {displayDate(r.period_end)}
                   </TD>
-                  <TD>{r.run_status}</TD>
+                  <TD>{r.run_status === 'draft' ? 'Not paid yet' : 'Paid'}</TD>
                 </TR>
               ))}
             </TBody>
@@ -69,19 +69,19 @@ export default function MyPayStatementsPage() {
       </Card>
 
       {selected && (
-        <Card title={s ? `Period ${s.period_number}` : 'Statement'}>
+        <Card title={s ? s.display_label : 'Statement'}>
           {statement.isLoading && <TableSkeleton rows={4} />}
           {statement.isError && (
             <TableError message="Could not load this statement." onRetry={() => statement.refetch()} />
           )}
           {s && !s.is_finalized && (
             <Banner tone="info" title="Not finalized yet">
-              This period has not been finalized, so no amounts are frozen and nothing is owed for it yet.
+              This report has not been marked as paid, so no amounts are frozen and nothing is owed for it yet.
             </Banner>
           )}
           {s && s.is_finalized && s.lines.length === 0 && (
             <Banner tone="info" title="Statement not available yet">
-              This period was paid, but its statement lines have not been recorded. Your administrator can
+              This report was paid, but its statement lines have not been recorded. Your administrator can
               rebuild them from the frozen amounts. Please check back later.
             </Banner>
           )}

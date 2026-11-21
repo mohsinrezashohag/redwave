@@ -6,7 +6,7 @@
  * into the inline ExpenseForm. Tokens only.
  */
 import { useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Eye, Pencil, Trash2 } from 'lucide-react';
 import { Badge, Banner, Button, ConfirmDialog, useToast } from '../../../components/ui';
 import { useAuth } from '../../../auth/useAuth';
 import { useCan } from '../../../auth/useCan';
@@ -141,17 +141,17 @@ export function FolderItemRow({
               </dl>
               <div className={styles.actions}>
                 {!km && item.receipt_url && (
-                  <Button variant="secondary" size="sm" onClick={() => setViewingReceipt(true)}>
+                  <Button leftIcon={<Eye size={16} />} variant="secondary" size="sm" onClick={() => setViewingReceipt(true)}>
                     View receipt
                   </Button>
                 )}
                 {canEdit && (
-                  <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+                  <Button leftIcon={<Pencil size={16} />} variant="secondary" size="sm" onClick={() => setEditing(true)}>
                     Edit
                   </Button>
                 )}
                 {canDelete && (
-                  <Button variant="tertiary" size="sm" onClick={() => setConfirmDel(true)}>
+                  <Button leftIcon={<Trash2 size={16} />} variant="tertiary" size="sm" onClick={() => setConfirmDel(true)}>
                     Delete
                   </Button>
                 )}

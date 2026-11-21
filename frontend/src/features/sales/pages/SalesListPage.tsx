@@ -5,6 +5,7 @@
  * 2026-11-11: who/when/which sales; "only sales not exported before"); it needs sales:export. The "Enter sale" action is
  * gated by `sales:create` for convenience — the server still authorizes (CLAUDE §5). — SALE-001/007
  */
+import { Plus } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, PageHeader, saleStatusLabel } from '../../../components/ui';
@@ -90,8 +91,10 @@ export default function SalesListPage() {
     { header: 'Agent ID', value: (s) => s.rep_external_code ?? s.rep_code ?? '' },
     { header: 'Agent Name', value: (s) => s.rep_name ?? '' },
     { header: 'Customer', value: (s) => s.customer_name },
-    { header: 'Channel', value: (s) => clientCode(s.client_id) },
-    { header: 'Client', value: (s) => clientName(s.client_id) },
+    // The client code (VF / RF / CTI) everywhere; the full name only fits in CSV/Excel. "Channel" used to
+    // print the same code under a second name, which read as a different field. 2026-11-16
+    { header: 'Client', value: (s) => clientCode(s.client_id) },
+    { header: 'Client name', value: (s) => clientName(s.client_id), pdf: false },
     { header: 'Product', value: (s) => row(s).product_name },
     { header: 'Internet', value: (s) => yesNo(row(s).has_internet) },
     { header: 'TV', value: (s) => yesNo(row(s).has_tv) },
@@ -150,7 +153,7 @@ export default function SalesListPage() {
             />
             )}
             <Can permission="sales:create">
-              <Button variant="primary" onClick={() => navigate('/sales/new')}>
+              <Button leftIcon={<Plus size={16} />} variant="primary" onClick={() => navigate('/sales/new')}>
                 Enter sale
               </Button>
             </Can>

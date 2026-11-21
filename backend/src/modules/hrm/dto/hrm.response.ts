@@ -340,3 +340,27 @@ export class RepEquipmentResponse {
   @ApiProperty({ enum: EquipmentStatus })
   status!: EquipmentStatus;
 }
+
+/** A rep birthday in the coming days (2026-11-16). Month/day only: the birth year and age are never sent. */
+export class UpcomingBirthdayResponse {
+  @ApiProperty()
+  rep_id!: string;
+
+  @ApiProperty()
+  rep_code!: string;
+
+  @ApiProperty()
+  full_name!: string;
+
+  @ApiProperty({ example: '03-21', description: "Month and day of the birthday ('MM-DD'). Never the year." })
+  birthday!: string;
+
+  @ApiProperty({ example: '2026-11-20', description: 'The coming occurrence, this year or next (not the birth year).' })
+  next_date!: string;
+
+  @ApiProperty({ example: 4, description: '0 = today.' })
+  days_until!: number;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Latest HR headshot (short-lived URL), else null.' })
+  photo_url!: string | null;
+}

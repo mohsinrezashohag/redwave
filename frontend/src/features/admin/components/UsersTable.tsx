@@ -3,7 +3,7 @@
  * PATCH (immediate revoke; the record is kept — never a hard delete). Self-guardrail: you can't deactivate
  * your OWN account (the server has no self-protection, so the UI doesn't offer it). Tokens only.
  */
-import { KeyRound, Link2, LogOut, Mail, Pencil, ShieldOff, UserCheck, UserX } from 'lucide-react';
+import { Ban, KeyRound, Link2, LogOut, Mail, Pencil, ShieldOff, UserCheck, UserX } from 'lucide-react';
 import { useState } from 'react';
 import { Avatar, Badge, Banner, Button, Modal, Table, TBody, TD, TH, THead, TR, useToast, type MenuEntry, useConfirm } from '../../../components/ui';
 import { RowActions } from '../../../components/data/RowActions';
@@ -173,7 +173,7 @@ export function UsersTable({ users, onEdit }: { users: AdminUser[]; onEdit: (u: 
             <Button variant="secondary" onClick={() => setConfirm(null)}>
               Cancel
             </Button>
-            <Button variant="destructive" loading={update.isPending} onClick={() => confirm && setStatus(confirm, 'inactive')}>
+            <Button leftIcon={<Ban size={16} />} variant="destructive" loading={update.isPending} onClick={() => confirm && setStatus(confirm, 'inactive')}>
               Deactivate
             </Button>
           </>

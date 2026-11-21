@@ -12,6 +12,7 @@
  *   - sees the rest of their rep profile read-only below — rep code, status, dates, manager, DOB, masked SIN,
  *     equipment and their documents — which HR manages (MyRepProfileSection).
  */
+import { Save } from 'lucide-react';
 import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
@@ -176,7 +177,7 @@ function ProfileEditForm({ profile, rep }: { profile: AccountProfile; rep: MyRep
       )}
 
       <div className={styles.actions}>
-        <Button variant="primary" type="submit" loading={req.isPending}>
+        <Button leftIcon={<Save size={16} />} variant="primary" type="submit" loading={req.isPending}>
           {isSuperAdmin ? 'Save changes' : 'Submit for review'}
         </Button>
       </div>

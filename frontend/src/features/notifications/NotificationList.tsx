@@ -4,6 +4,7 @@
  * (resolveNotificationLink), closing the popover. A "Mark all read" action + a "View all" link to the
  * Notification Center. Loading/empty/error via DataState.
  */
+import { Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui';
 import { DataState } from '../../components/data/DataState';
@@ -73,7 +74,7 @@ export function NotificationList({ onClose }: { onClose: () => void }) {
         </DataState>
       </div>
       <div className={styles.footer}>
-        <Button
+        <Button leftIcon={<Eye size={16} />}
           variant="tertiary"
           size="sm"
           onClick={() => {

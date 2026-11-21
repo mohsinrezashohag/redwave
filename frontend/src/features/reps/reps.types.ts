@@ -49,3 +49,6 @@ export interface RepsListParams extends RepsFilters {
 /** What the document reader found — suggestions for HR to confirm (2026-11-12). */
 export type DocumentRead = components['schemas']['DocumentReadResponse'];
 export type IdCheck = components['schemas']['IdCheckResponse'];
+
+/** A rep birthday in the coming days (2026-11-16): month/day + the coming date only, never the birth year. */
+export type UpcomingBirthday = components['schemas']['UpcomingBirthdayResponse'];

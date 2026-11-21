@@ -8,6 +8,7 @@
  * greenfield / delete) stay with the record in SaleDetailView. `sales:create` is convenience gating; the
  * server is the real gate (CLAUDE §5).
  */
+import { ArrowLeft, Plus } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, PageHeader } from '../../../components/ui';
 import { Can } from '../../../auth/Can';
@@ -23,11 +24,11 @@ export default function SaleDetailPage() {
         title="Sale detail"
         actions={
           <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-            <Button variant="secondary" onClick={() => navigate('/sales')}>
+            <Button leftIcon={<ArrowLeft size={16} />} variant="secondary" onClick={() => navigate('/sales')}>
               Back to Sales
             </Button>
             <Can permission="sales:create">
-              <Button variant="primary" onClick={() => navigate('/sales/new')}>
+              <Button leftIcon={<Plus size={16} />} variant="primary" onClick={() => navigate('/sales/new')}>
                 Create New Sale
               </Button>
             </Can>

@@ -4,6 +4,7 @@
  * With hrm:edit the rows are selectable and a bulk "Assign manager" action reassigns the field manager.
  * Convenience gating only — the server is the real gate (§5).
  */
+import { UserCheck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import styles from './reps.module.css';
@@ -81,7 +82,7 @@ export function RepsTable({ filters }: { filters: RepsFilters }) {
         onToggleAll: toggleAll,
         allSelectableSelected: list.rows.length > 0 && selectedIds.size === list.rows.length,
         bulkActions: (
-          <Button variant="primary" size="sm" onClick={() => setAssignOpen(true)}>
+          <Button leftIcon={<UserCheck size={16} />} variant="primary" size="sm" onClick={() => setAssignOpen(true)}>
             Assign manager
           </Button>
         ),

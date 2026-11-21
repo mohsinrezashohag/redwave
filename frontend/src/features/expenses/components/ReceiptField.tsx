@@ -7,7 +7,7 @@
  * camera (accept image/* + capture). The "required" marker lives on the parent FormField. Tokens only.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Image as ImageIcon, FileText } from 'lucide-react';
+import { FileText, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { Button, FileUpload, type FileUploadState } from '../../../components/ui';
 import { prepareForUpload } from '../../../lib/files/compressImage';
 import { uploadStoredFile } from '../../../lib/files/uploadStoredFile';
@@ -62,7 +62,7 @@ export function ReceiptField({ value, onChange }: { value?: string; onChange: (v
           <FileText size={16} aria-hidden />
         )}
         <span className={styles.receiptRef}>{fileName ?? value}</span>
-        <Button
+        <Button leftIcon={<Trash2 size={16} />}
           variant="tertiary"
           size="sm"
           type="button"

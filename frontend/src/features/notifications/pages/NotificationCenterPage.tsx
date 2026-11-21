@@ -3,6 +3,7 @@
  * an unread/all filter + search, bulk-select → mark read / mark unread, and row click → deep-link + mark
  * read. Any authenticated user (own-scoped server-side). Reuses the Batch-1 DataTable + the notification hooks.
  */
+import { Check, CheckCheck, Mail, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Badge, Button, Input, PageHeader, SegmentedControl } from '../../../components/ui';
@@ -91,7 +92,7 @@ export default function NotificationCenterPage() {
         title="Notifications"
         subtitle="Your activity and approvals across the platform."
         actions={
-          <Button variant="secondary" onClick={() => markAll.mutate(undefined, { onError })} loading={markAll.isPending}>
+          <Button leftIcon={<CheckCheck size={16} />} variant="secondary" onClick={() => markAll.mutate(undefined, { onError })} loading={markAll.isPending}>
             Mark all read
           </Button>
         }
@@ -124,13 +125,13 @@ export default function NotificationCenterPage() {
         allSelectableSelected={allSelected}
         bulkActions={
           <>
-            <Button variant="secondary" size="sm" onClick={() => runBulk(true)} loading={bulkMark.isPending}>
+            <Button leftIcon={<Check size={16} />} variant="secondary" size="sm" onClick={() => runBulk(true)} loading={bulkMark.isPending}>
               Mark read
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => runBulk(false)} loading={bulkMark.isPending}>
+            <Button leftIcon={<Mail size={16} />} variant="secondary" size="sm" onClick={() => runBulk(false)} loading={bulkMark.isPending}>
               Mark unread
             </Button>
-            <Button variant="tertiary" size="sm" onClick={clear}>
+            <Button leftIcon={<X size={16} />} variant="tertiary" size="sm" onClick={clear}>
               Clear
             </Button>
           </>

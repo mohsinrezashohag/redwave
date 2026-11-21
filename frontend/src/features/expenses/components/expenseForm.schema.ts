@@ -85,7 +85,8 @@ export function makeExpenseSchema(configs: FieldConfig[]) {
       } else {
         const cfg = configFor(val.category);
         if (!val.amount || !MONEY.test(val.amount)) ctx.addIssue({ code: 'custom', path: ['amount'], message: 'Enter an amount' });
-        if (cfg?.requires_receipt && !val.receipt_url) ctx.addIssue({ code: 'custom', path: ['receipt_url'], message: 'Receipt required for this category' });
+        // Absent config = required (mirrors the server): only an explicit `false` relaxes the receipt.
+        if (cfg?.requires_receipt !== false && !val.receipt_url) ctx.addIssue({ code: 'custom', path: ['receipt_url'], message: 'Receipt required for this category' });
         // Absent config = required, so an unconfigured category never silently stops asking.
         if (cfg?.requires_description !== false && !val.description?.trim()) {
           ctx.addIssue({ code: 'custom', path: ['description'], message: 'Required' });

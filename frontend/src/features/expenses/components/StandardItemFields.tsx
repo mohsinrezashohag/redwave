@@ -61,7 +61,7 @@ export function StandardItemFields({
             error={fieldState.error?.message}
             help={
               requiresReceipt
-                ? 'Mandatory for this category.'
+                ? 'Receipt required. Attach a photo or PDF of the receipt.'
                 : 'Optional. Attach one if you have it. It’s fine if there isn’t one, such as a home-made meal or a vendor that doesn’t give receipts.'
             }
           >

@@ -3,6 +3,7 @@
  * logs that device out immediately (the server rejects any access token whose session is revoked). The
  * current device shows a badge and isn't revocable here (use Log out). — arch §security (sessions)
  */
+import { Ban } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, Card, ConfirmDialog, useToast } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
@@ -70,7 +71,7 @@ export function SessionsSection() {
                   {s.ip_address ?? 'IP unknown'} · last used {when(s.last_used_at)}
                 </div>
               </div>
-              <Button variant="tertiary" disabled={s.is_current} onClick={() => setTarget(s)}>
+              <Button leftIcon={<Ban size={16} />} variant="tertiary" disabled={s.is_current} onClick={() => setTarget(s)}>
                 Revoke
               </Button>
             </div>

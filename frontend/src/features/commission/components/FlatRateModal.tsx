@@ -3,6 +3,7 @@
  * type (internet, greenfield internet, TV, add-ons), optionally for ONE product of the chosen client. No tiers
  * since 2026-11-13: each item pays one rate. Money exact-decimal via MoneyInput. Tokens only.
  */
+import { Save } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -230,7 +231,7 @@ export function FlatRateModal({
               Cancel
             </Button>
           </ModalClose>
-          <Button variant="primary" type="submit" loading={create.isPending || update.isPending}>
+          <Button leftIcon={<Save size={16} />} variant="primary" type="submit" loading={create.isPending || update.isPending}>
             {isEdit ? 'Save changes' : 'Add rate'}
           </Button>
         </div>

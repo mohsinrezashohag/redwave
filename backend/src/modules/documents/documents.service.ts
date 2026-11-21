@@ -231,6 +231,20 @@ export class DocumentsService {
           ...(query.status ? [{ status: query.status }] : []),
           ...(query.doc_type ? [{ doc_type: query.doc_type }] : []),
           ...(query.pending_signatures ? [{ signature_requests: { some: { status: 'pending' as const } } }] : []),
+          // The caller's own "to sign" inbox: a PENDING signature of theirs inside a PENDING request. Row-level
+          // (being the asked signer, not a permission), so it is the caller's id even for an admin. — DOC-003
+          ...(query.awaiting_my_signature
+            ? [
+                {
+                  signature_requests: {
+                    some: {
+                      status: 'pending' as const,
+                      document_signatures: { some: { recipient_user_id: user.id, status: 'pending' as const } },
+                    },
+                  },
+                },
+              ]
+            : []),
         ],
       },
       orderBy: { created_at: 'desc' },

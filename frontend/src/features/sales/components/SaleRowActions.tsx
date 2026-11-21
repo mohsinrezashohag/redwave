@@ -1,18 +1,22 @@
 /**
  * SaleRowActions — the per-row action menu, gated by useCan + the sale's status (CONVENIENCE only —
- * the server still authorizes every call, CLAUDE §5). View (always), Validate (entered + sales:approve),
- * Delete (entered|validated + sales:delete, with a destructive confirm restating the consequence).
- * Shown as labelled icon buttons on every row (2026-11-13), before and after validation alike.
+ * the server still authorizes every call, CLAUDE §5). View (always), Edit (inside the 5-day window: an
+ * admin/manager with sales:edit edits, the selling rep requests an edit), Approve duplicate (a held possible
+ * duplicate + sales:approve), Validate (entered + sales:approve; disabled while a duplicate is held), Delete
+ * (entered|validated + sales:delete, with a destructive confirm restating the consequence).
  */
-import { CheckCircle2, Eye, Trash2 } from 'lucide-react';
+import { CheckCircle2, CopyCheck, Eye, Pencil, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Modal, ModalClose, useToast } from '../../../components/ui';
 import { RowActions } from '../../../components/data/RowActions';
+import type { MenuEntry } from '../../../components/ui/DropdownMenu';
 import { useCan } from '../../../auth/useCan';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useDeleteSale, useValidateSale } from '../api/useSaleMutations';
+import { useApproveDuplicate } from '../api/useSaleEdits';
 import type { Sale } from '../sales.types';
+import { isHeldDuplicate, useCanEditSale } from '../saleGates';
 
 export function SaleRowActions({ sale }: { sale: Sale }) {
   const navigate = useNavigate();
@@ -20,12 +24,16 @@ export function SaleRowActions({ sale }: { sale: Sale }) {
   const onError = useApiErrorToast();
   const validate = useValidateSale();
   const remove = useDeleteSale();
+  const approveDup = useApproveDuplicate();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Call hooks unconditionally, then combine with status (rules-of-hooks). Gating is convenience only.
   const canApprove = useCan('sales:approve');
   const canDeletePerm = useCan('sales:delete');
+  const { canEdit, asRequest } = useCanEditSale(sale);
+  const held = isHeldDuplicate(sale);
   const canValidate = sale.status === 'entered' && canApprove;
+  const canApproveDup = held && canApprove && sale.status !== 'deleted';
   const canDelete = (sale.status === 'entered' || sale.status === 'validated') && canDeletePerm;
 
   const doValidate = () =>
@@ -37,6 +45,13 @@ export function SaleRowActions({ sale }: { sale: Sale }) {
       },
     );
 
+  const doApproveDup = () =>
+    approveDup.mutate(sale.id, {
+      onSuccess: () =>
+        toast({ title: 'Duplicate approved', description: `${sale.sale_code} can now be validated.`, tone: 'success' }),
+      onError,
+    });
+
   const doDelete = () =>
     remove.mutate(sale.id, {
       onSuccess: () => {
@@ -46,19 +61,31 @@ export function SaleRowActions({ sale }: { sale: Sale }) {
       onError,
     });
 
+  const items: MenuEntry[] = [
+    { label: 'View', icon: <Eye size={15} />, onSelect: () => navigate(`/sales/${sale.id}`) },
+    ...(canEdit
+      ? [{ label: asRequest ? 'Request edit' : 'Edit', icon: <Pencil size={15} />, onSelect: () => navigate(`/sales/${sale.id}/edit`) }]
+      : []),
+    ...(canApproveDup ? [{ label: 'Approve duplicate', icon: <CopyCheck size={15} />, onSelect: doApproveDup }] : []),
+    ...(canValidate
+      ? [
+          {
+            // The label doubles as the tooltip, so a held duplicate says why Validate is unavailable.
+            label: held ? 'Validate (approve the duplicate first)' : 'Validate',
+            icon: <CheckCircle2 size={15} />,
+            disabled: held,
+            onSelect: doValidate,
+          },
+        ]
+      : []),
+    ...(canDelete
+      ? ['separator' as const, { label: 'Delete', icon: <Trash2 size={15} />, danger: true, onSelect: () => setConfirmDelete(true) }]
+      : []),
+  ];
+
   return (
     <>
-      <RowActions
-        label="Row actions"
-        iconOnly
-        items={[
-          { label: 'View', icon: <Eye size={15} />, onSelect: () => navigate(`/sales/${sale.id}`) },
-          ...(canValidate ? [{ label: 'Validate', icon: <CheckCircle2 size={15} />, onSelect: doValidate }] : []),
-          ...(canDelete
-            ? ['separator' as const, { label: 'Delete', icon: <Trash2 size={15} />, danger: true, onSelect: () => setConfirmDelete(true) }]
-            : []),
-        ]}
-      />
+      <RowActions label="Row actions" iconOnly items={items} />
 
       <Modal
         open={confirmDelete}
@@ -70,7 +97,7 @@ export function SaleRowActions({ sale }: { sale: Sale }) {
             <ModalClose asChild>
               <Button variant="secondary">Cancel</Button>
             </ModalClose>
-            <Button variant="destructive" loading={remove.isPending} onClick={doDelete}>
+            <Button leftIcon={<Trash2 size={16} />} variant="destructive" loading={remove.isPending} onClick={doDelete}>
               Delete sale
             </Button>
           </>

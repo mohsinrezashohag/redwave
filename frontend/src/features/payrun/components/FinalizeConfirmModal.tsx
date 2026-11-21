@@ -1,21 +1,24 @@
 /**
- * FinalizeConfirmModal — the deliberate, explained COMMIT. Finalizing is the money action: it's atomic +
- * idempotent SERVER-side (#8); this modal makes the user confirm and spells out exactly what it does. The
- * primary button is disabled while the call is in flight to prevent a double-submit; on success the run
- * becomes finalized + locked (the caller stops offering finalize — re-finalize is a backend no-op anyway).
- * payrun:approve-gated in the UI; the server is the real gate (§5).
+ * FinalizeConfirmModal — "Mark as paid", the deliberate COMMIT of a commission report. It is the existing
+ * finalize: atomic + idempotent SERVER-side (#8). It freezes each item's rep rate (#2), moves the sales from
+ * validated to paid and writes the payroll lines. Built on ConfirmDialog with `requireTyped` (an irreversible
+ * money action), and the confirm is disabled while the call is in flight. payrun:approve-gated in the UI;
+ * the server is the real gate (§5). No clawback is deducted since 2026-11-16.
  */
-import { Banner, Button, Modal, useToast } from '../../../components/ui';
+import { ConfirmDialog, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useFinalizeRun } from '../api/usePayRunMutations';
+import { MARK_PAID_PHRASE } from '../report.logic';
 import styles from './payrun.module.css';
 
 export function FinalizeConfirmModal({
   runId,
+  label,
   open,
   onClose,
 }: {
   runId: string;
+  label: string;
   open: boolean;
   onClose: () => void;
 }) {
@@ -24,39 +27,38 @@ export function FinalizeConfirmModal({
   const finalize = useFinalizeRun();
 
   const onConfirm = () => {
+    if (finalize.isPending) return;
     finalize.mutate(runId, {
-      onSuccess: () => { toast({ title: 'Pay run finalized', tone: 'success' }); onClose(); },
+      onSuccess: () => {
+        toast({ title: 'Report marked as paid', description: label, tone: 'success' });
+        onClose();
+      },
       onError,
     });
   };
 
   return (
-    <Modal
+    <ConfirmDialog
       open={open}
       onOpenChange={(o) => !o && !finalize.isPending && onClose()}
-      title="Finalize pay run"
-      footer={
-        <div className={styles.footer}>
-          <Button variant="secondary" type="button" onClick={onClose} disabled={finalize.isPending}>
-            Cancel
-          </Button>
-          <Button variant="primary" type="button" onClick={onConfirm} loading={finalize.isPending} disabled={finalize.isPending}>
-            Finalize pay run
-          </Button>
-        </div>
-      }
+      title="Mark this report as paid?"
+      description="This freezes the rates and cannot be undone."
+      confirmLabel="Mark as paid"
+      destructive={false}
+      requireTyped={MARK_PAID_PHRASE}
+      loading={finalize.isPending}
+      onConfirm={onConfirm}
     >
-      <Banner tone="warning" title="This is the commit point and cannot be undone.">
-        Finalizing runs once, atomically. On success the run is locked and read-only.
-      </Banner>
-      <p className={styles.note}>Finalizing will:</p>
+      <p className={styles.note}>Marking as paid will:</p>
       <ul className={styles.finalizeList}>
-        <li>freeze each sale&rsquo;s rep rate and amount (they can’t change afterwards);</li>
-        <li>mark this period&rsquo;s sales <strong>Paid</strong>;</li>
-        <li>pay each rep&rsquo;s commission in full (nothing is held back);</li>
-        <li>apply approved expenses and pending clawbacks;</li>
-        <li>compose each rep&rsquo;s net payout.</li>
+        <li>freeze each sale item&rsquo;s rep rate and amount, so they can never change afterwards;</li>
+        <li>move every sale in this report from Validated to <strong>Paid</strong>;</li>
+        <li>record each rep&rsquo;s commission, approved expenses and bonus as paid in full.</li>
       </ul>
-    </Modal>
+      <p className={styles.note}>
+        A sale paid by another report in the meantime is never paid twice. If that happens you will be asked to
+        refresh this report first.
+      </p>
+    </ConfirmDialog>
   );
 }

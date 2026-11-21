@@ -28,4 +28,20 @@ export class ExpensePayrunProvider implements ExpenseTotalProvider {
       new Decimal(0),
     );
   }
+
+  /**
+   * Same sum for a date-range commission report (client decision 2026-11-16): the items whose OWN
+   * expense_date falls in [from, to] inclusive. Pay Run passes only the days no earlier finalized run for
+   * this rep covered, so an item is reimbursed once.
+   */
+  async getApprovedExpenseTotalForRange(repId: string, from: Date, to: Date): Promise<Decimal> {
+    const items = await this.prisma.expenseItem.findMany({
+      where: { rep_id: repId, expense_date: { gte: from, lte: to }, status: 'approved', is_personal: false },
+      select: { amount_cad: true },
+    });
+    return items.reduce(
+      (sum, i) => sum.plus(i.amount_cad ? new Decimal(i.amount_cad.toString()) : new Decimal(0)),
+      new Decimal(0),
+    );
+  }
 }

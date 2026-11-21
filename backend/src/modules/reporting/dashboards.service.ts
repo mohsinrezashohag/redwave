@@ -22,6 +22,13 @@ import { BusinessTrendsQuery } from './dto/business-trends.dto';
 const CONFIRMED: SaleStatus[] = ['validated', 'in_pay_run', 'paid'];
 const dec = (v: { toString(): string } | null | undefined): Decimal => new Decimal((v ?? 0).toString());
 const money = (v: { toString(): string } | null | undefined): string => dec(v).toFixed(2);
+/**
+ * The pay runs that count toward a pay period's money: a legacy run of that period, or a date-range commission
+ * report (2026-11-16, no pay period) whose last sale date falls in it. One report, one period.
+ */
+const payRunInPeriod = (p: { id: string; start_date: Date; end_date: Date }): Prisma.PayRunWhereInput => ({
+  OR: [{ pay_period_id: p.id }, { pay_period_id: null, date_to: { gte: p.start_date, lte: p.end_date } }],
+});
 const isAdmin = (u: AuthUser): boolean => u.isSuperAdmin || u.roleNames.includes(BUILTIN_ROLES.ADMIN);
 
 @Injectable()
@@ -56,7 +63,7 @@ export class DashboardsService {
     });
 
     const commission = await this.prisma.payRunLine.aggregate({
-      where: { rep_id: repId, ...(period ? { pay_run: { pay_period_id: period.id } } : {}) },
+      where: { rep_id: repId, ...(period ? { pay_run: payRunInPeriod(period) } : {}) },
       _sum: { commission: true, net_payout: true, incentive_total: true },
     });
     const recentClawbacks = await this.prisma.clawback.findMany({
@@ -114,7 +121,7 @@ export class DashboardsService {
     };
 
     const canSeeMoney = user.permissions.has('hrm:edit'); // per-rep payout/money-ranking gate (Q3)
-    const payRunLineWhere = { ...(repFilter ? { rep_id: repFilter } : {}), ...(period ? { pay_run: { pay_period_id: period.id } } : {}) };
+    const payRunLineWhere = { ...(repFilter ? { rep_id: repFilter } : {}), ...(period ? { pay_run: payRunInPeriod(period) } : {}) };
 
     const [teamInternet, pendingValidations, pendingExpenseApprovals, perRep, rosterPayout, rosterReps, rosterItems, targetRows, pendingProfile] =
       await Promise.all([
@@ -201,7 +208,7 @@ export class DashboardsService {
       // amount_cad, #12). — Meeting 3
       this.prisma.clientStatement.aggregate({ where: stmtIn(period), _sum: { amount_cad: true } }),
       this.prisma.payRunLine.aggregate({
-        where: period ? { pay_run: { pay_period_id: period.id } } : {},
+        where: period ? { pay_run: payRunInPeriod(period) } : {},
         _sum: { net_payout: true, commission: true },
       }),
       this.prisma.clawback.aggregate({
@@ -372,7 +379,10 @@ export class DashboardsService {
         },
         select: { pay_period_id: true, client_id: true, amount_cad: true, billing_period: { select: { start_date: true } } },
       }),
-      this.prisma.payRunLine.findMany({ where: { pay_run: { pay_period_id: { in: periodIds } } }, select: { net_payout: true, pay_run: { select: { pay_period_id: true } } } }),
+      this.prisma.payRunLine.findMany({
+        where: { pay_run: { OR: [{ pay_period_id: { in: periodIds } }, { pay_period_id: null, date_to: { gte: minStart, lte: maxEnd } }] } },
+        select: { net_payout: true, pay_run: { select: { pay_period_id: true, date_to: true } } },
+      }),
       this.prisma.clawback.findMany({ where: { applied_in_pay_run: { pay_period_id: { in: periodIds } } }, select: { amount: true, applied_in_pay_run: { select: { pay_period_id: true } } } }),
       this.prisma.client.findMany({ select: { id: true, client_code: true } }),
       this.prisma.saleItem.findMany({
@@ -403,7 +413,9 @@ export class DashboardsService {
       revByPeriodClient.set(periodId, m);
     }
     for (const l of lines) {
-      const acc = perPeriod.get(l.pay_run.pay_period_id);
+      // A date-range report (2026-11-16) has no pay period: it counts in the period holding its last sale date.
+      const pid = l.pay_run.pay_period_id ?? (l.pay_run.date_to ? periodOf(l.pay_run.date_to)?.id : undefined);
+      const acc = pid ? perPeriod.get(pid) : undefined;
       if (acc) acc.payout = acc.payout.plus(dec(l.net_payout));
     }
     for (const c of claws) {

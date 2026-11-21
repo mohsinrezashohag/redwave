@@ -3,6 +3,7 @@
  * string; the SERVER recomputes the line's net (the UI never does money math, #1/#5). Editable only while
  * the run is a draft; the server is the real gate (§5). Prefills the line's current bonus for editing.
  */
+import { Save } from 'lucide-react';
 import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -63,7 +64,7 @@ export function BonusModal({ runId, line, onClose }: { runId: string; line: PayR
                 Cancel
               </Button>
             </ModalClose>
-            <Button variant="primary" type="submit" loading={setBonus.isPending}>
+            <Button leftIcon={<Save size={16} />} variant="primary" type="submit" loading={setBonus.isPending}>
               Save bonus
             </Button>
           </div>

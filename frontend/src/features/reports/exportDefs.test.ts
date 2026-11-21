@@ -76,8 +76,8 @@ describe('column defs — string cells; the leaderboard carries NO money', () =>
   it('leaderboard columns are counts/names only', () => {
     const headers = leaderboardColumns.map((c) => c.header.toLowerCase());
     expect(headers.some((h) => /payout|commission|amount|\$|money/.test(h))).toBe(false);
-    const row = { rank: 1, rep_id: 'r1', rep_code: 'RW-D-001', rep_name: 'Rep One', photo_url: null, activation_count: 20 };
-    expect(leaderboardColumns.map((c) => c.value(row))).toEqual(['1', 'RW-D-001', 'Rep One', '20']);
+    const row = { rank: 1, rep_id: 'r1', rep_code: 'RW-D-001', rep_name: 'Rep One', photo_url: null, activation_count: 20, approved_count: 20, pending_count: 3 };
+    expect(leaderboardColumns.map((c) => c.value(row))).toEqual(['1', 'RW-D-001', 'Rep One', '20', '3']);
   });
 
   it('pay-run columns render the server-computed components as display money', () => {
@@ -89,8 +89,9 @@ describe('column defs — string cells; the leaderboard carries NO money', () =>
       clawback_total: '30.00', net_payout: '3425.00',
     } as Parameters<(typeof payrunColumns)[0]['value']>[0];
     expect(payrunColumns.map((c) => c.header)).not.toContain('Holdback released');
+    expect(payrunColumns.map((c) => c.header)).not.toContain('Clawbacks');
     expect(payrunColumns.map((c) => c.value(line))).toEqual([
-      'RW-D-001', 'Rep One', '$2,317.00', '$45.00', '$0.00', '$100.00', '$30.00', '$3,425.00',
+      'RW-D-001', 'Rep One', '$2,317.00', '$45.00', '$0.00', '$100.00', '$3,425.00',
     ]);
   });
 

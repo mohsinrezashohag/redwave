@@ -1,7 +1,8 @@
 /**
  * PayRunLinesTable — the REVIEW surface: one row per rep with the server-computed components and the net.
  * Money is right-aligned tabular-mono (TD numeric); the net uses NetPayoutCell (negative shown clearly).
- * A row's "details" opens the per-rep breakdown drawer. The footer totals are a DISPLAY sum (sumMoney —
+ * A row's "View sales" opens the per-rep drawer (net breakdown + the per-sale drill-down). Clawbacks are
+ * hidden since 2026-11-16 (no deduction is applied), so there is no clawback column. The footer totals are a DISPLAY sum (sumMoney —
  * integer cents, no float #1), never a recomputation. The UI computes no money (#1/#5).
  * No tiers and no 70/30 since 2026-11-13: "Commission" is paid in full. Row actions are labelled icons.
  */
@@ -25,7 +26,7 @@ interface Props {
 export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBonus }: Props) {
   const total = (pick: (l: PayRunLine) => string) => sumMoney(lines.map(pick));
   const rowMenu = (l: PayRunLine): MenuEntry[] => {
-    const items: MenuEntry[] = [{ label: 'View breakdown', icon: <Search size={15} />, onSelect: () => onSelect(l) }];
+    const items: MenuEntry[] = [{ label: 'View sales', icon: <Search size={15} />, onSelect: () => onSelect(l) }];
     if (onStatement) {
       items.push({ label: 'Pay statement', icon: <FileText size={15} />, onSelect: () => onStatement(l) });
     }
@@ -41,7 +42,6 @@ export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBon
           <TH align="right">Incentives</TH>
           <TH align="right">Expenses</TH>
           <TH align="right">Bonus</TH>
-          <TH align="right">Clawback</TH>
           <TH align="right">Net payout</TH>
           <TH align="right" aria-label="Details" />
         </TR>
@@ -56,7 +56,6 @@ export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBon
             <TD numeric>{money(l.incentive_total)}</TD>
             <TD numeric>{money(l.expense_total)}</TD>
             <TD numeric>{money(l.bonus_amount)}</TD>
-            <TD numeric>{money(l.clawback_total)}</TD>
             <TD numeric>
               <NetPayoutCell value={l.net_payout} />
             </TD>
@@ -74,7 +73,6 @@ export function PayRunLinesTable({ lines, onSelect, onBonus, onStatement, canBon
             <TD numeric>{money(total((l) => l.incentive_total))}</TD>
             <TD numeric>{money(total((l) => l.expense_total))}</TD>
             <TD numeric>{money(total((l) => l.bonus_amount))}</TD>
-            <TD numeric>{money(total((l) => l.clawback_total))}</TD>
             <TD numeric>
               <NetPayoutCell value={total((l) => l.net_payout)} />
             </TD>

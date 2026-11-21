@@ -3,7 +3,7 @@
  * by status, and create/edit/end. Reuses the playbook (Table + DataState + Modal). The scope client name
  * comes from a clients reference read (gated clients:view), not a rate-stream join (#3). Tokens only.
  */
-import { Pencil, Square, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Square, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, Card, ConfirmDialog, Select, Table, TBody, TD, TH, THead, TR, useToast, type MenuEntry, useConfirm } from '../../../components/ui';
 import { RowActions } from '../../../components/data/RowActions';
@@ -93,7 +93,7 @@ export function IncentivesSection() {
       actions={
         <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
           <Select options={STATUS_OPTIONS} value={status} onValueChange={(v) => setStatus(v as IncentiveStatus | 'all')} aria-label="Status filter" />
-          {canEdit && <Button variant="secondary" size="sm" onClick={() => setModal({ mode: 'create' })}>New incentive</Button>}
+          {canEdit && <Button leftIcon={<Plus size={16} />} variant="secondary" size="sm" onClick={() => setModal({ mode: 'create' })}>New incentive</Button>}
         </div>
       }
     >

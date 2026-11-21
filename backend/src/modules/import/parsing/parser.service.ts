@@ -248,3 +248,27 @@ function cellValue(value: ExcelJS.CellValue): unknown {
   }
   return value;
 }
+
+/** A totals footer: "Total", "Totals", "Grand total", "Sub-total", optionally with a trailing colon. */
+const SUMMARY_LABEL = /^(grand\s*|sub[\s-]?)?totals?\s*:?$/i;
+
+const isBlank = (v: unknown): boolean => v === null || v === undefined || String(v).trim() === '';
+
+/**
+ * Drop the rows that carry no data for this import (2026-11-16). PURE.
+ *  - A row is EMPTY when every column the active mapping uses is blank, even if an unmapped column (a notes
+ *    or helper column) has something in it.
+ *  - A SUMMARY row is one whose first used non-blank cell reads "Total" / "Totals" / "Grand total".
+ * `usedHeaders` are the source headers the mapping points at. With none given, every column counts.
+ */
+export function dropUnusedRows(rows: RawRow[], usedHeaders: string[]): RawRow[] {
+  const used = usedHeaders.length > 0 ? new Set(usedHeaders) : null;
+  return rows.filter((row) => {
+    const cells = Object.entries(row)
+      .filter(([header]) => !used || used.has(header))
+      .map(([, value]) => value);
+    const first = cells.find((v) => !isBlank(v));
+    if (first === undefined) return false; // nothing in any used column
+    return !(typeof first === 'string' && SUMMARY_LABEL.test(first.trim()));
+  });
+}

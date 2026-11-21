@@ -13,7 +13,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, CheckCircle2, SkipForward } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, RefreshCw, SkipForward } from 'lucide-react';
 import { Banner, Button, FormField, Modal, Select, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { displayDate } from '../../../lib/format/date';
@@ -85,12 +85,12 @@ export function BulkGenerateModal({ open, onClose, periods, presetPeriodId }: Pr
             {result ? 'Close' : 'Cancel'}
           </Button>
           {!result && (
-            <Button variant="primary" type="button" onClick={run} disabled={!periodId} loading={mut.isPending}>
+            <Button leftIcon={<Download size={16} />} variant="primary" type="button" onClick={run} disabled={!periodId} loading={mut.isPending}>
               Generate all
             </Button>
           )}
           {result && result.failed.length > 0 && (
-            <Button variant="primary" type="button" onClick={() => setResult(null)}>
+            <Button leftIcon={<RefreshCw size={16} />} variant="primary" type="button" onClick={() => setResult(null)}>
               Run again
             </Button>
           )}
@@ -136,7 +136,7 @@ export function BulkGenerateModal({ open, onClose, periods, presetPeriodId }: Pr
                 <ul className={styles.bulkList}>
                   {result.generated.map((g) => (
                     <li key={g.client_id}>
-                      <Link to={`/billing/${g.statement_id}`}>{statementNo(g.statement_number)}</Link> ({g.client_code})
+                      <Link to={`/billing/statements/${g.statement_id}`}>{statementNo(g.statement_number)}</Link> ({g.client_code})
                     </li>
                   ))}
                 </ul>

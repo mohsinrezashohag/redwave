@@ -20,7 +20,9 @@ const user = (id: string): AuthUser => ({
   repId: null,
 });
 
-function make(opts: { scope?: { level: 'all' | 'self' | 'roster'; repIds: string[] }; count?: number; rows?: unknown[] } = {}) {
+function make(
+  opts: { scope?: { level: 'all' | 'self' | 'roster'; repIds: string[] }; count?: number; rows?: unknown[]; clawbacks?: unknown[] } = {},
+) {
   const tx = {
     reportExport: { create: jest.fn().mockResolvedValue({ id: 'exp-1', generated_at: new Date(0), only_new: false, format: 'excel' }) },
     reportExportSale: { createMany: jest.fn() },
@@ -34,6 +36,7 @@ function make(opts: { scope?: { level: 'all' | 'self' | 'roster'; repIds: string
       ]),
     },
     payPeriod: { findMany: jest.fn().mockResolvedValue([]) },
+    clawback: { groupBy: jest.fn().mockResolvedValue(opts.clawbacks ?? []) },
     reportExport: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     $transaction: jest.fn().mockImplementation(async (fn: (t: typeof tx) => unknown) => fn(tx)),
   };
@@ -154,5 +157,14 @@ describe('export — deleted sales and rates in force (2026-11-15)', () => {
     // one config load per sale DATE, not per sale
     expect(provider.getEngineConfig).toHaveBeenCalledTimes(1);
     expect(tx.reportExportSale.createMany).toHaveBeenCalled();
+  });
+
+  it('shows what clawbacks recovered from each sale', async () => {
+    const { service } = make({ clawbacks: [{ sale_id: 's1', _sum: { amount: '30' } }] });
+    const res = await service.exportSales({ format: 'csv', filename: 'f' }, user('sa'));
+    expect((res.rows as Array<{ id: string; clawback_total: string | null }>).map((r) => [r.id, r.clawback_total])).toEqual([
+      ['s1', '30.00'],
+      ['s2', null],
+    ]);
   });
 });

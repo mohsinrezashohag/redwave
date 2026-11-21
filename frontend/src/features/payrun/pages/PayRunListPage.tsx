@@ -1,83 +1,173 @@
 /**
- * PayRunListPage — /pay-runs. The pay-period schedule with each period's run state, the entry point to the
- * draft→review→finalize→export workflow. The UI computes no money; drafting is a backend call that returns
- * the computed run, then we route to the workspace. `payrun:view` to see; `payrun:create` to draft. 403 →
- * AccessDenied; the server is the real gate (§5).
+ * PayRunListPage — /pay-runs, "Commission reports". Client decision 2026-11-16: pay runs are no longer fixed
+ * periods. The admin picks a sale-date range (optionally one client and/or one rep), generates a DRAFT report
+ * and is routed to it. Below, the server-paginated history of every report: legacy pay-period runs and range
+ * reports alike, each named by the server's `display_label`.
+ *
+ * The UI computes no money. `payrun:view` to see; `payrun:create` to generate. 403 → AccessDenied; the
+ * server is the real gate (§5).
  */
-import { useMemo, useState } from 'react';
+import { Eye } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageHeader } from '../../../components/ui';
+import { Button, Input, PageHeader, Select } from '../../../components/ui';
+import { DataTable, type DataColumn } from '../../../components/data/DataTable';
 import { useCan } from '../../../auth/useCan';
-import { DataState } from '../../../components/data/DataState';
-import { isForbidden, useApiErrorToast } from '../../../lib/api/apiError';
+import { useApiErrorToast } from '../../../lib/api/apiError';
+import { displayDate } from '../../../lib/format/date';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
-import { PeriodsTable, type PeriodRow } from '../components/PeriodsTable';
-import { usePayPeriods, usePayRuns } from '../api/usePayRun';
+import { NewReportForm } from '../components/NewReportForm';
+import { PayRunStatusBadge } from '../components/PayRunStatusBadge';
+import { usePayRunsTable, useReportClients, useReportReps, type PayRunSortKey } from '../api/usePayRun';
 import { useDraftRun } from '../api/usePayRunMutations';
-import type { PayRunSummary } from '../payrun.types';
+import { ALL, fromSentinel, scopeLabel, toCreateBody, type NewReportValues } from '../report.logic';
+import type { PayRunFilters, PayRunKind, PayRunStatus, PayRunSummary } from '../payrun.types';
 import styles from '../components/payrun.module.css';
+
+const STATUS_OPTIONS = [
+  { value: ALL, label: 'Any status' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'finalized', label: 'Paid' },
+  { value: 'exported', label: 'Paid and exported' },
+];
+
+const KIND_OPTIONS = [
+  { value: ALL, label: 'All reports' },
+  { value: 'range', label: 'Date-range reports' },
+  { value: 'period', label: 'Pay periods (before Nov 2026)' },
+];
 
 export default function PayRunListPage() {
   const canView = useCan('payrun:view');
   const canCreate = useCan('payrun:create');
   const navigate = useNavigate();
   const onError = useApiErrorToast();
-
-  const periodsQ = usePayPeriods(canView);
-  const runsQ = usePayRuns(canView);
   const draft = useDraftRun();
-  const [draftingPeriodId, setDraftingPeriodId] = useState<string | null>(null);
+  const clients = useReportClients(canView);
+  const reps = useReportReps(canView);
 
-  // Join each period with its latest run (runs come created_at-desc → first match is newest). Newest period first.
-  const rows = useMemo<PeriodRow[]>(() => {
-    const latest = new Map<string, PayRunSummary>();
-    for (const run of runsQ.data ?? []) {
-      if (!latest.has(run.pay_period_id)) latest.set(run.pay_period_id, run);
-    }
-    return (periodsQ.data ?? [])
-      .map((period) => ({ period, run: latest.get(period.id) ?? null }))
-      .sort((a, b) => b.period.period_number - a.period.period_number);
-  }, [periodsQ.data, runsQ.data]);
+  const [status, setStatus] = useState(ALL);
+  const [kind, setKind] = useState(ALL);
+  const [clientId, setClientId] = useState(ALL);
+  const [repId, setRepId] = useState(ALL);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  // Server-side search, committed after the user pauses typing.
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  if (!canView || isForbidden(periodsQ.error) || isForbidden(runsQ.error)) {
-    return <AccessDenied message="Viewing pay runs requires the pay-run view permission." />;
+  const filters = useMemo<PayRunFilters>(
+    () => ({
+      status: fromSentinel(status) as PayRunStatus | undefined,
+      kind: fromSentinel(kind) as PayRunKind | undefined,
+      client_id: fromSentinel(clientId),
+      rep_id: fromSentinel(repId),
+      search: search.trim() || undefined,
+    }),
+    [status, kind, clientId, repId, search],
+  );
+  const table = usePayRunsTable(filters, canView);
+
+  if (!canView) {
+    return <AccessDenied message="Viewing commission reports requires the pay-run view permission." />;
   }
 
-  const onDraft = (periodId: string) => {
-    setDraftingPeriodId(periodId);
-    draft.mutate(
-      { pay_period_id: periodId },
-      {
-        onSuccess: (run) => navigate(`/pay-runs/${run.id}`),
-        onError: (err) => {
-          setDraftingPeriodId(null);
-          onError(err);
-        },
-      },
-    );
-  };
+  const onGenerate = (values: NewReportValues) =>
+    draft.mutate(toCreateBody(values), {
+      onSuccess: (run) => navigate(`/pay-runs/${run.id}`),
+      onError,
+    });
 
-  const isLoading = periodsQ.isLoading || runsQ.isLoading;
-  const isError = periodsQ.isError || runsQ.isError;
+  const columns: DataColumn<PayRunSummary, PayRunSortKey>[] = [
+    {
+      id: 'report',
+      header: 'Report',
+      render: (r) => (
+        <button type="button" className={styles.linkButton} onClick={() => navigate(`/pay-runs/${r.id}`)}>
+          {r.display_label}
+        </button>
+      ),
+    },
+    {
+      id: 'covers',
+      header: 'Sale dates',
+      sortKey: 'date_from',
+      render: (r) => (
+        <span className={styles.nowrap}>
+          {displayDate(r.window_start)} to {displayDate(r.window_end)}
+        </span>
+      ),
+    },
+    { id: 'scope', header: 'Covers', render: (r) => scopeLabel(r) },
+    { id: 'status', header: 'Status', sortKey: 'status', render: (r) => <PayRunStatusBadge status={r.status} /> },
+    {
+      id: 'created',
+      header: 'Generated',
+      sortKey: 'created_at',
+      align: 'right',
+      render: (r) => <span className="mono">{displayDate(r.run_date)}</span>,
+    },
+  ];
+
+  const clientOptions = [
+    { value: ALL, label: 'All clients' },
+    ...(clients.data ?? []).map((c) => ({ value: c.id, label: c.name })),
+  ];
+  const repOptions = [
+    { value: ALL, label: 'All reps' },
+    ...(reps.data ?? []).map((r) => ({ value: r.id, label: r.name })),
+  ];
 
   return (
     <div className={styles.page}>
       <PageHeader
-        title="Pay Run"
-        subtitle="Draft, review, and finalize bi-weekly pay. Every amount is computed by the engine and the pay-run service. This screen is for reviewing and finalizing."
+        title="Commission reports"
+        subtitle="Pick a sale-date range, review what each rep earned, then mark the report as paid. Every amount is calculated by the server."
       />
-      <DataState
-        isLoading={isLoading}
-        isError={isError}
-        isEmpty={rows.length === 0}
-        onRetry={() => {
-          periodsQ.refetch();
-          runsQ.refetch();
-        }}
-        emptyNode={<p className="mono">No pay periods are loaded.</p>}
-      >
-        <PeriodsTable rows={rows} canCreate={canCreate} draftingPeriodId={draftingPeriodId} onOpen={(id) => navigate(`/pay-runs/${id}`)} onDraft={onDraft} />
-      </DataState>
+
+      {canCreate && <NewReportForm submitting={draft.isPending} onGenerate={onGenerate} />}
+
+      <section className={styles.history} aria-label="Report history">
+        <h2 className={styles.sectionTitle}>History</h2>
+        <div className={styles.filters}>
+          <Input
+            type="search"
+            placeholder="Search by name"
+            aria-label="Search reports by name"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          />
+          <Select options={STATUS_OPTIONS} value={status} onValueChange={setStatus} aria-label="Status filter" />
+          <Select options={KIND_OPTIONS} value={kind} onValueChange={setKind} aria-label="Report type filter" />
+          <Select options={clientOptions} value={clientId} onValueChange={setClientId} aria-label="Client filter" />
+          <Select options={repOptions} value={repId} onValueChange={setRepId} aria-label="Rep filter" />
+        </div>
+        <DataTable
+          columns={columns}
+          rows={table.rows}
+          getRowId={(r) => r.id}
+          sort={table.sort}
+          onSortChange={table.toggleSort}
+          page={table.page}
+          pageCount={table.pageCount}
+          total={table.total}
+          limit={table.limit}
+          onPageChange={table.setPage}
+          isLoading={table.isLoading}
+          isError={table.isError}
+          error={table.error}
+          onRetry={() => table.refetch()}
+          forbiddenMessage="Viewing commission reports requires the pay-run view permission."
+          emptyNode={<p className={styles.note}>No reports match these filters.</p>}
+          rowActions={(r) => (
+            <Button leftIcon={<Eye size={16} />} variant="secondary" size="sm" onClick={() => navigate(`/pay-runs/${r.id}`)}>
+              {r.status === 'draft' ? 'Open draft' : 'View'}
+            </Button>
+          )}
+        />
+      </section>
     </div>
   );
 }

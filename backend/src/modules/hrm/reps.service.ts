@@ -36,6 +36,7 @@ import { AuthUser } from '../../common/rbac/auth-user.type';
 import { permissionKey } from '../../common/rbac/permissions.util';
 import { BUILTIN_ROLES } from '../../common/rbac/rbac.constants';
 import { buildPage, resolveOrderBy, toSkipTake } from '../../common/pagination/paginate';
+import { ClashingRep, codeClashMessage, loginClashMessage, sortByRepCode } from './rep-code.logic';
 import {
   BulkAssignManagerDto,
   CreateRepDto,
@@ -157,6 +158,20 @@ function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
+/** The DB backstop's message, naming the column the unique constraint fired on (meta.target). */
+export function uniqueViolationMessage(error: unknown): string {
+  const target = (error as Prisma.PrismaClientKnownRequestError).meta?.target;
+  const fields = Array.isArray(target) ? target.map(String) : typeof target === 'string' ? [target] : [];
+  if (fields.some((f) => f.includes('external_code'))) return 'This partner code is already used by another rep.';
+  if (fields.some((f) => f.includes('user_id'))) return 'That login is already linked to another rep.';
+  return 'This rep code is already used. Codes are never reused, including those of terminated reps.';
+}
+
+const CLASH_SELECT = { rep_code: true, external_code: true, full_name: true, status: true } as const;
+
+/** A partner code as stored: trimmed + UPPER-cased (the fold import cleaning applies), blank → null. */
+const normalizeExternal = (v: string | undefined | null): string | null => (v?.trim() ? v.trim().toUpperCase() : null);
+
 @Injectable()
 export class RepsService {
   /** Columns a client may sort the list on (allowlist — the orderBy-injection guard). */
@@ -191,11 +206,11 @@ export class RepsService {
         : {}),
     };
     const { skip, take, page, limit } = toSkipTake(query);
-    const orderBy = resolveOrderBy(query.sort, RepsService.SORTABLE, { created_at: 'asc' });
-    const [reps, total] = await Promise.all([
-      this.prisma.rep.findMany({ where, orderBy, skip, take }),
-      this.prisma.rep.count({ where }),
-    ]);
+    // Default = rep code in NATURAL order (REDWAVE2 before REDWAVE10). The allowlist stays the injection guard.
+    const orderBy = resolveOrderBy(query.sort, RepsService.SORTABLE, { rep_code: 'asc' });
+    const [reps, total] = orderBy.rep_code
+      ? await this.pageByRepCode(where, orderBy.rep_code, skip, take)
+      : await Promise.all([this.prisma.rep.findMany({ where, orderBy, skip, take }), this.prisma.rep.count({ where })]);
     const canSee = canSeeSensitive(user);
     return buildPage(
       await this.avatars.withRepPhotos(
@@ -206,6 +221,67 @@ export class RepsService {
       page,
       limit,
     );
+  }
+
+  /**
+   * One page ordered by rep_code NATURALLY. SQL text ordering is lexicographic, so the matching (id, code)
+   * pairs are sorted here (the roster is a few hundred rows; two narrow columns), the page sliced, and only
+   * that page's full rows fetched. Correct with pagination; `total` is the same filtered count. 2026-11-16
+   */
+  private async pageByRepCode(
+    where: Prisma.RepWhereInput,
+    dir: 'asc' | 'desc',
+    skip: number,
+    take: number,
+  ): Promise<[Rep[], number]> {
+    const keys = await this.prisma.rep.findMany({ where, select: { id: true, rep_code: true } });
+    const pageIds = sortByRepCode(keys, dir)
+      .slice(skip, skip + take)
+      .map((k) => k.id);
+    if (pageIds.length === 0) return [[], keys.length];
+    const rows = await this.prisma.rep.findMany({ where: { id: { in: pageIds } } });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    return [pageIds.map((id) => byId.get(id)).filter((r): r is Rep => !!r), keys.length];
+  }
+
+  /**
+   * Every unique field the write touches, checked BEFORE writing so the 409 names the exact clash (the DB
+   * unique constraints stay as the backstop). Case-insensitive, across ALL reps of any status (#11). A rep code
+   * may not equal another rep's partner code or vice versa: imports resolve a rep by either (§14 rule 9).
+   * `selfId` = the rep being edited (it may keep its own codes and login). — 2026-11-16
+   */
+  private async assertNoClashes(
+    fields: { rep_code?: string | null; external_code?: string | null; user_id?: string | null },
+    selfId?: string,
+  ): Promise<void> {
+    const notSelf = selfId ? { NOT: { id: selfId } } : {};
+    const codeChecks: ['rep_code' | 'external_code', string][] = [];
+    if (fields.rep_code) codeChecks.push(['rep_code', fields.rep_code]);
+    if (fields.external_code) codeChecks.push(['external_code', fields.external_code]);
+    for (const [field, value] of codeChecks) {
+      const other = await this.prisma.rep.findFirst({
+        where: {
+          ...notSelf,
+          OR: [
+            { rep_code: { equals: value, mode: 'insensitive' } },
+            { external_code: { equals: value, mode: 'insensitive' } },
+          ],
+        },
+        select: CLASH_SELECT,
+      });
+      if (other) {
+        throw new ConflictException(
+          codeClashMessage(field, value, other as ClashingRep) ??
+            `${field === 'rep_code' ? 'Rep code' : 'Partner code'} ${value} is already used by another rep.`,
+        );
+      }
+    }
+    if (fields.user_id) {
+      const login = await this.prisma.user.findUnique({ where: { id: fields.user_id }, select: { id: true } });
+      if (!login) throw new UnprocessableEntityException('The linked login does not exist');
+      const other = await this.prisma.rep.findFirst({ where: { ...notSelf, user_id: fields.user_id }, select: CLASH_SELECT });
+      if (other) throw new ConflictException(loginClashMessage(other as ClashingRep));
+    }
   }
 
   async findOne(id: string, user: AuthUser) {
@@ -251,25 +327,19 @@ export class RepsService {
 
   async create(dto: CreateRepDto, user: AuthUser) {
     const actorId = user.id;
-    // #11 — reject reuse of ANY existing code (active or terminated), case-insensitively.
-    const existing = await this.prisma.rep.findFirst({
-      where: { rep_code: { equals: dto.rep_code, mode: 'insensitive' } },
-      select: { id: true },
-    });
-    if (existing) {
-      throw new ConflictException(
-        'This rep code is already used. Codes are never reused, including those of terminated reps.',
-      );
-    }
+    const repCode = dto.rep_code.trim();
+    const externalCode = normalizeExternal(dto.external_code);
+    // #11 — reject reuse of ANY existing code (active or terminated), case-insensitively, naming the clash.
+    await this.assertNoClashes({ rep_code: repCode, external_code: externalCode, user_id: dto.user_id ?? null });
 
     await this.assertValidFieldManager(dto.field_manager_id);
 
     try {
       const rep = await this.prisma.rep.create({
         data: {
-          rep_code: dto.rep_code,
+          rep_code: repCode,
           // Stored UPPER-cased so it matches the fold import cleaning applies to codes.
-          external_code: dto.external_code?.trim() ? dto.external_code.trim().toUpperCase() : null,
+          external_code: externalCode,
           full_name: dto.full_name,
           field_manager_id: dto.field_manager_id,
           hire_date: dateOnly(dto.hire_date),
@@ -289,7 +359,7 @@ export class RepsService {
       return this.withPhoto(toRepView(rep, canSeeSensitive(user)));
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw new ConflictException('rep_code already used'); // DB backstop for #11
+        throw new ConflictException(uniqueViolationMessage(error)); // DB backstop for #11
       }
       throw error;
     }
@@ -306,12 +376,20 @@ export class RepsService {
       await this.assertValidFieldManager(dto.field_manager_id);
     }
 
+    // Only a CHANGED partner code / login is checked (an unchanged one is the rep's own). — 2026-11-16
+    const externalCode = dto.external_code !== undefined ? normalizeExternal(dto.external_code) : undefined;
+    await this.assertNoClashes(
+      {
+        external_code: externalCode && externalCode !== before.external_code ? externalCode : null,
+        user_id: dto.user_id && dto.user_id !== before.user_id ? dto.user_id : null,
+      },
+      id,
+    );
+
     const data: Prisma.RepUncheckedUpdateInput = {};
     if (dto.full_name !== undefined) data.full_name = dto.full_name;
     // An alias, not a business key — editable, and clearable by sending an empty string.
-    if (dto.external_code !== undefined) {
-      data.external_code = dto.external_code.trim() ? dto.external_code.trim().toUpperCase() : null;
-    }
+    if (externalCode !== undefined) data.external_code = externalCode;
     if (dto.field_manager_id !== undefined) data.field_manager_id = dto.field_manager_id;
     if (dto.hire_date !== undefined) data.hire_date = dateOnly(dto.hire_date);
     if (dto.user_id !== undefined) data.user_id = dto.user_id ?? null;
@@ -337,7 +415,13 @@ export class RepsService {
       data.termination_date = dto.termination_date ? dateOnly(dto.termination_date) : null;
     }
 
-    const updated = await this.prisma.rep.update({ where: { id }, data });
+    let updated: Rep;
+    try {
+      updated = await this.prisma.rep.update({ where: { id }, data });
+    } catch (error) {
+      if (isUniqueViolation(error)) throw new ConflictException(uniqueViolationMessage(error)); // DB backstop
+      throw error;
+    }
     await this.audit.log({
       actorId,
       entityType: 'reps',
@@ -531,6 +615,7 @@ export class RepsService {
       external_code: rep.external_code,
       full_name: rep.full_name,
       field_manager_id: rep.field_manager_id,
+      user_id: rep.user_id,
       status: rep.status,
       termination_date: rep.termination_date
         ? rep.termination_date.toISOString().slice(0, 10)

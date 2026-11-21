@@ -7,6 +7,7 @@
  * server stamps a distinct signed copy (the original is never modified, DOC-004). You can also upload an
  * externally-signed PDF instead. DECLINE IS TERMINAL. — SRS DOC-003/004
  */
+import { FileSignature, Upload, XCircle } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Banner, Button, FileUpload, FormField, Input, Modal, Select, SignaturePad, useToast, type SignaturePadHandle } from '../../../components/ui';
 import { useAuth } from '../../../auth/useAuth';
@@ -171,11 +172,11 @@ export function SignDeclineModal({ open, onClose, documentId, request, decision 
             Cancel
           </Button>
           {isSign ? (
-            <Button variant="primary" type="button" onClick={onSign} loading={sign.isPending} disabled={busy || !signatureReady}>
+            <Button leftIcon={<FileSignature size={16} />} variant="primary" type="button" onClick={onSign} loading={sign.isPending} disabled={busy || !signatureReady}>
               Sign document
             </Button>
           ) : (
-            <Button variant="destructive" type="button" onClick={onDecline} loading={sign.isPending} disabled={busy}>
+            <Button leftIcon={<XCircle size={16} />} variant="destructive" type="button" onClick={onDecline} loading={sign.isPending} disabled={busy}>
               Decline
             </Button>
           )}
@@ -240,7 +241,7 @@ export function SignDeclineModal({ open, onClose, documentId, request, decision 
               <div className={styles.form}>
                 <p className={styles.note}>Download the document, sign it elsewhere, then upload the signed PDF.</p>
                 <FileUpload accept="application/pdf" multiple={false} hint="Signed PDF" onFiles={(f) => setUploadFile(f[0] ?? null)} />
-                <Button variant="secondary" type="button" onClick={onUploadSigned} loading={signUpload.isPending} disabled={busy || !uploadFile}>
+                <Button leftIcon={<Upload size={16} />} variant="secondary" type="button" onClick={onUploadSigned} loading={signUpload.isPending} disabled={busy || !uploadFile}>
                   Upload signed file
                 </Button>
               </div>

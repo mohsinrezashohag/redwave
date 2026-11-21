@@ -4,6 +4,7 @@
  * "Claw back" action. Non-clawable items render greyed with the reason. The frozen rate/incentive are shown
  * read-only (the snapshot is never edited — #2). No money is computed here. Tokens only.
  */
+import { Undo2 } from 'lucide-react';
 import { Button } from '../../../components/ui';
 import { money } from '../../../lib/format/money';
 import { productTypeLabel } from '../../../lib/format/productType';
@@ -39,7 +40,7 @@ export function PaidItemsPanel({ sale, onClawback }: { sale: Sale; onClawback: (
                 </span>
               </div>
               {clawable ? (
-                <Button variant="secondary" size="sm" onClick={() => onClawback(item)}>
+                <Button leftIcon={<Undo2 size={16} />} variant="secondary" size="sm" onClick={() => onClawback(item)}>
                   Claw back
                 </Button>
               ) : (

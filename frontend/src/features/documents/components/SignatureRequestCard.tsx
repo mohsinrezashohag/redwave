@@ -2,8 +2,9 @@
  * SignatureRequestCard — one signature request with its per-signer status. Shows each signer (Avatar + name +
  * SignerStatusBadge + signed time + the per-signer signed-copy ref, read-only). The current user's Sign/
  * Decline appear ONLY when they are the asked PENDING signer in THIS request (row-level — the page computes
- * it; the server enforces). Cancel appears for the requester/owner/admin on a pending request. Tokens only.
+ * it; the server enforces). "Review and sign" opens the full-page signing view; Decline keeps its modal. Cancel appears for the requester/owner/admin on a pending request. Tokens only.
  */
+import { FileSignature, XCircle } from 'lucide-react';
 import { Avatar, Button, Card } from '../../../components/ui';
 import { displayDate } from '../../../lib/format/date';
 import { RequestStatusBadge, SignerStatusBadge } from './SignerStatusBadge';
@@ -64,16 +65,16 @@ export function SignatureRequestCard({ request, resolve, isMyPendingRequest, can
         <div className={styles.requestActions}>
           {isMyPendingRequest && (
             <>
-              <Button variant="primary" size="sm" onClick={() => onSign('sign')}>
-                Sign
+              <Button variant="primary" leftIcon={<FileSignature size={16} />} onClick={() => onSign('sign')}>
+                Review and sign
               </Button>
-              <Button variant="secondary" size="sm" onClick={() => onSign('decline')}>
+              <Button leftIcon={<XCircle size={16} />} variant="secondary" onClick={() => onSign('decline')}>
                 Decline
               </Button>
             </>
           )}
           {canCancelThis && (
-            <Button variant="tertiary" size="sm" onClick={onCancel}>
+            <Button leftIcon={<XCircle size={16} />} variant="tertiary" onClick={onCancel}>
               Cancel request
             </Button>
           )}

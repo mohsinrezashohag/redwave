@@ -4,6 +4,7 @@
  * mapping + classifies — the UI does NO matching. On success → the batch detail (mapping + reconcile +
  * commit). `import:create`; 403 → AccessDenied; the server is the real gate (§5).
  */
+import { Eye, Upload } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Banner, Button, Card, Checkbox, FileUpload, FormField, MoneyInput, PageHeader, Select } from '../../../components/ui';
@@ -179,10 +180,10 @@ export default function NewImportPage() {
       <div className={styles.footer}>
         {/* Preview first: it runs the same server path as staging but writes nothing, so mapping problems
             surface before a batch exists. Staging stays available for a file the operator already trusts. */}
-        <Button variant="secondary" loading={previewMutation.isPending} disabled={previewMutation.isPending || stage.isPending} onClick={() => onPreview()}>
+        <Button leftIcon={<Eye size={16} />} variant="secondary" loading={previewMutation.isPending} disabled={previewMutation.isPending || stage.isPending} onClick={() => onPreview()}>
           {preview ? 'Refresh preview' : 'Preview'}
         </Button>
-        <Button variant="primary" loading={stage.isPending} disabled={stage.isPending || previewMutation.isPending} onClick={onStage}>
+        <Button leftIcon={<Upload size={16} />} variant="primary" loading={stage.isPending} disabled={stage.isPending || previewMutation.isPending} onClick={onStage}>
           Upload + stage
         </Button>
       </div>

@@ -4,7 +4,7 @@
  * history, behind a confirm). Bulk soft-deactivate (clients:edit) via a typed ConfirmDialog. Row → client
  * detail. Convenience gating only — the server is the real gate (§5). Tokens only.
  */
-import { Pencil, Power, PowerOff } from 'lucide-react';
+import { Ban, Pencil, Power, PowerOff, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -130,10 +130,10 @@ export function ClientsTable({ filters, onEdit }: { filters: ClientsFilters; onE
         )}
         bulkActions={
           <>
-            <Button variant="destructive" size="sm" onClick={() => setConfirmBulk(true)}>
+            <Button leftIcon={<Ban size={16} />} variant="destructive" size="sm" onClick={() => setConfirmBulk(true)}>
               Deactivate selected
             </Button>
-            <Button variant="tertiary" size="sm" onClick={clear}>
+            <Button leftIcon={<X size={16} />} variant="tertiary" size="sm" onClick={clear}>
               Clear
             </Button>
           </>
@@ -156,7 +156,7 @@ export function ClientsTable({ filters, onEdit }: { filters: ClientsFilters; onE
             <Button variant="secondary" onClick={() => setConfirm(null)}>
               Cancel
             </Button>
-            <Button variant="destructive" loading={update.isPending} onClick={() => confirm && setActive(confirm, false)}>
+            <Button leftIcon={<Ban size={16} />} variant="destructive" loading={update.isPending} onClick={() => confirm && setActive(confirm, false)}>
               Deactivate
             </Button>
           </>

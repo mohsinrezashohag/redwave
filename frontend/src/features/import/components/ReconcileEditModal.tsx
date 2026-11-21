@@ -3,6 +3,7 @@
  * `edit`). The UI never re-classifies; it submits corrected data and the server re-runs the matcher. JSON is
  * parsed client-side before submit. Tokens only.
  */
+import { Save } from 'lucide-react';
 import { useState } from 'react';
 import { Banner, Button, Modal, Textarea, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -48,7 +49,7 @@ export function ReconcileEditModal({ batchId, row, onClose }: { batchId: string;
       footer={
         <div className={styles.footer}>
           <Button variant="secondary" type="button" onClick={onClose} disabled={reconcile.isPending}>Cancel</Button>
-          <Button variant="primary" type="button" onClick={onSubmit} loading={reconcile.isPending} disabled={reconcile.isPending}>Save &amp; re-classify</Button>
+          <Button leftIcon={<Save size={16} />} variant="primary" type="button" onClick={onSubmit} loading={reconcile.isPending} disabled={reconcile.isPending}>Save &amp; re-classify</Button>
         </div>
       }
     >

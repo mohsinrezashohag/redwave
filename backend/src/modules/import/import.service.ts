@@ -10,6 +10,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -26,7 +27,9 @@ import { applyMapping, RawRow } from './mapping.logic';
 import { cleanMappedRow } from './clean.logic';
 import { suggestMapping } from './suggest-mapping.logic';
 import { fieldTypesFor, TARGET_FIELDS, targetKey } from './target-fields';
-import { ParserService } from './parsing/parser.service';
+import { dropUnusedRows, ParserService } from './parsing/parser.service';
+import { permissionKey } from '../../common/rbac/permissions.util';
+import { normaliseRegionLenient } from '../../common/geo/regions';
 import {
   Classification,
   classifyBillingRateRow,
@@ -38,6 +41,8 @@ import {
   classifyProductRow,
   classifyRepRow,
   classifySalesRow,
+  ACCEPT_DUPLICATE_KEY,
+  ACCEPTED_DUPLICATE_ISSUE,
 } from './matching.logic';
 import {
   buildProductTypeVocab,
@@ -208,7 +213,12 @@ export class ImportService {
     const mapping = (saved as Record<string, string> | null) ?? suggestMapping(parsed.headers, fields);
     const types = fieldTypesFor(dto.source_type, dto.import_type);
 
-    const rawRows = parsed.rows;
+    // Only the columns the mapping USES decide whether a row is empty, and a "Total" line is not data. A
+    // sheet with a notes column or a totals footer used to stage those as error rows. — 2026-11-16
+    const rawRows = dropUnusedRows(parsed.rows, Object.values(mapping).filter((h): h is string => !!h));
+    if (rawRows.length === 0) {
+      throw new UnprocessableEntityException('the file has no data rows in the mapped columns');
+    }
     const mappedRows = rawRows.map((raw) => cleanMappedRow(applyMapping(raw, mapping), types));
 
     // The real working files give each product type its own yes/no column rather than listing them in one
@@ -402,7 +412,27 @@ export class ImportService {
         if (!row) {
           throw new UnprocessableEntityException(`row ${res.row_id} is not in this batch`);
         }
-        if (res.action === ReconcileAction.ignore) {
+        if (res.action === ReconcileAction.accept_duplicate) {
+          // A possible duplicate is ACCEPTED, not blocked (2026-11-16): the row commits and SalesService creates
+          // the sale flagged (duplicate_of_sale_id), held until an approver approves it. Approver-only.
+          if (kind !== 'bulk_sales') {
+            throw new UnprocessableEntityException('Only a live sales import can accept a possible duplicate.');
+          }
+          if (!user.isSuperAdmin && !user.permissions.has(permissionKey('import', 'approve'))) {
+            throw new ForbiddenException('Accepting a possible duplicate needs import:approve.');
+          }
+          if (row.match_status !== 'duplicate') {
+            throw new UnprocessableEntityException(`row ${row.row_number} is not a possible duplicate`);
+          }
+          const mapped = { ...cleanMappedRow(row.mapped_data as RawRow, types), [ACCEPT_DUPLICATE_KEY]: 'true' };
+          const [c] = await this.classifyAll(kind, [mapped], batch.client_id, batch.create_missing);
+          // Re-classified alone, an in-file repeat no longer sees its sibling: keep the accepted note anyway.
+          const issue = c.match_status === 'matched' ? ACCEPTED_DUPLICATE_ISSUE : c.issue;
+          await tx.importRow.update({
+            where: { id: row.id },
+            data: { mapped_data: mapped as Prisma.InputJsonValue, match_status: c.match_status, issue, resolved_by: user.id },
+          });
+        } else if (res.action === ReconcileAction.ignore) {
           await tx.importRow.update({ where: { id: row.id }, data: { match_status: 'ignored', resolved_by: user.id } });
         } else if (res.action === ReconcileAction.match) {
           if (!res.matched_entity_id) {
@@ -495,6 +525,12 @@ export class ImportService {
     };
     await this.emitter.emitRole('Admin', importEvent);
     await this.emitter.emitRole('Super Admin', importEvent);
+    // Live sales created as possible duplicates wait for an approver: tell them, post-commit. — 2026-11-16
+    if (kind === 'bulk_sales') {
+      await this.sales.notifyDuplicateFlagged(
+        committed.import_rows.map((r) => r.matched_entity_id).filter((v): v is string => !!v),
+      );
+    }
     return committed;
   }
 
@@ -683,7 +719,7 @@ export class ImportService {
         }))
       : [];
 
-    return mappedRows.map((r) => {
+    const results: Classification[] = mappedRows.map((r) => {
       const mpu = str(r, 'mpu_id');
       if (mpu) {
         return classifySalesRow(r, { matchedSaleIds: byMpu.get(mpu) ?? [] });
@@ -697,6 +733,29 @@ export class ImportService {
       }
       return { match_status: 'unmatched' as const, issue: outcome.issue };
     });
+    // A matched sale that is a possible duplicate still waiting for approval cannot be validated: say so here
+    // instead of letting validateWithinTx throw mid-commit and roll the whole batch back. — 2026-11-16
+    const matchedIds = results.map((c) => c.matched_entity_id).filter((v): v is string => !!v);
+    const held = matchedIds.length
+      ? new Map(
+          (
+            await this.prisma.sale.findMany({
+              where: { id: { in: matchedIds }, duplicate_of_sale_id: { not: null }, duplicate_approved_at: null },
+              select: { id: true, sale_code: true, duplicate_of_sale_id: true, duplicate_approved_at: true },
+            })
+          )
+            .filter((s) => s.duplicate_of_sale_id && !s.duplicate_approved_at) // belt and braces over the where
+            .map((s) => [s.id, s.sale_code] as [string, string]),
+        )
+      : new Map<string, string>();
+    return results.map((c) =>
+      c.matched_entity_id && held.has(c.matched_entity_id)
+        ? {
+            match_status: 'error' as const,
+            issue: `Sale ${held.get(c.matched_entity_id)} is a possible duplicate waiting for approval. Approve it before validating.`,
+          }
+        : c,
+    );
   }
 
   private async classifyClients(mappedRows: RawRow[]): Promise<Classification[]> {
@@ -882,9 +941,34 @@ export class ImportService {
       ),
     );
     const vocab = await this.productTypeVocab();
+    // A live sale is unique per client + MPU (§14 rule 8): a re-imported file must not create a second,
+    // payable copy of a household. Deleted sales don't count, so a corrected re-entry stays possible.
+    const mpus = [...new Set(mappedRows.map((r) => str(r, 'mpu_id')).filter((m): m is string => !!m))];
+    const existing = clientIds.length && mpus.length
+      ? await this.prisma.sale.findMany({
+          where: {
+            client_id: { in: clientIds },
+            status: { not: 'deleted' },
+            OR: mpus.map((m) => ({ mpu_id: { equals: m, mode: 'insensitive' as const } })),
+          },
+          select: { client_id: true, mpu_id: true, sale_code: true },
+        })
+      : [];
+    const mpuKey = (cid: string, mpu: string) => `${cid}|${mpu.trim().toLowerCase()}`;
+    const existingByMpu = new Map(existing.map((s) => [mpuKey(s.client_id, s.mpu_id ?? ''), s.sale_code]));
+    const seenInFile = new Set<string>();
     return mappedRows.map((r) => {
       const cid = byCode.get(up(str(r, 'client_code')));
+      const mpu = str(r, 'mpu_id');
+      let duplicateOf: string | null = null;
+      if (cid && mpu) {
+        const key = mpuKey(cid, mpu);
+        duplicateOf = existingByMpu.get(key) ?? (seenInFile.has(key) ? 'this file' : null);
+        seenInFile.add(key);
+      }
       canonicaliseSingle(r, 'status', SALE_STATUS_VOCAB); // "Validated" → validated
+      // Optional and lenient: "Manitoba" → MB; an unknown value is kept as written, never an error. 2026-11-16
+      if (str(r, 'province_state')) r.province_state = normaliseRegionLenient(str(r, 'province_state'));
       const resolved = canonicaliseProductTypes(r, vocab, productTypeCtx);
       const types = resolved.keys;
       return classifyLiveSaleRow(r, {
@@ -897,6 +981,7 @@ export class ImportService {
           const behaviour = behaviours.get(t);
           return behaviour === 'internet' || behaviour === 'greenfield';
         }),
+        duplicateOf,
       });
     });
   }

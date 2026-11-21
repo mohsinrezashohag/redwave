@@ -31,7 +31,7 @@ export const REPORT_TYPE_DEFS: ReportTypeDef[] = [
   {
     type: 'business_summary',
     label: 'Business summary',
-    description: 'Org-wide financials for a pay period (revenue, payout, margin, clawback, expenses).',
+    description: 'Org-wide financials for a pay period (revenue, payout, margin, expenses).',
     permission: 'reports:business',
     scope: 'period',
   },
@@ -71,7 +71,9 @@ export const leaderboardColumns: ExportColumn<LeaderboardRow>[] = [
   { header: 'Rank', value: (r) => String(r.rank) },
   { header: 'Rep code', value: (r) => r.rep_code ?? '' },
   { header: 'Rep', value: (r) => r.rep_name ?? '' },
-  { header: 'Internet activations', value: (r) => String(r.activation_count) },
+  // Approved (validated/paid) and pending (entered) internet activations, counts only. 2026-11-16
+  { header: 'Approved', value: (r) => String(r.approved_count) },
+  { header: 'Pending', value: (r) => String(r.pending_count) },
 ];
 
 // ── Pay-run summary (line components + net, as the server computed them) ────────────
@@ -83,7 +85,6 @@ export const payrunColumns: ExportColumn<PayRunLine>[] = [
   { header: 'Expenses', value: (l) => money(l.expense_total) },
   { header: 'Incentives', value: (l) => money(l.incentive_total) },
   { header: 'Bonus', value: (l) => money(l.bonus_amount) },
-  { header: 'Clawbacks', value: (l) => money(l.clawback_total) },
   { header: 'Net payout', value: (l) => money(l.net_payout) },
 ];
 
@@ -115,8 +116,6 @@ export function businessSummaryRows(d: BusinessDashboard): MetricRow[] {
     { metric: 'Rep payout', value: money(d.rep_payout) },
     { metric: 'Net margin', value: money(d.net_margin) },
     { metric: 'Net margin %', value: `${d.net_margin_pct}%` },
-    { metric: 'Clawback total', value: money(d.clawback_total) },
-    { metric: 'Clawback rate', value: d.clawback_rate },
     { metric: 'Expenses total', value: money(d.expense.total) },
     { metric: 'Expenses: KM', value: money(d.expense.km) },
     { metric: 'Total activations', value: String(d.total_activations) },

@@ -4,6 +4,7 @@
  * the server skips items not in a reviewable status (and out of scope) and returns the counts. Rendered
  * inside the DataTable's BulkActionBar. The server is the real gate. Tokens only.
  */
+import { Check, Send, Undo2, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { Button, FormField, Modal, Textarea, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -39,13 +40,13 @@ export function BulkReviewBar({ ids, onDone }: { ids: string[]; onDone: () => vo
 
   return (
     <>
-      <Button variant="primary" size="sm" onClick={() => run('approve')} loading={bulk.isPending}>
+      <Button leftIcon={<Check size={16} />} variant="primary" size="sm" onClick={() => run('approve')} loading={bulk.isPending}>
         Approve
       </Button>
-      <Button variant="secondary" size="sm" onClick={() => setNoteFor('send_back')}>
+      <Button leftIcon={<Undo2 size={16} />} variant="secondary" size="sm" onClick={() => setNoteFor('send_back')}>
         Send back
       </Button>
-      <Button variant="destructive" size="sm" onClick={() => setNoteFor('reject')}>
+      <Button leftIcon={<XCircle size={16} />} variant="destructive" size="sm" onClick={() => setNoteFor('reject')}>
         Reject
       </Button>
 
@@ -58,7 +59,7 @@ export function BulkReviewBar({ ids, onDone }: { ids: string[]; onDone: () => vo
             <Button variant="secondary" onClick={() => setNoteFor(null)}>
               Cancel
             </Button>
-            <Button
+            <Button leftIcon={<Send size={16} />}
               variant={noteFor === 'reject' ? 'destructive' : 'primary'}
               loading={bulk.isPending}
               onClick={() => noteFor && run(noteFor, note)}

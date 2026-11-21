@@ -4,6 +4,7 @@
  * once ON, members of an mfa_required role must enrol before continuing. `settings:view` to load,
  * `settings:edit` to save (server is the real gate). — AUTH MFA, arch §security
  */
+import { Save } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Banner, Button, Card, PageHeader, Switch, useToast } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
@@ -108,7 +109,7 @@ export default function SecuritySettingsPage() {
 
           {canEdit && (
             <div>
-              <Button variant="primary" onClick={onSave} loading={save.isPending} disabled={!dirty}>
+              <Button leftIcon={<Save size={16} />} variant="primary" onClick={onSave} loading={save.isPending} disabled={!dirty}>
                 Save changes
               </Button>
             </div>

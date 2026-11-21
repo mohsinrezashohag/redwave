@@ -136,6 +136,7 @@
 
 .footer {
   display: flex;
+  flex-wrap: wrap; /* 360px: the two buttons wrap instead of overflowing */
   justify-content: flex-end;
   gap: var(--space-3);
   padding-top: var(--space-2);
@@ -164,6 +165,7 @@
 
 .stopAddress {
   flex: 1;
+  min-width: 0; /* let the address input shrink at 360px instead of pushing the remove button off-screen */
 }
 
 .preview {
@@ -209,6 +211,7 @@
 
 .reviewHead {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
 }
@@ -273,6 +276,8 @@
 
 .dl dd {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere; /* long addresses / receipt names wrap at 360px */
 }
 
 .kmBreakdown {

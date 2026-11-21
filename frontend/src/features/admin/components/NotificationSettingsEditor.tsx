@@ -7,6 +7,7 @@
  * Read-only (controls disabled, no Save) without settings:edit. An empty template falls back to the
  * built-in call-site text at render time.
  */
+import { Save } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, FormField, Input, Switch, Textarea, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -158,7 +159,7 @@ export function NotificationSettingsEditor({
       {canEdit && (
         <div className={styles.saveBar}>
           {dirty && <span className={styles.dirtyHint}>{changedRows.length} unsaved change(s)</span>}
-          <Button variant="primary" onClick={onSave} disabled={!dirty} loading={save.isPending}>
+          <Button leftIcon={<Save size={16} />} variant="primary" onClick={onSave} disabled={!dirty} loading={save.isPending}>
             Save changes
           </Button>
         </div>

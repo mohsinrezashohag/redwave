@@ -15,7 +15,7 @@ const meals: FieldConfig = {
   created_by: 'sa',
   fields: [
     { key: 'vendor', label: 'Vendor', type: 'text', required: true },
-    { key: 'gratuity', label: 'Gratuity', type: 'money', required: false, soft_cap: '20.00' },
+    { key: 'extra_charge', label: 'Extra charge', type: 'money', required: false, soft_cap: '20.00' },
   ],
 };
 
@@ -39,8 +39,8 @@ describe('validateFormItem (FE mirror of the Alert/Warning engine)', () => {
   });
 
   it('warns on a field over its own soft cap', () => {
-    const { warnings } = validateFormItem({ category: 'meals', amount: '10.00', description: 'Lunch', receipt_url: 'r', field_values: { vendor: 'X', gratuity: '25.00' } }, meals);
-    expect(warnings.map((w) => w.field)).toContain('gratuity');
+    const { warnings } = validateFormItem({ category: 'meals', amount: '10.00', description: 'Lunch', receipt_url: 'r', field_values: { vendor: 'X', extra_charge: '25.00' } }, meals);
+    expect(warnings.map((w) => w.field)).toContain('extra_charge');
   });
 
   it('warns on a km trip the commute deduction zeroed', () => {
@@ -123,6 +123,8 @@ describe('a category that requires neither a receipt nor a description', () => {
   it('absent config is treated as REQUIRED, so an unconfigured category never stops asking', () => {
     const { alerts } = validateFormItem({ category: 'other', amount: '5.00' }, undefined);
     expect(alerts.map((a) => a.field)).toContain('description');
+    // Receipt follows the same rule (meeting 2026-11-16): only an explicit `false` relaxes it.
+    expect(alerts.map((a) => a.field)).toContain('receipt_url');
   });
 });
 

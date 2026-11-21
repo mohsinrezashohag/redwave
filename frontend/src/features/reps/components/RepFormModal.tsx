@@ -14,14 +14,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { Crop, Undo2 } from 'lucide-react';
+import { Crop, Save, Undo2 } from 'lucide-react';
 import { Button, DatePicker, EditableAvatar, FormField, Input, Modal, PhotoEditorDialog, PrivateInput, Select, useToast, type PhotoEditResult, ModalClose } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { todayIso } from '../../../lib/format/date';
 import { useCan } from '../../../auth/useCan';
 import { useUsers } from '../../admin/api/useUsers';
+import { useLinkedLogins } from '../api/useReps';
 import { useCreateRep, useRepHeadshotUrl, useUpdateRep, useUploadHeadshot } from '../api/useRepProfile';
-import { bankNameFor, CLOTHING_SIZES, NONE, PROVINCES, repFormDefaults, routingNumbers, repFormSchema, toCreateBody, toUpdateBody, type RepFormValues } from '../repForm';
+import { bankNameFor, CLOTHING_SIZES, loginOptions, NONE, PROVINCES, repFormDefaults, routingNumbers, repFormSchema, toCreateBody, toUpdateBody, type RepFormValues } from '../repForm';
 import type { Rep } from '../reps.types';
 import styles from './reps.module.css';
 
@@ -73,6 +74,12 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
     }
     return opts;
   }, [users.data, editing]);
+
+  const linked = useLinkedLogins(open && canViewUsers);
+  const loginOpts = useMemo(
+    () => loginOptions(users.data ?? [], linked.data ?? new Map(), editing),
+    [users.data, linked.data, editing],
+  );
 
   const today = todayIso();
   const formDefaults: RepFormValues = repFormDefaults(editing);
@@ -129,7 +136,7 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
     />
   );
 
-  const select = (name: 'field_manager_id' | 'status' | 'address_province' | 'jacket_size' | 'tshirt_size', label: string, options: { value: string; label: string }[], required = false) => (
+  const select = (name: 'user_id' | 'field_manager_id' | 'status' | 'address_province' | 'jacket_size' | 'tshirt_size', label: string, options: { value: string; label: string }[], required = false) => (
     <Controller
       control={control}
       name={name}
@@ -197,6 +204,14 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
             </FormField>
             {select('field_manager_id', 'Field manager', managerOptions, true)}
             {date('hire_date', 'Hire date', true)}
+            {/* The login that opens this rep's own My Account (profile + documents). 2026-11-16 */}
+            {canViewUsers ? (
+              select('user_id', 'Linked login', loginOpts)
+            ) : (
+              <FormField label="Linked login" help="Ask an administrator to link a login.">
+                <Input value={editing?.user_id ? 'Linked' : 'None'} readOnly />
+              </FormField>
+            )}
             {editing && select('status', 'Status', STATUS_OPTIONS, true)}
             {editing && status === 'terminated' && date('termination_date', 'Termination date', true)}
           </div>
@@ -292,7 +307,7 @@ export function RepFormModal({ state, onClose, onSaved }: { state: RepFormState;
               Cancel
             </Button>
           </ModalClose>
-          <Button variant="primary" type="submit" loading={create.isPending || update.isPending || uploadPhoto.isPending}>
+          <Button leftIcon={<Save size={16} />} variant="primary" type="submit" loading={create.isPending || update.isPending || uploadPhoto.isPending}>
             {editing ? 'Save changes' : 'Add rep'}
           </Button>
         </div>

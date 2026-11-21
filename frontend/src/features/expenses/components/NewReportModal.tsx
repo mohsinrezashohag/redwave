@@ -3,6 +3,7 @@
  * defaults to the business week (Mon–Sun) of a picked day (a label only — items keep their own pay period).
  * An admin/manager may create it on behalf of a rep. On success → the folder workspace. Tokens only.
  */
+import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, DatePicker, FormField, Input, Modal, Select, useToast } from '../../../components/ui';
@@ -74,7 +75,7 @@ export function NewReportModal({ open, onClose }: { open: boolean; onClose: () =
           <Button variant="secondary" type="button" onClick={onClose} disabled={create.isPending}>
             Cancel
           </Button>
-          <Button variant="primary" type="button" onClick={onCreate} loading={create.isPending}>
+          <Button leftIcon={<Plus size={16} />} variant="primary" type="button" onClick={onCreate} loading={create.isPending}>
             Create folder
           </Button>
         </div>

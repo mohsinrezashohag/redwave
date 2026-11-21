@@ -4,7 +4,7 @@
  * → the owning client's detail. Bulk soft-deactivate (clients:edit) via a typed ConfirmDialog. Reuses the
  * clients-domain ProductFormModal + mutations. Convenience gating only — the server is the real gate (§5).
  */
-import { ExternalLink, Pencil, Power, PowerOff } from 'lucide-react';
+import { Ban, ExternalLink, Pencil, Power, PowerOff, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Badge, Button, ConfirmDialog, useToast, type MenuEntry, useConfirm } from '../../../components/ui';
@@ -122,10 +122,10 @@ export function ProductsTable({ filters }: { filters: ProductsFilters }) {
         )}
         bulkActions={
           <>
-            <Button variant="destructive" size="sm" onClick={() => setConfirmBulk(true)}>
+            <Button leftIcon={<Ban size={16} />} variant="destructive" size="sm" onClick={() => setConfirmBulk(true)}>
               Deactivate selected
             </Button>
-            <Button variant="tertiary" size="sm" onClick={clear}>
+            <Button leftIcon={<X size={16} />} variant="tertiary" size="sm" onClick={clear}>
               Clear
             </Button>
           </>

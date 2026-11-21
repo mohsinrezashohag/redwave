@@ -1,0 +1,359 @@
+/* The full-page signing view + the signature capture dialog. Tokens only. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.pane {
+  min-width: 0;
+}
+
+/* The page scrolls, not the viewer, so "Next field" can scroll straight to a box. */
+.pane .viewer {
+  max-height: none;
+  overflow: visible;
+}
+
+.panel {
+  position: sticky;
+  top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background-color: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.muted {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.fieldList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fieldRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 36px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-align: start;
+  cursor: pointer;
+}
+
+.fieldRow > span:nth-of-type(1) {
+  flex: 1;
+}
+
+.fieldRow:hover,
+.fieldRowActive {
+  background-color: var(--accent-50);
+}
+
+.fieldRow:focus-visible {
+  outline: 2px solid var(--accent-600);
+  outline-offset: 1px;
+}
+
+.okIcon {
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+.todoIcon {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.inlineInput {
+  margin-top: var(--space-1);
+}
+
+.adopted {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.adoptedLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+/* Signatures are dark ink for a white PDF page: previews carry data-theme="light" so they sit on paper in both themes. */
+.adoptedImage {
+  max-width: 100%;
+  max-height: 72px;
+  padding: var(--space-1) var(--space-2);
+  background-color: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+/* ── Field boxes on the page ─────────────────────────────────────────────── */
+.field {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+  border: 2px dashed var(--accent-600);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-600) 14%, transparent);
+  color: var(--accent-700);
+  line-height: 1.1;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+
+.field:hover {
+  background: color-mix(in srgb, var(--accent-600) 24%, transparent);
+}
+
+.field:focus-visible,
+.fieldActive {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-600) 45%, transparent);
+}
+
+.fieldDone {
+  border-style: solid;
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 8%, transparent);
+}
+
+.fieldStatic {
+  cursor: default;
+}
+
+.fieldImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.fieldHint,
+.fieldText {
+  padding: 0 var(--space-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Typed/date values mimic the stamp (the box is re-rooted to the light theme, so this is dark on the white page). */
+.fieldText {
+  color: var(--text-primary);
+}
+
+/* ── Sticky action bar ───────────────────────────────────────────────────── */
+.bar {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.progressText {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.track {
+  display: block;
+  height: 6px;
+  background-color: var(--surface-2);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  background-color: var(--success);
+  transition: width var(--motion-fast) var(--ease-out);
+}
+
+.barActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.summary {
+  margin: 0 0 var(--space-3);
+  padding-inline-start: var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+/* ── Capture dialog ──────────────────────────────────────────────────────── */
+.capture {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.savedGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.savedOption {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-1);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-align: start;
+  cursor: pointer;
+}
+
+.savedOption:hover {
+  border-color: var(--text-secondary);
+}
+
+.savedOption:focus-visible {
+  outline: 2px solid var(--accent-600);
+  outline-offset: 1px;
+}
+
+.savedSelected {
+  border-color: var(--accent-600);
+  box-shadow: 0 0 0 2px var(--accent-50);
+}
+
+.savedImage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 72px;
+  background-color: var(--surface-0);
+  border-radius: var(--radius-sm);
+}
+
+.savedImage img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.savedLabel {
+  font-weight: var(--weight-medium);
+}
+
+.typedPreview {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-3);
+  background-color: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.typedPreview img {
+  max-width: 100%;
+  max-height: 96px;
+}
+
+.linkBtn {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+  background: none;
+  border: none;
+  color: var(--text-link);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+/* Tablet and down: the field list follows the document; the bar's actions take the full width. */
+@media (max-width: 1023.98px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .panel {
+    position: static;
+  }
+}
+
+@media (max-width: 639.98px) {
+  .bar {
+    padding: var(--space-3);
+  }
+
+  .barActions {
+    width: 100%;
+  }
+
+  .barActions > * {
+    flex: 1;
+  }
+
+  .fieldRow {
+    min-height: 44px;
+  }
+}

@@ -13,3 +13,9 @@ export const clientsKeys = {
   list: () => ['clients', 'list'] as const,
   products: (clientId: string) => ['clients', clientId, 'products'] as const,
 };
+
+/** Sale edit requests (2026-11-16). */
+export const saleEditRequestKeys = {
+  all: ['sale-edit-requests'] as const,
+  page: (params: object) => ['sale-edit-requests', 'page', params] as const,
+};

@@ -48,8 +48,8 @@ function ClientCrumb({ id }: { id: string }) {
 }
 function PayRunCrumb({ id }: { id: string }) {
   const q = usePayRun(id);
-  const n = q.data?.pay_period?.period_number;
-  return <Resolved label={n != null ? `Period #${n}` : undefined} isLoading={q.isLoading} id={id} />;
+  // Range reports have no pay period; the server's display_label covers both kinds. 2026-11-16
+  return <Resolved label={q.data?.display_label} isLoading={q.isLoading} id={id} />;
 }
 function DocumentCrumb({ id }: { id: string }) {
   const q = useDocument(id);

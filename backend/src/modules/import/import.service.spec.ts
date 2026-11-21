@@ -65,6 +65,7 @@ function make(parseRows: Record<string, unknown>[] = [], headers: string[] = [])
   const sales = {
     validateWithinTx: jest.fn().mockResolvedValue({ id: 'sale-A' }),
     createWithinTx: jest.fn().mockResolvedValue({ id: 'sale-L' }),
+    notifyDuplicateFlagged: jest.fn().mockResolvedValue(undefined),
   };
   const parser = { parse: jest.fn().mockResolvedValue({ sheet: null, headers, rows: parseRows }) };
   const storage = { upload: jest.fn().mockResolvedValue({ path: 'imports/2026/x.csv', stored: true }) };
@@ -92,8 +93,8 @@ const stagedBatch = (over: Record<string, unknown>) => ({
 });
 
 describe('ImportService.stage (real parse → clean → classify)', () => {
-  it('parses the file, cleans + classifies bulk-validation rows, stores the file, computes counts', async () => {
-    const { service, prisma, storage } = make([{ 'MPU #': 'A' }, { 'MPU #': 'B' }, { 'MPU #': '' }], ['MPU #']);
+  it('parses the file, cleans + classifies bulk-validation rows, stores the file, computes counts (a row blank in every mapped column is dropped)', async () => {
+    const { service, prisma, storage } = make([{ 'MPU #': 'A' }, { 'MPU #': 'B' }, { 'MPU #': '', Notes: 'n/a' }], ['MPU #', 'Notes']);
     // First call = the MPU lookup; second = the no-MPU fallback candidate load (row 3 has no MPU). The
     // fallback row carries no customer/address here, so it correctly matches nothing.
     prisma.sale.findMany
@@ -113,14 +114,14 @@ describe('ImportService.stage (real parse → clean → classify)', () => {
       };
     }).data;
     expect(data.source_file_url).toBe('imports/2026/x.csv'); // real stored path, not a stub
-    expect(data.total_rows).toBe(3);
+    expect(data.total_rows).toBe(2); // row 3 has nothing in the mapped column (2026-11-16)
     expect(data.matched_rows).toBe(1);
-    expect(data.import_rows.create.map((r) => r.match_status)).toEqual(['matched', 'unmatched', 'unmatched']);
+    expect(data.import_rows.create.map((r) => r.match_status)).toEqual(['matched', 'unmatched']);
     expect(data.import_rows.create[0].matched_entity_id).toBe('sale-A');
     // PERSISTED, not merely returned — the detail screen reads it back instead of re-guessing a mapping
     // the server never applied.
     expect(data.applied_mapping.mpu_id).toBe('MPU #');
-    expect(res.source_headers).toEqual(['MPU #']);
+    expect(res.source_headers).toEqual(['MPU #', 'Notes']);
   });
 
   it('rejects an unsupported source/import pairing → 422', async () => {
@@ -393,6 +394,78 @@ describe('ImportService.commit — migration handlers', () => {
       }),
     );
     await expect(service.commit('b1', user)).rejects.toThrow(/no longer supported/);
+  });
+});
+
+describe('client meeting 2026-11-16 — duplicates, province, blank rows', () => {
+  const liveRow = { client_code: 'VF', rep_code: 'RW-D-0001', product_types: 'internet', sale_date: '2026-07-06', customer_name: 'Jane Doe' };
+
+  it('a "validated" live row whose sale was created as a possible duplicate is NOT validated, and approvers are told', async () => {
+    const { service, prisma, sales } = make();
+    sales.createWithinTx.mockResolvedValue({ id: 'sale-L', duplicate_of_sale_id: 'orig' });
+    prisma.importBatch.findUnique.mockResolvedValue(
+      stagedBatch({ source_type: 'sales_entry', client_id: null, import_rows: [{ id: 'r1', match_status: 'matched', mapped_data: { ...liveRow, status: 'validated' }, matched_entity_id: 'sale-L' }] }),
+    );
+    await service.commit('b1', user);
+    expect(sales.validateWithinTx).not.toHaveBeenCalled();
+    expect(sales.notifyDuplicateFlagged).toHaveBeenCalledWith(['sale-L']);
+  });
+
+  it('normalises a full province name to its code at commit; unknown text is kept', async () => {
+    const run = async (province: string) => {
+      const { service, prisma, sales } = make();
+      prisma.importBatch.findUnique.mockResolvedValue(
+        stagedBatch({ source_type: 'sales_entry', client_id: null, import_rows: [{ id: 'r1', match_status: 'matched', mapped_data: { ...liveRow, province_state: province } }] }),
+      );
+      await service.commit('b1', user);
+      return (sales.createWithinTx.mock.calls[0][1] as { province_state: string }).province_state;
+    };
+    expect(await run('Manitoba')).toBe('MB');
+    expect(await run('Somewhere')).toBe('Somewhere');
+  });
+
+  it('accept_duplicate turns a duplicate live row into matched (approver only)', async () => {
+    const approver = { ...user, permissions: new Set(['import:approve']) };
+    const { service, prisma, tx } = make();
+    prisma.client.findMany.mockResolvedValue([{ id: 'c1', client_code: 'VF' }]);
+    prisma.rep.findMany.mockResolvedValue([{ rep_code: 'RW-D-0001', external_code: null }]);
+    prisma.product.findMany.mockResolvedValue([{ client_id: 'c1', product_type: 'internet' }]);
+    prisma.sale.findMany.mockResolvedValue([{ client_id: 'c1', mpu_id: 'M1', sale_code: 'ORIG' }]);
+    const batch = stagedBatch({
+      source_type: 'sales_entry',
+      client_id: null,
+      import_rows: [{ id: 'r1', row_number: 1, match_status: 'duplicate', mapped_data: { ...liveRow, mpu_id: 'M1' } }],
+    });
+    prisma.importBatch.findUnique.mockResolvedValue(batch);
+
+    await expect(
+      service.reconcile('b1', { resolutions: [{ row_id: 'r1', action: 'accept_duplicate' } as never] }, user),
+    ).rejects.toMatchObject({ status: 403 });
+
+    await service.reconcile('b1', { resolutions: [{ row_id: 'r1', action: 'accept_duplicate' } as never] }, approver);
+    const data = (tx.importRow.update.mock.calls[0][0] as { data: { match_status: string; issue: string; mapped_data: Record<string, unknown> } }).data;
+    expect(data.match_status).toBe('matched');
+    expect(data.issue).toMatch(/possible duplicate/);
+    expect(data.mapped_data.accept_duplicate).toBe('true');
+  });
+
+  it('a client-report row matching a held duplicate is an error, not a mid-commit throw', async () => {
+    const { service, prisma } = make([{ 'MPU #': 'A' }], ['MPU #']);
+    prisma.sale.findMany
+      .mockResolvedValueOnce([{ id: 'sale-A', mpu_id: 'A' }])
+      .mockResolvedValueOnce([{ id: 'sale-A', sale_code: 'S-A', duplicate_of_sale_id: 'orig', duplicate_approved_at: null }]);
+    await service.stage(file, { source_type: 'client_report', import_type: 'sales', client_id: 'c1' } as never, user);
+    const rows = (prisma.importBatch.create.mock.calls[0][0] as { data: { import_rows: { create: { match_status: string; issue: string }[] } } }).data.import_rows.create;
+    expect(rows[0].match_status).toBe('error');
+    expect(rows[0].issue).toMatch(/S-A is a possible duplicate/);
+  });
+
+  it('a "Total" footer row is not staged', async () => {
+    const { service, prisma } = make([{ 'MPU #': 'A' }, { 'MPU #': 'Grand Total' }], ['MPU #']);
+    prisma.sale.findMany.mockResolvedValueOnce([{ id: 'sale-A', mpu_id: 'A' }]);
+    await service.stage(file, { source_type: 'client_report', import_type: 'sales', client_id: 'c1' } as never, user);
+    const data = (prisma.importBatch.create.mock.calls[0][0] as { data: { total_rows: number } }).data;
+    expect(data.total_rows).toBe(1);
   });
 });
 

@@ -4,6 +4,7 @@
  * soft-delete (sales:delete, typed-confirm). Per-row actions via SaleRowActions. Money/IDs use mono;
  * status uses StatusPill. Convenience gating only — the server is the real gate (§5). Tokens only.
  */
+import { Check, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, ConfirmDialog, PersonName, StatusPill, useToast } from '../../../components/ui';
@@ -17,6 +18,7 @@ import { useSalesList, type SortKey } from '../api/useSalesList';
 import type { BulkValidateResult, Sale, SalesFilters } from '../sales.types';
 import { ProductSummary } from './ProductSummary';
 import { GreenfieldBadge } from './GreenfieldBadge';
+import { DuplicateBadge } from './DuplicateBadge';
 import { SaleRowActions } from './SaleRowActions';
 import { BulkValidateSummary } from './BulkValidateSummary';
 import styles from './SalesTable.module.css';
@@ -98,9 +100,12 @@ export function SalesTable({ filters }: { filters: SalesFilters }) {
       numeric: true,
       sortKey: 'sale_code',
       render: (s) => (
-        <Link to={`/sales/${s.id}`} className={styles.idLink}>
-          {s.sale_code}
-        </Link>
+        <div className={styles.idCell}>
+          <Link to={`/sales/${s.id}`} className={styles.idLink}>
+            {s.sale_code}
+          </Link>
+          <DuplicateBadge sale={s} />
+        </div>
       ),
     },
     { id: 'customer', header: 'Customer', sortKey: 'customer_name', render: (s) => s.customer_name },
@@ -139,16 +144,16 @@ export function SalesTable({ filters }: { filters: SalesFilters }) {
         bulkActions={
           <>
             {canApprove && (
-              <Button variant="primary" size="sm" loading={bulk.isPending} onClick={runBulkValidate}>
+              <Button leftIcon={<Check size={16} />} variant="primary" size="sm" loading={bulk.isPending} onClick={runBulkValidate}>
                 Validate selected
               </Button>
             )}
             {canDelete && (
-              <Button variant="destructive" size="sm" onClick={() => setConfirmDelete(true)}>
+              <Button leftIcon={<Trash2 size={16} />} variant="destructive" size="sm" onClick={() => setConfirmDelete(true)}>
                 Delete selected
               </Button>
             )}
-            <Button variant="tertiary" size="sm" onClick={clear}>
+            <Button leftIcon={<X size={16} />} variant="tertiary" size="sm" onClick={clear}>
               Clear
             </Button>
           </>

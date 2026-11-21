@@ -2952,3 +2952,68 @@ from this file, so it has to carry everything they need.
 - Removed the stale `tier_at_payment` field from `SaleItemResponse` (the column was dropped on 13 Nov).
 - Verified LOCAL: 1167 backend tests, typecheck, lint, build, contract export; FE tsc, lint, stylelint, 156
   vitest, build. Not seen in a browser.
+- **Follow-up:** a **Clawed back** column (per sale, summed from the clawback records, export only) so the
+  deduction shows next to the paid amount; **Client** is left off the PDF (Channel already shows the code)
+  to give the printed table room.
+
+### Duplicate guard and pre-handover data cleanup (no migration)
+
+The client's export still showed test sales (`RW-D-*`), hundreds of deleted re-import copies and, worse,
+**the same household validated twice** (e.g. `2026-07-03-MPU-3291-VF` and `-VF-1`, same rep and customer).
+Re-importing a file created a second payable copy of every sale, because neither the import nor manual
+entry looked at the MPU, and the Sale ID just appended `-1`.
+
+- **Guard:** the live-sales import classifies a row whose client + MPU matches a non-deleted sale (or an
+  earlier row of the same file) as `duplicate`, and the reconcile gate blocks it. `SalesService` create
+  returns 409 with the existing sale code. It runs on the caller's tx, so it also protects the import commit.
+  Rows without an MPU (RF Now) are unaffected. Deleted sales don't count, so a corrected re-entry still works.
+- **Cleanup** (`npm -w backend run data:cleanup`, dry run by default, `CLEANUP_CONFIRM=yes` writes, one tx):
+  removes the demo reps and everything they own (statements that billed a demo sale, demo-only pay runs,
+  expenses, documents) and deactivates their logins. It collapses client + MPU duplicates, keeping the
+  single paid copy or else the oldest, and reports any group with two paid copies. It purges soft-deleted
+  sales unless a clawback, payroll line or statement line still points at them. Same-name lookalikes
+  without an MPU are only listed. Pure planner in `common/ops/sales-cleanup.ts`, spec'd.
+- **Export:** "Channel" (it printed the client code under a second name) is now **Client** (code); the full
+  name is **Client name** in CSV/Excel. Removed two unused 70/30 / tier CSS rules from the pay-run styles.
+
+### Client meeting 2026-11-16: commission reports, duplicate approval, 5-day edits (migration `20261116000000`)
+
+Sixteen requests plus handwritten notes from the 2026-11-16 meeting, built by six parallel workstreams
+(see `AGENTS.md`). Billing was kept unchanged by decision.
+
+- **Commission reports replace fixed pay runs.** `pay_runs` gained `date_from`/`date_to`/`client_id`/`rep_id`/
+  `label`; `pay_period_id` is nullable. A draft previews per-rep totals and per-sale detail; Mark as paid runs
+  the existing finalize transaction over the window and scope. The claim `updateMany` count must equal the
+  draft's sale count, otherwise 409 and a full rollback, so a sale validated or paid between preview and mark
+  can never be paid twice or silently skipped. Expenses join by item date in the window
+  (`run-window.logic.ts`). `pay-run.range.spec.ts` drives the service against an in-memory store with the real
+  engine. Legacy period runs still finalize.
+- **Clawbacks and reconciliation hidden.** Nav, routes (redirects), crumbs and dashboard widgets removed;
+  `ClawbackModule` binds the zero provider. Code and data kept. Old runs that really deducted a clawback no
+  longer show that line, so their visible components do not add up to net; the stored net is correct.
+- **Duplicates flagged, not refused.** `sales.duplicate_of_sale_id` + approve-duplicate endpoint; validate is
+  blocked until approved; import reconcile gained `accept_duplicate`. Supersedes the 409 guard of the
+  previous entry.
+- **5-day sale edits.** `sale_edit_requests` table; `sale-edit.logic.ts` computes the window in Winnipeg time;
+  SaleEditPage + SaleEditRequestsPage; notifications `sale_edit_requested` / `sale_edit_decided`.
+- **Sales form.** Province/State and City dropdowns (`lib/geo/regions.ts`, mirrored in `common/geo`); Rep ID
+  always required; `useReps` fetches 100 active reps (the 20-row default is why reps after REDWAVE15 looked
+  missing).
+- **Reps.** Precise per-field 409s (a partner-code clash used to say "rep_code already used"), rep_code vs
+  external_code cross-check, natural rep_code sort, recruitment document type, Linked login picker, photo zip
+  export (`GET /v1/reps/photos/export`), daily birthday cron + upcoming-birthdays card.
+- **Imports.** Blank optional cells no longer error; unparseable values get their own message; blank and
+  Total rows dropped (`dropUnusedRows`).
+- **Expenses.** Receipt required for every category except km (absent config = required); gratuity removed
+  (migration data fix); the bootstrap seed no longer overwrites the SA's receipt settings on reseed;
+  round-trip confirm dialog.
+- **Documents and calendar.** Full-page signing (`/documents/:id/sign`), pending-signatures banner on the
+  dashboards and documents list, FieldPlacer fixes, DatePicker rewrite (month/year jump, Winnipeg today,
+  keyboard grid, touch targets).
+- **Leaderboard and assistant.** Approved + pending counts, colour-coded; Gemini function-calling assistant
+  over scoped tools, SA on/off in Administration, stub fallback without a key.
+- **Verified LOCAL:** backend 139 suites / 1301 tests, typecheck, lint, build; contract export + gen:api;
+  frontend build, lint, stylelint, 43 files / 201 tests. **Not seen in a browser yet.**
+- **Found while testing on a copy of live (2026-11-18).** 13 sales stored the province inside the city ("Edmonton, AB"), so addresses printed "AB, AB". `common/geo/regions#splitCityRegion` (mirrored in `lib/geo`) now splits such a value on create, edit and the live-sales import, the detail page guards old values, and migration `20261118000000_sale_city_province_fix` repairs the stored rows. Every action button got a leading icon (`leftIcon`, lucide, 16px); dialog-dismiss buttons (Cancel, Close, Keep editing, Discard) stay text-only so the main action stands out. Same pass: a product whose name equals its type no longer reads "TV · TV" (`lib/format/text#sameLabel`/`joinDistinct`), and record History reads as "Field: before → after" in plain words with internal ids hidden (`features/audit/historyDiff.ts`, spec'd); the raw JSON stays behind "Technical details" and in the Audit log drawer.
+- **Operator:** `prisma:deploy` (two migrations) then `prisma:seed` (adds the four notification events). Set
+  `GEMINI_API_KEY` on Render only if Redwave wants the AI assistant (tool results go to Google).

@@ -115,10 +115,9 @@ const EXPENSE_FIELD_CONFIGS: {
   {
     category_key: 'meals',
     label: 'Meals',
-    // A meal is often home-made or from a vendor that gives no receipt, and its category already says what
-    // it is — so neither a receipt nor a description is demanded here. Both are still ACCEPTED and both
-    // remain mandatory for every other category. — EXP-002a
-    requires_receipt: false,
+    // Every category except km needs a receipt (client meeting 2026-11-16). A description is still not demanded:
+    // the category already says what it is. — EXP-002a
+    requires_receipt: true,
     requires_description: false,
     amount_soft_cap: '30.00', // PER MEAL — over it → a soft Warning (BRD §7.1 dinner cap)
     fields: [
@@ -127,7 +126,6 @@ const EXPENSE_FIELD_CONFIGS: {
       // Without this, combining a day's meals into one item is flagged while splitting them is not. — EXP-013
       { key: 'meals_count', label: 'Meals covered', type: 'number', required: false, multiplies_cap: true },
       { key: 'city', label: 'City of purchase', type: 'text', required: false },
-      { key: 'gratuity', label: 'Gratuity', type: 'money', required: false },
       { key: 'attendees', label: 'Attendees', type: 'text', required: false },
     ],
   },
@@ -183,6 +181,10 @@ const NOTIFICATION_EVENT_SETTINGS: EventSetting[] = [
   { event_type: 'statement_ready', in_app_enabled: true, email_enabled: false, label: 'Statement ready', title_template: 'A statement is ready', body_template: 'The statement for period {period_number} is available.' },
   { event_type: 'rate_change', in_app_enabled: true, email_enabled: false, label: 'Rate change', title_template: 'Billing rate changed', body_template: 'A {rate_kind} rate for {client_code} changed.' }, // RPT-010 — email off
   { event_type: 'import_committed', in_app_enabled: true, email_enabled: false, label: 'Import committed', title_template: 'Import committed', body_template: 'An {import_type} import was committed ({committed_count} rows).' },
+  { event_type: 'duplicate_sale_flagged', in_app_enabled: true, email_enabled: false, label: 'Possible duplicate sale', title_template: 'Possible duplicate: {sale_code}', body_template: 'Sale {sale_code} has the same MPU as {original_sale_code}. Approve it or delete it before validation.' },
+  { event_type: 'sale_edit_requested', in_app_enabled: true, email_enabled: false, label: 'Sale edit requested', title_template: 'Sale edit requested: {sale_code}', body_template: '{requester_name} asked to change sale {sale_code}.' },
+  { event_type: 'sale_edit_decided', in_app_enabled: true, email_enabled: false, label: 'Sale edit decided', title_template: 'Sale edit {decision}', body_template: 'Your requested change to sale {sale_code} was {decision}. {note}' },
+  { event_type: 'birthday', in_app_enabled: true, email_enabled: false, label: 'Rep birthday', title_template: 'Birthday today: {rep_name}', body_template: '{rep_name} ({rep_code}) has a birthday today.' },
   { event_type: 'broadcast', in_app_enabled: true, email_enabled: false, label: 'Broadcast announcement', title_template: null, body_template: null }, // SA supplies title/body
 ];
 
@@ -383,10 +385,9 @@ export async function seedBootstrap(prisma: PrismaClient): Promise<{ superAdminU
       where: { category_key: cfg.category_key },
       // behaviour + is_system are RE-ASSERTED on update: they are structural, not SA preferences, and a
       // built-in silently losing km behaviour would break mileage for everyone. — packet 10
+      // requires_receipt / requires_description are SA preferences: set on create only, never reset by a reseed.
       update: {
         label: cfg.label,
-        requires_receipt: cfg.requires_receipt,
-        requires_description: cfg.requires_description ?? true,
         behaviour: cfg.behaviour ?? 'standard',
         is_system: true,
         ...seedSchema,

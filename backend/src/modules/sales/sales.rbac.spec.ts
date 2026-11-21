@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { SalesController } from './sales.controller';
+import { SaleEditRequestsController, SalesController } from './sales.controller';
 import { RBAC_KEY } from '../../common/decorators/require-permission.decorator';
 
 const meta = (ctor: any, method: string) => Reflect.getMetadata(RBAC_KEY, ctor.prototype[method]);
@@ -24,6 +24,12 @@ describe('Sales RBAC metadata', () => {
     expect(meta(SalesController, 'exportSales')).toEqual({ moduleKey: 'sales', action: 'export' });
     expect(meta(SalesController, 'exportSummary')).toEqual({ moduleKey: 'sales', action: 'export' });
     expect(meta(SalesController, 'listExports')).toEqual({ moduleKey: 'sales', action: 'export' });
+    // 2026-11-16: duplicate approval + rep edit requests + the approvers' queue.
+    expect(meta(SalesController, 'approveDuplicate')).toEqual({ moduleKey: 'sales', action: 'approve' });
+    expect(meta(SalesController, 'requestEdit')).toEqual({ moduleKey: 'sales', action: 'view' });
+    expect(meta(SaleEditRequestsController, 'list')).toEqual({ moduleKey: 'sales', action: 'edit' });
+    expect(meta(SaleEditRequestsController, 'approve')).toEqual({ moduleKey: 'sales', action: 'edit' });
+    expect(meta(SaleEditRequestsController, 'reject')).toEqual({ moduleKey: 'sales', action: 'edit' });
   });
 
   // `GET :id` would swallow `/sales/exports` if declared first (ParseUUIDPipe → 400).

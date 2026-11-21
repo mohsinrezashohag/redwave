@@ -1,6 +1,6 @@
 /**
  * ChatMessages — the scrollable conversation. Auto-scrolls to the latest on each new message / while the
- * assistant is "thinking". Empty state = a short welcome + the suggestion chips (so the stubbed bot is usable).
+ * assistant is "thinking". Empty state = a short welcome + the suggestion chips for the current mode.
  * Display only — it renders whatever the server returned; no data access here. Tokens only.
  */
 import { useEffect, useRef } from 'react';
@@ -15,11 +15,12 @@ interface Props {
   pending: boolean;
   userName: string;
   userAvatar: string | null;
+  suggestions: string[];
   onSuggest: (prompt: string) => void;
   disabled: boolean;
 }
 
-export function ChatMessages({ messages, pending, userName, userAvatar, onSuggest, disabled }: Props) {
+export function ChatMessages({ messages, pending, userName, userAvatar, suggestions, onSuggest, disabled }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -31,7 +32,7 @@ export function ChatMessages({ messages, pending, userName, userAvatar, onSugges
         <div className={styles.empty}>
           <span className={styles.emptyTitle}>Ask about your Redwave data</span>
           <p className={styles.note}>The assistant answers within your access. Try one of these:</p>
-          <SuggestionChips onSelect={onSuggest} disabled={disabled} />
+          <SuggestionChips suggestions={suggestions} onSelect={onSuggest} disabled={disabled} />
         </div>
       ) : (
         messages.map((m) => <MessageBubble key={m.id} message={m} userName={userName} userAvatar={userAvatar} />)

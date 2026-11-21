@@ -6,6 +6,7 @@
  * authoritative. Used by the item detail page (the list uses the bulk bar, which can't carry an override).
  * Tokens only.
  */
+import { Check, Send, Undo2, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { Banner, Button, FormField, Input, Modal, Textarea, useToast } from '../../../components/ui';
 import { useApiErrorToast } from '../../../lib/api/apiError';
@@ -60,13 +61,13 @@ export function ReviewActions({ item, onDone }: { item: ExpenseItem; onDone?: ()
 
   return (
     <>
-      <Button variant="primary" onClick={onApprove} loading={review.isPending}>
+      <Button leftIcon={<Check size={16} />} variant="primary" onClick={onApprove} loading={review.isPending}>
         Approve
       </Button>
-      <Button variant="secondary" onClick={() => setNoteFor('send_back')}>
+      <Button leftIcon={<Undo2 size={16} />} variant="secondary" onClick={() => setNoteFor('send_back')}>
         Send back
       </Button>
-      <Button variant="destructive" onClick={() => setNoteFor('reject')}>
+      <Button leftIcon={<XCircle size={16} />} variant="destructive" onClick={() => setNoteFor('reject')}>
         Reject
       </Button>
 
@@ -83,7 +84,7 @@ export function ReviewActions({ item, onDone }: { item: ExpenseItem; onDone?: ()
             <Button variant="secondary" disabled={review.isPending} onClick={() => setFxOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" loading={review.isPending} disabled={!rateValid} onClick={() => decide('approve', { fx_rate: fxRate })}>
+            <Button leftIcon={<Check size={16} />} variant="primary" loading={review.isPending} disabled={!rateValid} onClick={() => decide('approve', { fx_rate: fxRate })}>
               Approve &amp; freeze
             </Button>
           </>
@@ -118,7 +119,7 @@ export function ReviewActions({ item, onDone }: { item: ExpenseItem; onDone?: ()
             <Button variant="secondary" onClick={() => setNoteFor(null)}>
               Cancel
             </Button>
-            <Button
+            <Button leftIcon={<Send size={16} />}
               variant={noteFor === 'reject' ? 'destructive' : 'primary'}
               loading={review.isPending}
               onClick={() => noteFor && decide(noteFor, { note })}

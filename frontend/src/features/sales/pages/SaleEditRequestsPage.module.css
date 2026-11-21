@@ -1,0 +1,62 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.link {
+  color: var(--accent-600);
+  font-weight: var(--weight-medium);
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.muted {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.statusCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diffRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.diffLabel {
+  color: var(--text-secondary);
+  font-weight: var(--weight-medium);
+}
+
+.before {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+}
+
+.arrow {
+  color: var(--text-secondary);
+}
+
+.after {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}

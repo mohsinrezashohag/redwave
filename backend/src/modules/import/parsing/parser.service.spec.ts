@@ -1,5 +1,5 @@
 import * as ExcelJS from 'exceljs';
-import { ParserService } from './parser.service';
+import { dropUnusedRows, ParserService } from './parser.service';
 import { UploadedFile } from '../../../common/storage/storage.service';
 import { TARGET_FIELDS } from '../target-fields';
 
@@ -130,5 +130,21 @@ describe('ParserService', () => {
       expect(result.headerRow).toBe(1);
       expect(result.headers).toEqual(['Client', 'MPU #', 'Sale Date']);
     });
+  });
+});
+
+describe('dropUnusedRows (2026-11-16)', () => {
+  it('drops a row blank in every MAPPED column even if an unmapped column has text', () => {
+    const rows = [{ A: '1', Notes: '' }, { A: '', Notes: 'see email' }, { A: ' ', Notes: null }];
+    expect(dropUnusedRows(rows, ['A'])).toEqual([{ A: '1', Notes: '' }]);
+  });
+
+  it('drops a totals footer (first used cell reads Total / Totals / Grand total)', () => {
+    const rows = [{ A: 'x', B: '1' }, { A: 'Totals', B: '9' }, { A: '', B: 'grand total:' }, { A: 'Total Fibre', B: '2' }];
+    expect(dropUnusedRows(rows, ['A', 'B'])).toEqual([{ A: 'x', B: '1' }, { A: 'Total Fibre', B: '2' }]);
+  });
+
+  it('with no mapping, every column counts', () => {
+    expect(dropUnusedRows([{ A: '', B: 'y' }], [])).toEqual([{ A: '', B: 'y' }]);
   });
 });

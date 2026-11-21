@@ -6,8 +6,9 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus } from 'lucide-react';
-import { Button, Input, PageHeader, Select } from '../../../components/ui';
+import { ImageDown, Plus } from 'lucide-react';
+import { Button, Input, PageHeader, Select, useToast } from '../../../components/ui';
+import { useApiErrorToast } from '../../../lib/api/apiError';
 import { RepFormModal, type RepFormState } from '../components/RepFormModal';
 import { useCan } from '../../../auth/useCan';
 import { AccessDenied } from '../../dashboards/components/AccessDenied';
@@ -17,7 +18,7 @@ import { displayDate, todayIso } from '../../../lib/format/date';
 import { exportFilename } from '../../../lib/export/exportFilename';
 import { useUsers } from '../../admin/api/useUsers';
 import { RepsTable } from '../components/RepsTable';
-import { fetchAllReps } from '../api/useReps';
+import { exportRepPhotos, fetchAllReps } from '../api/useReps';
 import type { Rep, RepStatusFilter, RepsFilters } from '../reps.types';
 
 const STATUS_OPTIONS = [
@@ -45,6 +46,10 @@ export default function RepsListPage() {
   const canView = useCan('hrm:view');
   const canCreate = useCan('hrm:create');
   const canViewUsers = useCan('users:view');
+  const canExportPhotos = useCan('hrm:edit');
+  const { toast } = useToast();
+  const onError = useApiErrorToast();
+  const [exportingPhotos, setExportingPhotos] = useState(false);
   const navigate = useNavigate();
   const [form, setForm] = useState<RepFormState>(null);
   const [status, setStatus] = useState<RepStatusFilter>('active');
@@ -74,6 +79,20 @@ export default function RepsListPage() {
     { header: 'Hired', value: (r) => displayDate(r.hire_date) },
   ];
 
+  // The ZIP of rep photos for the current filters (2026-11-16). Reps without a photo are listed in the zip's
+  // manifest.txt, so the toast only needs to confirm the download.
+  const onExportPhotos = async () => {
+    setExportingPhotos(true);
+    try {
+      await exportRepPhotos(filters);
+      toast({ title: 'Photos exported', description: 'Reps without a photo are listed in manifest.txt inside the file.', tone: 'success' });
+    } catch (e) {
+      onError(e);
+    } finally {
+      setExportingPhotos(false);
+    }
+  };
+
   if (!canView) {
     return <AccessDenied message="Viewing reps requires the HRM view permission." />;
   }
@@ -91,6 +110,11 @@ export default function RepsListPage() {
               <Select options={managerOptions} value={managerId} onValueChange={setManagerId} aria-label="Manager filter" />
             )}
             <ExportMenu filename={exportFilename({ source: 'reps', generatedOn: todayIso() })} title="Reps" columns={exportColumns} getRows={() => fetchAllReps(filters)} />
+            {canExportPhotos && (
+              <Button variant="secondary" leftIcon={<ImageDown size={16} />} loading={exportingPhotos} onClick={() => void onExportPhotos()}>
+                Export photos
+              </Button>
+            )}
             {canCreate && (
               <Button variant="primary" leftIcon={<Plus size={16} />} onClick={() => setForm({ mode: 'create' })}>
                 Add rep

@@ -6,6 +6,7 @@
  * client owes, not what a rep is paid — and the server 422s one rather than ignoring it, so the form does
  * not offer it (§14 rule 1).
  */
+import { Save } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -81,7 +82,7 @@ export function PeriodConfigModal({ open, onClose }: { open: boolean; onClose: (
               Cancel
             </Button>
           </ModalClose>
-          <Button variant="primary" type="submit" form="period-config-form" loading={save.isPending}>
+          <Button leftIcon={<Save size={16} />} variant="primary" type="submit" form="period-config-form" loading={save.isPending}>
             Save shape
           </Button>
         </div>

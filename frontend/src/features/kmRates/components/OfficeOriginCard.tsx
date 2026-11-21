@@ -14,6 +14,7 @@
  * falls back to the rep's typed total, exactly as it does for any manually entered stop. Same graceful
  * pattern as the KM form itself.
  */
+import { Save } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Autocomplete, useJsApiLoader } from '@react-google-maps/api';
 import { Button, Card, FormField, Input, useToast } from '../../../components/ui';
@@ -108,7 +109,7 @@ export function OfficeOriginCard() {
       title="Office origin"
       actions={
         canEdit ? (
-          <Button variant="secondary" size="sm" onClick={onSave} loading={save.isPending} disabled={!dirty}>
+          <Button leftIcon={<Save size={16} />} variant="secondary" size="sm" onClick={onSave} loading={save.isPending} disabled={!dirty}>
             Save
           </Button>
         ) : undefined

@@ -48,7 +48,9 @@ export const CRUMBS: Record<string, CrumbMeta> = {
   // ── Sales (the Validation queue is the /sales?status= preset — same route) ─────────
   '/sales': { label: 'Sales' },
   '/sales/new': { label: 'Enter sale', parent: '/sales' },
+  '/sales/edit-requests': { label: 'Edit requests', parent: '/sales', permission: 'sales:edit' },
   '/sales/:id': { dynamic: 'sale', parent: '/sales' },
+  '/sales/:id/edit': { label: 'Edit', parent: '/sales/:id' },
 
   // ── Expenses ───────────────────────────────────────────────────────────────────────
   '/expenses': { label: 'Expenses' },
@@ -58,11 +60,9 @@ export const CRUMBS: Record<string, CrumbMeta> = {
   '/expenses/:id/edit': { label: 'Edit', parent: '/expenses/:id' },
 
   // ── Money ──────────────────────────────────────────────────────────────────────────
-  '/pay-runs': { label: 'Pay runs' },
+  '/pay-runs': { label: 'Commission reports' },
   '/my-pay-statements': { label: 'My pay statements', permission: 'pay_statements:view' },
   '/pay-runs/:id': { dynamic: 'payrun', parent: '/pay-runs' },
-  '/clawbacks': { label: 'Clawbacks' },
-  '/clawbacks/new': { label: 'New clawback', parent: '/clawbacks' },
   '/billing': { label: 'Billing' },
   '/billing/statements/:id': { dynamic: 'statement', parent: '/billing' },
   '/billing/expense-documents': { label: 'Expense documents', parent: '/billing', permission: 'billing:view' },
@@ -71,6 +71,7 @@ export const CRUMBS: Record<string, CrumbMeta> = {
   // ── People / documents ─────────────────────────────────────────────────────────────
   '/documents': { label: 'Documents' },
   '/documents/:id': { dynamic: 'document', parent: '/documents' },
+  '/documents/:id/sign': { label: 'Sign', parent: '/documents/:id' },
 
   // ── Administration (all children point at the hub; the hub self-gates, so no permission) ──
   '/admin': { label: 'Administration' },
@@ -93,7 +94,6 @@ export const CRUMBS: Record<string, CrumbMeta> = {
   '/admin/export-layouts': { label: 'Export layouts', parent: '/admin', permission: 'settings:edit' },
   '/admin/security': { label: 'Security', parent: '/admin', permission: 'settings:view' },
   '/admin/audit': { label: 'Audit log', parent: '/admin', permission: 'audit:view' },
-  '/admin/reconciliation': { label: 'Reconciliation', parent: '/admin', permission: 'billing:view' },
 
   // ── Import ─────────────────────────────────────────────────────────────────────────
   '/import': { label: 'Import' },

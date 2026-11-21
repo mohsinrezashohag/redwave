@@ -3,6 +3,7 @@
  * a set-password link), edit, assign roles, reset password (link/temp), soft-deactivate. `users:view` to see;
  * create/edit gated by `useCan` (convenience — the server enforces). A 403 renders AccessDenied.
  */
+import { UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { Button, PageHeader } from '../../../components/ui';
 import { DataState } from '../../../components/data/DataState';
@@ -33,7 +34,7 @@ export default function UsersPage() {
         subtitle="Create users, assign roles, and manage access."
         actions={
           canCreate ? (
-            <Button variant="primary" onClick={() => setModal({ mode: 'create' })}>
+            <Button leftIcon={<UserPlus size={16} />} variant="primary" onClick={() => setModal({ mode: 'create' })}>
               Invite user
             </Button>
           ) : undefined

@@ -87,8 +87,13 @@ describe('RepsService.create — rep_code no-reuse (#11, HRM-003)', () => {
     await expect(service.create(newRepDto, EDITOR)).rejects.toBeInstanceOf(ConflictException);
     // The lookup must NOT filter by status (so terminated reps are included) and is case-insensitive.
     expect(prisma.rep.findFirst).toHaveBeenCalledWith({
-      where: { rep_code: { equals: 'Redwave07', mode: 'insensitive' } },
-      select: { id: true },
+      where: {
+        OR: [
+          { rep_code: { equals: 'Redwave07', mode: 'insensitive' } },
+          { external_code: { equals: 'Redwave07', mode: 'insensitive' } },
+        ],
+      },
+      select: { rep_code: true, external_code: true, full_name: true, status: true },
     });
     expect(prisma.rep.create).not.toHaveBeenCalled();
   });

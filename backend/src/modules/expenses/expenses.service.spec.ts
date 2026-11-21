@@ -452,7 +452,7 @@ const RICH_MEALS = {
   amount_soft_cap: { toString: () => '30.00' },
   fields: [
     { key: 'vendor', label: 'Vendor', type: 'text', required: true },
-    { key: 'gratuity', label: 'Gratuity', type: 'money', required: false, soft_cap: '20.00' },
+    { key: 'extra_charge', label: 'Extra charge', type: 'money', required: false, soft_cap: '20.00' },
   ],
 };
 const dec = (s: string) => ({ toString: () => s });
@@ -467,18 +467,18 @@ describe('ExpensesService — per-type fields + Alert/Warning (EXP-013)', () => 
   it('persists field_values FILTERED to the schema keys (unknown keys dropped)', async () => {
     const { service, tx, prisma } = make();
     prisma.expenseFieldConfig.findMany.mockResolvedValue([RICH_MEALS]);
-    const item = { ...mealItem(true), field_values: { vendor: 'Tim Hortons', gratuity: '5.00', junk: 'x' } } as ExpenseItemInput;
+    const item = { ...mealItem(true), field_values: { vendor: 'Tim Hortons', extra_charge: '5.00', junk: 'x' } } as ExpenseItemInput;
     await service.createItems(dto([item]), user);
-    expect((createdItems(tx)[0] as { field_values: Record<string, string> }).field_values).toEqual({ vendor: 'Tim Hortons', gratuity: '5.00' });
+    expect((createdItems(tx)[0] as { field_values: Record<string, string> }).field_values).toEqual({ vendor: 'Tim Hortons', extra_charge: '5.00' });
   });
 
-  it('WARNING does not block: an over-soft-cap meal saves, and gratuity NEVER changes the amount (#1)', async () => {
+  it('WARNING does not block: an over-soft-cap meal saves, and a money capture field NEVER changes the amount (#1)', async () => {
     const { service, tx, prisma } = make();
     prisma.expenseFieldConfig.findMany.mockResolvedValue([RICH_MEALS]);
-    const item = { ...mealItem(true), amount: '45.00', field_values: { vendor: 'X', gratuity: '10.00' } } as ExpenseItemInput;
+    const item = { ...mealItem(true), amount: '45.00', field_values: { vendor: 'X', extra_charge: '10.00' } } as ExpenseItemInput;
     await service.createItems(dto([item]), user);
     const created = createdItems(tx)[0] as { amount: string; amount_cad: string };
-    expect(created.amount).toBe('45.00'); // gratuity not added
+    expect(created.amount).toBe('45.00'); // extra_charge not added
     expect(created.amount_cad).toBe('45.00'); // reimbursable CAD unchanged by the per-type field
   });
 

@@ -715,4 +715,17 @@ Each module's requirements trace to the BRD and data model. Summary mapping:
 | 14 Reporting & Platform      | BRD §9            | sales_targets, notifications, notification_event_settings, chatbot_\*         |
 | 15 Data Import & Integration | BRD §5, Meeting 2 | import_batches, import_field_mappings, import_rows (+ tagged target tables)    |
 
+## 19. Amendments: client meeting 2026-11-16
+
+These amend the sections named. Where they conflict with earlier text, this section wins. The rules are recorded in `CLAUDE.md` §3/§14.
+
+- **PAY (§ Pay Run).** A run covers a **sale-date range** with an optional client or rep filter (a seller may be an admin with a linked rep record). Generate = draft preview with per-rep totals and per-sale detail; **Mark as paid** = the atomic, idempotent finalize over that range (a sale already paid is never included again). Period runs remain readable history. Exports: Excel/CSV/PDF, payroll Excel (client/rep), ADP CSV (rep).
+- **CLAW (§ Clawback) and reconciliation.** Hidden from the app by client decision. No pay run deducts a clawback. Endpoints and data are retained.
+- **SALE (§ Sales).** Province/State and City are chosen from lists (City allows Other). The Rep / Agent ID is always required. A second sale with the same client + MPU is **created and flagged** as a possible duplicate, cannot be validated until approved (`sales:approve`), and notifies approvers. A sale can be edited for 5 days from entry (Winnipeg day, inclusive) while entered or validated; an approver edits directly, a rep submits an edit request that an approver approves or rejects (both notified).
+- **IMP (§15).** Blank optional cells raise no error; an unparseable value says why (not a valid date / amount); rows with every mapped column blank, and Total/Sub-total rows, are skipped. A duplicate row may be accepted by an approver and is committed flagged.
+- **EXP (§ Expenses).** A receipt is required for every category except km. The meals gratuity field is removed. Submitting a round-trip km log asks for confirmation (Yes, submit / Back to edit).
+- **HRM.** Recruitment documents are a document type; a rep's login is linked from the rep form so the rep sees their own documents; admins can export all rep photos as a zip; a daily birthday notification goes to admins and the rep's manager, with an upcoming-birthdays card.
+- **DOC.** Signing opens a full page with field-by-field guidance and a review step; a banner shows documents waiting for the user's signature.
+- **RPT.** The leaderboard shows approved and pending counts (ranked on approved). The assistant can answer from scoped tools through Gemini when enabled by the Super Admin.
+
 *End of Software Requirements Specification v1.0 · Redwave ERP/HRM*

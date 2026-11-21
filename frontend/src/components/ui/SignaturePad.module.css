@@ -14,6 +14,17 @@
   cursor: crosshair;
 }
 
+.responsive {
+  height: 180px;
+}
+
+/* Phones: a finger needs more room than a mouse. Capped so the pad never pushes the actions off screen. */
+@media (max-width: 639.98px) {
+  .responsive {
+    height: min(40vh, 260px);
+  }
+}
+
 .hint {
   position: absolute;
   inset-block-end: var(--space-2);

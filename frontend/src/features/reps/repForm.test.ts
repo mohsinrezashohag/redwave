@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bankNameFor, isValidSin, NONE, repFormDefaults, repFormSchema, routingNumbers, toCreateBody, toUpdateBody, type RepFormValues } from './repForm';
+import { bankNameFor, isValidSin, loginOptions, NONE, repFormDefaults, repFormSchema, routingNumbers, toCreateBody, toUpdateBody, type RepFormValues } from './repForm';
 
 const TODAY = '2026-11-11';
 const base = (over: Partial<RepFormValues> = {}): RepFormValues => ({
@@ -110,5 +110,27 @@ describe('bank name + routing (2026-11-13)', () => {
     const body = toUpdateBody(base({ bank_institution: '004', bank_transit: '12345', bank_name: ' TD ', bank_account_holder: 'Riley' }), true);
     expect(body).toMatchObject({ banking: { institution_no: '004', transit_no: '12345', bank_name: 'TD', account_holder: 'Riley' } });
     expect((toUpdateBody(base({ bank_institution: '004', bank_transit: '12345' }), true) as { banking: object }).banking).not.toHaveProperty('bank_name');
+  });
+});
+
+describe('linked login (2026-11-16)', () => {
+  const users = [
+    { id: 'u1', full_name: 'Ann', email: 'a@x.ca', status: 'active' },
+    { id: 'u2', full_name: 'Bob', email: 'b@x.ca', status: 'active' },
+    { id: 'u3', full_name: 'Cy', email: 'c@x.ca', status: 'inactive' },
+  ];
+  it('lists None then active logins not linked to another rep', () => {
+    const opts = loginOptions(users, new Map([['u2', { id: 'r-other' }]]), null);
+    expect(opts.map((o) => o.value)).toEqual([NONE, 'u1']);
+  });
+  it("keeps the rep's own login, even when inactive", () => {
+    const opts = loginOptions(users, new Map([['u3', { id: 'r1' }]]), { id: 'r1', user_id: 'u3' });
+    expect(opts.map((o) => o.value)).toContain('u3');
+  });
+  it('NONE sends no user_id on create and null on update; a picked id is sent', () => {
+    const base = repFormDefaults(null);
+    expect('user_id' in toCreateBody({ ...base, user_id: NONE } as RepFormValues)).toBe(false);
+    expect(toCreateBody({ ...base, user_id: 'u1' } as RepFormValues)).toMatchObject({ user_id: 'u1' });
+    expect(toUpdateBody({ ...base, user_id: NONE } as RepFormValues, false)).toMatchObject({ user_id: null });
   });
 });

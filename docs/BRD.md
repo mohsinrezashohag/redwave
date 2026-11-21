@@ -433,6 +433,13 @@ This log records decisions that reversed or materially refined earlier artifacts
 | Currency (M3)           | Single-currency CAD (v1.2)                  | **Per-client currency + frozen FX snapshot**, reconciled in CAD |
 | Clients (M3)            | VF, RF, CTI                                 | + **VF Business** (4th program partner, in scope)            |
 | Commission grid (M3)    | (ambiguous "Commission" sheet)              | Confirmed **client-billing** data; Schedule C rep pay unchanged |
+| Pay runs (2026-11-16)   | Fixed bi-weekly pay-period runs             | **Date-range commission reports** (on sale date) per client / rep, with **Mark as paid** |
+| Clawbacks (2026-11-16)  | Entered and deducted in the pay run         | **Hidden** from the app; no deduction applied; data kept      |
+| Reconciliation (2026-11-16) | Tie-out screen                          | **Hidden** from the app                                      |
+| Duplicate MPU (2026-11-16) | Refused (409)                            | **Flagged**; held until an admin or manager approves it       |
+| Sale edits (2026-11-16) | Not editable after entry                    | Editable for **5 days**; a rep's edit is a request the admin approves |
+| Receipts (2026-11-16)   | Configurable; meals relaxed                 | Required for **every category except km**; gratuity removed  |
+| Leaderboard (2026-11-16)| Internet activations                        | **Approved and pending** counts, colour-coded; counts only   |
 
 ### 11.1 Remaining Items to Finalise
 

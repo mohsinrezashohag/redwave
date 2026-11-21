@@ -6,7 +6,7 @@
  * "genuine". The date fields only show for types that carry dates. Tokens only.
  */
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ScanText } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Save, ScanText } from 'lucide-react';
 import { Banner, Button, DatePicker, FormField, LoadingSpinner, Modal, PrivateInput, Select } from '../../../components/ui';
 import { datesProblem, EXPIRING_DOC_TYPES, REP_DOC_TYPES } from '../repDocTypes';
 import type { DocumentRead } from '../reps.types';
@@ -116,7 +116,7 @@ export function DocumentDatesReview({
           <Button variant="secondary" type="button" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
-          <Button
+          <Button leftIcon={<Save size={16} />}
             variant="primary"
             type="button"
             loading={saving}

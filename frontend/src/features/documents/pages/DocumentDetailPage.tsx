@@ -7,7 +7,7 @@
  */
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileSignature } from 'lucide-react';
+import { ArrowLeft, Eye, FileSignature, XCircle } from 'lucide-react';
 import { Banner, Button, Card, Modal, PageHeader, TableError, TableSkeleton, useToast } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
 import { useAuth } from '../../../auth/useAuth';
@@ -40,7 +40,7 @@ function OriginalDocumentCard({ documentId }: { documentId: string }) {
         <span className={styles.previewHead}>
           <span>Original document</span>
           <span className={styles.downloadRow}>
-            <Button variant="tertiary" size="sm" onClick={() => setShow((s) => !s)}>
+            <Button leftIcon={<Eye size={16} />} variant="tertiary" size="sm" onClick={() => setShow((s) => !s)}>
               {show ? 'Hide preview' : 'Preview'}
             </Button>
             <DownloadLink query={fileUrl} label="Download" />
@@ -149,6 +149,19 @@ export default function DocumentDetailPage() {
         }
       />
 
+      {mySig && (
+        <Banner tone="info" title="This document is waiting for your signature">
+          <span className={styles.bannerBody}>
+            <span>Open the signing view to complete your fields.</span>
+            <span className={styles.bannerActions}>
+              <Button variant="primary" leftIcon={<FileSignature size={16} />} onClick={() => navigate(`/documents/${doc.id}/sign?request=${mySig.requestId}`)}>
+                Review and sign
+              </Button>
+            </span>
+          </span>
+        </Banner>
+      )}
+
       <OriginalDocumentCard documentId={doc.id} />
       {doc.status === 'completed' && <CompletedCopyRow documentId={doc.id} />}
 
@@ -164,7 +177,9 @@ export default function DocumentDetailPage() {
             resolve={resolve}
             isMyPendingRequest={mySig?.requestId === r.id}
             canCancelThis={canCancel(r, doc, user?.id, isAdmin)}
-            onSign={(decision) => setSignTarget({ request: r, decision })}
+            onSign={(decision) =>
+              decision === 'sign' ? navigate(`/documents/${doc.id}/sign?request=${r.id}`) : setSignTarget({ request: r, decision })
+            }
             onCancel={() => setCancelTarget(r.id)}
           />
         ))
@@ -192,7 +207,7 @@ export default function DocumentDetailPage() {
             <Button variant="secondary" type="button" onClick={() => setCancelTarget(null)} disabled={cancel.isPending}>
               Keep request
             </Button>
-            <Button variant="destructive" type="button" onClick={onConfirmCancel} loading={cancel.isPending} disabled={cancel.isPending}>
+            <Button leftIcon={<XCircle size={16} />} variant="destructive" type="button" onClick={onConfirmCancel} loading={cancel.isPending} disabled={cancel.isPending}>
               Cancel request
             </Button>
           </div>

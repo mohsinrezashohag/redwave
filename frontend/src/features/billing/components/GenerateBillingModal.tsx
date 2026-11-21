@@ -5,6 +5,7 @@
  * for the record — never mutated). An unpriced product → 422 → a helpful UnpricedBanner. On success → the
  * statement detail page. billing:create-gated; the server is the real gate (§5).
  */
+import { Eye, FileText } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Banner, Button, Modal, Table, TBody, TD, TH, THead, TR, useToast } from '../../../components/ui';
@@ -116,11 +117,11 @@ export function GenerateBillingModal({ open, onClose, clients, periods, presetCl
             Cancel
           </Button>
           {preview ? (
-            <Button variant="primary" type="button" onClick={onIssue} loading={genStmt.isPending || genInv.isPending} disabled={busy}>
+            <Button leftIcon={<FileText size={16} />} variant="primary" type="button" onClick={onIssue} loading={genStmt.isPending || genInv.isPending} disabled={busy}>
               {alreadyExists ? 'Issue new version' : 'Generate & issue'}
             </Button>
           ) : (
-            <Button variant="primary" type="button" onClick={onPreview} loading={previewMut.isPending} disabled={busy || !clientId || !periodId}>
+            <Button leftIcon={<Eye size={16} />} variant="primary" type="button" onClick={onPreview} loading={previewMut.isPending} disabled={busy || !clientId || !periodId}>
               Preview
             </Button>
           )}

@@ -5,6 +5,7 @@
  * fully read-only here (it holds all grants; neutering it would lock everyone out, and the server has no
  * self-protection). Reuses the playbook (RHF+zod for the fields; the matrix owns its Set). Tokens only.
  */
+import { Save } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -115,7 +116,7 @@ export function RoleEditor({
           {readOnly ? 'Back' : 'Cancel'}
         </Button>
         {!readOnly && (
-          <Button variant="primary" type="submit" loading={pending}>
+          <Button leftIcon={<Save size={16} />} variant="primary" type="submit" loading={pending}>
             {role ? 'Save role' : 'Create role'}
           </Button>
         )}

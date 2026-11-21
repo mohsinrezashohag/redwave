@@ -18,6 +18,8 @@ const ShowcasePage = lazy(() => import('../showcase/ShowcasePage'));
 const SalesListPage = lazy(() => import('../features/sales/pages/SalesListPage'));
 const SaleEntryPage = lazy(() => import('../features/sales/pages/SaleEntryPage'));
 const SaleDetailPage = lazy(() => import('../features/sales/pages/SaleDetailPage'));
+const SaleEditPage = lazy(() => import('../features/sales/pages/SaleEditPage'));
+const SaleEditRequestsPage = lazy(() => import('../features/sales/pages/SaleEditRequestsPage'));
 const DashboardLanding = lazy(() => import('../features/dashboards/pages/DashboardLanding'));
 const RepDashboardPage = lazy(() => import('../features/dashboards/pages/RepDashboardPage'));
 const ManagerDashboardPage = lazy(() => import('../features/dashboards/pages/ManagerDashboardPage'));
@@ -47,15 +49,13 @@ const ExportLayoutsPage = lazy(() => import('../features/exportLayouts/pages/Exp
 const PayRunListPage = lazy(() => import('../features/payrun/pages/PayRunListPage'));
 const MyPayStatementsPage = lazy(() => import('../features/payrun/pages/MyPayStatementsPage'));
 const PayRunDetailPage = lazy(() => import('../features/payrun/pages/PayRunDetailPage'));
-const ClawbackListPage = lazy(() => import('../features/clawback/pages/ClawbackListPage'));
-const ClawbackEntryPage = lazy(() => import('../features/clawback/pages/ClawbackEntryPage'));
 const BillingListPage = lazy(() => import('../features/billing/pages/BillingListPage'));
 const StatementDetailPage = lazy(() => import('../features/billing/pages/StatementDetailPage'));
 const ExpenseDocsListPage = lazy(() => import('../features/expenseDocs/pages/ExpenseDocsListPage'));
 const ExpenseDocDetailPage = lazy(() => import('../features/expenseDocs/pages/ExpenseDocDetailPage'));
-const ReconciliationPage = lazy(() => import('../features/reconciliation/pages/ReconciliationPage'));
 const DocumentsListPage = lazy(() => import('../features/documents/pages/DocumentsListPage'));
 const DocumentDetailPage = lazy(() => import('../features/documents/pages/DocumentDetailPage'));
+const SignDocumentPage = lazy(() => import('../features/documents/pages/SignDocumentPage'));
 const ImportListPage = lazy(() => import('../features/import/pages/ImportListPage'));
 const NewImportPage = lazy(() => import('../features/import/pages/NewImportPage'));
 const ImportDetailPage = lazy(() => import('../features/import/pages/ImportDetailPage'));
@@ -125,7 +125,9 @@ export const router = createBrowserRouter([
           { path: 'showcase', element: lazyEl(<ShowcasePage />) },
           { path: 'sales', element: lazyEl(<SalesListPage />) },
           { path: 'sales/new', element: lazyEl(<SaleEntryPage />) },
+          { path: 'sales/edit-requests', element: lazyEl(<SaleEditRequestsPage />) },
           { path: 'sales/:id', element: lazyEl(<SaleDetailPage />) },
+          { path: 'sales/:id/edit', element: lazyEl(<SaleEditPage />) },
           { path: 'expenses', element: lazyEl(<ExpensesListPage />) },
           { path: 'expenses/approvals', element: lazyEl(<ExpenseApprovalsPage />) },
           { path: 'expenses/reports/:id', element: lazyEl(<FolderDetailPage />) },
@@ -134,14 +136,15 @@ export const router = createBrowserRouter([
           { path: 'pay-runs', element: lazyEl(<PayRunListPage />) },
           { path: 'my-pay-statements', element: lazyEl(<MyPayStatementsPage />) },
           { path: 'pay-runs/:id', element: lazyEl(<PayRunDetailPage />) },
-          { path: 'clawbacks', element: lazyEl(<ClawbackListPage />) },
-          { path: 'clawbacks/new', element: lazyEl(<ClawbackEntryPage />) },
+          // Clawbacks + reconciliation are hidden by client decision (2026-11-16); the code and data are kept.
+          { path: 'clawbacks/*', element: <Navigate to="/" replace /> },
           { path: 'billing', element: lazyEl(<BillingListPage />) },
           { path: 'billing/statements/:id', element: lazyEl(<StatementDetailPage />) },
           { path: 'billing/expense-documents', element: lazyEl(<ExpenseDocsListPage />) },
           { path: 'billing/expense-documents/:id', element: lazyEl(<ExpenseDocDetailPage />) },
           { path: 'documents', element: lazyEl(<DocumentsListPage />) },
           { path: 'documents/:id', element: lazyEl(<DocumentDetailPage />) },
+          { path: 'documents/:id/sign', element: lazyEl(<SignDocumentPage />) },
           { path: 'import', element: lazyEl(<ImportListPage />) },
           { path: 'import/new', element: lazyEl(<NewImportPage />) },
           { path: 'import/:id', element: lazyEl(<ImportDetailPage />) },
@@ -172,7 +175,7 @@ export const router = createBrowserRouter([
           { path: 'admin/export-layouts', element: lazyEl(<ExportLayoutsPage />) },
           { path: 'admin/security', element: lazyEl(<SecuritySettingsPage />) },
           { path: 'admin/audit', element: lazyEl(<AuditLogPage />) },
-          { path: 'admin/reconciliation', element: lazyEl(<ReconciliationPage />) },
+          { path: 'admin/reconciliation', element: <Navigate to="/admin" replace /> },
           // Convenience redirects for legacy/short paths that previously dead-ended on a blank RR-404.
           { path: 'users', element: <Navigate to="/admin/users" replace /> },
           { path: 'reps', element: <Navigate to="/admin/reps" replace /> },

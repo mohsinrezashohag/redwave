@@ -16,6 +16,7 @@ export const REP_DOC_TYPES = [
   'drivers_licence',
   'passport',
   'contract',
+  'recruitment', // recruitment / onboarding paperwork (2026-11-16)
   'other',
 ] as const;
 export type RepDocType = (typeof REP_DOC_TYPES)[number];

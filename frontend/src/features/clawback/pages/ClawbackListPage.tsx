@@ -30,7 +30,7 @@ export default function ClawbackListPage() {
   const q = useClawbacks(status === 'all' ? {} : { status }, canView);
   const runsQ = usePayRuns(canViewRuns);
 
-  const runMap = useMemo(() => new Map((runsQ.data ?? []).map((r) => [r.id, `#${r.pay_period.period_number}`])), [runsQ.data]);
+  const runMap = useMemo(() => new Map((runsQ.data ?? []).map((r) => [r.id, r.display_label])), [runsQ.data]);
   const runLabel = (id: string | null) => (id ? runMap.get(id) ?? 'Applied' : '—');
 
   if (!canView || isForbidden(q.error)) {

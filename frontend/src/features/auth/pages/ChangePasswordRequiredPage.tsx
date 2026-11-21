@@ -3,6 +3,7 @@
  * an invite or an admin temp-password reset). The user signs in with their temp/initial password, then sets
  * a new one (current + new). On success we sign out + back to login (a fresh login clears the flag cleanly).
  */
+import { KeyRound } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Banner, Button, FormField, Input, useToast } from '../../../components/ui';
@@ -57,7 +58,7 @@ export default function ChangePasswordRequiredPage() {
         <FormField label="Confirm new password" error={mismatch ? 'Passwords do not match.' : undefined}>
           <Input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         </FormField>
-        <Button type="submit" variant="primary" fullWidth loading={change.isPending} disabled={!canSubmit}>
+        <Button leftIcon={<KeyRound size={16} />} type="submit" variant="primary" fullWidth loading={change.isPending} disabled={!canSubmit}>
           Update password
         </Button>
       </form>
