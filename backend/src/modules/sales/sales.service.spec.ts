@@ -29,6 +29,7 @@ function make(scope: Scope) {
       findUniqueOrThrow: jest.fn(),
       findUnique: jest.fn(),
       findFirst: saleFindFirst,
+      findMany: jest.fn().mockResolvedValue([]), // duplicate candidates (2026-11-28)
       // createWithinTx writes + counts through the CALLER's tx (Import commit).
       create: jest.fn(),
       count: jest.fn().mockResolvedValue(0),
@@ -114,11 +115,14 @@ describe('SalesService.create', () => {
         sale_code: string;
         rep_id: string;
         status: string;
+        validated_by?: string;
         sale_items: { create: Array<Record<string, unknown>> };
       };
     };
     expect(arg.data.rep_id).toBe('rep-self'); // defaulted to caller
-    expect(arg.data.status).toBe('entered');
+    // No per-sale validation step (App Review Feedback 2026-11-28): a clean sale is validated at submit.
+    expect(arg.data.status).toBe('validated');
+    expect(arg.data.validated_by).toBe('user-1');
     expect(arg.data.sale_code).toMatch(/^\d{4}-\d{2}-\d{2}-VF$/); // no MPU → composed without it
     const item = arg.data.sale_items.create[0];
     expect(item.product_type).toBe('internet');
@@ -177,17 +181,19 @@ describe('SalesService.create — one live sale per client + MPU (§14 rule 8)',
 
   it('creates a second live sale with the same MPU FLAGGED as a possible duplicate, and notifies approvers (2026-11-16)', async () => {
     const { service, prisma, emitter } = arrange();
-    prisma.sale.findFirst.mockResolvedValue({ id: 'orig', sale_code: '2026-07-03-MPU-3291-VF' });
     prisma.sale.findMany.mockImplementation(async (args: { where: { duplicate_of_sale_id?: unknown } }) =>
       args.where.duplicate_of_sale_id
-        ? [{ id: 's1', sale_code: 'x', customer_name: 'Jane', duplicate_of_sale_id: 'orig', rep: { field_manager_id: 'mgr-1' } }]
-        : [{ id: 'orig', sale_code: '2026-07-03-MPU-3291-VF' }],
+        ? [{ id: 's1', sale_code: 'x', customer_name: 'Jane', duplicate_of_sale_id: 'orig', duplicate_reason: 'mpu', rep: { field_manager_id: 'mgr-1' } }]
+        : [{ id: 'orig', sale_code: '2026-07-03-MPU-3291-VF', customer_name: 'Other Person', street: '9 Far Rd', city: 'Elsewhere', mpu_id: '3291' }],
     );
     await service.create({ ...createDto, mpu_id: '3291' }, authUser('rep-self'));
 
     const data = (prisma.sale.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
     expect(data.duplicate_of_sale_id).toBe('orig');
-    const where = (prisma.sale.findFirst.mock.calls[0][0] as { where: Record<string, unknown> }).where;
+    expect(data.duplicate_reason).toBe('mpu');
+    expect(data.status).toBe('entered'); // HELD for review, not validated
+    expect(data.validated_by).toBeUndefined();
+    const where = (prisma.sale.findMany.mock.calls[0][0] as { where: Record<string, unknown> }).where;
     expect(where).toMatchObject({ client_id: 'c1', status: { not: 'deleted' } });
     expect(emitter.emitRole).toHaveBeenCalledWith('Admin', expect.objectContaining({ eventType: 'duplicate_sale_flagged' }));
     expect(emitter.emitMany).toHaveBeenCalledWith(['mgr-1'], expect.objectContaining({
@@ -197,17 +203,26 @@ describe('SalesService.create — one live sale per client + MPU (§14 rule 8)',
 
   it('creates the sale unflagged when no live sale has that MPU', async () => {
     const { service, prisma, emitter } = arrange();
-    prisma.sale.findFirst.mockResolvedValue(null);
     await service.create({ ...createDto, mpu_id: '3291' }, authUser('rep-self'));
     const data = (prisma.sale.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
     expect(data.duplicate_of_sale_id).toBeNull();
+    expect(data.status).toBe('validated');
     expect(emitter.emitRole).not.toHaveBeenCalled();
   });
 
-  it('does not look up duplicates for a sale without an MPU', async () => {
-    const { service, prisma } = arrange();
+  it('flags a sale with no MPU at the same address as an existing one (App Review Feedback High #3, 2026-11-28)', async () => {
+    const { service, prisma, emitter } = arrange();
+    prisma.sale.findMany.mockImplementation(async (args: { where: { duplicate_of_sale_id?: unknown } }) =>
+      args.where.duplicate_of_sale_id
+        ? [{ id: 's1', sale_code: 'x', customer_name: 'Jane', duplicate_of_sale_id: 'orig', duplicate_reason: 'address', rep: { field_manager_id: null } }]
+        : [{ id: 'orig', sale_code: '2026-07-01-VF', customer_name: 'Someone Else', street: '1 Street', city: 'TOWN', mpu_id: null }],
+    );
     await service.create(createDto, authUser('rep-self'));
-    expect(prisma.sale.findFirst).not.toHaveBeenCalled();
+    const data = (prisma.sale.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect(data).toMatchObject({ duplicate_of_sale_id: 'orig', duplicate_reason: 'address', status: 'entered' });
+    expect(emitter.emitRole).toHaveBeenCalledWith('Admin', expect.objectContaining({
+      body: expect.stringContaining('the same address'),
+    }));
   });
 });
 
@@ -240,7 +255,7 @@ describe('SalesService.createWithinTx (composable inside the Import commit — I
     expect(tx.sale.create).toHaveBeenCalled();
     expect(prisma.sale.create).not.toHaveBeenCalled(); // nothing escapes the batch transaction
     expect(dataArg(tx).import_batch_id).toBe('batch-9'); // IMP-008 provenance
-    expect(dataArg(tx).status).toBe('entered'); // live sale — NOT 'historical'
+    expect(dataArg(tx).status).toBe('validated'); // live sale, validated at submit (2026-11-28) — NOT 'historical'
   });
 
   it('leaves commission snapshots NULL — importing a sale writes NO commission (#2/#5)', async () => {
@@ -450,6 +465,8 @@ describe('possible duplicates are held until approved (2026-11-16)', () => {
     await service.approveDuplicate('s1', authUser(null));
     const arg = prisma.sale.update.mock.calls[0][0] as { data: Record<string, unknown> };
     expect(arg.data.duplicate_approved_by).toBe('user-1');
+    // Approving IS the review: a held (entered) sale is validated in the same write. — 2026-11-28
+    expect(arg.data).toMatchObject({ status: 'validated', validated_by: 'user-1' });
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'approve_duplicate' }));
 
     prisma.sale.findFirst.mockResolvedValue(baseSale());

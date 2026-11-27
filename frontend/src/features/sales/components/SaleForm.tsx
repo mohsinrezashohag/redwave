@@ -241,7 +241,16 @@ export function SaleForm({ sale }: { sale?: Sale } = {}) {
       },
       {
         onSuccess: (created: Sale) => {
-          toast({ title: 'Sale entered', description: `Sale ID ${created.sale_code}`, tone: 'success' });
+          // A clean sale counts at once; a possible duplicate is held for review. Say which, honestly. 2026-11-28
+          toast(
+            created.duplicate_of_sale_id
+              ? {
+                  title: 'Sale saved for review',
+                  description: `Sale ID ${created.sale_code} looks like ${created.duplicate_of_sale_code ?? 'another sale'}. A manager or admin will review it.`,
+                  tone: 'warning',
+                }
+              : { title: 'Sale submitted', description: `Sale ID ${created.sale_code}`, tone: 'success' },
+          );
           leave.allowLeave();
           navigate(`/sales/${created.id}`);
         },

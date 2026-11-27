@@ -36,7 +36,12 @@ function make(parseRows: Record<string, unknown>[] = [], headers: string[] = [])
       findFirst: jest.fn().mockResolvedValue({ id: 'rep1' }),
       create: jest.fn().mockResolvedValue({ id: 'rep1' }),
     },
-    sale: { create: jest.fn().mockResolvedValue({ id: 'sale-H' }), count: jest.fn().mockResolvedValue(0) },
+    sale: {
+      create: jest.fn().mockResolvedValue({ id: 'sale-H' }),
+      count: jest.fn().mockResolvedValue(0),
+      // bulk validation reads the matched sale's status first (validated at submit → no-op). 2026-11-28
+      findUnique: jest.fn().mockResolvedValue({ status: 'entered' }),
+    },
   };
   const prisma = {
     importFieldMapping: { findUnique: jest.fn() },
@@ -214,16 +219,27 @@ describe('ImportService.commit — LIVE sales (sales_entry:sales — IMP-013)', 
     expect(tx.sale.create).not.toHaveBeenCalled(); // the handler itself writes no sale row
   });
 
-  it('blank status stays entered; "validated" ALSO runs the entered→validated transition', async () => {
+  it('a clean live sale is created validated, so a "validated" status column never runs a second transition (2026-11-28)', async () => {
     const entered = make();
     entered.prisma.importBatch.findUnique.mockResolvedValue(liveBatch(row));
     await entered.service.commit('b1', user);
     expect(entered.sales.validateWithinTx).not.toHaveBeenCalled();
 
     const validated = make();
+    validated.sales.createWithinTx.mockResolvedValue({ id: 'sale-L', status: 'validated', duplicate_of_sale_id: null });
     validated.prisma.importBatch.findUnique.mockResolvedValue(liveBatch({ ...row, status: 'validated' }));
     await validated.service.commit('b1', user);
-    expect(validated.sales.validateWithinTx).toHaveBeenCalledWith(validated.tx, 'sale-L', {}, user);
+    expect(validated.sales.validateWithinTx).not.toHaveBeenCalled(); // no 409 on an already-validated sale
+  });
+
+  it('a client report that confirms an already-validated sale is a no-op, not a 409 (2026-11-28)', async () => {
+    const { service, prisma, tx, sales } = make();
+    tx.sale.findUnique.mockResolvedValue({ status: 'validated' });
+    prisma.importBatch.findUnique.mockResolvedValue(
+      stagedBatch({ matched_rows: 1, import_rows: [{ id: 'r1', match_status: 'matched', matched_entity_id: 'sale-A', mapped_data: { mpu_id: 'A' } }] }),
+    );
+    await service.commit('b1', user);
+    expect(sales.validateWithinTx).not.toHaveBeenCalled();
   });
 
   it('optional address columns fall back to the “—” placeholder', async () => {

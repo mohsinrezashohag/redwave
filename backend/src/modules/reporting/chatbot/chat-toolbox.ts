@@ -16,7 +16,7 @@ import { todayInWinnipeg, winnipegDateOnly } from '../../../common/timezone';
 import { currentPeriod } from '../period.logic';
 import { LeaderboardService } from '../leaderboard.service';
 import { DashboardsService } from '../dashboards.service';
-import { AiToolName, asArgs, cleanDate, cleanSaleCode, cleanStatus, FILTERABLE_SALE_STATUSES } from './ai-tools';
+import { AiToolName, asArgs, cleanDate, cleanRepCode, cleanSaleCode, cleanStatus, FILTERABLE_SALE_STATUSES } from './ai-tools';
 
 const CONFIRMED: SaleStatus[] = ['validated', 'in_pay_run', 'paid'];
 const FINALIZED: PayRunStatus[] = ['finalized', 'exported'];
@@ -54,6 +54,8 @@ export class ChatToolbox {
         const d = await this.dashboards.business(user, {});
         return { revenue_cad: d.revenue, rep_payout_cad: d.rep_payout, net_margin_cad: d.net_margin };
       }
+      case 'rep_lookup':
+        return this.repLookup(scope, args);
       default:
         return { error: 'unknown tool' };
     }
@@ -158,6 +160,33 @@ export class ChatToolbox {
       validated_on: ISO(sale.validated_at),
       client: sale.client.client_code,
       products: sale.sale_items.map((i) => i.product_type),
+    };
+  }
+
+  /**
+   * Who a rep is, by rep code or partner code. Scope is IN the query, so an out-of-scope rep answers exactly
+   * like an unknown code. Name, status and manager only: no money, no contact or private details. 2026-11-28
+   */
+  async repLookup(scope: RepScope, args: Record<string, unknown>): Promise<ToolResult> {
+    const code = cleanRepCode(args.rep_code);
+    const notFound = { found: false, message: 'No rep with that code is visible to you.' };
+    if (!code) return notFound;
+    const reps = this.repFilter(scope);
+    const rep = await this.prisma.rep.findFirst({
+      where: {
+        OR: [{ rep_code: { equals: code, mode: 'insensitive' } }, { external_code: { equals: code, mode: 'insensitive' } }],
+        ...(reps ? { id: { in: reps } } : {}),
+      },
+      select: { rep_code: true, external_code: true, full_name: true, status: true, field_manager: { select: { full_name: true } } },
+    });
+    if (!rep) return notFound;
+    return {
+      found: true,
+      rep_code: rep.rep_code,
+      partner_code: rep.external_code,
+      name: rep.full_name,
+      status: rep.status,
+      field_manager: rep.field_manager?.full_name ?? null,
     };
   }
 

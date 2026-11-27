@@ -1,4 +1,4 @@
-import { repDocumentProblem } from './rep-documents.logic';
+import { DATED_DOC_TYPES, EXPIRING_DOC_TYPES, repDocumentProblem } from './rep-documents.logic';
 import { maskAccount, normalizeAccount, normalizeInstitution, normalizeTransit } from './rep-profile.logic';
 
 describe('rep document rules (2026-11-12)', () => {
@@ -37,5 +37,18 @@ describe('banking number rules', () => {
   it('masks to the last four', () => {
     expect(maskAccount('4567')).toBe('••••4567');
     expect(maskAccount(null)).toBeNull();
+  });
+});
+
+describe('background check documents (Naimur, 2026-11-28)', () => {
+  it('is a known type that takes a PDF or image and carries issue + expiry dates', () => {
+    expect(repDocumentProblem('background_check', 'application/pdf', '2027-11-28', '2026-11-28')).toBeNull();
+    expect(repDocumentProblem('background_check', 'image/png', null, null)).toBeNull();
+    expect(repDocumentProblem('background_check', 'application/pdf', '2026-01-01', '2026-02-01')).toMatch(/after the issue date/);
+  });
+  it('is dated but is not an ID (never read automatically or compared on Data accuracy)', () => {
+    expect(DATED_DOC_TYPES.has('background_check')).toBe(true);
+    expect(EXPIRING_DOC_TYPES.has('background_check')).toBe(false);
+    expect(repDocumentProblem('contract', 'application/pdf', '2027-01-01')).toMatch(/background checks/);
   });
 });

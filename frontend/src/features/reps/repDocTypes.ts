@@ -13,11 +13,16 @@ export const REP_DOC_TYPES = [
   { value: 'passport', label: 'Passport' },
   { value: 'contract', label: 'Contract' },
   { value: 'recruitment', label: 'Recruitment documents' },
+  { value: 'background_check', label: 'Background check' },
   { value: 'other', label: 'Other' },
 ] as const;
 
 /** Documents that expire: immigration status + government ID. */
 export const EXPIRING_DOC_TYPES: ReadonlySet<string> = new Set(['work_permit', 'study_permit', 'pr_card', 'drivers_licence', 'passport']);
+
+/** Documents with HR-entered issue + expiry dates: the IDs plus a background check (2026-11-28). Only the IDs
+ *  are read automatically and carry holder details. Mirrors the backend `DATED_DOC_TYPES`. */
+export const DATED_DOC_TYPES: ReadonlySet<string> = new Set([...EXPIRING_DOC_TYPES, 'background_check']);
 
 /** Short label for a stored type; an older free-text type shows as written. */
 export function docTypeLabel(docType: string): string {

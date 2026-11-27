@@ -2625,6 +2625,7 @@ paths:
                     - passport
                     - contract
                     - recruitment
+                    - background_check
                     - other
                 expires_on:
                   type: string
@@ -2681,6 +2682,7 @@ paths:
                     - passport
                     - contract
                     - recruitment
+                    - background_check
                     - other
       responses:
         "200":
@@ -12408,8 +12410,17 @@ components:
         duplicate_of_sale_id:
           type: string
           nullable: true
-          description: Set when another live sale has the same client + MPU. The sale
-            cannot be validated until approved.
+          description: Set when another live sale for this client has the same MPU, street
+            address + city, or customer name. The sale is held (status entered)
+            until approved.
+        duplicate_reason:
+          type: string
+          nullable: true
+          enum:
+            - mpu
+            - address
+            - name
+          description: Why the sale was flagged (2026-11-28). null when not flagged.
         duplicate_of_sale_code:
           type: string
           nullable: true
@@ -12453,6 +12464,7 @@ components:
         - created_at
         - sale_items
         - duplicate_of_sale_id
+        - duplicate_reason
         - duplicate_approved_at
     SalePageResponse:
       type: object

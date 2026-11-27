@@ -24,7 +24,7 @@ import { DashboardsService } from './dashboards.service';
 import { LeaderboardService } from './leaderboard.service';
 import { ChatbotQueryDto } from './dto/chatbot-query.dto';
 import { UpdateChatbotConfigDto } from './dto/chatbot.dto';
-import { ChatTool, LLM_PROVIDER, LlmProvider, StubLlmProvider } from './chatbot/llm.provider';
+import { ChatTool, LLM_PROVIDER, LlmProvider, repCodeFromPrompt, StubLlmProvider } from './chatbot/llm.provider';
 import { isToolAllowed } from './chatbot/tools';
 import { ChatbotConfigCache } from './chatbot/chatbot-config.cache';
 import { ChatToolbox } from './chatbot/chat-toolbox';
@@ -207,8 +207,39 @@ export class ChatbotService {
     const { tool } = await provider.resolveIntent(prompt);
     const allowed = isToolAllowed(tool, user, scope.level);
     // Executed ONLY with the AuthUser — never with any id from the prompt.
-    const answer = allowed ? await this.runTool(tool, user) : REFUSAL;
+    // The one exception is `rep_lookup`: it reads a rep CODE, and the lookup is scoped in the query.
+    let answer: string;
+    if (!allowed) answer = tool === 'rep_lookup' ? this.repLookupRefusal() : REFUSAL;
+    else if (tool === 'greeting') answer = `Hi ${user.full_name.split(' ')[0] || 'there'}, I'm doing well, thanks. ${this.helpText(user, scope)}`;
+    else if (tool === 'help') answer = this.helpText(user, scope);
+    else if (tool === 'rep_lookup') answer = await this.repLookupAnswer(prompt, scope);
+    else answer = await this.runTool(tool, user);
     return { intent: tool as ChatIntentOut, answer, mode: 'basic' as const, tools_used: [] as string[] };
+  }
+
+  /** What this person can ask, by role. Never lists something their scope would refuse. — 2026-11-28 */
+  private helpText(user: AuthUser, scope: RepScope): string {
+    const topics: string[] = [];
+    if (user.repId) topics.push('your sales this period', 'your commission and pay');
+    if (scope.level === 'roster' || scope.level === 'all') topics.push(scope.level === 'all' ? 'company sales totals' : 'your team’s sales');
+    if (user.repId || scope.level !== 'self') topics.push('who a rep is, by rep code (for example "Who is REDWAVE05?")');
+    if (user.isSuperAdmin) topics.push('the business summary');
+    if (topics.length === 0) return 'Your login has no rep profile or team, so there is no sales data I can show you yet.';
+    return `You can ask me about ${topics.join(', ')}.`;
+  }
+
+  private repLookupRefusal(): string {
+    return 'I can look up reps only for people with a rep profile or a team.';
+  }
+
+  /** "Who is REDWAVE05?" → name, status and manager, scoped to the caller's reps. */
+  private async repLookupAnswer(prompt: string, scope: RepScope): Promise<string> {
+    const code = repCodeFromPrompt(prompt);
+    if (!code) return 'Tell me the rep code, for example "Who is REDWAVE05?".';
+    const r = await this.toolbox.repLookup(scope, { rep_code: code });
+    if (!r.found) return `I couldn't find a rep with code ${code} that you can see.`;
+    const manager = r.field_manager ? ` Their field manager is ${String(r.field_manager)}.` : '';
+    return `${String(r.rep_code)} is ${String(r.name)} (${String(r.status)}).${manager}`;
   }
 
   /** A conversation id the caller OWNS, else null (a foreign/unknown id silently starts a new one). */
@@ -242,7 +273,7 @@ export class ChatbotService {
       '"Pending" means entered and waiting for validation; "approved" means validated, in a pay run, or paid.',
       'Money values are CAD unless a currency is given; show them exactly as returned with a $ sign. Do not add up or recalculate money.',
       'Write short, plain answers in Canadian English: one to three sentences, or a short list. No markdown tables, no em-dashes.',
-      'If the question is not about Redwave data, briefly say what you can help with: sales counts and statuses, pending validations, pay statements, expenses, the leaderboard, and team summaries.',
+      'Answer greetings and small talk warmly in one short sentence, then say what you can help with. If the question is not about Redwave data, briefly say what you can help with: sales counts and statuses, sales waiting for review, pay statements, expenses, the leaderboard, team summaries, and who a rep is by rep code.',
     ].join('\n');
   }
 

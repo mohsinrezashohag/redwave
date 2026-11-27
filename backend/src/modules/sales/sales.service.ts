@@ -26,6 +26,7 @@ import { saleCodeBase, withSuffix } from './sale-id.logic';
 import { assertTransition } from './sale-status.logic';
 import { resolvePayPeriod } from './pay-period.logic';
 import { countsTowardTally } from './sale-item.logic';
+import { DuplicateMatch, duplicateReasonText, findDuplicate, houseNumber, nameKey } from './sale-duplicate.logic';
 import { DomainError } from '../../common/errors/domain-error';
 import { isRegionCode, splitCityRegion } from '../../common/geo/regions';
 import {
@@ -193,24 +194,12 @@ export class SalesService {
 
     const productById = await this.resolveProducts(db, client.id, dto.items.map((i) => i.product_id));
 
-    // One client + MPU is one household: a second live sale for it could pay the rep twice (re-imported
-    // files did exactly that). Since 2026-11-16 it is no longer refused: the sale is created FLAGGED as a
-    // possible duplicate of the existing one and held, so it cannot be validated (and so never reaches a pay
-    // run) until an admin/manager approves it. Deleted sales don't count. Runs on `db`, so inside an import
-    // commit it also sees the batch's own earlier rows. — §14 rule 8, client meeting 2026-11-16
-    const mpuId = dto.mpu_id?.trim() || null;
-    let duplicateOf: { id: string; sale_code: string } | null = null;
-    if (mpuId) {
-      duplicateOf = await db.sale.findFirst({
-        where: {
-          client_id: client.id,
-          status: { not: 'deleted' },
-          mpu_id: { equals: mpuId, mode: 'insensitive' },
-        },
-        orderBy: { created_at: 'asc' }, // the ORIGINAL, not a later flagged copy
-        select: { id: true, sale_code: true },
-      });
-    }
+    // A possible duplicate is never refused: it is created FLAGGED and held for an approver, so it cannot be
+    // validated (and so never reaches a pay run) until approved. Since 2026-11-28 the flag fires on the same
+    // MPU, the same street address + city, or the same customer name for this client (App Review Feedback
+    // High #3); the pure rule is `sale-duplicate.logic`. Deleted sales don't count. Runs on `db`, so inside an
+    // import commit it also sees the batch's own earlier rows. — §14 rule 8
+    const duplicateOf = await this.findDuplicateFor(db, client.id, dto);
 
     const saleDate = dto.sale_date ?? todayInWinnipeg();
     const isGreenfield = dto.is_greenfield ?? false;
@@ -236,8 +225,13 @@ export class SalesService {
       postal_code: dto.postal_code,
       mpu_id: dto.mpu_id ?? null,
       is_greenfield: isGreenfield,
-      status: 'entered',
+      // No per-sale validation step any more (App Review Feedback, 2026-11-28): a clean sale counts as soon as
+      // it is submitted. Only a flagged possible duplicate stays `entered`, waiting for an approver.
+      ...(duplicateOf
+        ? { status: 'entered' as const }
+        : { status: 'validated' as const, validated_by: user.id, validated_at: new Date() }),
       duplicate_of_sale_id: duplicateOf?.id ?? null,
+      duplicate_reason: duplicateOf?.reason ?? null,
       ...(importBatchId ? { import_batch_id: importBatchId } : {}), // provenance (IMP-008)
       sale_items: {
         create: dto.items.map((item) => itemCreate(productById, item.product_id, isGreenfield)),
@@ -245,6 +239,34 @@ export class SalesService {
     });
 
     return { repId, clientId: client.id, isGreenfield, base, data, duplicateOf };
+  }
+
+  /**
+   * The existing live sale (oldest first) this entry duplicates, if any. The query only NARROWS the candidates
+   * (same client, not deleted, sharing the MPU, the house number or the name); `findDuplicate` decides.
+   */
+  private async findDuplicateFor(
+    db: Prisma.TransactionClient | PrismaService,
+    clientId: string,
+    dto: Pick<CreateSaleDto, 'mpu_id' | 'street' | 'city' | 'customer_name' | 'customer_first_name' | 'customer_last_name'>,
+  ): Promise<DuplicateMatch | null> {
+    const name = customerNameFields(dto).customer_name ?? null;
+    const mpu = dto.mpu_id?.trim() || null;
+    const house = houseNumber(dto.street);
+    const street = dto.street?.trim() || null;
+    const or: Prisma.SaleWhereInput[] = [];
+    if (mpu) or.push({ mpu_id: { equals: mpu, mode: 'insensitive' } });
+    if (house) or.push({ street: { startsWith: house, mode: 'insensitive' } });
+    else if (street && street !== '—') or.push({ street: { equals: street, mode: 'insensitive' } });
+    if (nameKey(name)) or.push({ customer_name: { equals: name!.trim(), mode: 'insensitive' } });
+    if (or.length === 0) return null;
+    const candidates = await db.sale.findMany({
+      where: { client_id: clientId, status: { not: 'deleted' }, OR: or },
+      orderBy: { created_at: 'asc' }, // the ORIGINAL, not a later flagged copy
+      select: { id: true, sale_code: true, customer_name: true, street: true, city: true, mpu_id: true },
+      take: 200,
+    });
+    return findDuplicate({ customer_name: name, street: dto.street, city: dto.city, mpu_id: mpu }, candidates);
   }
 
   /**
@@ -304,10 +326,11 @@ export class SalesService {
         sale_code: created.sale_code,
         rep_id: resolved.repId,
         client_id: resolved.clientId,
-        status: 'entered',
+        status: resolved.duplicateOf ? 'entered' : 'validated',
         item_count: dto.items.length,
         is_greenfield: resolved.isGreenfield,
         duplicate_of_sale_id: resolved.duplicateOf?.id ?? null,
+        duplicate_reason: resolved.duplicateOf?.reason ?? null,
       },
     });
     if (resolved.duplicateOf) {
@@ -326,7 +349,7 @@ export class SalesService {
       if (saleIds.length === 0) return;
       const sales = await this.prisma.sale.findMany({
         where: { id: { in: saleIds }, duplicate_of_sale_id: { not: null } },
-        select: { id: true, sale_code: true, customer_name: true, duplicate_of_sale_id: true, rep: { select: { field_manager_id: true } } },
+        select: { id: true, sale_code: true, customer_name: true, duplicate_of_sale_id: true, duplicate_reason: true, rep: { select: { field_manager_id: true } } },
       });
       const originals = await this.saleCodesById(sales.map((s) => s.duplicate_of_sale_id!));
       for (const sale of sales) {
@@ -334,7 +357,7 @@ export class SalesService {
         const event = {
           eventType: 'duplicate_sale_flagged',
           title: `Possible duplicate sale ${sale.sale_code}`,
-          body: `Sale ${sale.sale_code} has the same MPU as ${original}. Approve it before it can be validated.`,
+          body: `Sale ${sale.sale_code} has ${duplicateReasonText(sale.duplicate_reason)} as ${original}. Review it: approve it to count it, or delete it.`,
           relatedEntityType: 'sales',
           relatedEntityId: sale.id,
           variables: { sale_code: sale.sale_code, original_sale_code: original, customer_name: sale.customer_name },
@@ -367,7 +390,7 @@ export class SalesService {
     return new Map(rows.map((r) => [r.id, r.sale_code]));
   }
 
-  /** Approve a sale flagged as a possible duplicate, so it can be validated. Idempotent. — 2026-11-16 */
+  /** Approve a sale flagged as a possible duplicate: it is validated in the same write. Idempotent. — 2026-11-16, 2026-11-28 */
   async approveDuplicate(id: string, user: AuthUser) {
     const sale = await this.loadScoped(id, user);
     if (!sale.duplicate_of_sale_id) {
@@ -379,9 +402,16 @@ export class SalesService {
     if (sale.duplicate_approved_at) {
       return (await this.decorate([sale]))[0]; // already approved — a retry is a no-op
     }
+    // Approving IS the review (no separate validation step since 2026-11-28): a held sale becomes validated
+    // in the same write, so it counts and can be paid. A sale already past entered keeps its status.
+    const now = new Date();
     const updated = await this.prisma.sale.update({
       where: { id },
-      data: { duplicate_approved_by: user.id, duplicate_approved_at: new Date() },
+      data: {
+        duplicate_approved_by: user.id,
+        duplicate_approved_at: now,
+        ...(sale.status === 'entered' ? { status: 'validated' as const, validated_by: user.id, validated_at: now } : {}),
+      },
       include: SALE_INCLUDE,
     });
     await this.audit.log({
@@ -390,7 +420,7 @@ export class SalesService {
       entityId: id,
       action: 'approve_duplicate',
       before: { duplicate_approved_at: null },
-      after: { duplicate_of_sale_id: sale.duplicate_of_sale_id, duplicate_approved_by: user.id },
+      after: { duplicate_of_sale_id: sale.duplicate_of_sale_id, duplicate_approved_by: user.id, status: updated.status },
     });
     return (await this.decorate([updated]))[0];
   }
@@ -917,7 +947,8 @@ export class SalesService {
 
   /** Record an export and return its rows. `only_new` = sales never included in an earlier sales export. */
   async exportSales(dto: ExportSalesDto, user: AuthUser) {
-    const where = await this.exportWhere(dto.filters ?? {}, dto.only_new ?? false, user);
+    const personal = (await this.scope.getRepScope(user)).level === 'self';
+    const where = await this.exportWhere(dto.filters ?? {}, dto.only_new ?? false, user, personal);
     const count = await this.prisma.sale.count({ where });
     if (count > MAX_EXPORT_ROWS) {
       throw new UnprocessableEntityException(
@@ -942,6 +973,7 @@ export class SalesService {
             filename: dto.filename,
             row_count: rows.length,
             only_new: dto.only_new ?? false,
+            personal,
           },
         });
         await tx.reportExportSale.createMany({
@@ -1065,13 +1097,22 @@ export class SalesService {
     return buildPage(rows.map(toExportLogRow), total, page, limit);
   }
 
-  private async exportWhere(filters: SaleExportFilters, onlyNew: boolean, user: AuthUser): Promise<Prisma.SaleWhereInput> {
+  private async exportWhere(
+    filters: SaleExportFilters,
+    onlyNew: boolean,
+    user: AuthUser,
+    personal = false,
+  ): Promise<Prisma.SaleWhereInput> {
     const base = await this.listWhere(filters, user);
     // A deleted sale is not a sale: an export leaves it out unless the operator filtered FOR deleted sales.
     // (It used to ride along and was then logged as "exported", which skewed "only new".) 2026-11-15
     const live: Prisma.SaleWhereInput = filters.status ? base : { AND: [base, { status: { not: 'deleted' } }] };
-    // "Not exported before" is company-wide: once anyone has exported a sale, it is no longer new.
-    return onlyNew ? { AND: [live, { export_links: { none: {} } }] } : live;
+    // "Not exported before" is company-wide: once anyone has exported a sale, it is no longer new. A rep's
+    // own (PERSONAL) export is the exception (2026-11-28): it never hides a sale from anyone else, and a rep's
+    // "only new" reads only their own exports.
+    if (!onlyNew) return live;
+    const earlier: Prisma.ReportExportWhereInput = personal ? { generated_by: user.id } : { personal: false };
+    return { AND: [live, { export_links: { none: { report_export: earlier } } }] };
   }
 
   private async exportLogScope(user: AuthUser): Promise<Prisma.ReportExportWhereInput> {

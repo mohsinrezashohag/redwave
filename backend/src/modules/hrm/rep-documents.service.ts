@@ -16,7 +16,7 @@ import { todayInWinnipeg } from '../../common/timezone';
 import { canSeeSensitive } from './reps.service';
 import { CreateRepDocumentDto, ReplaceRepDocumentDto, UpdateRepDocumentDto } from './dto/rep-document.dto';
 import { DocumentReaderService } from './document-reader.service';
-import { EXPIRING_DOC_TYPES, isRestorable, purgeDueDate, repDocumentProblem } from './rep-documents.logic';
+import { DATED_DOC_TYPES, EXPIRING_DOC_TYPES, isRestorable, purgeDueDate, repDocumentProblem } from './rep-documents.logic';
 import { idDocumentChecks, namesMatch, withMrzDetails, type IdCheck } from './id-document.logic';
 import { encryptField, loadFieldKey } from '../../common/crypto/field-cipher';
 import { RepDocument } from '@prisma/client';
@@ -170,7 +170,7 @@ export class RepDocumentsService {
   async update(repId: string, docId: string, dto: UpdateRepDocumentDto, actorId: string) {
     const doc = await this.liveDoc(repId, docId);
     const docType = dto.doc_type ?? doc.doc_type;
-    const keepsDates = EXPIRING_DOC_TYPES.has(docType);
+    const keepsDates = DATED_DOC_TYPES.has(docType);
     const next = {
       doc_type: docType,
       // Sent → used (and checked); omitted → kept, or cleared when the new type carries no dates.

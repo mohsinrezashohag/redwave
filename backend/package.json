@@ -24,6 +24,7 @@
     "payroll:backfill": "ts-node --transpile-only scripts/backfill-payroll-lines.ts",
     "documents:purge": "ts-node --transpile-only scripts/purge-deleted-documents.ts",
     "data:cleanup": "ts-node --transpile-only scripts/cleanup-sales-data.ts",
+    "sales:auto-validate": "ts-node --transpile-only scripts/auto-validate-sales.ts",
     "prisma:studio": "prisma studio",
     "contract:export": "ts-node --transpile-only scripts/export-openapi.ts"
   },

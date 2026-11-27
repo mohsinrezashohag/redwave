@@ -83,7 +83,7 @@ const MANAGER_GRANTS: Grant[] = [
 ];
 
 const SALES_REP_GRANTS: Grant[] = [
-  ...g('sales', 'view', 'create'),
+  ...g('sales', 'view', 'create', 'export'), // export = OWN sales, rep rates only (App Review Feedback 2026-11-28)
   ...g('clients', 'view'), // SALE-001 (dropdowns)
   ...g('expenses', 'view', 'create'),
   ...g('documents', 'view', 'create'), // DOC-002

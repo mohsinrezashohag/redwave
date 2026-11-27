@@ -7,8 +7,17 @@
  */
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Save, ScanText } from 'lucide-react';
-import { Banner, Button, DatePicker, FormField, LoadingSpinner, Modal, PrivateInput, Select } from '../../../components/ui';
-import { datesProblem, EXPIRING_DOC_TYPES, REP_DOC_TYPES } from '../repDocTypes';
+import {
+  Banner,
+  Button,
+  DatePicker,
+  FormField,
+  LoadingSpinner,
+  Modal,
+  PrivateInput,
+  Select,
+} from '../../../components/ui';
+import { DATED_DOC_TYPES, datesProblem, EXPIRING_DOC_TYPES, REP_DOC_TYPES } from '../repDocTypes';
 import type { DocumentRead } from '../reps.types';
 import styles from './reps.module.css';
 
@@ -91,7 +100,9 @@ export function DocumentDatesReview({
     if (read.document_number) setDocNumber(read.document_number);
   }, [read]);
 
-  const hasDates = EXPIRING_DOC_TYPES.has(docType);
+  const hasDates = DATED_DOC_TYPES.has(docType);
+  // Only IDs are read automatically and carry holder details; a background check has dates only. 2026-11-28
+  const isId = EXPIRING_DOC_TYPES.has(docType);
   const problem = hasDates ? datesProblem(issued, expires) : null;
   const dirty =
     docType !== initial.doc_type ||
@@ -116,7 +127,8 @@ export function DocumentDatesReview({
           <Button variant="secondary" type="button" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
-          <Button leftIcon={<Save size={16} />}
+          <Button
+            leftIcon={<Save size={16} />}
             variant="primary"
             type="button"
             loading={saving}
@@ -126,9 +138,9 @@ export function DocumentDatesReview({
                 doc_type: docType,
                 issued_on: hasDates ? issued || null : null,
                 expires_on: hasDates ? expires || null : null,
-                name_on_document: hasDates ? nameOnDoc.trim() || null : null,
-                date_of_birth: hasDates ? dob || null : null,
-                ...(hasDates && docNumber.trim() ? { document_number: docNumber.trim() } : {}),
+                name_on_document: isId ? nameOnDoc.trim() || null : null,
+                date_of_birth: isId ? dob || null : null,
+                ...(isId && docNumber.trim() ? { document_number: docNumber.trim() } : {}),
               })
             }
           >
@@ -139,14 +151,24 @@ export function DocumentDatesReview({
     >
       <div className={styles.datesReview}>
         {editType && (
-          <FormField label="Document type" required help={docType === 'headshot' ? 'A headshot must be a JPG or PNG photo.' : undefined}>
-            <Select options={typeOptions} value={validType ? docType : ''} onValueChange={setDocType} placeholder="Choose…" aria-label="Document type" />
+          <FormField
+            label="Document type"
+            required
+            help={docType === 'headshot' ? 'A headshot must be a JPG or PNG photo.' : undefined}
+          >
+            <Select
+              options={typeOptions}
+              value={validType ? docType : ''}
+              onValueChange={setDocType}
+              placeholder="Choose…"
+              aria-label="Document type"
+            />
           </FormField>
         )}
 
         {hasDates && (
           <>
-            {reading ? (
+            {!isId ? null : reading ? (
               <p className={styles.readingRow}>
                 <LoadingSpinner size="sm" label="" /> Reading the document…
               </p>
@@ -164,50 +186,93 @@ export function DocumentDatesReview({
               <FormField label="Issued on">
                 <DatePicker value={issued} onChange={setIssued} clearable aria-label="Issued on" />
               </FormField>
-              <FormField label="Expires on" error={problem ?? undefined} help="We flag it 60 days before it expires.">
-                <DatePicker value={expires} onChange={setExpires} clearable aria-label="Expires on" />
-              </FormField>
-            </div>
-
-            <p className={styles.checksTitle}>Holder details</p>
-            <FormField label="Name on document" help="As printed. Used on the Data accuracy tab.">
-              <PrivateInput value={nameOnDoc} onChange={(e) => setNameOnDoc(e.target.value)} placeholder="e.g. RIVERA, RILEY" />
-            </FormField>
-            <div className={styles.grid2}>
-              <FormField label="Date of birth">
-                <DatePicker value={dob} onChange={setDob} clearable aria-label="Date of birth on document" />
-              </FormField>
               <FormField
-                label="Document number"
-                help={
-                  initial.document_number_masked
-                    ? `On file (${initial.document_number_masked}). Leave blank to keep it.`
-                    : 'Saved encrypted. Only the last four are shown.'
-                }
+                label="Expires on"
+                error={problem ?? undefined}
+                help="We flag it 60 days before it expires."
               >
-                <PrivateInput value={docNumber} onChange={(e) => setDocNumber(e.target.value)} className="mono" placeholder="AB1234567" />
+                <DatePicker
+                  value={expires}
+                  onChange={setExpires}
+                  clearable
+                  aria-label="Expires on"
+                />
               </FormField>
             </div>
 
-            {read && read.checks.length > 0 && (
-              <div>
-                <p className={styles.checksTitle}>Checks</p>
-                <ul className={styles.checks}>
-                  {read.checks.map((c) => (
-                    <li key={c.key} className={c.ok ? styles.checkOk : styles.checkWarn}>
-                      {c.ok ? <CheckCircle2 size={16} aria-hidden /> : <AlertTriangle size={16} aria-hidden />}
-                      <span>{c.message}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className={styles.muted}>These checks catch mistakes and mismatches. They can’t prove a document is genuine.</p>
-              </div>
-            )}
+            {isId && (
+              <>
+                <p className={styles.checksTitle}>Holder details</p>
+                <FormField
+                  label="Name on document"
+                  help="As printed. Used on the Data accuracy tab."
+                >
+                  <PrivateInput
+                    value={nameOnDoc}
+                    onChange={(e) => setNameOnDoc(e.target.value)}
+                    placeholder="e.g. RIVERA, RILEY"
+                  />
+                </FormField>
+                <div className={styles.grid2}>
+                  <FormField label="Date of birth">
+                    <DatePicker
+                      value={dob}
+                      onChange={setDob}
+                      clearable
+                      aria-label="Date of birth on document"
+                    />
+                  </FormField>
+                  <FormField
+                    label="Document number"
+                    help={
+                      initial.document_number_masked
+                        ? `On file (${initial.document_number_masked}). Leave blank to keep it.`
+                        : 'Saved encrypted. Only the last four are shown.'
+                    }
+                  >
+                    <PrivateInput
+                      value={docNumber}
+                      onChange={(e) => setDocNumber(e.target.value)}
+                      className="mono"
+                      placeholder="AB1234567"
+                    />
+                  </FormField>
+                </div>
 
-            {onReadAgain && !reading && (
-              <Button variant="tertiary" size="sm" type="button" leftIcon={<ScanText size={14} />} onClick={onReadAgain}>
-                Read from document
-              </Button>
+                {read && read.checks.length > 0 && (
+                  <div>
+                    <p className={styles.checksTitle}>Checks</p>
+                    <ul className={styles.checks}>
+                      {read.checks.map((c) => (
+                        <li key={c.key} className={c.ok ? styles.checkOk : styles.checkWarn}>
+                          {c.ok ? (
+                            <CheckCircle2 size={16} aria-hidden />
+                          ) : (
+                            <AlertTriangle size={16} aria-hidden />
+                          )}
+                          <span>{c.message}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className={styles.muted}>
+                      These checks catch mistakes and mismatches. They can’t prove a document is
+                      genuine.
+                    </p>
+                  </div>
+                )}
+
+                {onReadAgain && !reading && (
+                  <Button
+                    variant="tertiary"
+                    size="sm"
+                    type="button"
+                    leftIcon={<ScanText size={14} />}
+                    onClick={onReadAgain}
+                  >
+                    Read from document
+                  </Button>
+                )}
+              </>
             )}
           </>
         )}
