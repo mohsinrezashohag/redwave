@@ -681,7 +681,7 @@ export class ImportService {
   }
 
   /**
-   * Client report → entered sales. MPU ID is the partner's per-house identifier and remains the exact,
+   * Client report → open sales (entered, or validated at submit since 2026-11-28; the report confirms them). MPU ID is the partner's per-house identifier and remains the exact,
    * preferred key. But CTI/VF supply it and **RF Now does not** (SRS §84), so a row without one falls back
    * to matching on customer name + address + date. That fallback NEVER auto-validates on a guess — only an
    * unambiguous strong candidate matches; anything else comes back with candidates for the operator.
@@ -691,7 +691,7 @@ export class ImportService {
     const byMpu = new Map<string, string[]>();
     if (mpus.length) {
       const entered = await this.prisma.sale.findMany({
-        where: { client_id: clientId ?? undefined, status: 'entered', mpu_id: { in: mpus } },
+        where: { client_id: clientId ?? undefined, status: { in: ['entered', 'validated'] }, mpu_id: { in: mpus } },
         select: { id: true, mpu_id: true },
       });
       for (const s of entered) {
@@ -705,7 +705,7 @@ export class ImportService {
     const openSales: CandidateSale[] = needsFallback
       ? (
           await this.prisma.sale.findMany({
-            where: { client_id: clientId ?? undefined, status: 'entered' },
+            where: { client_id: clientId ?? undefined, status: { in: ['entered', 'validated'] } },
             select: { id: true, sale_code: true, customer_name: true, street: true, sale_date: true, activation_date: true },
             take: 2000,
           })

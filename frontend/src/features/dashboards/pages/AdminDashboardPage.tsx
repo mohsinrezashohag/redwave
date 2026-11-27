@@ -27,7 +27,7 @@ export default function AdminDashboardPage() {
         {d && (
           <div className={styles.queueGrid}>
             <AdminQueueCard
-              label="Pending validations"
+              label="Sales to review"
               count={d.pending_validations}
               icon={<CheckSquare size={16} />}
               to="/sales?status=entered"

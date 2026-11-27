@@ -18,6 +18,7 @@ export const AI_TOOL_NAMES = [
   'leaderboard_position',
   'team_summary',
   'business_summary',
+  'rep_lookup',
 ] as const;
 export type AiToolName = (typeof AI_TOOL_NAMES)[number];
 
@@ -85,6 +86,16 @@ export const FUNCTION_DECLARATIONS: ReadonlyArray<Record<string, unknown>> = [
     name: 'business_summary',
     description: 'Super Admin only: company revenue, rep payout and net margin for the current period.',
   },
+  {
+    name: 'rep_lookup',
+    description:
+      'Who a rep is, by rep code or partner code (e.g. REDWAVE05). Returns name, status and field manager. Only reps the asker can see (a rep sees only themself).',
+    parameters: {
+      type: 'OBJECT',
+      properties: { rep_code: { type: 'STRING', description: 'The rep code or partner code, e.g. REDWAVE05.' } },
+      required: ['rep_code'],
+    },
+  },
 ];
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -107,6 +118,13 @@ export function cleanSaleCode(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const code = value.trim();
   return code.length > 0 && code.length <= 64 && /^[A-Za-z0-9._-]+$/.test(code) ? code : undefined;
+}
+
+/** A plausible rep / partner code: letters and digits only (spaces and dashes folded away), else undefined. */
+export function cleanRepCode(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const code = value.replace(/[\s_-]+/g, '').toUpperCase();
+  return code.length > 0 && code.length <= 32 && /^[A-Z0-9]+$/.test(code) ? code : undefined;
 }
 
 export function asArgs(value: unknown): Record<string, unknown> {

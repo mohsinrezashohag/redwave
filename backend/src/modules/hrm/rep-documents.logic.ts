@@ -17,6 +17,7 @@ export const REP_DOC_TYPES = [
   'passport',
   'contract',
   'recruitment', // recruitment / onboarding paperwork (2026-11-16)
+  'background_check', // a background check result, PDF or image, with issue + expiry (Naimur, 2026-11-28)
   'other',
 ] as const;
 export type RepDocType = (typeof REP_DOC_TYPES)[number];
@@ -29,6 +30,13 @@ export const EXPIRING_DOC_TYPES: ReadonlySet<string> = new Set([
   'drivers_licence',
   'passport',
 ]);
+
+/**
+ * Document kinds that carry HR-entered issue + expiry dates: the IDs above plus a background check
+ * (2026-11-28). Only the IDs are READ automatically and compared on Data accuracy; a background check's
+ * dates are typed by HR.
+ */
+export const DATED_DOC_TYPES: ReadonlySet<string> = new Set([...EXPIRING_DOC_TYPES, 'background_check']);
 
 const IMAGE_ONLY = /^image\/(png|jpe?g)$/;
 
@@ -49,8 +57,8 @@ export function repDocumentProblem(
   if (docType === 'headshot' && !IMAGE_ONLY.test(mimetype)) {
     return 'A headshot must be a JPG or PNG photo';
   }
-  if ((expiresOn || issuedOn) && !EXPIRING_DOC_TYPES.has(docType)) {
-    return 'Only permits, PR cards, driver’s licences and passports carry issue and expiry dates';
+  if ((expiresOn || issuedOn) && !DATED_DOC_TYPES.has(docType)) {
+    return 'Only permits, PR cards, driver’s licences, passports and background checks carry issue and expiry dates';
   }
   if (issuedOn && expiresOn && issuedOn >= expiresOn) {
     return 'The expiry date must be after the issue date';

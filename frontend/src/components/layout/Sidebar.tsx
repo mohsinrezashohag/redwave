@@ -99,7 +99,8 @@ const NAV: NavGroup[] = [
   {
     heading: 'Sales',
     items: [
-      // Plain Sales is active anywhere under /sales EXCEPT the Validation preset (?status=entered).
+      // Plain Sales is active anywhere under /sales EXCEPT the review preset (?status=entered). Since 2026-11-28
+      // a clean sale is validated at submit, so only flagged possible duplicates wait there.
       {
         label: 'Sales',
         icon: ShoppingCart,
@@ -108,7 +109,7 @@ const NAV: NavGroup[] = [
           l.pathname.startsWith('/sales') && l.pathname !== '/sales/edit-requests' && statusOf(l.search) !== 'entered',
       },
       {
-        label: 'Validation',
+        label: 'Needs review',
         icon: CheckSquare,
         to: '/sales?status=entered',
         match: (l) => l.pathname === '/sales' && statusOf(l.search) === 'entered',

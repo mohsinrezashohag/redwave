@@ -49,7 +49,7 @@ export default function ManagerDashboardPage() {
             </div>
 
             <div className={styles.queueGrid}>
-              <AdminQueueCard label="Pending validations" count={d.pending_validations} icon={<CheckSquare size={16} />} to="/sales?status=entered" cta="Review queue" />
+              <AdminQueueCard label="Sales to review" count={d.pending_validations} icon={<CheckSquare size={16} />} to="/sales?status=entered" cta="Review queue" />
               <AdminQueueCard label="Expenses to approve" count={d.pending_expense_approvals} icon={<Receipt size={16} />} to="/expenses/approvals" cta="Review queue" />
               <AdminQueueCard label="Profile changes" count={d.pending_profile_changes} icon={<UserCog size={16} />} to="/admin/profile-review" cta="Review queue" />
             </div>

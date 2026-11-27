@@ -38,7 +38,7 @@ import { FilePreviewDialog } from '../../../components/data/FilePreviewDialog';
 import { useApiErrorToast } from '../../../lib/api/apiError';
 import { useCan } from '../../../auth/useCan';
 import { displayDate, todayIso } from '../../../lib/format/date';
-import { acceptFor, docTypeLabel, EXPIRING_DOC_TYPES, expiryStatus, readFailureNote, REP_DOC_TYPES } from '../repDocTypes';
+import { acceptFor, DATED_DOC_TYPES, docTypeLabel, EXPIRING_DOC_TYPES, expiryStatus, readFailureNote, REP_DOC_TYPES } from '../repDocTypes';
 import {
   useDeleteRepDocument,
   useDeletedRepDocuments,
@@ -139,6 +139,11 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
       readUpload.mutate({ file, docType }, handleRead);
       return;
     }
+    if (DATED_DOC_TYPES.has(docType)) {
+      // A background check: HR types its issue and expiry dates before it is saved (it is never read).
+      startReview({ mode: 'upload', file, docType });
+      return;
+    }
     doUpload(file, docType, NO_DETAILS);
   };
 
@@ -174,6 +179,10 @@ export function RepDocumentsPanel({ repId, self = false }: { repId: string; self
       // A new ID file usually means new dates: read them, HR confirms, then the file is swapped.
       startReview({ mode: 'replace', file, doc });
       readUpload.mutate({ file, docType: doc.doc_type }, handleRead);
+      return;
+    }
+    if (DATED_DOC_TYPES.has(doc.doc_type)) {
+      startReview({ mode: 'replace', file, doc });
       return;
     }
     doReplace(doc, file, NO_DETAILS);

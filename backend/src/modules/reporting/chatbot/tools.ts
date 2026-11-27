@@ -25,6 +25,9 @@ export const TOOL_ENTITLEMENT: Record<ChatTool | AiToolName, Entitlement> = {
   my_commission: 'self',
   roster_summary: 'roster',
   business_summary: 'business',
+  greeting: 'own',
+  help: 'own',
+  rep_lookup: 'scoped',
   unknown: 'none',
   // AI function-calling tools
   my_sales_summary: 'self',

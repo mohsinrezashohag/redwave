@@ -11,6 +11,13 @@ type Flagged = Pick<Sale, 'duplicate_of_sale_id' | 'duplicate_approved_at'>;
 /** True while the sale is a possible duplicate nobody has approved yet (validate must wait). */
 export const isHeldDuplicate = (sale: Flagged): boolean => !!sale.duplicate_of_sale_id && !sale.duplicate_approved_at;
 
+/** What a possible duplicate matched on, in plain words. Mirrors the backend `duplicateReasonText`. 2026-11-28 */
+export function duplicateReasonText(reason: string | null | undefined): string {
+  if (reason === 'address') return 'the same address';
+  if (reason === 'name') return 'the same customer name';
+  return 'the same MPU ID';
+}
+
 /** Edit is offered inside the window to an editor (sales:edit), or to the rep who sold it (as a request). */
 export function useCanEditSale(sale: Pick<Sale, 'editable' | 'rep_id'> | undefined) {
   const { repId } = useAuth();

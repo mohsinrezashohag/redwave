@@ -955,6 +955,8 @@ model Sale {
   // Possible duplicate (same client + MPU as a live sale). Held until an admin/manager approves it; it cannot be
   // validated before. No FK (points at a sibling sale that may later be deleted). — client meeting 2026-11-16
   duplicate_of_sale_id  String?   @db.Uuid
+  /// Why the sale was flagged: mpu | address | name (2026-11-28). Null when not flagged.
+  duplicate_reason      String?
   duplicate_approved_by String?   @db.Uuid
   duplicate_approved_at DateTime?
   created_at          DateTime   @default(now())
@@ -1343,6 +1345,9 @@ model ReportExport {
   row_count     Int?
   /// Sales export only: true when the user asked for "only sales not exported before".
   only_new      Boolean  @default(false)
+  /// Sales export only: made by a rep for their OWN sales (2026-11-28). A personal export never makes a sale
+  /// "not new" for anyone else; only the rep's own "only new" reads it.
+  personal      Boolean  @default(false)
 
   /// Sales export only: EXACTLY which sales the file contained.
   sales ReportExportSale[]

@@ -13,8 +13,11 @@ export async function applyBulkValidation(
   user: AuthUser,
   sales: SalesService,
 ): Promise<string> {
-  // entered → validated, atomically within the batch transaction. Throws (rolls the batch back)
-  // if the sale is not in 'entered' state (409) or not found.
+  // entered → validated, atomically within the batch transaction. Since 2026-11-28 most sales are validated
+  // at submit, so the partner's report CONFIRMS them: an already-validated sale is a no-op, not a 409.
+  // Throws (rolls the batch back) if the sale is missing or in any other state.
+  const current = await tx.sale.findUnique({ where: { id: saleId }, select: { status: true } });
+  if (current?.status === 'validated') return saleId;
   await sales.validateWithinTx(tx, saleId, {}, user);
   return saleId;
 }

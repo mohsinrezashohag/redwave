@@ -39,6 +39,7 @@ function make(tool: ChatTool, opts: MakeOpts = {}) {
     },
     // Used by the AI toolbox.
     payRunLine: { findFirst: jest.fn().mockResolvedValue(null) },
+    rep: { findFirst: jest.fn().mockResolvedValue(null) },
   };
   const scope = {
     getRepScope: jest.fn().mockResolvedValue(scopeLevel === 'all' ? { level: 'all' } : { level: scopeLevel, repIds: ['rep-1'] }),
@@ -249,5 +250,39 @@ describe('ChatbotService rate-limit / cost cap (graceful 200, not an error)', ()
     const { service } = make('my_commission', { cfg: { CHATBOT_RPM: '10', CHATBOT_DAILY_CAP: '100' } });
     const result = await service.query({ prompt: 'my commission' }, user());
     expect(result.intent).toBe('my_commission');
+  });
+});
+
+describe('basic mode: small talk, help and rep lookup (App Review Feedback #4, 2026-11-28)', () => {
+  it('answers "how are you" warmly instead of refusing', async () => {
+    const { service } = make('greeting');
+    const result = await service.query({ prompt: 'How are you?' }, user({ repId: 'rep-1' }));
+    expect(result.answer).not.toMatch(/can't answer/i);
+    expect(result.answer).toMatch(/doing well/);
+    expect(result.answer).toMatch(/your sales/);
+  });
+
+  it('"what do I have access to" lists only what the role can ask', async () => {
+    const rep = await make('help').service.query({ prompt: 'What do I have access to?' }, user({ repId: 'rep-1' }));
+    expect(rep.answer).toMatch(/your commission/);
+    expect(rep.answer).not.toMatch(/business summary/);
+    const sa = await make('help', { scopeLevel: 'all' }).service.query({ prompt: 'help' }, user({ isSuperAdmin: true }));
+    expect(sa.answer).toMatch(/business summary/);
+  });
+
+  it('"who is Redwave 05" looks the rep up WITHIN the caller scope (query-level)', async () => {
+    const { service, prisma } = make('rep_lookup');
+    prisma.rep.findFirst.mockResolvedValue({ rep_code: 'RW005', external_code: 'REDWAVE05', full_name: 'Sam Lee', status: 'active', field_manager: { full_name: 'Morgan Manager' } });
+    const result = await service.query({ prompt: 'Who is Redwave 05?' }, user({ repId: 'rep-1' }));
+    const where = prisma.rep.findFirst.mock.calls[0][0].where;
+    expect(where.id).toEqual({ in: ['rep-1'] }); // a rep can only ever see themself
+    expect(JSON.stringify(where.OR)).toContain('REDWAVE05');
+    expect(result.answer).toBe('RW005 is Sam Lee (active). Their field manager is Morgan Manager.');
+  });
+
+  it('an unknown or out-of-scope code answers the same "not found"', async () => {
+    const { service } = make('rep_lookup');
+    const result = await service.query({ prompt: 'who is REDWAVE99' }, user({ repId: 'rep-1' }));
+    expect(result.answer).toMatch(/couldn't find a rep with code REDWAVE99/);
   });
 });

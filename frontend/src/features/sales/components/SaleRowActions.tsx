@@ -2,7 +2,7 @@
  * SaleRowActions — the per-row action menu, gated by useCan + the sale's status (CONVENIENCE only —
  * the server still authorizes every call, CLAUDE §5). View (always), Edit (inside the 5-day window: an
  * admin/manager with sales:edit edits, the selling rep requests an edit), Approve duplicate (a held possible
- * duplicate + sales:approve), Validate (entered + sales:approve; disabled while a duplicate is held), Delete
+ * duplicate + sales:approve), Validate (an unflagged entered sale + sales:approve; a held duplicate is cleared by Approve, which validates it), Delete
  * (entered|validated + sales:delete, with a destructive confirm restating the consequence).
  */
 import { CheckCircle2, CopyCheck, Eye, Pencil, Trash2 } from 'lucide-react';
@@ -32,7 +32,9 @@ export function SaleRowActions({ sale }: { sale: Sale }) {
   const canDeletePerm = useCan('sales:delete');
   const { canEdit, asRequest } = useCanEditSale(sale);
   const held = isHeldDuplicate(sale);
-  const canValidate = sale.status === 'entered' && canApprove;
+  // A held duplicate is cleared by Approve (which also validates it, 2026-11-28), so Validate is offered only
+  // for an unflagged sale still entered (the backlog from before auto-validate).
+  const canValidate = sale.status === 'entered' && canApprove && !held;
   const canApproveDup = held && canApprove && sale.status !== 'deleted';
   const canDelete = (sale.status === 'entered' || sale.status === 'validated') && canDeletePerm;
 
@@ -48,7 +50,7 @@ export function SaleRowActions({ sale }: { sale: Sale }) {
   const doApproveDup = () =>
     approveDup.mutate(sale.id, {
       onSuccess: () =>
-        toast({ title: 'Duplicate approved', description: `${sale.sale_code} can now be validated.`, tone: 'success' }),
+        toast({ title: 'Duplicate approved', description: `${sale.sale_code} now counts and can be paid.`, tone: 'success' }),
       onError,
     });
 
@@ -69,13 +71,7 @@ export function SaleRowActions({ sale }: { sale: Sale }) {
     ...(canApproveDup ? [{ label: 'Approve duplicate', icon: <CopyCheck size={15} />, onSelect: doApproveDup }] : []),
     ...(canValidate
       ? [
-          {
-            // The label doubles as the tooltip, so a held duplicate says why Validate is unavailable.
-            label: held ? 'Validate (approve the duplicate first)' : 'Validate',
-            icon: <CheckCircle2 size={15} />,
-            disabled: held,
-            onSelect: doValidate,
-          },
+          { label: 'Validate', icon: <CheckCircle2 size={15} />, onSelect: doValidate },
         ]
       : []),
     ...(canDelete

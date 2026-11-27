@@ -90,10 +90,11 @@ export async function applyLiveSale(
     { importBatchId: batchId }, // provenance (IMP-008)
   );
 
-  // Optional second step: the row may ask for the sale to land already validated.
-  // A possible duplicate (same client + MPU) is created HELD: it cannot be validated until approved, so the
-  // row's "validated" is not applied to it (it would roll the whole batch back). — 2026-11-16
-  if ((text(mapped, 'status') ?? 'entered').toLowerCase() === 'validated' && !sale.duplicate_of_sale_id) {
+  // Since 2026-11-28 a clean sale is created already validated (no per-sale validation step), so the row's
+  // "status" column no longer changes anything for it. A flagged possible duplicate is created HELD and is
+  // never validated here (it would roll the whole batch back); an approver reviews it. The guard on
+  // 'entered' keeps this step a no-op instead of a 409 on an already-validated sale.
+  if ((text(mapped, 'status') ?? 'entered').toLowerCase() === 'validated' && !sale.duplicate_of_sale_id && sale.status === 'entered') {
     await sales.validateWithinTx(tx, sale.id, {}, user);
   }
   return sale.id;

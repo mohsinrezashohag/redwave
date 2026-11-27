@@ -62,10 +62,17 @@ describe('SalesService.exportSales', () => {
     expect(res.rows).toHaveLength(2);
   });
 
-  it('only_new excludes any sale already in an earlier export', async () => {
+  it('only_new excludes any sale already in an earlier SHARED export (a rep personal export does not count)', async () => {
     const { service, prisma } = make();
     await service.exportSales({ format: 'csv', filename: 'f', only_new: true }, user('sa'));
-    expect(JSON.stringify(whereOf(prisma))).toContain('"export_links":{"none":{}}');
+    expect(JSON.stringify(whereOf(prisma))).toContain('"export_links":{"none":{"report_export":{"personal":false}}}');
+  });
+
+  it('a rep export is PERSONAL, and their "only new" reads only their own exports (2026-11-28)', async () => {
+    const { service, prisma, tx } = make({ scope: { level: 'self', repIds: ['rep-A'] } });
+    await service.exportSales({ format: 'csv', filename: 'f', only_new: true }, user('rep-user'));
+    expect(JSON.stringify(whereOf(prisma))).toContain('"export_links":{"none":{"report_export":{"generated_by":"rep-user"}}}');
+    expect(tx.reportExport.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ personal: true }) }));
   });
 
   it('is SCOPED like the list — a rep exports only their own sales', async () => {

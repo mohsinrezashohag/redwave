@@ -13,7 +13,6 @@ import {
   Card,
   Modal,
   StatusPill,
-  Tooltip,
   useToast,
 } from '../../../components/ui';
 import { useCan } from '../../../auth/useCan';
@@ -26,7 +25,7 @@ import { useClients, useSaleQuery } from '../api/useSales';
 import { useDeleteSale, useSetGreenfield, useValidateSale } from '../api/useSaleMutations';
 import { GreenfieldBadge } from './GreenfieldBadge';
 import { DuplicateBadge } from './DuplicateBadge';
-import { isHeldDuplicate, useCanEditSale } from '../saleGates';
+import { duplicateReasonText, isHeldDuplicate, useCanEditSale } from '../saleGates';
 import { useApproveDuplicate } from '../api/useSaleEdits';
 import { HistoryTab } from '../../audit/components/HistoryTab';
 import styles from './SaleDetailView.module.css';
@@ -57,7 +56,7 @@ export function SaleDetailView({ id }: { id: string }) {
   const onApproveDuplicate = () =>
     sale &&
     approveDup.mutate(sale.id, {
-      onSuccess: () => toast({ title: 'Duplicate approved', description: `${sale.sale_code} can now be validated.`, tone: 'success' }),
+      onSuccess: () => toast({ title: 'Duplicate approved', description: `${sale.sale_code} now counts and can be paid.`, tone: 'success' }),
       onError,
     });
   const clientName = sale && clients.data?.find((c) => c.id === sale.client_id)?.name;
@@ -120,13 +119,14 @@ export function SaleDetailView({ id }: { id: string }) {
 
           {held && (
             <Banner tone="warning" title="Possible duplicate">
-              Another live sale for this client has the same MPU ID
+              Another live sale for this client has {duplicateReasonText(sale.duplicate_reason)}
               {sale.duplicate_of_sale_code ? (
                 <>
                   {' '}(<span className="mono">{sale.duplicate_of_sale_code}</span>)
                 </>
               ) : null}
-              . This sale cannot be validated until a manager or admin approves it.
+              . It does not count and cannot be paid until a manager or admin approves it. If it is a real
+              duplicate, delete it.
             </Banner>
           )}
 
@@ -215,23 +215,12 @@ export function SaleDetailView({ id }: { id: string }) {
           </Card>
 
           <div className={styles.actions}>
-            {/* Validate: only while Entered, and only with sales:approve (server re-checks). — SALE-004 */}
-            {sale.status === 'entered' && canApprove && (
-              held ? (
-                // A held duplicate cannot be validated; the tooltip says why. The span keeps the tooltip
-                // working on a disabled button. — 2026-11-16
-                <Tooltip content="Approve the duplicate first">
-                  <span>
-                    <Button leftIcon={<Check size={16} />} variant="primary" disabled>
-                      Validate
-                    </Button>
-                  </span>
-                </Tooltip>
-              ) : (
-                <Button leftIcon={<Check size={16} />} variant="primary" onClick={onValidate} loading={validate.isPending}>
-                  Validate
-                </Button>
-              )
+            {/* Validate: only an unflagged sale still Entered (the backlog from before auto-validate,
+                2026-11-28). A held duplicate is cleared by Approve, which also validates it. */}
+            {sale.status === 'entered' && canApprove && !held && (
+              <Button leftIcon={<Check size={16} />} variant="primary" onClick={onValidate} loading={validate.isPending}>
+                Validate
+              </Button>
             )}
             {held && canApprove && sale.status !== 'deleted' && (
               <Button leftIcon={<Check size={16} />} variant="primary" onClick={onApproveDuplicate} loading={approveDup.isPending}>

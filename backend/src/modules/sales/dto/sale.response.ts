@@ -190,9 +190,18 @@ export class SaleResponse {
   @ApiProperty({
     type: String,
     nullable: true,
-    description: 'Set when another live sale has the same client + MPU. The sale cannot be validated until approved.',
+    description:
+      'Set when another live sale for this client has the same MPU, street address + city, or customer name. The sale is held (status entered) until approved.',
   })
   duplicate_of_sale_id!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: ['mpu', 'address', 'name'],
+    description: 'Why the sale was flagged (2026-11-28). null when not flagged.',
+  })
+  duplicate_reason!: string | null;
 
   @ApiPropertyOptional({ type: String, nullable: true, description: 'The original sale’s Sale ID, for display.' })
   duplicate_of_sale_code?: string | null;

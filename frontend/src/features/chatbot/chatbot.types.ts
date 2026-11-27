@@ -42,7 +42,7 @@ export const BASIC_SUGGESTIONS: string[] = [
 
 /** With the AI model on, the assistant can answer a wider set (every answer is still scoped server-side). */
 export const AI_SUGGESTIONS: string[] = [
-  'How many of my sales are pending validation?',
+  'How many of my sales are waiting for review?',
   'What was on my last pay statement?',
   'Where am I on the leaderboard?',
   'What is the status of my expenses?',
