@@ -473,7 +473,7 @@ describe('client meeting 2026-11-16 — duplicates, province, blank rows', () =>
     await service.stage(file, { source_type: 'client_report', import_type: 'sales', client_id: 'c1' } as never, user);
     const rows = (prisma.importBatch.create.mock.calls[0][0] as { data: { import_rows: { create: { match_status: string; issue: string }[] } } }).data.import_rows.create;
     expect(rows[0].match_status).toBe('error');
-    expect(rows[0].issue).toMatch(/S-A is a possible duplicate/);
+    expect(rows[0].issue).toBe('MPU ID: matches sale S-A, a possible duplicate waiting for review. Approve it under Sales, Needs review, then re-check this import.');
   });
 
   it('a "Total" footer row is not staged', async () => {
@@ -593,5 +593,119 @@ describe('ImportService — back-dated config migration (#10)', () => {
     await expect(
       service.stage(file, { source_type: 'master_migration', import_type: 'km_rates', create_missing: true } as never, user),
     ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+});
+
+describe('LIVE sales from a VF/CTI bill sheet (2026-11-28)', () => {
+  const headers = ['Sale Date', 'Agent ID', 'Agent  Name', "Customer's First Name", "Customer's Last Name", 'Address', 'Channel', 'Product', 'Internet', 'TV', 'Home Phone', 'Type'];
+  const row = (over: Record<string, unknown> = {}) => ({
+    'Sale Date': '10/27/2026', 'Agent ID': 'Redwave34', 'Agent  Name': 'Asif', "Customer's First Name": 'Garry', "Customer's Last Name": 'Dyck',
+    Address: '2-159 1st Ave NW, Carman, MB R0G 0J0', Channel: 'VF', Product: 'Fibre 1gig/2.5gig', Internet: 'TRUE', TV: 'TRUE', 'Home Phone': 'FALSE', Type: 'MDU', ...over,
+  });
+  const arrange = (rows: Record<string, unknown>[]) => {
+    const h = make(rows, headers);
+    h.prisma.client.findMany.mockResolvedValue([{ id: 'c1', client_code: 'VF' }]);
+    h.prisma.rep.findMany.mockResolvedValue([{ rep_code: 'RW034', external_code: 'REDWAVE34' }]);
+    h.prisma.product.findMany.mockResolvedValue([
+      { client_id: 'c1', product_type: 'internet', name: 'Fibre 150mb/300mb' },
+      { client_id: 'c1', product_type: 'internet', name: 'Fibre 1gig/2.5gig' },
+      { client_id: 'c1', product_type: 'tv', name: 'TV' },
+    ]);
+    return h;
+  };
+  const stagedRows = (prisma: { importBatch: { create: jest.Mock } }) =>
+    (prisma.importBatch.create.mock.calls[0][0] as { data: { import_rows: { create: Array<{ match_status: string; issue: string | null; mapped_data: Record<string, unknown> }> } } }).data.import_rows.create;
+
+  it('maps Channel to the client, splits the address, reads the type flags, and keeps the rep out of the customer name', async () => {
+    const { service, prisma } = arrange([row()]);
+    await service.stage({ buffer: Buffer.from(''), originalname: 'vf.csv', mimetype: 'text/csv', size: 1 } as never, { source_type: 'sales_entry', import_type: 'sales' } as never, user);
+    const [r] = stagedRows(prisma);
+    expect(r.match_status).toBe('matched');
+    expect(r.mapped_data).toMatchObject({
+      client_code: 'VF',
+      customer_first_name: 'Garry',
+      customer_last_name: 'Dyck',
+      street: '2-159 1st Ave NW',
+      city: 'Carman',
+      province_state: 'MB',
+      postal_code: 'R0G 0J0',
+      product_name: 'Fibre 1gig/2.5gig',
+    });
+    expect(r.mapped_data.customer_name ?? null).toBeNull(); // not "Asif"
+    expect(String(r.mapped_data.product_types).split(',').sort()).toEqual(['internet', 'tv']); // flags, not "MDU"
+  });
+
+  it('a product the client does not have is an error naming it', async () => {
+    const { service, prisma } = arrange([row({ Product: 'Fibre 9gig' })]);
+    await service.stage({ buffer: Buffer.from(''), originalname: 'vf.csv', mimetype: 'text/csv', size: 1 } as never, { source_type: 'sales_entry', import_type: 'sales' } as never, user);
+    const [r] = stagedRows(prisma);
+    expect(r.match_status).toBe('error');
+    expect(r.issue).toBe('Product: "Fibre 9gig" is not one of VF\'s active products. Add it under Clients, or fix the name.');
+  });
+});
+
+describe('LIVE sales commit uses the NAMED product (2026-11-28)', () => {
+  it('attaches the plan the sheet names, not the first internet product of the client', async () => {
+    const { service, prisma, tx, sales } = make();
+    (tx.product as Record<string, jest.Mock>).findMany = jest.fn().mockResolvedValue([
+      { id: 'p-150', product_type: 'internet', name: 'Fibre 150mb/300mb' },
+      { id: 'p-1g', product_type: 'internet', name: 'Fibre 1gig/2.5gig' },
+    ]);
+    tx.product.findFirst.mockResolvedValue({ id: 'p-tv' }); // TV has no named product → first of its type
+    prisma.importBatch.findUnique.mockResolvedValue(
+      stagedBatch({
+        source_type: 'sales_entry',
+        client_id: null,
+        import_rows: [{ id: 'r1', match_status: 'matched', mapped_data: { client_code: 'VF', rep_code: 'RW034', product_types: 'internet,tv', product_name: 'fibre 1GIG / 2.5gig', sale_date: '2026-10-27', customer_first_name: 'Garry', customer_last_name: 'Dyck' } }],
+      }),
+    );
+    await service.commit('b1', user);
+    const dto = sales.createWithinTx.mock.calls[0][1] as { items: { product_id: string }[] };
+    expect(dto.items.map((i) => i.product_id)).toEqual(['p-1g', 'p-tv']);
+  });
+});
+
+describe('LIVE sales from a sales-app "sold report" (NLF, 2026-11-28)', () => {
+  const headers = ['Workspace', 'Rep', 'Date and Time', 'Outcome', 'First Name', 'Last Name', 'Phone', 'Address', 'Unit No', 'Internet Speed', 'TV Add-on', 'TV Package', 'Home Phone Add-on', 'Competitor Product (old)'];
+  const row = (over: Record<string, unknown> = {}) => ({
+    Workspace: 'Northern Lights Fiber - Redwave', Rep: 'Rahman Shifat', 'Date and Time': '2026-11-17', Outcome: 'Sale Completed',
+    'First Name': 'Scott', 'Last Name': 'Yarmuch', Phone: '(780) 581-0891', Address: '5239 66 ST, VERMILION, Alberta', 'Unit No': '',
+    'Internet Speed': 'Aurora 500 (500 Mbps)', 'TV Add-on': 'Yes', 'TV Package': 'Core', 'Home Phone Add-on': 'No', 'Competitor Product (old)': 'Internet + TV', ...over,
+  });
+  type Rep = { rep_code: string; external_code: string | null; full_name: string };
+  const arrange = (rows: Record<string, unknown>[], reps: Rep[] = [{ rep_code: 'RW004', external_code: 'REDWAVE04', full_name: 'Md Shahidur Rahman Shifat' }]) => {
+    const h = make(rows, headers);
+    h.prisma.client.findMany.mockResolvedValue([{ id: 'c-nlf', client_code: 'NLF', name: 'Northern Lights Fiber' }]);
+    h.prisma.rep.findMany.mockResolvedValue(reps.map((r) => ({ ...r, status: 'active' })));
+    h.prisma.product.findMany.mockResolvedValue([
+      { client_id: 'c-nlf', product_type: 'internet', name: 'Aurora 500 (500 Mbps)' },
+      { client_id: 'c-nlf', product_type: 'tv', name: 'TV' },
+    ]);
+    return h;
+  };
+  const stage = (service: ImportService) =>
+    service.stage({ buffer: Buffer.from(''), originalname: 'sold.xlsx', mimetype: 'x', size: 1 } as never, { source_type: 'sales_entry', import_type: 'sales' } as never, user);
+  const staged = (prisma: { importBatch: { create: jest.Mock } }) =>
+    (prisma.importBatch.create.mock.calls[0][0] as { data: { import_rows: { create: Array<{ match_status: string; issue: string | null; mapped_data: Record<string, unknown> }> } } }).data.import_rows.create;
+
+  it('resolves the workspace and the rep by name, reads the add-on columns, and says which rep it matched', async () => {
+    const { service, prisma } = arrange([row()]);
+    await stage(service);
+    const [r] = staged(prisma);
+    expect(r.match_status).toBe('matched');
+    expect(r.mapped_data).toMatchObject({ client_code: 'NLF', rep_code: 'RW004', city: 'VERMILION', province_state: 'AB' });
+    expect(String(r.mapped_data.product_types).split(',').sort()).toEqual(['internet', 'tv']); // not "Internet + TV" from the competitor column
+    expect(r.issue).toMatch(/Rep matched by name: Md Shahidur Rahman Shifat \(RW004\)/);
+  });
+
+  it('an ambiguous rep name is an error naming the candidates, never a pick', async () => {
+    const { service, prisma } = arrange([row()], [
+      { rep_code: 'RW004', external_code: null, full_name: 'Md Shahidur Rahman Shifat' },
+      { rep_code: 'RW090', external_code: null, full_name: 'Rahman Shifat Khan' },
+    ]);
+    await stage(service);
+    const [r] = staged(prisma);
+    expect(r.match_status).toBe('error');
+    expect(r.issue).toMatch(/matches more than one rep/);
   });
 });

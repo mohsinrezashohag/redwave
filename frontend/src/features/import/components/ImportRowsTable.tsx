@@ -9,6 +9,7 @@ import { RowActions } from '../../../components/data/RowActions';
 import { RowStatusBadge } from './RowStatusBadge';
 import styles from './import.module.css';
 import type { ImportBatch, ImportRow, KindDef } from '../import.types';
+import { IssueText } from './IssueText';
 
 interface Props {
   batch: ImportBatch;
@@ -70,7 +71,7 @@ export function ImportRowsTable({ batch, kind, canEdit, onMatch, onEdit, onIgnor
             <TD>
               {/* A MATCHED row's note is informational ("will create client VF"), not a failure — styling it
                   like an error would make a healthy row read as broken. */}
-              <span className={row.match_status === 'matched' ? styles.noteCell : styles.issueCell}>{row.issue ?? '—'}</span>
+              <span className={row.match_status === 'matched' ? styles.noteCell : styles.issueCell}><IssueText text={row.issue} /></span>
             </TD>
             {staged && canEdit && (
               <TD align="right">

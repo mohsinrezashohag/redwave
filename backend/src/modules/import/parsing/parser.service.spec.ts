@@ -1,5 +1,5 @@
 import * as ExcelJS from 'exceljs';
-import { dropUnusedRows, ParserService } from './parser.service';
+import { decodeText, dropUnusedRows, ParserService } from './parser.service';
 import { UploadedFile } from '../../../common/storage/storage.service';
 import { TARGET_FIELDS } from '../target-fields';
 
@@ -146,5 +146,13 @@ describe('dropUnusedRows (2026-11-16)', () => {
 
   it('with no mapping, every column counts', () => {
     expect(dropUnusedRows([{ A: '', B: 'y' }], [])).toEqual([{ A: '', B: 'y' }]);
+  });
+});
+
+describe('decodeText (2026-11-28)', () => {
+  it('reads UTF-8, and falls back to Windows-1252 for an Excel "CSV (Comma delimited)" file', () => {
+    expect(decodeText(Buffer.from('St Anne’s Rd', 'utf8'))).toBe('St Anne’s Rd');
+    // 0x92 is the Windows-1252 right single quote; invalid as UTF-8.
+    expect(decodeText(Buffer.from([0x53, 0x74, 0x20, 0x41, 0x6e, 0x6e, 0x65, 0x92, 0x73]))).toBe('St Anne’s');
   });
 });

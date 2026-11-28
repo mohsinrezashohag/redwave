@@ -178,7 +178,7 @@ describe('UAT file — docs/uat/Sales Upload.xlsx (historical sales)', () => {
     const groups = groupIssues(rows);
     expect(groups).toHaveLength(1); // ONE problem, not 16
     expect(groups[0].count).toBe(16);
-    expect(groups[0].sample_issue).toContain('unknown product type');
+    expect(groups[0].sample_issue).toMatch(/is not a known product type/);
     // …and it must NOT send the operator off to re-import their product master.
     expect(groups[0].sample_issue).not.toContain('Import products first');
     expect(evaluateGate(rows.map((r) => ({ match_status: r.match_status as never }))).ok).toBe(false);

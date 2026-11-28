@@ -65,6 +65,10 @@ import { applyBillingRate } from './handlers/billing-rate.handler';
 import { applyKmRate } from './handlers/km-rate.handler';
 import { applyCommissionFlatRate } from './handlers/commission-config.handler';
 import { applyClient, applyHistoricalSale, applyProduct, applyRep } from './handlers/master.handlers';
+import { splitServiceAddress } from './address.logic';
+import { foldName } from './product-name.logic';
+import { resolveClientRef, resolveRepRef } from './party-resolve.logic';
+import { quote, rowIssue } from './issue-format.logic';
 import { CreateImportDto } from './dto/create-import.dto';
 import { ReconcileAction, ReconcileDto } from './dto/reconcile.dto';
 import { RemapDto } from './dto/remap.dto';
@@ -752,7 +756,7 @@ export class ImportService {
       c.matched_entity_id && held.has(c.matched_entity_id)
         ? {
             match_status: 'error' as const,
-            issue: `Sale ${held.get(c.matched_entity_id)} is a possible duplicate waiting for approval. Approve it before validating.`,
+            issue: rowIssue('mpu_id', `matches sale ${held.get(c.matched_entity_id)}, a possible duplicate waiting for review`, 'Approve it under Sales, Needs review, then re-check this import'),
           }
         : c,
     );
@@ -915,6 +919,10 @@ export class ImportService {
    * base (SALE-001a) — pre-checked here so a bad row is an `error` the gate blocks, not a mid-commit throw.
    */
   private async classifyLiveSales(mappedRows: RawRow[], productTypeCtx?: ProductTypeContext): Promise<Classification[]> {
+    // A sales-app export names the client as a workspace and the rep as a person. Resolve both to our codes
+    // FIRST and write the code back into the row, so everything below (and the commit) works on codes and
+    // never re-guesses. Only an unambiguous match is accepted; the rest stays as written and errors. 2026-11-28
+    const { notes: repNotes, ambiguous: repAmbiguous } = await this.resolvePartiesByName(mappedRows);
     const byCode = await this.clientsByCode(uniqCodes(mappedRows, 'client_code'));
     const repCodes = uniqCodes(mappedRows, 'rep_code');
     // Either code resolves, but the rep must still be ACTIVE — SalesService rejects an inactive one.
@@ -930,10 +938,12 @@ export class ImportService {
     const products = clientIds.length
       ? await this.prisma.product.findMany({
           where: { client_id: { in: clientIds }, is_active: true },
-          select: { client_id: true, product_type: true },
+          select: { client_id: true, product_type: true, name: true },
         })
       : [];
     const prodKey = new Set(products.map((p) => `${p.client_id}|${p.product_type}`));
+    // A named product ("Fibre 1gig/2.5gig") is resolved by folded name within its client. — 2026-11-28
+    const productByName = new Map(products.map((p) => [`${p.client_id}|${foldName(p.name)}`, p]));
     // product_type → catalogue behaviour; `internet`/`greenfield` are the internet base.
     const behaviours = new Map(
       (await this.prisma.productTypeCatalogue.findMany({ select: { key: true, behaviour: true } })).map(
@@ -966,12 +976,36 @@ export class ImportService {
         duplicateOf = existingByMpu.get(key) ?? (seenInFile.has(key) ? 'this file' : null);
         seenInFile.add(key);
       }
+      // A one-cell address ("430 Lake Ave, Lac du Bonnet, MB R0E 1A0") fills street / city / province /
+      // postal when those columns are not mapped. Kept as written when it isn't that shape. — 2026-11-28
+      if (!str(r, 'city')) {
+        const split = splitServiceAddress(str(r, 'street'));
+        if (split) {
+          r.street = split.street;
+          if (split.city) r.city = split.city;
+          if (!str(r, 'province_state')) r.province_state = split.province_state;
+          if (!str(r, 'postal_code') && split.postal_code) r.postal_code = split.postal_code;
+        }
+      }
       canonicaliseSingle(r, 'status', SALE_STATUS_VOCAB); // "Validated" → validated
       // Optional and lenient: "Manitoba" → MB; an unknown value is kept as written, never an error. 2026-11-16
       if (str(r, 'province_state')) r.province_state = normaliseRegionLenient(str(r, 'province_state'));
       const resolved = canonicaliseProductTypes(r, vocab, productTypeCtx);
       const types = resolved.keys;
-      return classifyLiveSaleRow(r, {
+      // The named product must exist for this client; its type joins the row's types (the plan implies it).
+      const productName = str(r, 'product_name');
+      if (productName && cid) {
+        const named = productByName.get(`${cid}|${foldName(productName)}`);
+        if (!named) {
+          return { match_status: 'error' as const, issue: rowIssue('product_name', `${quote(productName)} is not one of ${str(r, 'client_code')}'s active products`, 'Add it under Clients, or fix the name') };
+        }
+        if (!types.includes(named.product_type)) {
+          types.push(named.product_type);
+          r.product_types = types.join(',');
+        }
+      }
+      const note = repNotes.get(r);
+      const classified = classifyLiveSaleRow(r, {
         clientExists: !!cid,
         repActive: activeReps.has(up(str(r, 'rep_code'))),
         unknownProductTypes: resolved.unknown,
@@ -983,7 +1017,41 @@ export class ImportService {
         }),
         duplicateOf,
       });
+      // A rep matched by name is shown on the row so the operator can check it before committing.
+      const ambiguous = repAmbiguous.get(r);
+      if (ambiguous && classified.match_status === 'error') {
+        return { ...classified, issue: rowIssue('rep_code', `${quote(str(r, 'rep_code'))} matches more than one rep (${ambiguous})`, 'Use the rep code or partner code instead') };
+      }
+      return note && classified.match_status === 'matched' && !classified.issue ? { ...classified, issue: note } : classified;
     });
+  }
+
+  /**
+   * Rewrite a client named by workspace and a rep named by person into their codes, in place. Returns the
+   * rows whose rep was matched BY NAME, with a note naming who it matched; an ambiguous name gets a note too
+   * (the row then fails the active-rep check, as an unknown code would). — party-resolve.logic, 2026-11-28
+   */
+  private async resolvePartiesByName(rows: RawRow[]): Promise<{ notes: Map<RawRow, string>; ambiguous: Map<RawRow, string> }> {
+    const notes = new Map<RawRow, string>();
+    const ambiguous = new Map<RawRow, string>();
+    const needsLookup = rows.some((r) => str(r, 'client_code') || str(r, 'rep_code'));
+    if (!needsLookup) return { notes, ambiguous };
+    const [clients, reps] = await Promise.all([
+      this.prisma.client.findMany({ select: { client_code: true, name: true } }),
+      this.prisma.rep.findMany({ where: { status: 'active' }, select: { rep_code: true, external_code: true, full_name: true } }),
+    ]);
+    for (const r of rows) {
+      const clientCode = resolveClientRef(str(r, 'client_code'), clients);
+      if (clientCode) r.client_code = clientCode;
+      const rep = resolveRepRef(str(r, 'rep_code'), reps);
+      if (rep.kind === 'name') {
+        r.rep_code = rep.rep_code;
+        notes.set(r, `Rep matched by name: ${rep.full_name} (${rep.rep_code}). Check it before committing.`);
+      } else if (rep.kind === 'ambiguous') {
+        ambiguous.set(r, rep.candidates.join('; '));
+      }
+    }
+    return { notes, ambiguous };
   }
 
   private async buildCommitContext(kind: Kind, createMissing = false): Promise<CommitContext> {

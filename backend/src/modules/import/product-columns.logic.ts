@@ -21,6 +21,12 @@ import { isTrue } from './clean.logic';
 import { RawRow } from './mapping.logic';
 import { resolveVocabExact, resolveVocabValue, Vocab, VocabResolution } from './value-vocabulary.logic';
 
+/** A trailing "add-on" / "addon" / "add on" on a yes/no product column header. */
+const ADD_ON_SUFFIX = /[\s_-]*add[\s_-]?on\s*$/i;
+
+/** A contact-number column header ("Phone", "Phone Number", "Cell", "Mobile"), never a product flag. */
+const CONTACT_COLUMN = /^(?:phone(?:\s*(?:number|no|#))?|cell(?:\s*phone)?|mobile)$/i;
+
 export interface ProductTypeColumn {
   /** The source column header, verbatim. */
   column: string;
@@ -39,7 +45,12 @@ export function detectProductTypeColumns(headers: string[], vocab: Vocab, exclud
   const out: ProductTypeColumn[] = [];
   for (const header of headers) {
     if (excluded.has(header)) continue;
-    const key = resolveVocabExact(header, vocab);
+    // "Phone" / "Cell" is the customer's contact number, not the home-phone flag, even though "phone" is a
+    // valid cell VALUE for the home-phone type ("Internet, Phone"). — 2026-11-28
+    if (CONTACT_COLUMN.test(header.trim())) continue;
+    // "TV Add-on" / "Home Phone Add-on" (a sales-app export, 2026-11-28) name the type too. Only that exact
+    // suffix is stripped, so "TV Package" or "Internet Rate" still never read as a flag.
+    const key = resolveVocabExact(header, vocab) ?? resolveVocabExact(header.replace(ADD_ON_SUFFIX, ''), vocab);
     if (key === null || seen.has(key)) continue;
     seen.add(key);
     out.push({ column: header, key });

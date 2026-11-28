@@ -23,6 +23,18 @@ const EXACT = 100;
 const CONTAINS = 50;
 const TOKEN = 20;
 
+/**
+ * Words too generic to link a header to a field on their own. A bill sheet's "Type" column (FTTN / MDU) is
+ * the building type, not the product types, and its "Agent Name" is the rep, not the customer; both used
+ * to be claimed through these words alone. An EXACT alias still matches them. — 2026-11-28
+ */
+const GENERIC = new Set([
+  'name', 'type', 'types', 'code', 'date', 'id', 'number', 'amount', 'status', 'value',
+  // A sales-app export (2026-11-28) has "Competitor Product (old)" and "Unit No" (an apartment unit): neither
+  // is the product types nor the MPU ID, yet each was claimed through this one word.
+  'product', 'unit', 'no',
+]);
+
 /** Score one field against one header. 0 means "no relationship" and is never assigned. */
 export function scorePair(field: TargetField, header: string): number {
   const candidates = [field.field, field.label, ...field.aliases].map(norm);
@@ -32,17 +44,22 @@ export function scorePair(field: TargetField, header: string): number {
   if (candidates.includes(h)) return EXACT;
 
   // Containment, in either direction, on a meaningful alias. Longer overlaps score higher so
-  // "rep code" beats a bare "code" for a `Rep code` column.
+  // "rep code" beats a bare "code" for a `Rep code` column. A header that is a single generic word is
+  // never "contained" in a longer alias ("type" inside "product type").
   let best = 0;
   for (const c of candidates) {
-    if (c.length >= 3 && (h.includes(c) || c.includes(h))) {
+    const forward = c.length >= 3 && h.includes(c);
+    const reverse = c.length >= 3 && c.includes(h) && !GENERIC.has(h);
+    if (forward || reverse) {
       best = Math.max(best, CONTAINS + c.length);
     }
   }
   if (best > 0) return best;
 
-  // A shared word of ≥3 characters.
-  const fieldTokens = new Set(candidates.flatMap((c) => c.split(' ')).filter((t) => t.length >= 3));
+  // A shared word of ≥3 characters, other than a generic one.
+  const fieldTokens = new Set(
+    candidates.flatMap((c) => c.split(' ')).filter((t) => t.length >= 3 && !GENERIC.has(t)),
+  );
   const shared = h.split(' ').filter((t) => t.length >= 3 && fieldTokens.has(t));
   return shared.length > 0 ? TOKEN + shared.length : 0;
 }

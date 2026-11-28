@@ -132,7 +132,7 @@ export default function SalesListPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
       <PageHeader
         title="Sales"
-        subtitle="Enter activations, then validate them into the pay run."
+        subtitle="Sales count as soon as they're entered. Possible duplicates wait for review."
         actions={
           <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
             {canExport && (

@@ -6,7 +6,8 @@
  */
 import { MatchStatus } from '@prisma/client';
 import { RawRow } from './mapping.logic';
-import { invalidFields, invalidMessage, isTrue } from './clean.logic';
+import { invalidFields, isTrue } from './clean.logic';
+import { clientNotFoundIssue, invalidIssue, missingIssue, quote, repNotFoundIssue, rowIssue } from './issue-format.logic';
 import { resolveVocabValue, splitValues, Vocab } from './value-vocabulary.logic';
 
 export interface Classification {
@@ -30,6 +31,16 @@ const matched = (id?: string): Classification => ({
 });
 const error = (issue: string): Classification => ({ match_status: 'error', issue });
 
+const productTypeNotFound = (type: string): string =>
+  rowIssue('product_type', `${quote(type)} is not in the product-type catalogue`, 'Add it under Commission config, or fix the spelling');
+
+const noProductIssue = (types: string[], clientCode: string | null): string =>
+  rowIssue(
+    'product_types',
+    `client ${clientCode} has no active ${types.join(', ')} product`,
+    'Add the product under Clients (or import products first), then re-check',
+  );
+
 /**
  * A blank REQUIRED field says "is required"; a non-blank value that could not be parsed says "is not a
  * valid …" (cleaning remembers it, see `invalidFields`). A blank OPTIONAL field is never an issue.
@@ -38,17 +49,17 @@ const error = (issue: string): Classification => ({ match_status: 'error', issue
 export function dateIssue(mapped: RawRow, field: string, required: boolean): string | null {
   const value = str(mapped, field);
   if (invalidFields(mapped)[field] !== undefined || (value && !DATE.test(value))) {
-    return invalidMessage(field, 'date');
+    return invalidIssue(field, 'date', invalidFields(mapped)[field] ?? value);
   }
-  return !value && required ? `${field} is required` : null;
+  return !value && required ? missingIssue(field, '2026-11-24') : null;
 }
 
 export function moneyIssue(mapped: RawRow, field: string, required: boolean): string | null {
   const value = str(mapped, field);
   if (invalidFields(mapped)[field] !== undefined || (value && !MONEY.test(value))) {
-    return invalidMessage(field, 'money');
+    return invalidIssue(field, 'money', invalidFields(mapped)[field] ?? value);
   }
-  return !value && required ? `${field} is required` : null;
+  return !value && required ? missingIssue(field, '89.99') : null;
 }
 
 /** Marker the reconcile step writes into a live-sale row an approver accepted as a possible duplicate. */
@@ -67,11 +78,13 @@ export function classifySalesRow(
     return matched(ctx.matchedSaleIds[0]);
   }
   if (ctx.matchedSaleIds.length > 1) {
-    return { match_status: 'duplicate', issue: `multiple entered sales match MPU ${mpuId}` };
+    return { match_status: 'duplicate', issue: rowIssue('mpu_id', `more than one open sale has MPU ${mpuId}`, 'Match this row to the right sale by hand') };
   }
   return {
     match_status: 'unmatched',
-    issue: mpuId ? `no entered sale matches MPU ${mpuId}` : 'No MPU ID, so a manual match is required',
+    issue: mpuId
+      ? rowIssue('mpu_id', `no open sale has MPU ${mpuId}`, 'Check the MPU ID, or match the row to a sale by hand')
+      : rowIssue('mpu_id', 'missing, so the row cannot be matched automatically', 'Match it to a sale by hand'),
   };
 }
 
@@ -85,14 +98,14 @@ export function classifyBillingRateRow(
   const rate_kind = str(mapped, 'rate_kind');
   const product_name = str(mapped, 'product_name');
 
-  if (!client_code) return error('client_code is required');
-  if (!rate_kind) return error('rate_kind is required');
-  if (rate_kind === 'product' && !product_name) return error("rate_kind 'product' requires a product_name");
+  if (!client_code) return error(missingIssue('client_code', 'VF'));
+  if (!rate_kind) return error(missingIssue('rate_kind', 'product'));
+  if (rate_kind === 'product' && !product_name) return error(rowIssue('product_name', 'missing, and a "product" rate needs one', 'Fill in the product name'));
   if (moneyIssue(mapped, 'amount', true)) return error(moneyIssue(mapped, 'amount', true)!);
   if (dateIssue(mapped, 'effective_from', true)) return error(dateIssue(mapped, 'effective_from', true)!);
   if (dateIssue(mapped, 'effective_to', false)) return error(dateIssue(mapped, 'effective_to', false)!);
-  if (!ctx.clientExists) return error(`client ${client_code} not found`);
-  if (rate_kind === 'product' && !ctx.productExists) return error(`product "${product_name}" not found for this client`);
+  if (!ctx.clientExists) return error(clientNotFoundIssue(client_code));
+  if (rate_kind === 'product' && !ctx.productExists) return error(rowIssue('product_name', `${quote(product_name)} was not found for client ${client_code}`, 'Add it under Clients, or fix the name'));
   return matched();
 }
 
@@ -113,12 +126,13 @@ export function classifyKmRateRow(mapped: RawRow, ctx: { clientExists: boolean }
   const stream = str(mapped, 'stream');
   const rate_per_km = str(mapped, 'rate_per_km');
 
-  if (!stream) return error('stream is required (rep or client_bill)');
-  if (!KM_STREAMS.has(stream)) return error(`stream must be 'rep' or 'client_bill', not "${stream}"`);
-  if (!rate_per_km || !RATE_PER_KM.test(rate_per_km)) return error('rate_per_km must be a decimal string (≤3 dp)');
+  if (!stream) return error(missingIssue('stream', 'rep or client_bill'));
+  if (!KM_STREAMS.has(stream)) return error(rowIssue('stream', `${quote(stream)} is not valid`, 'Use rep or client_bill'));
+  if (!rate_per_km) return error(missingIssue('rate_per_km', '0.450'));
+  if (!RATE_PER_KM.test(rate_per_km)) return error(rowIssue('rate_per_km', `${quote(rate_per_km)} is not a valid rate`, 'Use a number with up to 3 decimals, for example 0.450'));
   if (dateIssue(mapped, 'effective_from', true)) return error(dateIssue(mapped, 'effective_from', true)!);
   if (dateIssue(mapped, 'effective_to', false)) return error(dateIssue(mapped, 'effective_to', false)!);
-  if (client_code && !ctx.clientExists) return error(`client ${client_code} not found`);
+  if (client_code && !ctx.clientExists) return error(clientNotFoundIssue(client_code));
   return matched();
 }
 
@@ -130,12 +144,12 @@ export function classifyCommissionFlatRateRow(
   const client_code = str(mapped, 'client_code');
   const product_type = str(mapped, 'product_type');
 
-  if (!product_type) return error('product_type is required');
+  if (!product_type) return error(missingIssue('product_type', 'internet'));
   if (moneyIssue(mapped, 'amount', true)) return error(moneyIssue(mapped, 'amount', true)!);
   if (dateIssue(mapped, 'effective_from', true)) return error(dateIssue(mapped, 'effective_from', true)!);
   if (dateIssue(mapped, 'effective_to', false)) return error(dateIssue(mapped, 'effective_to', false)!);
-  if (!ctx.productTypeExists) return error(`product type "${product_type}" is not in the catalogue`);
-  if (client_code && !ctx.clientExists) return error(`client ${client_code} not found`);
+  if (!ctx.productTypeExists) return error(productTypeNotFound(product_type));
+  if (client_code && !ctx.clientExists) return error(clientNotFoundIssue(client_code));
   return matched();
 }
 
@@ -144,9 +158,9 @@ export function classifyClientRow(mapped: RawRow, ctx: { existingClientId: strin
   const client_code = str(mapped, 'client_code');
   const name = str(mapped, 'name');
   const market = (str(mapped, 'market') ?? '').toUpperCase();
-  if (!client_code) return error('client_code is required');
-  if (!name) return error('name is required');
-  if (market !== 'CA' && market !== 'US') return error('market must be CA or US');
+  if (!client_code) return error(missingIssue('client_code', 'VF'));
+  if (!name) return error(missingIssue('name', 'Valley Fiber'));
+  if (market !== 'CA' && market !== 'US') return error(market ? rowIssue('market', `${quote(market)} is not valid`, 'Use CA or US') : missingIssue('market', 'CA'));
   return matched(ctx.existingClientId ?? undefined); // existing → update; else create
 }
 
@@ -160,14 +174,14 @@ export function classifyProductRow(
   const product_type = str(mapped, 'product_type');
   const billing_amount = str(mapped, 'billing_amount');
   const effective_from = str(mapped, 'effective_from');
-  if (!client_code) return error('client_code is required');
-  if (!name) return error('name is required');
-  if (!product_type) return error('product_type is required');
-  if (!ctx.clientExists) return error(`client ${client_code} not found`);
-  if (!ctx.productTypeExists) return error(`product_type "${product_type}" is not in the catalogue`);
+  if (!client_code) return error(missingIssue('client_code', 'VF'));
+  if (!name) return error(missingIssue('name', 'Fibre 1gig/2.5gig'));
+  if (!product_type) return error(missingIssue('product_type', 'internet'));
+  if (!ctx.clientExists) return error(clientNotFoundIssue(client_code));
+  if (!ctx.productTypeExists) return error(productTypeNotFound(product_type));
   if (moneyIssue(mapped, 'billing_amount', false)) return error(moneyIssue(mapped, 'billing_amount', false)!);
   if (billing_amount) {
-    if (!effective_from || !DATE.test(effective_from)) return error('a billing_amount requires effective_from (YYYY-MM-DD)');
+    if (!effective_from || !DATE.test(effective_from)) return error(rowIssue('effective_from', 'missing, and a billing amount needs one', 'Use YYYY-MM-DD, for example 2026-11-24'));
   }
   return matched();
 }
@@ -176,10 +190,10 @@ export function classifyProductRow(
 export function classifyRepRow(mapped: RawRow, ctx: { codeExists: boolean }): Classification {
   const rep_code = str(mapped, 'rep_code');
   const full_name = str(mapped, 'full_name');
-  if (!rep_code) return error('rep_code is required');
-  if (!full_name) return error('full_name is required');
+  if (!rep_code) return error(missingIssue('rep_code', 'RW012'));
+  if (!full_name) return error(missingIssue('full_name', 'Jane Doe'));
   if (dateIssue(mapped, 'hire_date', true)) return error(dateIssue(mapped, 'hire_date', true)!);
-  if (ctx.codeExists) return error(`Rep code ${rep_code} already exists. Codes are never reused.`);
+  if (ctx.codeExists) return error(rowIssue('rep_code', `${quote(rep_code)} already exists, and rep codes are never reused`, 'Give this rep a new code'));
   return matched();
 }
 
@@ -216,35 +230,35 @@ export function classifyHistoricalSaleRow(
   const client_code = str(mapped, 'client_code');
   const rep_code = str(mapped, 'rep_code');
   const product_types = str(mapped, 'product_types');
-  if (!client_code) return error('client_code is required');
-  if (!rep_code) return error('rep_code is required');
-  if (!product_types) return error('product_types is required');
+  if (!client_code) return error(missingIssue('client_code', 'VF'));
+  if (!rep_code) return error(missingIssue('rep_code', 'RW012'));
+  if (!product_types) return error(missingIssue('product_types', 'internet,tv'));
   if (dateIssue(mapped, 'sale_date', true)) return error(dateIssue(mapped, 'sale_date', true)!);
   if (moneyIssue(mapped, 'billed_amount', true)) return error(moneyIssue(mapped, 'billed_amount', true)!);
 
   // An unresolvable TYPE is always an error, even with create-missing on: the product-type catalogue is
   // Super-Admin-governed configuration (#10), not something an uploaded file may extend.
   if (ctx.unknownProductTypes.length > 0) return error(unknownTypeIssue(ctx.unknownProductTypes, ctx.suggestion));
-  if (ctx.resolvedCount === 0) return error(`"${product_types}" names no known product type`);
+  if (ctx.resolvedCount === 0) return error(rowIssue('product_types', `${quote(product_types)} names no known product type`, 'Use internet, tv or home_phone'));
 
   const willCreate: string[] = [];
   if (!ctx.clientExists) {
-    if (!ctx.createMissing) return error(`client ${client_code} not found`);
+    if (!ctx.createMissing) return error(clientNotFoundIssue(client_code));
     willCreate.push(`client ${client_code}`);
   }
   if (!ctx.repExists) {
-    if (!ctx.createMissing) return error(`rep ${rep_code} not found`);
+    if (!ctx.createMissing) return error(repNotFoundIssue(rep_code));
     willCreate.push(`rep ${rep_code}`);
   }
   if (ctx.missingProductTypes.length > 0) {
     if (!ctx.createMissing) {
-      return error(`no ${ctx.missingProductTypes.join(', ')} product for client ${client_code}. Import products first.`);
+      return error(noProductIssue(ctx.missingProductTypes, client_code));
     }
     willCreate.push(`${ctx.missingProductTypes.join(', ')} product${ctx.missingProductTypes.length > 1 ? 's' : ''}`);
   }
 
   // Matched, but the operator should see what this row is about to bring into existence.
-  return willCreate.length > 0 ? { match_status: 'matched', issue: `will create ${willCreate.join(', ')}` } : matched();
+  return willCreate.length > 0 ? { match_status: 'matched', issue: `Will create ${willCreate.join(', ')} when you commit.` } : matched();
 }
 
 /**
@@ -254,8 +268,8 @@ export function classifyHistoricalSaleRow(
  */
 export function unknownTypeIssue(unknown: string[], suggestion: string | null): string {
   const listed = unknown.map((u) => `"${u}"`).join(', ');
-  const hint = suggestion ? `. Did you mean ${suggestion}?` : '. Check the product-type catalogue.';
-  return `unknown product type ${listed}${hint}`;
+  const verb = unknown.length > 1 ? 'are not known product types' : 'is not a known product type';
+  return rowIssue('product_types', `${listed} ${verb}`, suggestion ? `Did you mean ${suggestion}?` : 'Check the spelling against the product-type catalogue');
 }
 
 // ── sales_entry + sales (LIVE sale entry; IMP-013) ───────────────────────────────────────────────
@@ -314,18 +328,18 @@ export function classifyLiveSaleRow(
     ([str(mapped, 'customer_first_name'), str(mapped, 'customer_last_name')].filter(Boolean).join(' ') || null);
   const status = (str(mapped, 'status') ?? 'entered').toLowerCase();
 
-  if (!client_code) return error('client_code is required');
-  if (!rep_code) return error('rep_code is required');
-  if (!rawTypes) return error('product_types is required (comma-separated)');
+  if (!client_code) return error(missingIssue('client_code', 'VF'));
+  if (!rep_code) return error(missingIssue('rep_code', 'Redwave23'));
+  if (!rawTypes) return error(rowIssue('product_types', 'missing', 'Fill in product types (for example internet,tv), or mark the Internet / TV / Home Phone columns TRUE'));
   if (dateIssue(mapped, 'sale_date', true)) return error(dateIssue(mapped, 'sale_date', true)!);
-  if (!customer_name) return error('customer_name is required (or the first and last name)');
+  if (!customer_name) return error(rowIssue('customer_name', 'missing', 'Fill in the customer name, or the first and last name'));
   if (!LIVE_SALE_STATUSES.includes(status)) {
-    return error(`status must be entered or validated (got "${status}")`);
+    return error(rowIssue('status', `${quote(status)} is not valid`, 'Use entered or validated, or leave it blank'));
   }
   const unknownTypes = ctx.unknownProductTypes ?? [];
   if (unknownTypes.length > 0) return error(unknownTypeIssue(unknownTypes, ctx.suggestion ?? null));
-  if (!ctx.clientExists) return error(`client ${client_code} not found`);
-  if (!ctx.repActive) return error(`rep ${rep_code} not found or not active`);
+  if (!ctx.clientExists) return error(clientNotFoundIssue(client_code));
+  if (!ctx.repActive) return error(repNotFoundIssue(rep_code));
   const acceptedDuplicate = !!ctx.duplicateOf && isTrue(mapped[ACCEPT_DUPLICATE_KEY]);
   if (ctx.duplicateOf && !acceptedDuplicate) {
     const mpu = str(mapped, 'mpu_id');
@@ -333,19 +347,21 @@ export function classifyLiveSaleRow(
       match_status: 'duplicate',
       issue:
         ctx.duplicateOf === 'this file'
-          ? `MPU ${mpu} appears more than once in this file`
-          : `MPU ${mpu} is already entered for client ${client_code} as ${ctx.duplicateOf}`,
+          ? rowIssue('mpu_id', `${mpu} appears more than once in this file`, 'Ignore the extra row, or accept it as a duplicate')
+          : rowIssue('mpu_id', `${mpu} is already entered for client ${client_code} as sale ${ctx.duplicateOf}`, 'Ignore this row, or accept it as a duplicate'),
     };
   }
   if (ctx.missingProductTypes.length > 0) {
-    return error(
-      `no active ${ctx.missingProductTypes.join(', ')} product for client ${client_code}. Import products first.`,
-    );
+    return error(noProductIssue(ctx.missingProductTypes, client_code));
   }
   // SALE-001a — internet is the mandatory base; add-ons cannot be sold standalone.
   if (!ctx.hasInternetBase) {
     return error(
-      'a sale must include an internet activation (the mandatory base); add-ons cannot be sold standalone',
+      rowIssue(
+        'product_types',
+        'no internet on this sale, and every sale needs internet (TV, Home Phone or a drop permit cannot be imported on their own)',
+        'Ignore this row, or add the internet product',
+      ),
     );
   }
   // An approver accepted this possible duplicate at reconcile: it commits FLAGGED (SalesService sets

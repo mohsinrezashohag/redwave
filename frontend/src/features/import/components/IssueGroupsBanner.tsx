@@ -9,6 +9,7 @@
 import { Banner } from '../../../components/ui';
 import styles from './import.module.css';
 import type { ImportIssueGroup } from '../import.types';
+import { IssueText } from './IssueText';
 
 export function IssueGroupsBanner({ groups, blocking = true }: { groups: ImportIssueGroup[]; blocking?: boolean }) {
   if (groups.length === 0) return null;
@@ -25,7 +26,7 @@ export function IssueGroupsBanner({ groups, blocking = true }: { groups: ImportI
       <ul className={styles.issueGroupList}>
         {groups.map((group, i) => (
           <li key={`${group.match_status}-${i}`}>
-            <strong>{group.count}×</strong> {group.sample_issue}{' '}
+            <strong>{group.count}×</strong> <IssueText text={group.sample_issue} />{' '}
             <span className={styles.issueRows}>
               (row{group.row_numbers.length === 1 ? '' : 's'} {group.row_numbers.join(', ')}
               {group.count > group.row_numbers.length ? ', …' : ''})

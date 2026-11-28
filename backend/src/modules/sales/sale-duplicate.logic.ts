@@ -37,7 +37,7 @@ export interface DuplicateMatch {
 export function foldText(value: string | null | undefined): string {
   return (value ?? '')
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/\p{M}/gu, '') // strip accents (combining marks) after NFD
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();

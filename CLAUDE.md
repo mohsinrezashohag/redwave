@@ -772,7 +772,7 @@ surrounding code.
    Detection of those columns is EXACT, so `"Internet Rate"` is never read as the internet flag, and an
    explicit list cell always wins over the flags. Reps resolve by `rep_code` **or** the optional
    `external_code` alias (`Redwave20`), so existing spreadsheets need no rewriting; `rep_code` remains the
-   immutable, never-reused business key (#11).
+   immutable, never-reused business key (#11). **Real files (2026-11-28, the VF/RF bills + the NLF sales-app "sold report"):** a one-cell address is split (`import/address.logic.ts`); a named plan (`product_name`: Product / Internet Speed) attaches THAT product, not the first of its type; "X Add-on" yes/no columns are type flags but a bare "Phone" never is; generic header words (name, type, product, unit…) never create a mapping on their own; a non-UTF-8 CSV is read as Windows-1252. A client may be named (workspace prefix) and a rep by full name, but **only an unambiguous match is accepted** and each name match is shown on the row (`import/party-resolve.logic.ts`); ambiguity is an error naming the candidates, because the wrong rep would be paid. **Every row issue is built with `import/issue-format.logic.ts`** and reads `<Column>: <problem, quoting the value>. <fix>.` (e.g. `Rep: "Abdul Malak" was not found among active reps. Add the rep, or use their rep code or partner code.`); never write a raw `client_code is required` again. The FE `IssueText` bolds the column.
 
 10. **The structural guard specs ARE the enforcement — never delete one to make a refactor pass.**
    `engine.purity.spec.ts` holds §6 (a source scan bans Prisma/DB/sibling imports and any clock or

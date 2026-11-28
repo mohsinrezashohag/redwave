@@ -3034,3 +3034,22 @@ Sixteen requests plus handwritten notes from the 2026-11-16 meeting, built by si
 **Operator, after deploy.** `prisma:deploy` → `prisma:seed` (rep export grant) → `npm -w backend run sales:auto-validate` (dry run), then with `AUTOVALIDATE_CONFIRM=yes` to validate the backlog of entered sales.
 
 **Deferred.** Billing custom date range and the "An unexpected error occurred" on statements (needs the Render log line or correlation id). The import item the reviewer marked "remaining" (MPU ID and activation date are already optional; needs the failing file). An edit that changes a sale's name or address does not re-run duplicate detection.
+
+## Import reads the real files: VF/RF bills and the NLF sold report (no migration)
+
+**Why.** The reviewer marked the import "remaining", and Redwave sent the files it actually uses: the VF and RF weekly bill sheets (CSV) and a Northern Lights Fiber "sold report" exported from the sales-tracking app (xlsx). Run through the real parse → map → clean → classify pipeline, every row of each failed.
+
+**Causes and fixes.**
+- **Client in "Channel" / "Workspace".** Neither was a client alias; every row said client_code is required. Added both. A workspace like "Northern Lights Fiber - Redwave" resolves to the ONE client whose name it starts with (`party-resolve.logic#resolveClientRef`).
+- **Header words claimed the wrong columns.** "Agent Name" became the customer (shared word "name"), the building-type "Type" column became the product types (and, as an explicit cell, overrode the TRUE/FALSE flags), "Competitor Product (old)" became product types, "Unit No" became the MPU ID. `suggest-mapping` now ignores generic words (name, type, code, date, product, unit…) for containment/token matches; exact aliases still match them.
+- **The plan was ignored.** Every sale got the client's FIRST internet product, so the per-product billing rate (and any per-product rep rate) could be wrong. New optional `product_name` (Product / Internet Speed): resolved by folded name within the client at classify (error naming it when absent), and the commit handler attaches that product for its type.
+- **One-cell addresses.** New pure `address.logic#splitServiceAddress`: street / city / province / postal, reading from the end; handles land locations with no town, a bracketed note after the province, rural municipalities (kept beside the town), and geocoder tails ("…, Alberta, T9X 1G2, Canada"; "Vermilion, Town of Vermilion" → Vermilion). Unrecognised shapes are kept as written.
+- **Sold-report add-ons.** "TV Add-on" / "Home Phone Add-on" yes/no columns are read as type flags; a bare "Phone" (contact number) never is.
+- **Rep by name.** `party-resolve.logic#resolveRepRef`: code or partner code first; else the whole name ignoring spaces ("adnansaquib") or every word belonging to exactly ONE active rep ("Rahman Shifat"). Resolved codes are written back into the staged row so commit never re-guesses; each name match is shown on the row; an ambiguous name is an error listing the candidates.
+- **Encoding.** `parser.service#decodeText`: a CSV that is not valid UTF-8 is decoded as Windows-1252 ("St Anne's Rd" had become "St Anne�s Rd").
+
+**Decided.** Drop-permit rows (no internet; RF bills them at $73) stay out of the import: they error under SALE-001a and are marked Ignore; billing stays offline. Same-household rows in one file (e.g. the McIntyre/MbIntyre pair) are flagged by the address duplicate check at commit.
+
+**Verified.** The actual VF, RF and sold-report files through the real parser/mapping/cleaning; 243 import specs (address, party resolution, staging of each file shape, named-product commit).
+
+**Follow-up (same day): one standard wording for every import row issue.** Operators could not act on messages like `client_code is required` or `rep RW-D-0001 not found or not active`: they named internal keys, often dropped the value that failed, and rarely said what to do. New pure `import/issue-format.logic.ts` builds every message as `<Column>: <problem, quoting the value>. <fix>.` (`fieldLabel` maps keys to the column a person sees; `missingIssue` / `invalidIssue` / `clientNotFoundIssue` / `repNotFoundIssue` cover the common cases). All classifiers (live, historical, client report, rates, clients, products, reps), the date/amount checks, the name-match and product-name checks and the client-report candidate messages now use it. The FE `IssueText` (rows table + grouped-issue banner) bolds the column. The error-report CSV carries the same text.

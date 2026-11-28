@@ -75,14 +75,14 @@ describe('matchReportRow', () => {
     const twin = sale({ id: 's-twin', sale_code: 'VF-2026-07-14' });
     const res = matchReportRow({ customer_name: 'Mark Thibault', service_address: '23 Shoreline Dr', activation_date: null }, [MARK, twin]);
     expect(res.matchedSaleId).toBeUndefined();
-    expect(res.issue).toContain('Several sales match equally well');
+    expect(res.issue).toMatch(/^Customer: several sales match equally well \(.*\)\. Pick the right one by hand\.$/);
     expect(res.candidates).toHaveLength(2);
   });
 
   it('does not auto-match on a weak signal, but offers the closest candidates', () => {
     const res = matchReportRow({ customer_name: 'Mark Thibault', service_address: null, activation_date: null }, [MARK]);
     expect(res.matchedSaleId).toBeUndefined();
-    expect(res.issue).toContain('No confident match');
+    expect(res.issue).toMatch(/^Customer: no confident match\. The closest are /);
     expect(res.issue).toContain('VF-2026-07-13'); // the candidate is named, so the operator can act
   });
 
@@ -90,7 +90,7 @@ describe('matchReportRow', () => {
     const res = matchReportRow({ customer_name: 'Nobody Here', service_address: '1 Nowhere Rd', activation_date: null }, [MARK]);
     expect(res.matchedSaleId).toBeUndefined();
     expect(res.candidates).toEqual([]);
-    expect(res.issue).toContain('Match it manually');
+    expect(res.issue).toBe('Customer: no open sale matches this customer. Match it to a sale by hand.');
   });
 
   it('handles an empty sale list', () => {

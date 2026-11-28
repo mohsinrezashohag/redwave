@@ -65,7 +65,7 @@ export class ParserService {
   }
 
   private parseDelimited(file: UploadedFile, options: ParseOptions): ParseResult {
-    const raw = file.buffer.toString('utf8');
+    const raw = decodeText(file.buffer);
     const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw; // strip a UTF-8 BOM if present
     const delimiter = file.originalname.toLowerCase().endsWith('.tsv') ? '\t' : '';
 
@@ -253,6 +253,19 @@ function cellValue(value: ExcelJS.CellValue): unknown {
 const SUMMARY_LABEL = /^(grand\s*|sub[\s-]?)?totals?\s*:?$/i;
 
 const isBlank = (v: unknown): boolean => v === null || v === undefined || String(v).trim() === '';
+
+/**
+ * Decode a CSV/TSV upload. UTF-8 first; a file that is not valid UTF-8 is decoded as Windows-1252, which is
+ * what Excel on Windows writes for "CSV (Comma delimited)". Read as UTF-8 regardless, "St Anne’s Rd" came in
+ * as "St Anne�s Rd" (the VF bill sheet, 2026-11-28). PURE.
+ */
+export function decodeText(buffer: Buffer): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+  } catch {
+    return new TextDecoder('windows-1252').decode(buffer);
+  }
+}
 
 /**
  * Drop the rows that carry no data for this import (2026-11-16). PURE.

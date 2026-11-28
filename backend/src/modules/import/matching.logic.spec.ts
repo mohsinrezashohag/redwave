@@ -28,7 +28,7 @@ describe('classifySalesRow (bulk validation — SALE-007/IMP-010)', () => {
   it('no MPU at all → unmatched (manual match required)', () => {
     const c = classifySalesRow({}, { matchedSaleIds: [] });
     expect(c.match_status).toBe('unmatched');
-    expect(c.issue).toMatch(/manual match/);
+    expect(c.issue).toBe('MPU ID: missing, so the row cannot be matched automatically. Match it to a sale by hand.');
   });
 });
 
@@ -87,7 +87,7 @@ describe('classifyHistoricalSaleRow (reference-only)', () => {
   it('no product for the client+type → error (import products first)', () => {
     const res = classifyHistoricalSaleRow(good, { ...ctx, missingProductTypes: ['internet'] });
     expect(res.match_status).toBe('error');
-    expect(res.issue).toContain('Import products first');
+    expect(res.issue).toBe('Product types: client VF has no active internet product. Add the product under Clients (or import products first), then re-check.');
   });
   it('bad billed_amount → error', () => {
     expect(classifyHistoricalSaleRow({ ...good, billed_amount: 'x' }, ctx).match_status).toBe('error');
@@ -106,7 +106,7 @@ describe('classifyHistoricalSaleRow (reference-only)', () => {
     const row = { ...good, product_types: 'Fibre Optic' };
     const res = classifyHistoricalSaleRow(row, { ...ctx, unknownProductTypes: ['Fibre Optic'], resolvedCount: 0, suggestion: null });
     expect(res.match_status).toBe('error');
-    expect(res.issue).toContain('unknown product type');
+    expect(res.issue).toMatch(/^Product types: "Fibre Optic" is not a known product type\. /);
     expect(res.issue).not.toContain('Import products first');
   });
   // ── create_missing: opt-in auto-creation of referenced master data (migration only) ──
@@ -120,12 +120,12 @@ describe('classifyHistoricalSaleRow (reference-only)', () => {
     it('ON — the row matches and says what it will bring into existence', () => {
       const res = classifyHistoricalSaleRow(good, { ...ctx, clientExists: false, repExists: false, createMissing: true });
       expect(res.match_status).toBe('matched');
-      expect(res.issue).toBe('will create client VF, rep RW-D-0001');
+      expect(res.issue).toBe('Will create client VF, rep RW-D-0001 when you commit.');
     });
 
     it('ON — a missing product is named by type', () => {
       const res = classifyHistoricalSaleRow(good, { ...ctx, missingProductTypes: ['tv', 'home_phone'], createMissing: true });
-      expect(res.issue).toBe('will create tv, home_phone products');
+      expect(res.issue).toBe('Will create tv, home_phone products when you commit.');
     });
 
     it('a clean row carries NO note even with the flag on', () => {
@@ -137,7 +137,7 @@ describe('classifyHistoricalSaleRow (reference-only)', () => {
       const row = { ...good, product_types: 'Fibre Optic' };
       const res = classifyHistoricalSaleRow(row, { ...ctx, unknownProductTypes: ['Fibre Optic'], resolvedCount: 0, suggestion: null, createMissing: true });
       expect(res.match_status).toBe('error');
-      expect(res.issue).toContain('unknown product type');
+      expect(res.issue).toMatch(/^Product types: "Fibre Optic" is not a known product type\. /);
     });
 
     it('still enforces the row-shape rules (a bad date is not creatable data)', () => {
@@ -180,12 +180,12 @@ describe('classifyLiveSaleRow (LIVE sales — IMP-013)', () => {
   it('unknown client → error (never creates the client)', () => {
     const c = classifyLiveSaleRow(good, { ...ctx, clientExists: false });
     expect(c.match_status).toBe('error');
-    expect(c.issue).toContain('client VF not found');
+    expect(c.issue).toBe('Client: "VF" was not found. Add the client under Clients, or fix the code.');
   });
   it('unknown or INACTIVE rep → error (never creates the rep)', () => {
     const c = classifyLiveSaleRow(good, { ...ctx, repActive: false });
     expect(c.match_status).toBe('error');
-    expect(c.issue).toMatch(/not found or not active/);
+    expect(c.issue).toBe('Rep: "RW-D-0001" was not found among active reps. Add the rep, or use their rep code or partner code.');
   });
   it('a product type with no active product for the client → error (import products first)', () => {
     const c = classifyLiveSaleRow(good, { ...ctx, missingProductTypes: ['tv'] });
@@ -197,7 +197,7 @@ describe('classifyLiveSaleRow (LIVE sales — IMP-013)', () => {
   it('add-ons only (no internet base) → error, not a mid-commit throw', () => {
     const c = classifyLiveSaleRow({ ...good, product_types: 'tv,home_phone' }, { ...ctx, hasInternetBase: false });
     expect(c.match_status).toBe('error');
-    expect(c.issue).toMatch(/mandatory base/);
+    expect(c.issue).toMatch(/^Product types: no internet on this sale.*Ignore this row, or add the internet product\.$/);
   });
 
   // One client + MPU is one household (§14 rule 8): a re-imported file must not pay a sale twice.
@@ -239,22 +239,22 @@ describe('client meeting 2026-11-16 — required vs invalid, derived name, accep
   it('a blank customer cell is fine when first + last name are present', () => {
     const c = classifyLiveSaleRow({ ...base, customer_first_name: 'Jane', customer_last_name: 'Doe' }, ctx);
     expect(c.match_status).toBe('matched');
-    expect(classifyLiveSaleRow(base, ctx).issue).toMatch(/customer_name is required/);
+    expect(classifyLiveSaleRow(base, ctx).issue).toBe('Customer: missing. Fill in the customer name, or the first and last name.');
   });
 
   it('a blank required date says "is required"; an unparseable one says "is not a valid date"', () => {
-    expect(classifyLiveSaleRow({ ...base, sale_date: null, customer_name: 'J' }, ctx).issue).toBe('sale_date is required');
+    expect(classifyLiveSaleRow({ ...base, sale_date: null, customer_name: 'J' }, ctx).issue).toBe('Sale date: missing. Fill in the sale date (for example 2026-11-24).');
     const bad = cleanMappedRow({ ...base, sale_date: '45/99/2026', customer_name: 'J' }, { sale_date: 'date' });
-    expect(classifyLiveSaleRow(bad, ctx).issue).toBe('sale_date is not a valid date (YYYY-MM-DD)');
+    expect(classifyLiveSaleRow(bad, ctx).issue).toBe('Sale date: "45/99/2026" is not a valid date. Use YYYY-MM-DD, for example 2026-11-24.');
   });
 
   it('a blank optional field is never an issue; an unparseable required amount is "not a valid amount"', () => {
     const rate = { client_code: 'VF', rate_kind: 'tv_addon', effective_from: '2026-01-01' };
     expect(classifyBillingRateRow({ ...rate, amount: '5.00' }, { clientExists: true, productExists: true }).match_status).toBe('matched');
     const bad = cleanMappedRow({ ...rate, amount: 'five' }, { amount: 'money' });
-    expect(classifyBillingRateRow(bad, { clientExists: true, productExists: true }).issue).toBe('amount is not a valid amount');
+    expect(classifyBillingRateRow(bad, { clientExists: true, productExists: true }).issue).toBe('Amount: "five" is not a valid amount. Use a number, for example 89.99.');
     expect(dateIssue({ effective_to: null }, 'effective_to', false)).toBeNull();
-    expect(moneyIssue({ amount: null }, 'amount', true)).toBe('amount is required');
+    expect(moneyIssue({ amount: null }, 'amount', true)).toBe('Amount: missing. Fill in the amount (for example 89.99).');
   });
 
   it('a duplicate stays a duplicate until an approver accepts it, then it is matched with a note', () => {

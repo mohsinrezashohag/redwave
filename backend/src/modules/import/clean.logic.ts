@@ -145,7 +145,7 @@ export function invalidFields(row: RawRow): Record<string, string> {
   return INVALID.get(row) ?? {};
 }
 
-/** The parse-failure message for a field's type. */
+/** The parse-failure message for a field's type. Kept for callers outside the classifiers; see issue-format. */
 export function invalidMessage(field: string, type: FieldType): string {
   switch (type) {
     case 'date':

@@ -7,6 +7,7 @@
  * Unlike the HISTORICAL target these are real sales that DO flow into tier / pay run / clawback. No
  * commission is written here: `sale_items` snapshots stay NULL until Pay Run freezes them (#2/#5).
  */
+import { foldName } from '../product-name.logic';
 import { Prisma } from '@prisma/client';
 import { AuthUser } from '../../../common/rbac/auth-user.type';
 import { DomainError } from '../../../common/errors/domain-error';
@@ -46,12 +47,27 @@ export async function applyLiveSale(
   if (!rep) throw new DomainError('IMPORT_REP_NOT_FOUND', `rep ${repCode} not found`);
 
   // One row = one sale; `product_types` is the (comma-separated) list of items on it.
+  // A named product (the bill sheet's plan, e.g. "Fibre 1gig/2.5gig") is used for ITS type, so the right
+  // per-product billing / rep rate applies; any other type takes the client's first active product of that
+  // type, as before. The classifier already proved the name resolves. — 2026-11-28
+  const wanted = foldName(text(mapped, 'product_name'));
+  const named = wanted
+    ? (
+        await tx.product.findMany({
+          where: { client_id: client.id, is_active: true },
+          select: { id: true, product_type: true, name: true },
+        })
+      ).find((p) => foldName(p.name) === wanted)
+    : undefined;
   const productIds: string[] = [];
   for (const productType of splitProductTypes(text(mapped, 'product_types'))) {
-    const product = await tx.product.findFirst({
-      where: { client_id: client.id, product_type: productType, is_active: true },
-      select: { id: true },
-    });
+    const product =
+      named && named.product_type === productType
+        ? named
+        : await tx.product.findFirst({
+            where: { client_id: client.id, product_type: productType, is_active: true },
+            select: { id: true },
+          });
     if (!product) {
       throw new DomainError(
         'IMPORT_PRODUCT_NOT_FOUND',
